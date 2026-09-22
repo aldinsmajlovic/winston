@@ -1,5 +1,5 @@
 """M1 acceptance (WINSTON_PLAN.md §5): typed commands change real Home Assistant state.
-Runs the three plan commands through brain.cli (same brain as voice), checks HA's own
+Runs the three plan commands through the text channel (same brain as voice), checks HA's own
 state afterwards, then puts the lights back the way they were.
 
     .venv/bin/python tests/m1_ha.py
@@ -11,14 +11,13 @@ import time
 from pathlib import Path
 
 import httpx
-from dotenv import load_dotenv
 from loguru import logger
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-from brain.cli import run  # noqa: E402
+from winston.channels.text import run  # noqa: E402
+from winston.config import load  # noqa: E402
 
-HA = os.environ["HA_URL"]; H = {"Authorization": f"Bearer {os.environ['HA_TOKEN']}"}
+CFG = load()
+HA = CFG.providers.home_assistant.url.rstrip("/"); H = {"Authorization": f"Bearer {os.environ['HA_TOKEN']}"}
 LIGHT, PHONE, WOL = "light.living_room_all", "sensor.pixel_11_pro_battery_level", "button.wake_on_lan_04_7c_16_70_ca_bc"
 
 
@@ -32,7 +31,7 @@ print(f"before: light {before['state']} brightness={before['attributes'].get('br
 
 logger.remove(); logger.add(sys.stderr, level="WARNING")
 t0 = time.perf_counter()
-replies = asyncio.run(run(["Set the living room lights to 50% and warm.",
+replies = asyncio.run(run(CFG, ["Set the living room lights to 50% and warm.",
                            "What's my phone battery?",
                            "Boot my PC."]))
 print(f"\n3 turns in {time.perf_counter() - t0:.1f}s")

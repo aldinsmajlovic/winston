@@ -1,0 +1,84 @@
+version: 1
+assistant:
+  name: Winston
+  persona: persona.md
+
+engines:
+  llm:
+    driver: docker
+    image: vllm/vllm-openai:v0.29.0
+    port: 8000
+    health: /health
+    startup_timeout: 600
+    gpu: true
+    runtime: nvidia            # explicit: this host's CDI spec is stale, see docs/decisions.md
+    ipc_host: true
+    env:
+      HF_HUB_OFFLINE: "1"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      ~/.cache/huggingface: /root/.cache/huggingface
+    args:
+      - QuantTrio/Qwen3.5-9B-AWQ
+      - --max-model-len
+      - "32768"
+      - --max-num-seqs
+      - "8"
+      - --gpu-memory-utilization
+      - "0.70"
+      - --limit-mm-per-prompt
+      - '{"image": 1, "video": 0}'
+      - --default-chat-template-kwargs
+      - '{"enable_thinking": false}'
+      - --reasoning-parser
+      - qwen3
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
+      - --trust-remote-code
+  tts:
+    driver: subprocess
+    port: 8880
+    health: /health
+    startup_timeout: 180
+    cwd: "{repo}/services/tts-chatterbox"
+    cmd:
+      - "{repo}/services/tts-chatterbox/.venv/bin/python"
+      - server.py
+      - --voice
+      - "{data}/voices/vctk/p254_023.wav"   # any clip under {data}/voices; six CC BY 4.0 samples are bundled
+      - --voices-dir
+      - "{data}/voices"
+      - --port
+      - "8880"
+
+llm:
+  provider: openai_compatible
+  base_url: http://127.0.0.1:8000/v1
+  model: QuantTrio/Qwen3.5-9B-AWQ
+  sampling: {temperature: 0.3, top_p: 0.8, presence_penalty: 0.0, max_tokens: 512}
+  thinking: {voice: false, text: true}
+
+stt: {provider: parakeet, model: nemo-parakeet-tdt-0.6b-v3, quantization: int8}
+tts: {provider: openai_speech, base_url: http://127.0.0.1:8880/v1, voice: onyx, sample_rate: 24000}
+vad: {provider: silero, stop_secs: 0.3}
+
+channels:
+  voice: {enabled: true, host: 127.0.0.1, port: 7860}
+  telegram: {enabled: false}
+
+providers:
+  home_assistant:
+    url: http://homeassistant.local:8123
+    token_env: HA_TOKEN
+    mcp_path: /api/mcp
+    expose_domains: [person, weather, todo]
+    expose: {}                 # entity_id: {name: ..., aliases: [...]}; see docs/running.md
+
+tools:
+  sensors: {}                # "label": {level: sensor.x_battery_level, state: sensor.x_battery_state}
+
+memory: {dir: memory, commit_on_write: true}
+logging: {tool_calls: logs/tool_calls.jsonl, latency: logs/latency.jsonl}
+control: {host: 127.0.0.1, port: 8700}

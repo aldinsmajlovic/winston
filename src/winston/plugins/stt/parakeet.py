@@ -17,21 +17,23 @@ from pipecat.transcriptions.language import Language
 from pipecat.utils.time import time_now_iso8601
 
 
-def load_parakeet(model_name: str = "nemo-parakeet-tdt-0.6b-v3", quantization: str | None = "int8"):
-    """Load and warm up the ONNX model once per process; takes ~10 s, so do it at startup."""
-    t0 = time.perf_counter()
-    model = onnx_asr.load_model(model_name, quantization=quantization)
-    model.recognize(np.zeros(16000, dtype=np.float32), sample_rate=16000)
-    logger.info(f"Parakeet {model_name} ({quantization}) loaded in {time.perf_counter() - t0:.1f}s")
-    return model
-
-
 class ParakeetSTTService(SegmentedSTTService):
+    """Adapter contract for STT plugins: `load_model(name, quantization)` returns a reusable model
+    object, the constructor takes it as `model=` so one load serves every connection."""
+
+    @staticmethod
+    def load_model(model_name: str = "nemo-parakeet-tdt-0.6b-v3", quantization: str | None = "int8"):
+        t0 = time.perf_counter()
+        model = onnx_asr.load_model(model_name, quantization=quantization)
+        model.recognize(np.zeros(16000, dtype=np.float32), sample_rate=16000)   # warm up
+        logger.info(f"Parakeet {model_name} ({quantization}) loaded in {time.perf_counter() - t0:.1f}s")
+        return model
+
     def __init__(self, *, model=None, model_name: str = "nemo-parakeet-tdt-0.6b-v3",
                  quantization: str | None = "int8", sample_rate: int | None = None, **kwargs):
         super().__init__(sample_rate=sample_rate,
                          settings=STTSettings(model=model_name, language=Language.EN), **kwargs)
-        self._model = model if model is not None else load_parakeet(model_name, quantization)
+        self._model = model if model is not None else self.load_model(model_name, quantization)
 
     @property
     def wants_wav_segments(self) -> bool:

@@ -205,6 +205,8 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 
 ## 7. Repo layout
 
+> Superseded 2026-09-22 by the open-source layout in `docs/architecture.md` (`src/winston` package, `data/` instance directory, `services/`, `examples/`). Kept for history.
+
 ```
 winston/
   CLAUDE.md            # short pointer: read WINSTON_PLAN.md and DECISIONS.md first

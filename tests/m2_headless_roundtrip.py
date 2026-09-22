@@ -29,9 +29,8 @@ from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from brain.agent import Brain, ToolCallLogObserver  # noqa: E402
-from voice import pipeline as vp  # noqa: E402  (loads config + STT model)
+from winston.channels import voice as vp  # noqa: E402  (loads config)
+from winston.core.brain import Brain, ToolCallLogObserver  # noqa: E402
 
 SR = 16000
 CHUNK = SR // 50  # 20 ms
@@ -39,7 +38,7 @@ CHUNK = SR // 50  # 20 ms
 
 def synth_user_audio(text: str, voice: str = "vctk/p226_023") -> tuple[np.ndarray, np.ndarray]:
     """Returns (16 kHz int16 for the pipeline, original 24 kHz int16 for saving)."""
-    pcm = httpx.post(f"{vp.CFG['tts']['server_url']}/audio/speech",
+    pcm = httpx.post(f"{vp.CFG.tts.base_url}/audio/speech",
                      json={"input": text, "voice": voice, "response_format": "pcm"}, timeout=120).content
     a24 = np.frombuffer(pcm, dtype=np.int16)
     a = a24.astype(np.float32)
@@ -118,12 +117,12 @@ async def one_turn(utterance: str) -> dict:
     audio, user24 = synth_user_audio(utterance)
     speaker, done = Speaker(audio), asyncio.Event()
     stt_tap, llm_tap, listener = Tap(TranscriptionFrame), Tap(LLMTextFrame), Listener(done)
-    brain = Brain(); await brain.start()                 # same brain as the real pipeline, tools included
+    brain = Brain(vp.CFG, channel="voice"); await brain.start()   # same brain as the real pipeline, tools included
     agg = LLMContextAggregatorPair(brain.new_context())
     pipeline = Pipeline([speaker, vp.build_stt(), stt_tap, agg.user(), brain.llm, llm_tap,
                          vp.build_tts(), listener, agg.assistant()])
     task = PipelineWorker(pipeline, params=PipelineParams(enable_metrics=True), idle_timeout_secs=None,
-                          observers=[ToolCallLogObserver(channel="headless")])
+                          observers=[ToolCallLogObserver(vp.CFG, channel="headless")])
     runner = WorkerRunner(handle_sigint=False)
     run = asyncio.create_task(runner.run(task))
     try:

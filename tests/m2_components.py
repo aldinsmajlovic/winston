@@ -12,8 +12,9 @@ import httpx
 import numpy as np
 import onnx_asr
 
+from winston.config import load  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
-TTS = "http://127.0.0.1:8880"
+TTS = load().tts.base_url.removesuffix("/v1")
 OUT = ROOT / "tests/latency/results"; OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -28,7 +29,7 @@ t0 = time.perf_counter()
 stt = onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", quantization="int8")
 print(f"STT model load {time.perf_counter() - t0:.1f}s")
 
-ref = ROOT / "voice/tts/reference/vctk/p226_023.wav"
+ref = ROOT / "assets/voices/vctk/p226_023.wav"
 pcm, sr = load_wav(ref)
 t0 = time.perf_counter(); text = stt.recognize(pcm, sample_rate=sr); dt = time.perf_counter() - t0
 print(f"STT numpy path {len(pcm) / sr:.1f}s@{sr} -> {dt * 1000:.0f} ms: {text!r}")

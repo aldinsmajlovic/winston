@@ -1,18 +1,39 @@
 [project]
 name = "winston"
 version = "0.1.0"
-description = "Self-hosted full-duplex voice assistant for Home Assistant"
+description = "Self-hosted, full-duplex voice assistant for Home Assistant"
+readme = "README.md"
+license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "pipecat-ai[webrtc,silero,openai]>=1.11.0",
     "pipecat-ai-prebuilt",
     "onnx-asr[cpu,hub]>=0.12.0",
+    "mcp>=1.10",
+    "pydantic>=2.7",
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
     "fastapi>=0.115",
     "uvicorn>=0.30",
-    "mcp>=1.10",
+    "httpx>=0.27",
+    "typer>=0.12",
+    "docker>=7.0",
 ]
 
-[tool.uv]
-package = false
+[project.scripts]
+winston = "winston.cli.main:app"
+
+# Built-in plugins register through the same entry points third-party packages use.
+[project.entry-points."winston.stt"]
+parakeet = "winston.plugins.stt.parakeet:ParakeetSTTService"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/winston"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"

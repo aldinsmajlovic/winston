@@ -1,4 +1,3 @@
-.env
 .venv/
 __pycache__/
 *.pyc
@@ -10,12 +9,12 @@ models/
 *.gguf
 *.safetensors
 
-# Voice reference clips: personal ones stay out; the CC BY 4.0 VCTK samples are tracked
-voice/tts/reference/*
-!voice/tts/reference/vctk/
+# The instance: config, secrets, persona, memory, voices, logs
+data/
 
 # Runtime output
-logs/
 *.log
 tests/latency/results/
 samples/
+web/node_modules/
+web/dist/

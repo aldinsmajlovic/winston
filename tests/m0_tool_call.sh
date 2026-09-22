@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M0 acceptance (WINSTON_PLAN.md §5): a /v1/chat/completions request with a tool
+# M0 acceptance (docs/plan.md §5): a /v1/chat/completions request with a tool
 # schema returns a well-formed tool call. Also checks a plain question does NOT
 # trigger a tool, and prints wall-clock latency for both.
 set -euo pipefail

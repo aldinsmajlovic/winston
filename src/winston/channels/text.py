@@ -1,8 +1,5 @@
-"""Type at Winston. Same brain and tools as the voice pipeline, minus STT/TTS.
-
-    .venv/bin/python -m brain.cli                        # interactive
-    .venv/bin/python -m brain.cli "lights to 50%" "..."  # scripted, one context
-"""
+"""Text channel: the same brain and tools as voice, minus STT and TTS. Used by `winston talk`
+and, later, Telegram and the web chat."""
 import asyncio
 import sys
 import time
@@ -12,20 +9,21 @@ from pipecat.frames.frames import (Frame, FunctionCallResultFrame, FunctionCalls
                                    LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.workers.runner import WorkerRunner
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.workers.runner import WorkerRunner
 
-from brain.agent import Brain, ToolCallLogObserver
+from winston.config.schema import WinstonConfig
+from winston.core.brain import Brain, ToolCallLogObserver
 
 QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-response end
 
 
 class TurnTracker(BaseObserver):
-    """Knows when a reply is really over: no LLM response end for QUIET_SECS and no tool
-    call still running. Observers see every frame, including the function-call frames
-    that never travel downstream past the LLM, so the tracking lives here, not in Printer."""
+    """Knows when a reply is really over: no LLM response end for QUIET_SECS and no tool call
+    still running. Observers see every frame, including the function-call frames that never
+    travel downstream past the LLM."""
     def __init__(self):
         super().__init__(); self.last_end = None; self.pending: set[str] = set()
 
@@ -41,15 +39,17 @@ class TurnTracker(BaseObserver):
 
 
 class Printer(FrameProcessor):
-    def __init__(self, tracker: TurnTracker):
-        super().__init__(); self._t = tracker; self.buf = []; self.replies = []
+    def __init__(self, tracker: TurnTracker, echo: bool = True):
+        super().__init__(); self._t = tracker; self._echo = echo; self.buf = []; self.replies = []
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, LLMTextFrame):
             text = frame.text.lstrip() if not self.buf else frame.text   # thinking mode leaves leading newlines
             if text:
-                print(text, end="", flush=True); self.buf.append(text)
+                if self._echo:
+                    print(text, end="", flush=True)
+                self.buf.append(text)
         await self.push_frame(frame, direction)
 
     async def wait_reply(self, timeout=90) -> str:
@@ -59,40 +59,47 @@ class Printer(FrameProcessor):
             t = self._t
             if t.last_end and not t.pending and time.perf_counter() - t.last_end > QUIET_SECS:
                 break
-        print(); reply = "".join(self.buf).strip(); self.replies.append(reply); return reply
+        if self._echo:
+            print()
+        reply = "".join(self.buf).strip(); self.replies.append(reply); return reply
 
 
-async def run(messages: list[str] | None) -> list[str]:
-    brain = Brain(channel="cli"); await brain.start()
-    context = brain.new_context(); agg = LLMContextAggregatorPair(context)
-    tracker = TurnTracker(); printer = Printer(tracker)
-    task = PipelineWorker(Pipeline([agg.user(), brain.llm, printer, agg.assistant()]),
-                        params=PipelineParams(enable_metrics=False),
-                        observers=[ToolCallLogObserver(channel="cli"), tracker], idle_timeout_secs=None)
-    runner = WorkerRunner(handle_sigint=False); run_task = asyncio.create_task(runner.run(task))
+async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True) -> list[str]:
+    """Scripted (messages given, one shared context) or interactive (None) chat."""
+    brain = Brain(cfg, channel="text"); await brain.start()
+    agg = LLMContextAggregatorPair(brain.new_context())
+    tracker = TurnTracker(); printer = Printer(tracker, echo)
+    worker = PipelineWorker(Pipeline([agg.user(), brain.llm, printer, agg.assistant()]),
+                            params=PipelineParams(enable_metrics=False),
+                            observers=[ToolCallLogObserver(cfg, channel="text"), tracker], idle_timeout_secs=None)
+    run_task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(worker))
+
+    async def ask(m: str) -> str:
+        await worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}], run_llm=True)])
+        return await printer.wait_reply()
+
     try:
         if messages:
             for m in messages:
-                print(f"\n> {m}\nWinston: ", end="", flush=True)
-                await task.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}], run_llm=True)])
-                await printer.wait_reply()
+                if echo:
+                    print(f"\n> {m}\n{cfg.assistant.name}: ", end="", flush=True)
+                await ask(m)
         else:
-            print("Winston is listening (Ctrl-D to quit).")
+            print(f"{cfg.assistant.name} is listening (Ctrl-D to quit).")
             while True:
                 try:
                     m = await asyncio.to_thread(input, "\n> ")
                 except EOFError:
                     break
-                if not m.strip():
-                    continue
-                print("Winston: ", end="", flush=True)
-                await task.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}], run_llm=True)])
-                await printer.wait_reply()
+                if m.strip():
+                    print(f"{cfg.assistant.name}: ", end="", flush=True)
+                    await ask(m)
     finally:
-        await task.cancel(); await run_task; await brain.close()
+        await worker.cancel(); await run_task; await brain.close()
     return printer.replies
 
 
 if __name__ == "__main__":
+    from winston.config import load
     logger.remove(); logger.add(sys.stderr, level="WARNING")
-    asyncio.run(run(sys.argv[1:] or None))
+    asyncio.run(run(load(), sys.argv[1:] or None))
