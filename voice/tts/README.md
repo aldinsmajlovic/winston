@@ -20,8 +20,8 @@ Try another voice without restarting by naming a clip relative to `--voices-dir`
 via Kyutai's `kyutai/tts-voices` mirror, licensed **CC BY 4.0**. Attribution: Yamagishi, J.,
 Veaux, C., MacDonald, K. (2019), "CSTR VCTK Corpus: English Multi-speaker Corpus for CSTR
 Voice Cloning Toolkit (version 0.92)", https://doi.org/10.7488/ds/2645. Speakers pulled as
-British male candidates: p226 (Surrey), p232 (Southern England, default), p243 (London),
-p254 (Surrey), p258 (Southern England), p273 (Suffolk).
+British male candidates: p226 (Surrey), p232 (Southern England), p243 (London),
+p254 (Surrey, **default**, chosen by Aldin 2026-09-22), p258 (Southern England), p273 (Suffolk).
 
 Anything else dropped into `reference/` (a personal clip, for instance) stays out of git.
 Plan M2: clone only from a consented or permissively licensed clip; never an actor.

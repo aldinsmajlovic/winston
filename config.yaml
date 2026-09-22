@@ -27,7 +27,7 @@ tts:
   provider: chatterbox_turbo      # served by voice/tts/chatterbox_server (own venv, GPU)
   server_url: http://127.0.0.1:8880/v1
   voice: onyx                     # any OpenAI voice name maps to the server's --voice clip (Pipecat's client validates names)
-  reference_voice: voice/tts/reference/vctk/p232_023.wav  # VCTK p232, CC BY 4.0; swap for a consented custom clip later
+  reference_voice: voice/tts/reference/vctk/p254_023.wav  # VCTK p254, CC BY 4.0; swap for a consented custom clip later
 
 vad:
   provider: silero

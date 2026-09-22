@@ -19,7 +19,7 @@ at ~16 GB (11.4 GB weights + KV cache). Thinking mode is off server-side.
 
 ```sh
 cd voice/tts/chatterbox_server
-.venv/bin/python server.py --voice ../reference/vctk/p232_023.wav --voices-dir ../reference
+.venv/bin/python server.py --voice ../reference/vctk/p254_023.wav --voices-dir ../reference
 ```
 
 ~25 s to healthy, 3.1 GB VRAM. See `voice/tts/README.md` for voices.
