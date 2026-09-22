@@ -10,9 +10,9 @@ import httpx
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.services.llm_service import FunctionCallParams
 
-PHONES = {  # friendly name -> (battery level sensor, battery state sensor)
-    "Pixel 11 Pro": ("sensor.pixel_11_pro_battery_level", "sensor.pixel_11_pro_battery_state"),
-    "OnePlus 13R": ("sensor.oneplus_13r_battery_level", "sensor.oneplus_13r_battery_state"),
+PHONES = {  # label -> (battery level sensor, battery state sensor)
+    "Aldin's phone (Pixel 11 Pro)": ("sensor.pixel_11_pro_battery_level", "sensor.pixel_11_pro_battery_state"),
+    "old spare phone (OnePlus 13R, usually off, not carried)": ("sensor.oneplus_13r_battery_level", "sensor.oneplus_13r_battery_state"),
 }
 
 
@@ -30,7 +30,8 @@ async def get_phone_battery(params: FunctionCallParams):
             st = (await c.get(f"{url}/api/states/{state}")).json()
             lines.append(f"{name}: {lv['state']}% ({st['state']}), reported {_age(lv['last_updated'])}")
     await params.result_callback({"phones": lines,
-                                  "note": "Readings older than about 30 minutes may be out of date; say so."})
+                                  "note": "'My phone' means the Pixel. Readings older than about 30 minutes may be out of date; say so. "
+                                          "Mention the old spare only if asked about it."})
 
 
 get_phone_battery_schema = FunctionSchema(
