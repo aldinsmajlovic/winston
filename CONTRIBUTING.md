@@ -8,5 +8,6 @@ Winston is Apache-2.0. Contributions are welcome under the same licence.
 - Run `just lint` and `just test` before opening a pull request. Hardware checks (`winston check`) need a GPU and a Home Assistant.
 - Keep personal data out of the repo. Everything instance-specific lives in the data directory.
 - UI work follows `docs/ui-guide.md`: one component library, icons for actions, no decorative copy, no em dashes.
+  `cd web && pnpm build` enforces the rules; `pnpm api` regenerates the client after an API change.
 
 "Winston" is the name of this project. Forks are welcome; please give yours a different name.

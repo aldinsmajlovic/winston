@@ -9,7 +9,7 @@ a natural voice, can be interrupted, and keeps everything on your own machine.
 - **Swappable parts.** Every model is an adapter chosen in config. Bring your own LLM server, TTS or STT.
 - **One control service.** `winstond` supervises the engines and serves the web UI and API.
 
-Status: early. Voice round trip, Home Assistant control and a text CLI work. Web UI, memory,
+Status: early. Voice round trip, Home Assistant control, a text CLI and the web UI work. Memory,
 cloud handoff, Telegram and room satellites are in progress. See `docs/plan.md`.
 
 ## Quickstart
@@ -32,7 +32,9 @@ uv run winston status
 uv run winston talk          # text chat with the same brain
 ```
 
-Open http://localhost:7860 to talk. The control API is at http://localhost:8700/docs.
+Open http://localhost:7860 to talk. The control API is at http://localhost:8700/docs, and the web UI
+at http://localhost:8700 after building it once (`cd web && pnpm install && pnpm build`; needs Node 22
+or newer and pnpm).
 
 ## How it fits together
 

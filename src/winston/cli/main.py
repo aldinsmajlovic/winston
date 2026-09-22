@@ -17,8 +17,10 @@ from winston.config import data_dir, load, repo_root, resolve
 app = typer.Typer(help="Winston, a self-hosted voice assistant.", no_args_is_help=True, add_completion=False)
 config_app = typer.Typer(help="Inspect the configuration.")
 ha_app = typer.Typer(help="Home Assistant integration.")
+api_app = typer.Typer(help="The control API.")
 app.add_typer(config_app, name="config")
 app.add_typer(ha_app, name="ha")
+app.add_typer(api_app, name="api")
 
 
 def _api() -> str:
@@ -138,6 +140,14 @@ def config_schema():
     import json
     from winston.config.schema import WinstonConfig
     print(json.dumps(WinstonConfig.model_json_schema(), indent=2))
+
+
+@api_app.command("schema")
+def api_schema():
+    """Print the OpenAPI description of winstond (the web client is generated from it)."""
+    import json
+    from winston.api.app import openapi_spec
+    print(json.dumps(openapi_spec(), indent=2))
 
 
 @ha_app.command("ping")

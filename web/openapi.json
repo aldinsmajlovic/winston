@@ -1,0 +1,1325 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "winstond",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "summary": "Status",
+        "operationId": "status_api_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status/stream": {
+      "get": {
+        "summary": "Status every 2 s as server-sent events (Status objects)",
+        "operationId": "status_stream_api_status_stream_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engines/{name}/start": {
+      "post": {
+        "summary": "Start",
+        "operationId": "start_api_engines__name__start_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engines/{name}/stop": {
+      "post": {
+        "summary": "Stop",
+        "operationId": "stop_api_engines__name__stop_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engines/{name}/restart": {
+      "post": {
+        "summary": "Restart",
+        "operationId": "restart_api_engines__name__restart_post",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engines/start_all": {
+      "post": {
+        "summary": "Start All",
+        "operationId": "start_all_api_engines_start_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/engines/stop_all": {
+      "post": {
+        "summary": "Stop All",
+        "operationId": "stop_all_api_engines_stop_all_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "summary": "Get Config",
+        "operationId": "get_config_api_config_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WinstonConfig"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Validate and save the config; dry_run only reports which engines a change restarts",
+        "operationId": "put_config_api_config_put",
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Dry Run"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WinstonConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config/schema": {
+      "get": {
+        "summary": "JSON Schema of the config, with level and restarts per field",
+        "operationId": "get_schema_api_config_schema_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Schema Api Config Schema Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AssistantConfig": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "What the assistant calls itself.",
+            "default": "Winston"
+          },
+          "persona": {
+            "type": "string",
+            "title": "Persona file",
+            "description": "Persona file, relative to the data directory.",
+            "default": "persona.md",
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AssistantConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "Channels": {
+        "properties": {
+          "voice": {
+            "$ref": "#/components/schemas/VoiceChannel",
+            "default": {
+              "enabled": true,
+              "host": "127.0.0.1",
+              "port": 7860
+            }
+          },
+          "telegram": {
+            "$ref": "#/components/schemas/TelegramChannel",
+            "default": {
+              "enabled": false,
+              "token_env": "TELEGRAM_BOT_TOKEN",
+              "allowed_user_id_env": "TELEGRAM_ALLOWED_USER_ID"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Channels"
+      },
+      "ConfigResult": {
+        "properties": {
+          "saved": {
+            "type": "boolean",
+            "title": "Saved"
+          },
+          "restarts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Restarts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saved",
+          "restarts"
+        ],
+        "title": "ConfigResult"
+      },
+      "ControlConfig": {
+        "properties": {
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "default": "127.0.0.1",
+            "level": "advanced"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port",
+            "default": 8700,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ControlConfig",
+        "restarts": [
+          "control"
+        ]
+      },
+      "EngineConfig": {
+        "properties": {
+          "driver": {
+            "type": "string",
+            "enum": [
+              "docker",
+              "subprocess",
+              "external"
+            ],
+            "title": "Driver",
+            "description": "How the engine is run."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port",
+            "description": "Local port the engine listens on."
+          },
+          "health": {
+            "type": "string",
+            "title": "Health path",
+            "description": "HTTP path that returns 200 when ready.",
+            "default": "/health",
+            "level": "advanced"
+          },
+          "startup_timeout": {
+            "type": "integer",
+            "title": "Startup timeout (s)",
+            "description": "Seconds to wait for health before giving up.",
+            "default": 600,
+            "level": "advanced"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image",
+            "description": "Container image (docker driver).",
+            "drivers": [
+              "docker"
+            ],
+            "level": "basic"
+          },
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Arguments",
+            "description": "Command arguments (docker driver).",
+            "drivers": [
+              "docker"
+            ],
+            "level": "advanced"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Environment",
+            "drivers": [
+              "docker",
+              "subprocess"
+            ],
+            "level": "advanced"
+          },
+          "volumes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Volumes",
+            "description": "host path -> container path",
+            "drivers": [
+              "docker"
+            ],
+            "level": "advanced"
+          },
+          "gpu": {
+            "type": "boolean",
+            "title": "GPU",
+            "description": "Give the container the GPU.",
+            "default": false,
+            "drivers": [
+              "docker"
+            ],
+            "level": "basic"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime",
+            "description": "Container runtime, e.g. nvidia.",
+            "drivers": [
+              "docker"
+            ],
+            "level": "advanced"
+          },
+          "ipc_host": {
+            "type": "boolean",
+            "title": "IPC host",
+            "default": false,
+            "drivers": [
+              "docker"
+            ],
+            "level": "advanced"
+          },
+          "cmd": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Command",
+            "description": "Command line (subprocess driver). {data} and {repo} expand.",
+            "drivers": [
+              "subprocess"
+            ],
+            "level": "advanced"
+          },
+          "cwd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Working directory",
+            "description": "Working directory, {repo}-relative allowed.",
+            "drivers": [
+              "subprocess"
+            ],
+            "level": "advanced"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "URL",
+            "description": "Base URL of an engine you run yourself (external driver).",
+            "drivers": [
+              "external"
+            ],
+            "level": "basic"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "driver",
+          "port"
+        ],
+        "title": "EngineConfig",
+        "description": "A heavy process Winston depends on: LLM server, TTS server, later STT. Managed by the supervisor.",
+        "restarts": [
+          "{engine}"
+        ]
+      },
+      "EngineStatus": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "engine",
+              "channel"
+            ],
+            "title": "Kind"
+          },
+          "driver": {
+            "type": "string",
+            "title": "Driver"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "stopped",
+              "starting",
+              "healthy",
+              "unhealthy",
+              "error"
+            ],
+            "title": "State"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "since": {
+            "type": "number",
+            "title": "Since"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          },
+          "startup_timeout": {
+            "type": "integer",
+            "title": "Startup Timeout"
+          },
+          "started_in": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started In"
+          },
+          "config_changed": {
+            "type": "boolean",
+            "title": "Config Changed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "driver",
+          "state",
+          "detail",
+          "since",
+          "port",
+          "startup_timeout"
+        ],
+        "title": "EngineStatus"
+      },
+      "ExposedEntity": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Friendly name to set in Home Assistant."
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aliases",
+            "description": "Other names people say for it."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExposedEntity",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "GpuStatus": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "used_mb": {
+            "type": "integer",
+            "title": "Used Mb"
+          },
+          "total_mb": {
+            "type": "integer",
+            "title": "Total Mb"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "used_mb",
+          "total_mb"
+        ],
+        "title": "GpuStatus"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HomeAssistantConfig": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "URL",
+            "description": "Home Assistant base URL on the LAN."
+          },
+          "token_env": {
+            "type": "string",
+            "title": "Token variable",
+            "description": "Environment variable holding the long-lived token.",
+            "default": "HA_TOKEN",
+            "level": "advanced"
+          },
+          "mcp_path": {
+            "type": "string",
+            "title": "MCP path",
+            "default": "/api/mcp",
+            "level": "advanced"
+          },
+          "expose": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExposedEntity"
+            },
+            "type": "object",
+            "title": "Entities",
+            "description": "Entities Winston may see and control, with aliases."
+          },
+          "expose_domains": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Domains",
+            "description": "Whole domains to expose, without aliases.",
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "HomeAssistantConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "LLMConfig": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "openai_compatible",
+            "level": "advanced"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base URL",
+            "default": "http://127.0.0.1:8000/v1",
+            "level": "advanced"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Model name as the server knows it.",
+            "level": "basic",
+            "restarts": [
+              "llm",
+              "voice"
+            ]
+          },
+          "sampling": {
+            "$ref": "#/components/schemas/Sampling",
+            "default": {
+              "temperature": 0.3,
+              "top_p": 0.8,
+              "presence_penalty": 0.0,
+              "max_tokens": 512
+            }
+          },
+          "thinking": {
+            "$ref": "#/components/schemas/Thinking",
+            "default": {
+              "voice": false,
+              "text": true
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "model"
+        ],
+        "title": "LLMConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "LoggingConfig": {
+        "properties": {
+          "tool_calls": {
+            "type": "string",
+            "title": "Tool calls",
+            "default": "logs/tool_calls.jsonl",
+            "level": "advanced"
+          },
+          "latency": {
+            "type": "string",
+            "title": "Latency",
+            "default": "logs/latency.jsonl",
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LoggingConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "MemoryConfig": {
+        "properties": {
+          "dir": {
+            "type": "string",
+            "title": "Directory",
+            "default": "memory",
+            "level": "advanced"
+          },
+          "commit_on_write": {
+            "type": "boolean",
+            "title": "Commit on write",
+            "default": true,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "MemoryConfig"
+      },
+      "Ok": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "Ok"
+      },
+      "Providers": {
+        "properties": {
+          "home_assistant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HomeAssistantConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Assistant"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Providers"
+      },
+      "STTConfig": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Speech-to-text adapter.",
+            "default": "parakeet"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "nemo-parakeet-tdt-0.6b-v3",
+            "level": "advanced"
+          },
+          "quantization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantization",
+            "default": "int8",
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "STTConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "Sampling": {
+        "properties": {
+          "temperature": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "description": "Lower is more reliable at tool calls.",
+            "default": 0.3,
+            "level": "advanced"
+          },
+          "top_p": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Top-p",
+            "default": 0.8,
+            "level": "advanced"
+          },
+          "presence_penalty": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": -2.0,
+            "title": "Presence penalty",
+            "default": 0.0,
+            "level": "advanced"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 16.0,
+            "title": "Max tokens",
+            "default": 512,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Sampling",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "SensorPair": {
+        "properties": {
+          "level": {
+            "type": "string",
+            "title": "Value sensor",
+            "description": "Entity id of the value sensor."
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State sensor",
+            "description": "Optional companion state sensor (charging, etc.)."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "level"
+        ],
+        "title": "SensorPair",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "Status": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "assistant": {
+            "type": "string",
+            "title": "Assistant"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineStatus"
+            },
+            "type": "array",
+            "title": "Engines"
+          },
+          "gpu": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GpuStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "assistant",
+          "engines"
+        ],
+        "title": "Status"
+      },
+      "TTSConfig": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Text-to-speech adapter (OpenAI speech protocol).",
+            "default": "openai_speech",
+            "level": "advanced"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base URL",
+            "default": "http://127.0.0.1:8880/v1",
+            "level": "advanced"
+          },
+          "voice": {
+            "type": "string",
+            "title": "Voice",
+            "description": "Voice name sent to the server. OpenAI names map to the server's default clip.",
+            "default": "onyx",
+            "level": "advanced"
+          },
+          "sample_rate": {
+            "type": "integer",
+            "title": "Sample rate",
+            "default": 24000,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TTSConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "TelegramChannel": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": false
+          },
+          "token_env": {
+            "type": "string",
+            "title": "Token variable",
+            "default": "TELEGRAM_BOT_TOKEN",
+            "level": "advanced"
+          },
+          "allowed_user_id_env": {
+            "type": "string",
+            "title": "Allowed user variable",
+            "default": "TELEGRAM_ALLOWED_USER_ID",
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "TelegramChannel"
+      },
+      "Thinking": {
+        "properties": {
+          "voice": {
+            "type": "boolean",
+            "title": "Voice",
+            "description": "Reasoning before answering on the voice channel. Costs seconds.",
+            "default": false
+          },
+          "text": {
+            "type": "boolean",
+            "title": "Text",
+            "description": "Reasoning on text channels. Much better at multi-part requests.",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "Thinking",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "ToolsConfig": {
+        "properties": {
+          "sensors": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SensorPair"
+            },
+            "type": "object",
+            "title": "Sensors",
+            "description": "Watched sensors by label; readings come with their age."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ToolsConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "VADConfig": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "default": "silero",
+            "level": "advanced"
+          },
+          "stop_secs": {
+            "type": "number",
+            "maximum": 2.0,
+            "minimum": 0.1,
+            "title": "End of speech (s)",
+            "description": "Silence after speech before the utterance is sent.",
+            "default": 0.3,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "VADConfig",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VoiceChannel": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "default": "127.0.0.1",
+            "level": "advanced"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port",
+            "default": 7860,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "VoiceChannel",
+        "restarts": [
+          "voice"
+        ]
+      },
+      "WinstonConfig": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "default": 1,
+            "level": "advanced"
+          },
+          "assistant": {
+            "$ref": "#/components/schemas/AssistantConfig",
+            "default": {
+              "name": "Winston",
+              "persona": "persona.md"
+            }
+          },
+          "engines": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EngineConfig"
+            },
+            "type": "object",
+            "title": "Engines"
+          },
+          "llm": {
+            "$ref": "#/components/schemas/LLMConfig",
+            "title": "Brain"
+          },
+          "stt": {
+            "$ref": "#/components/schemas/STTConfig",
+            "title": "Speech to text",
+            "default": {
+              "provider": "parakeet",
+              "model": "nemo-parakeet-tdt-0.6b-v3",
+              "quantization": "int8"
+            }
+          },
+          "tts": {
+            "$ref": "#/components/schemas/TTSConfig",
+            "title": "Text to speech",
+            "default": {
+              "provider": "openai_speech",
+              "base_url": "http://127.0.0.1:8880/v1",
+              "voice": "onyx",
+              "sample_rate": 24000
+            }
+          },
+          "vad": {
+            "$ref": "#/components/schemas/VADConfig",
+            "title": "Voice activity",
+            "default": {
+              "provider": "silero",
+              "stop_secs": 0.3
+            }
+          },
+          "channels": {
+            "$ref": "#/components/schemas/Channels",
+            "default": {
+              "voice": {
+                "enabled": true,
+                "host": "127.0.0.1",
+                "port": 7860
+              },
+              "telegram": {
+                "allowed_user_id_env": "TELEGRAM_ALLOWED_USER_ID",
+                "enabled": false,
+                "token_env": "TELEGRAM_BOT_TOKEN"
+              }
+            }
+          },
+          "providers": {
+            "$ref": "#/components/schemas/Providers",
+            "default": {}
+          },
+          "tools": {
+            "$ref": "#/components/schemas/ToolsConfig",
+            "default": {
+              "sensors": {}
+            }
+          },
+          "memory": {
+            "$ref": "#/components/schemas/MemoryConfig",
+            "default": {
+              "dir": "memory",
+              "commit_on_write": true
+            }
+          },
+          "logging": {
+            "$ref": "#/components/schemas/LoggingConfig",
+            "default": {
+              "tool_calls": "logs/tool_calls.jsonl",
+              "latency": "logs/latency.jsonl"
+            }
+          },
+          "control": {
+            "$ref": "#/components/schemas/ControlConfig",
+            "default": {
+              "host": "127.0.0.1",
+              "port": 8700
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "llm"
+        ],
+        "title": "WinstonConfig"
+      }
+    }
+  }
+}

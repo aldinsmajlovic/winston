@@ -17,6 +17,22 @@ uv run winston check           # acceptance checks (m0, m1, m2) on real hardware
 Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs
 winston-llm`; every tool call to `data/logs/tool_calls.jsonl`.
 
+## Web UI
+
+`winston up` serves the UI at http://localhost:8700 once `web/dist` exists. Status lists every
+engine with icon actions and the GPU. The settings pages are generated from the config schema:
+basic fields first, Advanced behind a toggle. Saving validates on the server, says which engines
+the change restarts and roughly how long each takes, and offers to restart them.
+
+Build it once (Node 22 or newer, pnpm):
+
+```sh
+cd web && pnpm install && pnpm build   # guardrails, lint, type check, bundle into web/dist
+```
+
+`pnpm dev` runs Vite on :5173 with `/api` proxied to :8700. `pnpm api` regenerates the typed client
+from `winston api schema` after the API changes.
+
 ## Engines
 
 Declared under `engines:` in config with a driver:

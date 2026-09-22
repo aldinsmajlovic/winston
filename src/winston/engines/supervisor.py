@@ -1,5 +1,8 @@
 """The supervisor owns every process Winston depends on: engines from config plus the voice
-channel. Start, stop, health, status. The API and the CLI talk to this, never to processes."""
+channel. Start, stop, health, status, and adopting a changed config. The API and the CLI talk
+to this, never to processes."""
+from __future__ import annotations
+
 import asyncio
 import time
 from dataclasses import dataclass, field
@@ -20,27 +23,68 @@ class Managed:
     state: str = "stopped"          # stopped | starting | healthy | unhealthy | error
     detail: str = ""
     since: float = field(default_factory=time.time)
+    started_in: float | None = None     # seconds the last successful start took
+    owned: bool = False                 # this supervisor started it, so it may stop it on exit
+    pending: Managed | None = None      # built from a newer config; swapped in on the next stop
+    retired: bool = False               # gone from config; dropped on the next stop
 
     @property
     def health_url(self) -> str:
         base = self.cfg.url.rstrip("/") if self.cfg.url else f"http://127.0.0.1:{self.cfg.port}"
         return base + self.cfg.health
 
+    def same_as(self, other: Managed) -> bool:
+        return self.cfg == other.cfg and getattr(self.driver, "cmd", None) == getattr(other.driver, "cmd", None)
+
 
 class Supervisor:
     def __init__(self, cfg: WinstonConfig):
         self.cfg = cfg
-        self.items: dict[str, Managed] = {}
+        self.items: dict[str, Managed] = self._build(cfg)
+
+    @staticmethod
+    def _build(cfg: WinstonConfig) -> dict[str, Managed]:
+        items: dict[str, Managed] = {}
         for name, e in cfg.engines.items():
             if not e.enabled:
                 continue
             driver = {"docker": DockerDriver, "subprocess": SubprocessDriver, "external": ExternalDriver}[e.driver](name, e)
-            self.items[name] = Managed(name, e, driver)
+            items[name] = Managed(name, e, driver)
         v = cfg.channels.voice
         if v.enabled:
             vcfg = EngineConfig(driver="subprocess", port=v.port, health="/client/", startup_timeout=120)
-            self.items["voice"] = Managed("voice", vcfg, SubprocessDriver("voice", vcfg, voice_channel_cmd(v.host, v.port)),
-                                          kind="channel")
+            items["voice"] = Managed("voice", vcfg, SubprocessDriver("voice", vcfg, voice_channel_cmd(v.host, v.port)),
+                                     kind="channel")
+        return items
+
+    async def reload(self, cfg: WinstonConfig) -> list[str]:
+        """Adopt a new config. A running engine whose config changed keeps its process and takes
+        the new config on its next stop or restart; returns the names of those."""
+        self.cfg = cfg
+        await self.refresh()                # decide on live state, not the last poll
+        fresh = self._build(cfg)
+        waiting: list[str] = []
+        for name, m in fresh.items():
+            old = self.items.get(name)
+            if old is None:
+                self.items[name] = m
+            elif old.state == "stopped":
+                self.items[name] = m if not old.same_as(m) else old
+            elif not old.same_as(m):
+                old.pending = m
+                old.retired = False
+                old.detail = "config changed, restart to apply"
+                waiting.append(name)
+            else:
+                old.pending = None
+        for name, m in list(self.items.items()):
+            if name not in fresh:
+                if m.state == "stopped":
+                    del self.items[name]
+                else:
+                    m.pending, m.retired, m.detail = None, True, "removed from config, stop to drop"
+                    waiting.append(name)
+        return waiting
 
     def _set(self, m: Managed, state: str, detail: str = ""):
         if state != m.state:
@@ -58,12 +102,13 @@ class Supervisor:
         for m in self.items.values():
             if m.state == "starting":
                 continue
+            keep = m.detail if m.pending or m.retired else ""
             if await self.healthy(m):
-                self._set(m, "healthy")
+                self._set(m, "healthy", keep)
             elif await m.driver.running():
-                self._set(m, "unhealthy", "process up, health check failing")
+                self._set(m, "unhealthy", keep or "process up, health check failing")
             else:
-                self._set(m, "stopped")
+                self._set(m, "stopped", keep)
         return list(self.items.values())
 
     async def start(self, name: str, wait: bool = True) -> Managed:
@@ -71,6 +116,7 @@ class Supervisor:
         if await self.healthy(m):
             self._set(m, "healthy"); return m
         self._set(m, "starting")
+        m.owned = True
         try:
             await m.driver.start()
         except Exception as e:
@@ -80,7 +126,8 @@ class Supervisor:
         t0 = time.time()
         while time.time() - t0 < m.cfg.startup_timeout:
             if await self.healthy(m):
-                self._set(m, "healthy"); logger.info(f"{name}: healthy after {time.time() - t0:.0f} s"); return m
+                m.started_in = time.time() - t0
+                self._set(m, "healthy"); logger.info(f"{name}: healthy after {m.started_in:.0f} s"); return m
             if not await m.driver.running():
                 self._set(m, "error", f"exited during startup; see logs ({m.driver.log_path() or 'docker logs'})")
                 return m
@@ -92,6 +139,11 @@ class Supervisor:
         m = self.items[name]
         await m.driver.stop()
         self._set(m, "stopped")
+        if m.retired:
+            del self.items[name]
+        elif m.pending:
+            m.pending.started_in, m.pending.owned = m.started_in, m.owned
+            self.items[name] = m = m.pending
         return m
 
     async def start_all(self) -> list[Managed]:
@@ -101,6 +153,9 @@ class Supervisor:
             await self.start("voice")
         return list(self.items.values())
 
-    async def stop_all(self) -> None:
-        for name in reversed(list(self.items)):                            # channel first, engines after
-            await self.stop(name)
+    async def stop_all(self, owned_only: bool = False) -> None:
+        """Everything, channel first. On shutdown only what this supervisor started: a second
+        winstond (say `winston up --no-start`) must not take down engines it merely observed."""
+        for name in reversed(list(self.items)):
+            if not owned_only or self.items[name].owned:
+                await self.stop(name)
