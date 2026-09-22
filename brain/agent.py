@@ -31,6 +31,12 @@ def persona() -> str:
     return (ROOT / CFG["persona"]["prompt"]).read_text().strip()
 
 
+def _thinking(c: dict) -> bool:
+    """config llm.enable_thinking, overridable per process with WINSTON_THINKING=1|0 (experiments, text channels)."""
+    v = os.environ.get("WINSTON_THINKING", str(c.get("enable_thinking", False)))
+    return str(v).strip().lower() in ("1", "true", "yes")
+
+
 def build_llm() -> OpenAILLMService:
     c = CFG["llm"]
     assert c["provider"] == "openai_compatible", f"unsupported llm provider {c['provider']}"
@@ -42,7 +48,7 @@ def build_llm() -> OpenAILLMService:
             temperature=c.get("temperature", 0.7), top_p=c.get("top_p", 0.8),
             presence_penalty=c.get("presence_penalty", 0.0),
             max_completion_tokens=c.get("max_tokens", 512),
-            extra={"extra_body": {"chat_template_kwargs": {"enable_thinking": c.get("enable_thinking", False)}}},
+            extra={"extra_body": {"chat_template_kwargs": {"enable_thinking": _thinking(c)}}},
         ),
     )
 

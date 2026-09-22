@@ -35,6 +35,7 @@ class TurnTracker(BaseObserver):
             self.pending.update(c.tool_call_id for c in f.function_calls)
         elif isinstance(f, FunctionCallResultFrame):
             self.pending.discard(f.tool_call_id)
+            self.last_end = None            # the LLM runs again on the result; a new response is coming
         elif isinstance(f, LLMFullResponseEndFrame):
             self.last_end = time.perf_counter()
 
