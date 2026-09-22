@@ -1,0 +1,19 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Models and weights are downloaded, not tracked
+models/
+*.gguf
+*.safetensors
+
+# Personal voice reference clip (plan M2: consented clip only)
+voice/tts/reference/
+
+# Runtime output
+logs/
+*.log
+tests/latency/results/

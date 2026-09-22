@@ -1,0 +1,62 @@
+# Winston: one file selects every swappable component (WINSTON_PLAN.md §6, rule 1).
+# Values are the September 2026 defaults from plan §3. Before installing anything,
+# re-check each model still exists and is supported by the serving stack; exact
+# Hugging Face ids and quant repos still need verifying. Secrets never go here (.env).
+
+persona:
+  name: Winston
+  prompt: brain/prompts/persona.md
+
+stt:
+  provider: parakeet              # NVIDIA Parakeet TDT 0.6B, ONNX INT8, CPU (keeps GPU free)
+  model: nvidia/parakeet-tdt-0.6b # verify exact id; use the ONNX INT8 export
+  device: cpu
+
+llm:
+  provider: openai_compatible     # vLLM with --enable-auto-tool-choice and the Qwen tool parser
+  base_url: http://127.0.0.1:8000/v1
+  model: Qwen/Qwen3.5-9B          # verify id; prefer an AWQ/GPTQ INT4 repo on the 3090 (plan §4)
+  max_tokens: 512
+  temperature: 0.6
+
+tts:
+  provider: chatterbox_turbo
+  device: cuda
+  reference_voice: voice/tts/reference/winston.wav  # gitignored; consented clip only (plan M2)
+  exaggeration: 0.5
+
+vad:
+  provider: silero
+  barge_in: true
+  interrupt_stop_ms: 300          # M2 acceptance: playback stops within ~300 ms of speech
+
+wake_word:
+  provider: openwakeword
+  model: satellite/models/hey_winston.onnx  # custom-trained; no pretrained "Hey Winston" exists
+  threshold: 0.5
+
+home_assistant:
+  url_env: HA_URL
+  token_env: HA_TOKEN
+  mcp_path: /api/mcp/assist
+
+cloud:                            # ask_claude tool (plan M4). Only the question text leaves the LAN.
+  provider: anthropic
+  model: claude-opus-5
+  api_key_env: ANTHROPIC_API_KEY
+  max_tokens: 2048
+  daily_cap_usd: 1.50             # roughly 500 SEK/month; adjust to the exchange rate
+
+channels:
+  telegram:
+    enabled: false
+    token_env: TELEGRAM_BOT_TOKEN
+    allowed_user_id_env: TELEGRAM_ALLOWED_USER_ID
+
+memory:
+  vault: memory/
+  commit_on_write: true
+
+logging:
+  tool_calls: logs/tool_calls.jsonl   # plan §6 rule 7
+  latency: logs/latency.jsonl         # plan §6 rule 8
