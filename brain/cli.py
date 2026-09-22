@@ -47,7 +47,9 @@ class Printer(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, LLMTextFrame):
-            print(frame.text, end="", flush=True); self.buf.append(frame.text)
+            text = frame.text.lstrip() if not self.buf else frame.text   # thinking mode leaves leading newlines
+            if text:
+                print(text, end="", flush=True); self.buf.append(text)
         await self.push_frame(frame, direction)
 
     async def wait_reply(self, timeout=90) -> str:
@@ -61,7 +63,7 @@ class Printer(FrameProcessor):
 
 
 async def run(messages: list[str] | None) -> list[str]:
-    brain = Brain(); await brain.start()
+    brain = Brain(channel="cli"); await brain.start()
     context = brain.new_context(); agg = LLMContextAggregatorPair(context)
     tracker = TurnTracker(); printer = Printer(tracker)
     task = PipelineWorker(Pipeline([agg.user(), brain.llm, printer, agg.assistant()]),

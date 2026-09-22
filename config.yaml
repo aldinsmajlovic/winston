@@ -17,7 +17,8 @@ llm:
   base_url: http://127.0.0.1:8000/v1
   model: QuantTrio/Qwen3.5-9B-AWQ # M0 verified 2026-09-22; ~11.4 GB weights on the 3090
   max_tokens: 512
-  enable_thinking: false          # passed as chat_template_kwargs; thinking costs seconds a voice reply cannot spend
+  enable_thinking: false          # voice: thinking costs seconds a spoken reply cannot spend
+  enable_thinking_text: true      # cli/telegram: thinking makes the 9B handle multi-part requests reliably (~+3 s)
   temperature: 0.3                # lower than Qwen's chat default (0.7): tool calls must be reliable, not creative
   top_p: 0.8
   top_k: 20

@@ -31,13 +31,16 @@ def persona() -> str:
     return (ROOT / CFG["persona"]["prompt"]).read_text().strip()
 
 
-def _thinking(c: dict) -> bool:
-    """config llm.enable_thinking, overridable per process with WINSTON_THINKING=1|0 (experiments, text channels)."""
-    v = os.environ.get("WINSTON_THINKING", str(c.get("enable_thinking", False)))
+def _thinking(c: dict, channel: str) -> bool:
+    """Thinking mode per channel: llm.enable_thinking (voice) or llm.enable_thinking_text (cli, telegram).
+    WINSTON_THINKING=1|0 overrides for experiments. Qwen3.5-9B handles multi-part requests far
+    better with thinking on, at ~3-4 s extra per turn, which voice cannot afford but text can."""
+    default = c.get("enable_thinking_text", False) if channel != "voice" else c.get("enable_thinking", False)
+    v = os.environ.get("WINSTON_THINKING", str(default))
     return str(v).strip().lower() in ("1", "true", "yes")
 
 
-def build_llm() -> OpenAILLMService:
+def build_llm(channel: str = "voice") -> OpenAILLMService:
     c = CFG["llm"]
     assert c["provider"] == "openai_compatible", f"unsupported llm provider {c['provider']}"
     return OpenAILLMService(
@@ -48,14 +51,14 @@ def build_llm() -> OpenAILLMService:
             temperature=c.get("temperature", 0.7), top_p=c.get("top_p", 0.8),
             presence_penalty=c.get("presence_penalty", 0.0),
             max_completion_tokens=c.get("max_tokens", 512),
-            extra={"extra_body": {"chat_template_kwargs": {"enable_thinking": _thinking(c)}}},
+            extra={"extra_body": {"chat_template_kwargs": {"enable_thinking": _thinking(c, channel)}}},
         ),
     )
 
 
 class Brain:
-    def __init__(self):
-        self.llm = build_llm()
+    def __init__(self, channel: str = "voice"):
+        self.llm = build_llm(channel)
         self.tools = None
         self._mcp: MCPClient | None = None
 
