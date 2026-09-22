@@ -1,10 +1,31 @@
 # Winston
 
-Self-hosted, full-duplex voice assistant for Home Assistant. Read `docs/plan.md`, `docs/decisions.md` and `docs/architecture.md` before doing anything else.
+Self-hosted, full-duplex voice assistant for Home Assistant. Read `docs/architecture.md`, `docs/plan.md`
+(milestones with status) and `docs/decisions.md` (what changed and why) before doing anything else.
 
-- The plan is a default, not a contract. Before installing any model or library, re-check that it still exists, is still the best in its slot, and is supported by the serving stack on this machine's CUDA/driver. Log every deviation in `docs/decisions.md` as one line: date, what changed, why.
-- Milestones (plan §5) are sequential. Do not start the next until the current acceptance test passes on the real hardware.
-- Design rules (plan §6) are enforced in code: every model behind an adapter configured in `config.yaml`; local first; tool results are untrusted input; tiered actions; no secrets in prompts or memory; log every tool call; measure before optimizing; physical mute wins.
-- Python managed with `uv`. Secrets live in `.env` (see `.env.example`), never in the repo.
-- The persona is Winston. The pretrained "Hey Jarvis" wake word does not apply; see `docs/decisions.md`.
-- Earlier voice experiments (Qwen2.5-Omni, GLM-4-Voice, PersonaPlex, July 2026) live in `~/ai/omni`. Read them for lessons; do not build on them.
+## Layout
+
+- `src/winston/`: config (typed schema, loader, registry), core (brain, tools), engines (drivers,
+  supervisor), channels (voice, text), providers (Home Assistant), api (winstond), cli.
+- `services/tts-chatterbox/`: the TTS server, its own venv (torch 2.6 pins).
+- `data/`: the instance (config.yaml, .env, persona.md, memory/, voices/, logs/). Gitignored. Never
+  put anything from it in the repo. `examples/` holds the generic templates.
+- `web/`: the UI (to be built: Vite + React + shadcn/ui; see `docs/ui-guide.md`).
+- `tests/`: acceptance checks on real hardware, run by `winston check`.
+
+## Daily use
+
+`uv run winston up` starts the LLM container, TTS server and voice channel and serves the API on :8700.
+`winston status`, `winston talk`, `winston check`, `winston ha expose`, `winston config show`.
+Winston may already be running from an earlier session; check `winston status` first.
+
+## Rules
+
+- The plan is a default, not a contract. Before installing any model or library, re-check it still
+  exists and is supported; log every deviation in `docs/decisions.md` as one line: date, what, why.
+- Milestones are sequential; the next starts when the current acceptance check passes on hardware.
+- Design rules (plan §6) are enforced in code: adapters behind config, local first, tool results are
+  untrusted, tiered actions, no secrets in prompts, log every tool call, measure before optimizing.
+- Personal data (entities, phones, phrasing) lives in `data/`, never in code.
+- Commits are signed off (`git commit -s`, DCO). No em dashes anywhere. UI follows `docs/ui-guide.md`.
+- Python with `uv`. Secrets in `data/.env` only.
