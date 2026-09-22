@@ -13,11 +13,15 @@ stt:
   device: cpu
 
 llm:
-  provider: openai_compatible     # vLLM with --enable-auto-tool-choice and the Qwen tool parser
+  provider: openai_compatible     # vLLM, see ops/docker-compose.yml (parsers: qwen3 reasoning, qwen3_coder tools)
   base_url: http://127.0.0.1:8000/v1
-  model: Qwen/Qwen3.5-9B          # verify id; prefer an AWQ/GPTQ INT4 repo on the 3090 (plan §4)
+  model: QuantTrio/Qwen3.5-9B-AWQ # M0 verified 2026-09-22; ~11.4 GB weights on the 3090
   max_tokens: 512
-  temperature: 0.6
+  enable_thinking: false          # passed as chat_template_kwargs; thinking costs seconds a voice reply cannot spend
+  temperature: 0.7                # Qwen's recommended non-thinking sampling
+  top_p: 0.8
+  top_k: 20
+  presence_penalty: 1.5
 
 tts:
   provider: chatterbox_turbo

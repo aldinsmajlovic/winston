@@ -1,0 +1,32 @@
+# Winston services. Start with:  docker compose -f ops/docker-compose.yml up -d vllm
+# GPU is shared with other work on this PC, so nothing here has restart: always.
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.29.0
+    container_name: winston-vllm
+    ipc: host
+    ports:
+      - "127.0.0.1:8000:8000"          # LAN-only later; loopback while developing
+    volumes:
+      - ${HF_HOME:-~/.cache/huggingface}:/root/.cache/huggingface
+    environment:
+      - HF_HUB_OFFLINE=1               # weights are pre-downloaded with `hf download`
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia                  # explicit runtime; Docker's --gpus path uses a stale CDI spec on this host
+    command: >
+      QuantTrio/Qwen3.5-9B-AWQ
+      --max-model-len 32768
+      --max-num-seqs 8
+      --gpu-memory-utilization 0.70
+      --limit-mm-per-prompt '{"image": 1, "video": 0}'
+      --reasoning-parser qwen3
+      --enable-auto-tool-choice
+      --tool-call-parser qwen3_coder
+      --trust-remote-code
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 60
+      start_period: 120s

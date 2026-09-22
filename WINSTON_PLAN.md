@@ -131,11 +131,11 @@ Ampere: no native FP8, so prefer AWQ/GPTQ INT4 or GGUF quants. Rough phase-1 lay
 
 | Component | Where | Est. VRAM |
 |---|---|---|
-| Qwen3.5-9B (INT4/AWQ) + KV cache for a few K tokens | GPU | ~6–8 GB |
+| Qwen3.5-9B (QuantTrio AWQ: INT4 MLPs, BF16 attention/vision) + 3.2 GB KV cache (93K tokens) | GPU | **measured 16 GB** at `--gpu-memory-utilization 0.70` (weights 11.4 GB). Plan estimate was ~6–8 GB. |
 | Chatterbox-Turbo | GPU | small (low single-digit GB; measure) |
 | Parakeet STT | CPU | 0 |
 | Camera VLM | same Qwen3.5-9B (multimodal) | 0 extra |
-| Headroom | | ~12+ GB |
+| Headroom | | ~8 GB (measured 2026-09-22) |
 
 **Bigger-brain option (phase 2, if the 9B feels dumb):** Qwen3.6-35B-A3B (MoE, 3B active) is roughly 22 GB at Q4 and has been community-tested around 100 tok/s on a 3090. That eats the whole card, so move TTS to CPU (Pocket TTS) and keep STT on CPU. This needs a decent CPU on the box (Pocket TTS uses ~2 cores, Parakeet ONNX wants a few more). Qwen3.8-27B (dense, Apache 2.0, Aug 2026) is another candidate but dense 27B on a 3090 is slower per token, which hurts a voice assistant more than a coding assistant.
 
@@ -151,6 +151,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - OS of choice (Arch or Ubuntu LTS), NVIDIA driver, CUDA, Docker + NVIDIA Container Toolkit, `uv` for Python.
 - vLLM serving Qwen3.5-9B on an OpenAI-compatible endpoint with tool calling enabled.
 - **Accept:** `curl` to `/v1/chat/completions` with a tool schema returns a well-formed tool call.
+- **Status: passed 2026-09-22.** `tests/m0_tool_call.sh`: tool call in 896 ms, plain answer in 208 ms, ~71 tok/s decode, thinking disabled. Start/stop with `ops/docker-compose.yml` (loads in ~3 min). Docker, driver and `uv` were already on the box.
 
 ### M1 — Text brain + Home Assistant
 - Enable HA's MCP Server integration; expose ~5 entities (living room lights, TV, a WoL switch for the PC, phone battery sensor from the companion app).
