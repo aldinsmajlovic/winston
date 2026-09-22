@@ -9,8 +9,9 @@ a natural voice, can be interrupted, and keeps everything on your own machine.
 - **Swappable parts.** Every model is an adapter chosen in config. Bring your own LLM server, TTS or STT.
 - **One control service.** `winstond` supervises the engines and serves the web UI and API.
 
-Status: early. Voice round trip, Home Assistant control, a text CLI and the web UI work. Memory,
-cloud handoff, Telegram and room satellites are in progress. See `docs/plan.md`.
+Status: early. Voice round trip, Home Assistant control, a text CLI and the web UI work, and a
+custom "Hey Winston" wake word model is trained. Memory, cloud handoff, Telegram and the room
+satellite are in progress. See `docs/plan.md`.
 
 ## Quickstart
 

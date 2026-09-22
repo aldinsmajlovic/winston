@@ -1,0 +1,42 @@
+# Winston's wake word. Train with:
+#   uv run livekit-wakeword setup --config hey_winston.yaml   # once: Piper voice, ACAV100M features (~16 GB), RIRs, MUSAN noise
+#   uv run livekit-wakeword run hey_winston.yaml              # generate -> augment -> train -> export
+#   uv run livekit-wakeword eval hey_winston.yaml             # DET curve, false positives per hour, recall
+# The exported model lands in output/hey_winston/hey_winston.onnx; copy it to assets/wake/.
+model_name: hey_winston
+target_phrases:
+  - "hey winston"
+
+# Near misses the first model fired on with an unseen voice (Chatterbox p254): "hey winter" 0.91,
+# "winston" alone 0.75, "hey wilson" 0.70. The trainer's own adversarial phrases (phoneme swaps
+# via CMUdict) did not cover them. Only the full phrase should wake it.
+custom_negative_phrases:
+  - "hey winter"
+  - "hey wilson"
+  - "hey weston"
+  - "hey winslow"
+  - "hey winnie"
+  - "hey wilton"
+  - "hey vincent"
+  - "winston"
+  - "winter"
+  - "winston churchill"
+  - "hey listen"
+  - "hey wait"
+  - "hey when"
+
+n_samples: 30000          # synthetic positives for training (Piper VITS, many speakers, SLERP blends)
+n_samples_val: 3000
+
+data_dir: ./data          # downloads; gitignored
+output_dir: ./output      # clips, features, checkpoints; gitignored
+
+augmentation:
+  rounds: 2                # each clip augmented twice (noise, reverb, gain) for more variety
+
+model:
+  model_type: dnn                # openWakeWord-classic head; the only one that exports to tflite (Wyoming)
+  model_size: small
+
+steps: 50000
+target_fp_per_hour: 0.2

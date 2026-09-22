@@ -1,0 +1,14 @@
+[project]
+name = "winston-wakeword"
+version = "0.1.0"
+description = "Trains Winston's wake word model (livekit-wakeword, openWakeWord-compatible ONNX)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "livekit-wakeword[train,eval,export]>=0.2.1",
+]
+
+[project.optional-dependencies]
+mic = ["livekit-wakeword[listener]"]     # listen.py; needs portaudio on the box
+
+[tool.uv]
+package = false
