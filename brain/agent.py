@@ -22,6 +22,8 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.mcp_service import MCPClient
 from pipecat.services.openai.llm import OpenAILLMService
 
+from brain.tools.ha_state import LOCAL_TOOLS
+
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 CFG = yaml.safe_load((ROOT / "config.yaml").read_text())
@@ -71,6 +73,9 @@ class Brain:
         t0 = time.perf_counter()
         await self._mcp.start()
         self.tools = await self._mcp.register_tools(self.llm)
+        for schema, handler in LOCAL_TOOLS:                    # read-only local tools next to the MCP ones
+            self.llm.register_function(schema.name, handler)
+            self.tools.standard_tools.append(schema)
         names = [t.name for t in self.tools.standard_tools]
         logger.info(f"Home Assistant MCP at {url}: {len(names)} tools in {(time.perf_counter() - t0) * 1000:.0f} ms: {names}")
 
