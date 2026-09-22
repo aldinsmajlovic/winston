@@ -1,0 +1,9 @@
+Winston
+Copyright 2026 Aldin Smajlovic
+
+This product includes software developed by third parties under their own licences,
+listed in pyproject.toml and services/*/pyproject.toml.
+
+Reference voice clips under assets/voices/vctk are from the CSTR VCTK Corpus
+(University of Edinburgh), CC BY 4.0: Yamagishi, Veaux, MacDonald (2019),
+https://doi.org/10.7488/ds/2645, via the kyutai/tts-voices mirror.

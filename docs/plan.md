@@ -1,4 +1,4 @@
-# Winston — Self-hosted full-duplex voice assistant for Home Assistant
+# Winston, Self-hosted full-duplex voice assistant for Home Assistant
 
 ## Read this first (about this plan)
 
@@ -74,7 +74,7 @@ A voice assistant Aldin talks to at home, in English, that feels close to the mo
 [Speaker on the satellite]
 
 [Text channel: Telegram bot → same agent loop, no STT/TTS]
-[Home Assistant: the "hands" — lights, TV, WoL, camera, phone sensors]
+[Home Assistant: the "hands", lights, TV, WoL, camera, phone sensors]
 ```
 
 "Controlled duplex" means: the assistant streams speech while listening, stops immediately when you talk over it, and starts speaking before the LLM has finished generating. It is not the model literally speaking and listening in one forward pass. For a home assistant this is indistinguishable in practice and it's what production voice agents do.
@@ -147,43 +147,43 @@ Open question: what CPU and RAM does the brain box have? This decides whether ph
 
 Each milestone should end with something Aldin can demo. Don't start the next one until the current acceptance test passes on the real hardware.
 
-### M0 — Box baseline
+### M0, Box baseline
 - OS of choice (Arch or Ubuntu LTS), NVIDIA driver, CUDA, Docker + NVIDIA Container Toolkit, `uv` for Python.
 - vLLM serving Qwen3.5-9B on an OpenAI-compatible endpoint with tool calling enabled.
 - **Accept:** `curl` to `/v1/chat/completions` with a tool schema returns a well-formed tool call.
 - **Status: passed 2026-09-22.** `tests/m0_tool_call.sh`: tool call in 896 ms, plain answer in 208 ms, ~71 tok/s decode, thinking disabled. Start/stop with `ops/docker-compose.yml` (loads in ~3 min). Docker, driver and `uv` were already on the box.
 
-### M1 — Text brain + Home Assistant
+### M1, Text brain + Home Assistant
 - Enable HA's MCP Server integration; expose ~5 entities (living room lights, TV, a WoL switch for the PC, phone battery sensor from the companion app).
 - Python agent loop: MCP client → HA; LLM decides tool calls; loop until final answer. CLI chat interface.
 - **Accept:** typed "set the living room lights to 50% and warm" changes the lights. "What's my phone battery?" reads the sensor. "Boot my PC" triggers WoL.
 - **Status: passed 2026-09-22** (`tests/m1_ha.py`, verified against HA's own state: brightness 128 at 2700 K, battery 81% read via GetLiveContext, WoL button pressed; three turns in ~8 s). HA's MCP server is consumed through Pipecat's `MCPClient`, so the voice pipeline and the CLI share one brain (`brain/agent.py`). Exposure is a 13-entity allowlist (`ops/ha_expose.py`). Gaps: no TV integration, no camera, WoL untested across subnets.
 
-### M2 — Voice round trip in the browser
+### M2, Voice round trip in the browser
 - Pipecat pipeline: browser mic (WebRTC) → Parakeet STT → M1 agent → Chatterbox-Turbo streaming → browser speaker.
 - Voice: clone from a consented reference clip (Aldin's own voice, or a permissively licensed voice such as Kyutai's voice-donation set). Do not clone an actor.
 - Instrument latency at each stage: end-of-speech → first STT text → first LLM token → first audio chunk.
 - **Accept:** median end-of-speech → first audio under 2 s. Barge-in stops playback within ~300 ms.
 - **Status: headless acceptance passed 2026-09-22; browser test with a real mic pending.** `tests/m2_headless_roundtrip.py` pushes synthetic speech through the real pipeline: STT 170–260 ms, first LLM token 250–400 ms, first audio median 1.30 s (0.94–2.02 s) over 4 turns. The gap between first token and first audio is the LLM finishing the first sentence plus Chatterbox synthesizing it (0.3–1.2 s depending on sentence length), so the persona asks for a short opening sentence. Barge-in relies on Pipecat's VAD interruption plus the browser's echo cancellation; not yet measured. With tools (after M1): read-only tool turns ~1.6 s to first audio; light-changing turns wait for Zigbee (2–6 s inside HA), see `DECISIONS.md` for the planned acknowledgement fix.
 
-### M3 — Room satellite
+### M3, Room satellite
 - Train the custom "Hey Winston" openWakeWord model first (can be done before the satellite hardware exists; test it on a laptop mic).
 - Pi/mini PC + AEC speakerphone; openWakeWord with "Hey Winston"; physical mute button (GPIO or keyboard) that hard-cuts the mic stream.
 - Streams audio to the brain box over LAN (WireGuard/Tailscale if the satellite is ever off-LAN).
 - **Accept:** wake word from across the room at normal volume, with no more than a false activation or two per day of normal household noise; can interrupt the assistant mid-sentence without it tripping on its own speaker output.
 
-### M4 — Cloud handoff, memory, text channel
+### M4, Cloud handoff, memory, text channel
 - `ask_claude` tool with a tight system prompt and per-day spend cap.
 - Memory vault: `memory/preferences.md`, `memory/people.md`, `memory/projects.md`, loaded into the system prompt at start; a `remember` tool that appends distilled facts and commits to git.
 - Telegram bot wired to the same agent loop.
 - **Accept:** "Tell my friend a fun fact" works locally; a hard question routes to Claude; a fact told to Winston is recalled in a fresh session; Telegram works.
 
-### M5 — Vision and extras
+### M5, Vision and extras
 - `describe_camera(entity)` tool: HA camera snapshot → local VLM → spoken description.
 - More HA entities/scenes; proactive notifications (optional, low priority).
 - **Accept:** "Who's at the door?" produces a sensible description within ~4 s.
 
-### M6 — Model swap experiments (ongoing)
+### M6, Model swap experiments (ongoing)
 - Re-evaluate quarterly: local omni model with working barge-in (Qwen omni successors via vllm-omni), full-duplex models with tool calling (PersonaPlex successors), better TTS.
 - Each experiment lives on a branch and must pass M2/M3 acceptance before merging.
 
