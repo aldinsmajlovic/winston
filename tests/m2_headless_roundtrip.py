@@ -37,13 +37,21 @@ SR = 16000
 CHUNK = SR // 50  # 20 ms
 
 
-def synth_user_audio(text: str, voice: str = "vctk/p226_023") -> np.ndarray:
+def synth_user_audio(text: str, voice: str = "vctk/p226_023") -> tuple[np.ndarray, np.ndarray]:
+    """Returns (16 kHz int16 for the pipeline, original 24 kHz int16 for saving)."""
     pcm = httpx.post(f"{vp.CFG['tts']['server_url']}/audio/speech",
                      json={"input": text, "voice": voice, "response_format": "pcm"}, timeout=120).content
-    a = np.frombuffer(pcm, dtype=np.int16).astype(np.float32)
+    a24 = np.frombuffer(pcm, dtype=np.int16)
+    a = a24.astype(np.float32)
     n = int(len(a) * SR / 24000)                       # 24 kHz -> 16 kHz, linear interp is fine for STT
     a16 = np.interp(np.linspace(0, len(a) - 1, n), np.arange(len(a)), a)
-    return a16.astype(np.int16)
+    return a16.astype(np.int16), a24
+
+
+def write_wav(path: Path, pcm: np.ndarray, sr: int = 24000):
+    import wave
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(pcm.astype(np.int16).tobytes())
 
 
 class Speaker(FrameProcessor):
@@ -89,13 +97,14 @@ class Listener(FrameProcessor):
     """Sits after TTS (where the transport would be) and records what came out and when."""
     def __init__(self, done: asyncio.Event):
         super().__init__(); self._done = done; self._llm_done = self._tts_done = False
-        self.t_first_audio = None; self.audio_secs = 0.0
+        self.t_first_audio = None; self.audio_secs = 0.0; self.audio = bytearray()
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, TTSAudioRawFrame):
             self.t_first_audio = self.t_first_audio or time.perf_counter()
             self.audio_secs += len(frame.audio) / 2 / frame.sample_rate
+            self.audio += frame.audio
         elif isinstance(frame, LLMFullResponseEndFrame):
             self._llm_done = True
         elif isinstance(frame, TTSStoppedFrame):
@@ -106,7 +115,7 @@ class Listener(FrameProcessor):
 
 
 async def one_turn(utterance: str) -> dict:
-    audio = synth_user_audio(utterance)
+    audio, user24 = synth_user_audio(utterance)
     speaker, done = Speaker(audio), asyncio.Event()
     stt_tap, llm_tap, listener = Tap(TranscriptionFrame), Tap(LLMTextFrame), Listener(done)
     persona = (vp.ROOT / vp.CFG["persona"]["prompt"]).read_text().strip()
@@ -125,10 +134,11 @@ async def one_turn(utterance: str) -> dict:
     r = lambda t: None if (t is None or speaker.t_stop is None) else round((t - speaker.t_stop) * 1000)
     return {"utterance": utterance, "heard": " ".join(stt_tap.text), "reply": "".join(llm_tap.text).strip(),
             "stt_ms": r(stt_tap.t_first), "first_text_ms": r(llm_tap.t_first),
-            "first_audio_ms": r(listener.t_first_audio), "reply_audio_secs": round(listener.audio_secs, 2)}
+            "first_audio_ms": r(listener.t_first_audio), "reply_audio_secs": round(listener.audio_secs, 2),
+            "user_pcm": user24, "reply_pcm": np.frombuffer(bytes(listener.audio), dtype=np.int16)}
 
 
-async def main(utterances):
+async def main(utterances, save_dir: Path | None = None):
     results = []
     for u in utterances:
         res = await one_turn(u); results.append(res)
@@ -141,10 +151,22 @@ async def main(utterances):
               f"(min {min(fa)}, max {max(fa)})")
     ok = len(fa) == len(results) and statistics.median(fa) < 2000
     print("PASS (M2 latency target: median < 2000 ms)" if ok else "FAIL")
+    if save_dir:
+        save_dir.mkdir(parents=True, exist_ok=True)
+        gap, pause = np.zeros(24000 * 8 // 10, np.int16), np.zeros(24000 * 4 // 10, np.int16)
+        convo = []
+        for i, res in enumerate(results, 1):
+            turn = np.concatenate([res["user_pcm"], pause, res["reply_pcm"]])
+            write_wav(save_dir / f"turn{i}.wav", turn); convo += [turn, gap]
+        write_wav(save_dir / "conversation.wav", np.concatenate(convo))
+        print(f"saved {len(results)} turns + conversation.wav to {save_dir}")
     return 0 if ok else 1
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["What's the capital of Sweden?", "Tell my friend a fun fact.",
-                            "Can you dim the lights and turn on the TV?", "What time is it?"]
-    sys.exit(asyncio.run(main(args)))
+    argv = sys.argv[1:]; save = None
+    if "--save-dir" in argv:
+        i = argv.index("--save-dir"); save = Path(argv[i + 1]); del argv[i:i + 2]
+    args = argv or ["What's the capital of Sweden?", "Tell my friend a fun fact.",
+                    "Can you dim the lights and turn on the TV?", "What time is it?"]
+    sys.exit(asyncio.run(main(args, save)))

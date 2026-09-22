@@ -18,3 +18,4 @@ voice/tts/reference/*
 logs/
 *.log
 tests/latency/results/
+samples/
