@@ -33,9 +33,20 @@ cd voice/tts/chatterbox_server
 Loads Parakeet STT on the CPU (~10 s) and serves the browser client. Speak; the bot says
 "Winston online." on connect. Per-turn latency and transcripts are logged to the console.
 
+## Text chat (same brain and tools, no audio)
+
+```sh
+.venv/bin/python -m brain.cli                          # interactive
+.venv/bin/python -m brain.cli "lights to 50% and warm" # scripted
+```
+
+Home Assistant exposure is managed by `ops/ha_expose.py` (strict allowlist with aliases; edit the list, re-run).
+Every tool call is appended to `logs/tool_calls.jsonl`.
+
 ## Checks
 
 - `tests/m0_tool_call.sh`: LLM tool calling (needs 1).
+- `tests/m1_ha.py`: typed commands change real HA state (lights, battery, PC wake); restores the lights after (needs 1 and HA).
 - `tests/m2_components.py`: STT on a known clip, TTS timing, TTS→STT intelligibility (needs 2).
 - `tests/m2_headless_roundtrip.py`: synthetic speech through the real pipeline, measures
   end-of-speech → first audio (needs 1 and 2, not 3).

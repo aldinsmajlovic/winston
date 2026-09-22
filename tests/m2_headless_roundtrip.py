@@ -24,13 +24,13 @@ from pipecat.frames.frames import (Frame, LLMFullResponseEndFrame, LLMTextFrame,
                                    UserStoppedSpeakingFrame, VADUserStartedSpeakingFrame,
                                    VADUserStoppedSpeakingFrame)
 from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.runner import PipelineRunner
-from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.workers.runner import WorkerRunner
+from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from brain.agent import Brain, ToolCallLogObserver  # noqa: E402
 from voice import pipeline as vp  # noqa: E402  (loads config + STT model)
 
 SR = 16000
@@ -118,19 +118,19 @@ async def one_turn(utterance: str) -> dict:
     audio, user24 = synth_user_audio(utterance)
     speaker, done = Speaker(audio), asyncio.Event()
     stt_tap, llm_tap, listener = Tap(TranscriptionFrame), Tap(LLMTextFrame), Listener(done)
-    persona = (vp.ROOT / vp.CFG["persona"]["prompt"]).read_text().strip()
-    context = LLMContext([{"role": "system", "content": persona}])
-    agg = LLMContextAggregatorPair(context)
-    pipeline = Pipeline([speaker, vp.build_stt(), stt_tap, agg.user(), vp.build_llm(), llm_tap,
+    brain = Brain(); await brain.start()                 # same brain as the real pipeline, tools included
+    agg = LLMContextAggregatorPair(brain.new_context())
+    pipeline = Pipeline([speaker, vp.build_stt(), stt_tap, agg.user(), brain.llm, llm_tap,
                          vp.build_tts(), listener, agg.assistant()])
-    task = PipelineTask(pipeline, params=PipelineParams(enable_metrics=True), idle_timeout_secs=None)
-    runner = PipelineRunner(handle_sigint=False)
+    task = PipelineWorker(pipeline, params=PipelineParams(enable_metrics=True), idle_timeout_secs=None,
+                          observers=[ToolCallLogObserver(channel="headless")])
+    runner = WorkerRunner(handle_sigint=False)
     run = asyncio.create_task(runner.run(task))
     try:
         await asyncio.wait_for(done.wait(), timeout=len(audio) / SR + 30)
     except asyncio.TimeoutError:
         logger.error("timed out waiting for the bot to finish speaking")
-    await task.cancel(); await run
+    await task.cancel(); await run; await brain.close()
     r = lambda t: None if (t is None or speaker.t_stop is None) else round((t - speaker.t_stop) * 1000)
     return {"utterance": utterance, "heard": " ".join(stt_tap.text), "reply": "".join(llm_tap.text).strip(),
             "stt_ms": r(stt_tap.t_first), "first_text_ms": r(llm_tap.t_first),

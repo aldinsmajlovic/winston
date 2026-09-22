@@ -157,13 +157,14 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - Enable HA's MCP Server integration; expose ~5 entities (living room lights, TV, a WoL switch for the PC, phone battery sensor from the companion app).
 - Python agent loop: MCP client → HA; LLM decides tool calls; loop until final answer. CLI chat interface.
 - **Accept:** typed "set the living room lights to 50% and warm" changes the lights. "What's my phone battery?" reads the sensor. "Boot my PC" triggers WoL.
+- **Status: passed 2026-09-22** (`tests/m1_ha.py`, verified against HA's own state: brightness 128 at 2700 K, battery 81% read via GetLiveContext, WoL button pressed; three turns in ~8 s). HA's MCP server is consumed through Pipecat's `MCPClient`, so the voice pipeline and the CLI share one brain (`brain/agent.py`). Exposure is a 13-entity allowlist (`ops/ha_expose.py`). Gaps: no TV integration, no camera, WoL untested across subnets.
 
 ### M2 — Voice round trip in the browser
 - Pipecat pipeline: browser mic (WebRTC) → Parakeet STT → M1 agent → Chatterbox-Turbo streaming → browser speaker.
 - Voice: clone from a consented reference clip (Aldin's own voice, or a permissively licensed voice such as Kyutai's voice-donation set). Do not clone an actor.
 - Instrument latency at each stage: end-of-speech → first STT text → first LLM token → first audio chunk.
 - **Accept:** median end-of-speech → first audio under 2 s. Barge-in stops playback within ~300 ms.
-- **Status: headless acceptance passed 2026-09-22; browser test with a real mic pending.** `tests/m2_headless_roundtrip.py` pushes synthetic speech through the real pipeline: STT 170–260 ms, first LLM token 250–400 ms, first audio median 1.30 s (0.94–2.02 s) over 4 turns. The gap between first token and first audio is the LLM finishing the first sentence plus Chatterbox synthesizing it (0.3–1.2 s depending on sentence length), so the persona asks for a short opening sentence. Barge-in relies on Pipecat's VAD interruption plus the browser's echo cancellation; not yet measured.
+- **Status: headless acceptance passed 2026-09-22; browser test with a real mic pending.** `tests/m2_headless_roundtrip.py` pushes synthetic speech through the real pipeline: STT 170–260 ms, first LLM token 250–400 ms, first audio median 1.30 s (0.94–2.02 s) over 4 turns. The gap between first token and first audio is the LLM finishing the first sentence plus Chatterbox synthesizing it (0.3–1.2 s depending on sentence length), so the persona asks for a short opening sentence. Barge-in relies on Pipecat's VAD interruption plus the browser's echo cancellation; not yet measured. With tools (after M1): read-only tool turns ~1.6 s to first audio; light-changing turns wait for Zigbee (2–6 s inside HA), see `DECISIONS.md` for the planned acknowledgement fix.
 
 ### M3 — Room satellite
 - Train the custom "Hey Winston" openWakeWord model first (can be done before the satellite hardware exists; test it on a laptop mic).
