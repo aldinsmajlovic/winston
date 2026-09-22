@@ -8,9 +8,9 @@ persona:
   prompt: brain/prompts/persona.md
 
 stt:
-  provider: parakeet              # NVIDIA Parakeet TDT 0.6B, ONNX INT8, CPU (keeps GPU free)
-  model: nvidia/parakeet-tdt-0.6b # verify exact id; use the ONNX INT8 export
-  device: cpu
+  provider: parakeet              # NVIDIA Parakeet TDT 0.6B v3 via onnx-asr, INT8 on CPU (keeps GPU free)
+  model: nemo-parakeet-tdt-0.6b-v3
+  quantization: int8
 
 llm:
   provider: openai_compatible     # vLLM, see ops/docker-compose.yml (parsers: qwen3 reasoning, qwen3_coder tools)
@@ -24,15 +24,15 @@ llm:
   presence_penalty: 1.5
 
 tts:
-  provider: chatterbox_turbo
-  device: cuda
-  reference_voice: voice/tts/reference/winston.wav  # gitignored; consented clip only (plan M2)
-  exaggeration: 0.5
+  provider: chatterbox_turbo      # served by voice/tts/chatterbox_server (own venv, GPU)
+  server_url: http://127.0.0.1:8880/v1
+  voice: onyx                     # any OpenAI voice name maps to the server's --voice clip (Pipecat's client validates names)
+  reference_voice: voice/tts/reference/vctk/p232_023.wav  # VCTK p232, CC BY 4.0; swap for a consented custom clip later
 
 vad:
   provider: silero
   barge_in: true
-  interrupt_stop_ms: 300          # M2 acceptance: playback stops within ~300 ms of speech
+  stop_secs: 0.3                  # silence after speech before the utterance is sent to STT
 
 wake_word:
   provider: openwakeword

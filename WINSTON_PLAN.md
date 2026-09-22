@@ -132,10 +132,10 @@ Ampere: no native FP8, so prefer AWQ/GPTQ INT4 or GGUF quants. Rough phase-1 lay
 | Component | Where | Est. VRAM |
 |---|---|---|
 | Qwen3.5-9B (QuantTrio AWQ: INT4 MLPs, BF16 attention/vision) + 3.2 GB KV cache (93K tokens) | GPU | **measured 16 GB** at `--gpu-memory-utilization 0.70` (weights 11.4 GB). Plan estimate was ~6–8 GB. |
-| Chatterbox-Turbo | GPU | small (low single-digit GB; measure) |
+| Chatterbox-Turbo | GPU | **measured 3.1 GB** |
 | Parakeet STT | CPU | 0 |
 | Camera VLM | same Qwen3.5-9B (multimodal) | 0 extra |
-| Headroom | | ~8 GB (measured 2026-09-22) |
+| Headroom | | ~4.5 GB (measured 2026-09-22: 16 + 3.1 of 24) |
 
 **Bigger-brain option (phase 2, if the 9B feels dumb):** Qwen3.6-35B-A3B (MoE, 3B active) is roughly 22 GB at Q4 and has been community-tested around 100 tok/s on a 3090. That eats the whole card, so move TTS to CPU (Pocket TTS) and keep STT on CPU. This needs a decent CPU on the box (Pocket TTS uses ~2 cores, Parakeet ONNX wants a few more). Qwen3.8-27B (dense, Apache 2.0, Aug 2026) is another candidate but dense 27B on a 3090 is slower per token, which hurts a voice assistant more than a coding assistant.
 
@@ -163,6 +163,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - Voice: clone from a consented reference clip (Aldin's own voice, or a permissively licensed voice such as Kyutai's voice-donation set). Do not clone an actor.
 - Instrument latency at each stage: end-of-speech → first STT text → first LLM token → first audio chunk.
 - **Accept:** median end-of-speech → first audio under 2 s. Barge-in stops playback within ~300 ms.
+- **Status: headless acceptance passed 2026-09-22; browser test with a real mic pending.** `tests/m2_headless_roundtrip.py` pushes synthetic speech through the real pipeline: STT 170–260 ms, first LLM token 250–400 ms, first audio median 1.30 s (0.94–2.02 s) over 4 turns. The gap between first token and first audio is the LLM finishing the first sentence plus Chatterbox synthesizing it (0.3–1.2 s depending on sentence length), so the persona asks for a short opening sentence. Barge-in relies on Pipecat's VAD interruption plus the browser's echo cancellation; not yet measured.
 
 ### M3 — Room satellite
 - Train the custom "Hey Winston" openWakeWord model first (can be done before the satellite hardware exists; test it on a laptop mic).

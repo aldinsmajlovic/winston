@@ -10,8 +10,9 @@ models/
 *.gguf
 *.safetensors
 
-# Personal voice reference clip (plan M2: consented clip only)
-voice/tts/reference/
+# Voice reference clips: personal ones stay out; the CC BY 4.0 VCTK samples are tracked
+voice/tts/reference/*
+!voice/tts/reference/vctk/
 
 # Runtime output
 logs/
