@@ -17,6 +17,7 @@ import {
   Gauge,
   Globe,
   Hash,
+  Layers,
   Lightbulb,
   List,
   ListTodo,
@@ -76,6 +77,7 @@ const kinds: Record<string, LucideIcon> = {
   // engines and drivers
   cloud: Cloud,
   chatterbox: AudioWaveform,
+  llamacpp: Layers,
   pocket: Cpu,
   process: Terminal,
   external: Globe,

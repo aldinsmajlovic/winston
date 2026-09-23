@@ -8,6 +8,7 @@ page of the web UI. `winston init --list` prints the same table.
 | Profile | Needs | Brain | Voice | Hearing |
 |---|---|---|---|---|
 | `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | vLLM in Docker, Qwen3.5-9B AWQ | Chatterbox-Turbo on the GPU, voice cloning from a clip | Parakeet on the CPU |
+| `nvidia-24gb-27b` | The same | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Chatterbox-Turbo on the GPU | Parakeet on the CPU |
 | `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `qwen3.5:4b` | Pocket TTS on the CPU | Parakeet on the CPU |
 | `hosted` | Internet and an API key | Any OpenAI-compatible endpoint | Pocket TTS on the CPU | Parakeet on the CPU |
 
@@ -29,8 +30,33 @@ hosted profile sends only the conversation text to the model provider.
 The Ollama numbers come from a box whose GPU was already holding the vLLM stack, so Ollama put
 half the model on the CPU. On a card with room, expect it to be closer to the vLLM column.
 
+## Comparing brains
+
+`winston check brain` runs the requests in `data/trials/brain.yaml` (template in
+`examples/trials/brain.yaml`) through the text channel with thinking off, as over voice, each in a
+fresh conversation. A case passes when every expected tool was called, no forbidden one was, and the
+claim guard stayed quiet; lights the cases touch are put back. `--runs 3` repeats the set, results
+land in `data/logs/brain_trials/`. Switch the brain on the Brain page, run it again, compare.
+
+On the reference box (2026-09-23), 14 requests, three rounds each:
+
+| | Qwen3.5-9B AWQ, vLLM | Qwen3.8-27B Q4_K_S, llama.cpp |
+|---|---|---|
+| Passed | 36 of 42 | 42 of 42 |
+| Missed every round | "change the temp of the lights and check my phone battery" (asked about the lights, never read the battery); a fun fact sent to web search | none |
+| First reply text, median | 0.87 s | 0.94 s with MTP (1.24 s without) |
+| Tokens per second | not measured | 60 to 80 with MTP (44 without) |
+| VRAM | 15.6 GB (vLLM takes 70 % of the card) | 17.2 GB |
+| Start | about 3 minutes | 10 s once downloaded |
+| Vision | yes | not in this preset |
+
+Over voice both land at about 2.2 to 2.5 s from the end of speech to first audio on the same five
+questions. Most of that is Chatterbox speaking the first sentence, and the 9B adds 8 to 9 s turns
+when it web-searches trivia.
+
 ## Choosing
 
+- **NVIDIA with 24 GB, and multi-part requests matter more than vision:** `nvidia-24gb-27b`.
 - **NVIDIA with 16 GB or more:** `nvidia-24gb`. Below 24 GB, lower `--gpu-memory-utilization` in
   the vLLM arguments or pick a smaller model; the Chatterbox server needs 3 GB next to it.
 - **A smaller card, AMD, Apple silicon, or no GPU:** `ollama`. Ollama handles the hardware itself.
@@ -46,9 +72,9 @@ another process holds it, and Ollama keeps its last model loaded for five minute
 Trying the Ollama profile next to a running vLLM stack means waiting those minutes, or `ollama stop`,
 before vLLM starts again.
 
-Mixing is normal. The plan's bigger brain (a 35B mixture model that fills the whole card) is the
-vLLM engine with Pocket TTS on the CPU: pick the vLLM preset for the brain and the Pocket preset
-for the voice on the Voice page.
+Mixing is normal. A brain that fills the whole card (Qwen3.6-35B-A3B at 4 bits is 24 to 25 GB, or
+the 27B through vLLM at 19.5 GB) needs Pocket TTS on the CPU: pick the brain's preset on the Brain
+page and the Pocket preset on the Voice page.
 
 ## Notes per engine
 
@@ -56,6 +82,15 @@ for the voice on the Voice page.
 flags in the preset are for Qwen models; another family needs its own parser (`vllm serve --help`
 lists them). The container downloads weights into `~/.cache/huggingface` on first start, which is
 why the default profile takes minutes the first time and about 3 minutes after that.
+
+**llama.cpp.** The official `server-cuda` image, pinned to a build, reading GGUF files from
+`~/.cache/huggingface` (the same cache as vLLM). `llm.model` is a Hugging Face repo and quant
+(`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`); the preset passes it as `-hf` and as the served name, and
+downloads on first start. It runs two conversations at once with 16K of context each and a q8 cache,
+and drafts with the model's own MTP layer (`--spec-type draft-mtp`), which needs a GGUF that keeps
+that layer; remove those two arguments for one that does not. Thinking is switched with the same
+`enable_thinking` template flag as vLLM. The first request after a start reads the 2,900-token
+system prompt in about 2.3 s; after that it is cached.
 
 **Ollama.** Speaks the OpenAI protocol at `/v1`. Thinking is switched per request with
 `reasoning_effort`, which is what `llm.thinking.control: reasoning_effort` sends. Ollama ignores

@@ -14,7 +14,7 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
 - **Typed, versioned config.** Pydantic models with defaults and a JSON Schema export. Every field carries
   its UI level (basic or advanced) and which engine a change restarts. Forms and docs come from the schema.
 - **Presets over hand-written engine blocks.** `config/presets.py` names the engine and model choices per
-  slot (vLLM, Ollama, hosted; Chatterbox, Pocket TTS, hosted) and composes them into hardware profiles.
+  slot (vLLM, llama.cpp, Ollama, hosted; Chatterbox, Pocket TTS, hosted) and composes them into hardware profiles.
   The UI offers them as dropdowns, `winston init --profile` writes one, and the config stays the truth.
 - **Choices come from where the truth lives.** A field names a live list in the schema (`options`);
   `api/options.py` fills it from the brain's server, Home Assistant, the data directory or a provider's

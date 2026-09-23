@@ -129,7 +129,10 @@ class Supervisor:
 
     async def start(self, name: str, wait: bool = True) -> Managed:
         m = self.items[name]
-        if await self.healthy(m):
+        stale = getattr(m.driver, "stale", None)
+        if stale and await stale():             # healthy is not enough: it must be the configured engine
+            logger.warning(f"{name}: running from a different config, replacing it")
+        elif await self.healthy(m):
             self._set(m, "healthy"); return m
         self._set(m, "starting")
         m.owned = True

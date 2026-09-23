@@ -12,6 +12,7 @@ uv run winston down            # stop engines and channel; winstond keeps servin
 uv run winston talk            # text chat, same brain and tools
 uv run winston ha expose       # make Home Assistant's exposure match config
 uv run winston check           # unit (no hardware), then the m0, m1, m2 acceptance checks on real hardware
+uv run winston check brain     # the configured brain on the trial requests: tool calls and speed
 ```
 
 Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs
@@ -52,7 +53,7 @@ blocks a plain `http://` page inside it, so Winston needs HTTPS too.
 </picture>
 
 Settings is the link at the top right. Status lists every engine with icon actions and the GPU.
-Brain picks the engine from presets (vLLM, Ollama, hosted) and the model from the list the brain's
+Brain picks the engine from presets (vLLM, llama.cpp, Ollama, hosted) and the model from the list the brain's
 server reports; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
 hearing. Picking a preset rewrites the engine block and the settings that go with it. The other
 pages are generated from the config schema: basic fields first, Advanced behind a toggle, and an (i)
@@ -94,8 +95,11 @@ from `winston api schema` after the API changes.
 
 Declared under `engines:` in config with a driver:
 
-- `docker`: image, args, env, volumes, gpu. Used for the vLLM server. With Docker's `--gpus` path
-  broken by a stale CDI spec on some hosts, set `runtime: nvidia` explicitly.
+- `docker`: image, args, env, volumes, gpu. Used for the vLLM and llama.cpp servers. With Docker's
+  `--gpus` path broken by a stale CDI spec on some hosts, set `runtime: nvidia` explicitly. The
+  container carries a label with a hash of its engine block; `winston up` replaces a running
+  `winston-<name>` container whose label does not match, so a swapped engine never silently keeps
+  the old one.
 - `subprocess`: cmd and cwd, with `{data}` and `{repo}` expanding. Used for the Chatterbox TTS server,
   which has its own venv because it pins torch 2.6.
 - `external`: a URL you already run; Winston only health-checks it.

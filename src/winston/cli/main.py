@@ -45,7 +45,7 @@ def init(force: bool = typer.Option(False, help="Overwrite existing files."),
     from winston.config.presets import PROFILES, apply_profile, profile as get_profile
     if list_profiles:
         for p in PROFILES:
-            print(f"{p['id']:<13} {p['title']}: {p['hint']}")
+            print(f"{p['id']:<16} {p['title']}: {p['hint']}")
         return
     get_profile(profile)                           # fail early on a typo
     d = data_dir()
@@ -83,7 +83,8 @@ def up(host: str = typer.Option(None), port: int = typer.Option(None),
     from winston.api.app import create_app
     cfg = load()
     application = create_app(cfg, autostart=not no_start)
-    uvicorn.run(application, host=host or cfg.control.host, port=port or cfg.control.port, log_level="warning")
+    uvicorn.run(application, host=host or cfg.control.host, port=port or cfg.control.port, log_level="warning",
+                timeout_graceful_shutdown=5)   # open SSE streams (status, live) would otherwise hold shutdown forever
 
 
 @app.command()
@@ -150,15 +151,16 @@ def memory():
 
 
 @app.command()
-def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | all")):
+def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | brain | all")):
     """Run the checks: unit needs nothing, the milestones need the engines up."""
     tests = repo_root() / "tests"
     unit = ["guard_cases.py", "memory_cases.py", "announce_cases.py", "live_cases.py", "profiles_load.py"]
     plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {tests / t}" for t in unit)],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],
-            "m2": [sys.executable, str(tests / "m2_components.py")]}
-    names = list(plan) if which == "all" else [which]
+            "m2": [sys.executable, str(tests / "m2_components.py")],
+            "brain": [sys.executable, str(tests / "brain_trials.py")]}
+    names = [n for n in plan if n != "brain"] if which == "all" else [which]   # brain: a comparison, run on purpose
     failed = []
     for n in names:
         print(f"\n=== {n}")

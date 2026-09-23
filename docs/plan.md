@@ -164,7 +164,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - Voice: clone from a consented reference clip (Aldin's own voice, or a permissively licensed voice such as Kyutai's voice-donation set). Do not clone an actor.
 - Instrument latency at each stage: end-of-speech → first STT text → first LLM token → first audio chunk.
 - **Accept:** median end-of-speech → first audio under 2 s. Barge-in stops playback within ~300 ms.
-- **Status: headless acceptance passed 2026-09-22; browser test with a real mic pending.** `tests/m2_headless_roundtrip.py` pushes synthetic speech through the real pipeline: STT 170–260 ms, first LLM token 250–400 ms, first audio median 1.30 s (0.94–2.02 s) over 4 turns. The gap between first token and first audio is the LLM finishing the first sentence plus Chatterbox synthesizing it (0.3–1.2 s depending on sentence length), so the persona asks for a short opening sentence. Barge-in relies on Pipecat's VAD interruption plus the browser's echo cancellation; not yet measured. With tools (after M1): read-only tool turns ~1.6 s to first audio; light-changing turns wait for Zigbee (2–6 s inside HA), see `DECISIONS.md` for the planned acknowledgement fix.
+- **Status: headless acceptance passed 2026-09-22; browser test with a real mic pending.** `tests/m2_headless_roundtrip.py` pushes synthetic speech through the real pipeline: STT 170–260 ms, first LLM token 250–400 ms, first audio median 1.30 s (0.94–2.02 s) over 4 turns. The gap between first token and first audio is the LLM finishing the first sentence plus Chatterbox synthesizing it (0.3–1.2 s depending on sentence length), so the persona asks for a short opening sentence. Barge-in relies on Pipecat's VAD interruption plus the browser's echo cancellation; not yet measured. With tools (after M1): read-only tool turns ~1.6 s to first audio; light-changing turns wait for Zigbee (2–6 s inside HA), see `DECISIONS.md` for the planned acknowledgement fix. **Regressed 2026-09-23:** with today's persona and tools the same test measures 2.15 to 2.5 s for both the 9B and the 27B brain, mostly Chatterbox on the first sentence; see `decisions.md`.
 
 ### M3, Room satellite
 - Train the custom "Hey Winston" openWakeWord model first (can be done before the satellite hardware exists; test it on a laptop mic).
@@ -189,6 +189,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 ### M6, Model swap experiments (ongoing)
 - Re-evaluate quarterly: local omni model with working barge-in (Qwen omni successors via vllm-omni), full-duplex models with tool calling (PersonaPlex successors), better TTS.
 - Each experiment lives on a branch and must pass M2/M3 acceptance before merging.
+- 2026-09-23: bigger brain. Qwen3.8-27B on llama.cpp fits next to Chatterbox and passes 42/42 brain trials against the 9B's 36/42 (`winston check brain`, `docs/hardware.md`); offered as the `nvidia-24gb-27b` profile.
 
 ### UI track (added 2026-09-23, runs next to M3 to M5)
 The web UI started as settings only. Winston himself moves to the front; settings go behind him. Direction chosen from three rounds of mockups, see `decisions.md` and `docs/ui-guide.md`.

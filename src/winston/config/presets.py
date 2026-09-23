@@ -24,6 +24,17 @@ _VLLM_ARGS = [
     "--trust-remote-code",
 ]
 
+_LLAMACPP_ARGS = [
+    "-hf", "{model}", "--alias", "{model}",      # repo:quant from the HF cache, served under the same name
+    "--host", "0.0.0.0", "--port", "8000",
+    "-ngl", "99", "-fa", "on",
+    "-c", "32768", "-np", "2",                   # two conversations at once, 16K context each
+    "-ctk", "q8_0", "-ctv", "q8_0",
+    "--no-mmproj",                               # text only; the vision projector is another 0.9 GB
+    "--jinja",
+    "--spec-type", "draft-mtp", "--spec-draft-n-max", "2",   # the GGUF's own MTP layer: 44 -> 60-80 tokens/s
+]
+
 LLM: list[Fragment] = [
     {
         "id": "vllm", "icon": "vllm", "title": "vLLM on NVIDIA (Docker)", "needs": ["docker", "nvidia"],
@@ -38,6 +49,20 @@ LLM: list[Fragment] = [
         },
         "settings": {"llm": {"base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
                              "model": "QuantTrio/Qwen3.5-9B-AWQ", "thinking": {"control": "chat_template"}}},
+    },
+    {
+        "id": "llamacpp", "icon": "llamacpp", "title": "llama.cpp on NVIDIA (Docker)", "needs": ["docker", "nvidia"],
+        "hint": "GGUF models, so a bigger brain fits: Qwen3.8-27B at 4 bits takes 17 GB next to Chatterbox and "
+                "passes tool requests the 9B misses. No vision in this preset; starts in 10 s once downloaded.",
+        "engine": {
+            "driver": "docker", "image": "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118", "port": 8000,
+            "health": "/health", "startup_timeout": 900, "gpu": True, "runtime": "nvidia",
+            "env": {"NVIDIA_VISIBLE_DEVICES": "all", "NVIDIA_DRIVER_CAPABILITIES": "compute,utility"},
+            "volumes": {"~/.cache/huggingface": "/root/.cache/huggingface"},   # llama.cpp reads the HF cache
+            "args": list(_LLAMACPP_ARGS),
+        },
+        "settings": {"llm": {"base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
+                             "model": "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S", "thinking": {"control": "chat_template"}}},
     },
     {
         "id": "ollama", "icon": "ollama", "title": "Ollama (local)", "needs": ["ollama"],
@@ -97,6 +122,9 @@ TTS: list[Fragment] = [
 PROFILES: list[Fragment] = [
     {"id": "nvidia-24gb", "title": "NVIDIA, 24 GB", "presets": {"llm": "vllm", "tts": "chatterbox"},
      "hint": "The reference setup: vLLM and Chatterbox share one card. About 1 s to the first word."},
+    {"id": "nvidia-24gb-27b", "title": "NVIDIA, 24 GB, bigger brain", "presets": {"llm": "llamacpp", "tts": "chatterbox"},
+     "hint": "Qwen3.8-27B through llama.cpp instead of the 9B through vLLM: better at multi-part requests, "
+             "same speed to the first word, no vision."},
     {"id": "ollama", "title": "Ollama, any GPU or CPU", "presets": {"llm": "ollama", "tts": "pocket"},
      "hint": "Ollama serves the model, Pocket TTS speaks on the CPU. Small cards, AMD, Apple silicon, no Docker."},
     {"id": "hosted", "icon": "cloud", "title": "Hosted LLM", "presets": {"llm": "hosted", "tts": "pocket"},

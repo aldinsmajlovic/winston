@@ -1,0 +1,12 @@
+# Brain trials (tests/brain_trials.py): copy to data/trials/brain.yaml and use your own names.
+# expect: tools that must be called (substring, "a|b" for either); forbid: tools that must not be.
+# restore: entities put back after each case, so a run leaves the home as it found it.
+restore: [light.kitchen]
+cases:
+  - {name: turn on by name, say: ["Turn on the kitchen lights."], expect: [HassTurnOn|HassLightSet]}
+  - {name: brightness, say: ["Dim the kitchen lights to 30 percent."], expect: [HassLightSet]}
+  - {name: time, say: ["What time is it?"], expect: [GetDateTime]}
+  - {name: act and read, say: ["Set the kitchen lights to 45 percent and tell me the weather."],
+     expect: [HassLightSet, GetLiveContext]}
+  - {name: follow-up, say: ["Turn the kitchen lights to 40 percent.", "Now make them warmer."], expect: [HassLightSet]}
+  - {name: no tool needed, say: ["Tell me one fun fact about octopuses."], forbid: [Hass, web_search]}

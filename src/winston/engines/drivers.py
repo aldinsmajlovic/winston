@@ -2,6 +2,8 @@
 (the LLM server), subprocess for local venv services (the TTS server, the voice channel),
 external for something you run yourself and Winston only health-checks."""
 import asyncio
+import hashlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -24,12 +26,17 @@ class Driver(Protocol):
     def log_path(self) -> Path | None: ...
 
 
+FINGERPRINT = "winston.config"      # container label: which engine config the container was started from
+
+
 class DockerDriver:
     def __init__(self, name: str, cfg: EngineConfig):
         import docker  # lazy: only needed when a docker engine exists
         self.name, self.cfg = f"winston-{name}", cfg
         self._client = docker.from_env()
         self._docker = docker
+        run = cfg.model_dump(include={"image", "args", "env", "volumes", "port", "runtime", "ipc_host", "gpu"})
+        self.fingerprint = hashlib.sha256(json.dumps(run, sort_keys=True).encode()).hexdigest()[:16]
 
     def _get(self):
         try:
@@ -41,15 +48,21 @@ class DockerDriver:
         c = await asyncio.to_thread(self._get)
         return bool(c and c.status == "running")
 
+    async def stale(self) -> bool:
+        """A container runs under our name but from another config (an earlier winstond, a hand edit)."""
+        c = await asyncio.to_thread(self._get)
+        return bool(c and c.status == "running" and c.labels.get(FINGERPRINT) != self.fingerprint)
+
     async def start(self) -> None:
         def _start():
             c = self._get()
-            if c and c.status == "running":
+            if c and c.status == "running" and c.labels.get(FINGERPRINT) == self.fingerprint:
                 return
             if c:
                 c.remove(force=True)
             kwargs = dict(
                 name=self.name, command=[_expand(a) for a in self.cfg.args], detach=True,
+                labels={FINGERPRINT: self.fingerprint},
                 environment=self.cfg.env,
                 ports={f"{self.cfg.port}/tcp": ("127.0.0.1", self.cfg.port)},
                 volumes={str(Path(_expand(h)).expanduser()): {"bind": c_, "mode": "rw"}

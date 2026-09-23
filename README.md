@@ -30,8 +30,9 @@ be swapped for a hosted service when that suits you better.
 - **Speaks on its own.** A Home Assistant automation says "the washing machine is done": a chime, the
   words, and you can ask a follow-up. Quiet hours send it to Discord instead.
 - **Discord.** Talk to Winston in DMs from anywhere, get announcements there, have it message friends.
-- **Swappable parts.** Every model is an adapter picked from a dropdown, with presets for vLLM, Ollama,
-  hosted APIs, a GPU voice and a CPU voice.
+- **Swappable parts.** Every model is an adapter picked from a dropdown, with presets for vLLM, llama.cpp,
+  Ollama, hosted APIs, a GPU voice and a CPU voice. `winston check brain` compares two brains on the same
+  requests.
 - **Settings that fill themselves in.** Models, voices, Home Assistant entities and key names are
   dropdowns read from the servers that know them, not text you type.
 - **"Hey Winston".** A custom wake word model for room satellites.
@@ -43,13 +44,13 @@ waits for hardware. See [the plan](docs/plan.md).
 ## Quickstart
 
 Needs Linux, [uv](https://docs.astral.sh/uv/), Home Assistant, and one of the
-[hardware profiles](docs/hardware.md): a 24 GB NVIDIA card with Docker, Ollama on any GPU or CPU, or a
-hosted model.
+[hardware profiles](docs/hardware.md): a 24 GB NVIDIA card with Docker (a 9B or a 27B brain), Ollama on
+any GPU or CPU, or a hosted model.
 
 ```sh
 git clone https://github.com/aldinsmajlovic/winston && cd winston
 uv sync
-(cd services/tts-chatterbox && uv sync)   # GPU voice (nvidia-24gb profile)
+(cd services/tts-chatterbox && uv sync)   # GPU voice (nvidia-24gb profiles)
 (cd services/tts-pocket && uv sync)       # CPU voice (ollama and hosted profiles)
 uv run winston init                       # creates ./data; --list shows the profiles
 ```
