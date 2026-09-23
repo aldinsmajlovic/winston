@@ -25,6 +25,7 @@ from winston.config import resolve
 from winston.config.schema import WinstonConfig
 from winston.core.memory import make_memory_tool, prompt_block
 from winston.core.tools.ask_claude import make_ask_claude_tool
+from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.messaging import make_send_message_tool
 from winston.core.tools.sensors import make_sensor_tool
 from winston.core.tools.web_search import make_web_search_tool
@@ -107,6 +108,8 @@ class Brain:
                 schema, handler = local
                 self.llm.register_function(schema.name, handler)
                 self.tools.standard_tools.append(schema)
+        if self.channel != "voice":                 # the voice channel adds the real one
+            self.add_tool(*make_clone_hint_tool())
         logger.info(f"tools: {[t.name for t in self.tools.standard_tools]}")
 
     def add_tool(self, schema, handler):
