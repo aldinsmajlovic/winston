@@ -32,11 +32,12 @@ CORRECTION = {
 }
 
 
-READ_TOOLS = {"web_search"}
+READ_TOOLS = {"web_search", "ask_claude"}
 
 
 def tool_tier(name: str) -> str:
-    """Read tools only look (GetLiveContext, GetDateTime, get_sensor_readings, web_search); everything else acts."""
+    """Read tools only look (GetLiveContext, GetDateTime, get_sensor_readings, web_search,
+    ask_claude); everything else acts."""
     base = name.split("__")[-1].lower()
     return READ if base.startswith("get") or base in READ_TOOLS else ACT
 

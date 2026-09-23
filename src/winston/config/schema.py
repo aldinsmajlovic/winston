@@ -198,11 +198,26 @@ class WebSearchConfig(Model):
     timeout: float = Field(15.0, ge=1, title="Timeout (s)", json_schema_extra=ui("advanced"))
 
 
+class AskClaudeConfig(Model):
+    model_config = section("voice")
+    enabled: bool = Field(False, description="Hand hard questions to Claude. Uses the Claude Code login on this machine, "
+                                             "CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. "
+                                             "Only the question leaves the house.")
+    model: str = Field("claude-opus-5", json_schema_extra=ui("advanced"))
+    effort: Literal["low", "medium", "high"] = Field("low", description="Reasoning effort. Low answered in about 3 to "
+                                                     "5 s; each step up is slower.", json_schema_extra=ui("advanced"))
+    max_usd_per_day: float = Field(3.0, ge=0, title="Budget per day (USD)",
+                                   description="Past it the tool refuses until midnight. A Max 5x plan's monthly "
+                                               "Agent SDK credit is 100 USD.")
+    max_usd_per_question: float = Field(0.5, gt=0, title="Budget per question (USD)", json_schema_extra=ui("advanced"))
+
+
 class ToolsConfig(Model):
     model_config = section("voice")
     sensors: dict[str, SensorPair] = Field(default_factory=dict,
                                            description="Watched sensors by label; readings come with their age.")
     web_search: WebSearchConfig = Field(WebSearchConfig(), title="Web search")
+    ask_claude: AskClaudeConfig = Field(AskClaudeConfig(), title="Ask Claude")
 
 
 class MemoryConfig(Model):

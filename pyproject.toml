@@ -19,6 +19,7 @@ dependencies = [
     "typer>=0.12",
     "docker>=7.0",
     "google-genai>=2.25",
+    "claude-agent-sdk>=0.2.158",
 ]
 
 [project.scripts]
