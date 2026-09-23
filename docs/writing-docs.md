@@ -27,6 +27,8 @@ links to it.
 | `docs/architecture.md` | How the parts fit, the repository, plugin contracts |
 | `docs/hardware.md` | Profiles, GPUs, measured budgets |
 | `docs/voices.md`, `docs/voice-pe.md` | Their one subject |
+| `docs/tools.md` | Winston's own tools, their keys and limits, memory |
+| `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/plan.md` | Milestones and their status |
 | `docs/decisions.md` | What changed and why, one line each |
 

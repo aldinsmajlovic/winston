@@ -5,7 +5,8 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MCP-18bcf2?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/integrations/mcp_server/)
 
 A self-hosted, full-duplex voice assistant for Home Assistant. Talk to your home; it answers in
-a natural voice, can be interrupted, and keeps everything on your own machine.
+a natural voice and can be interrupted. Voice and home control stay on your own machine; only
+questions you let it look up or hand to Claude go out.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/models-dark.png">
@@ -15,17 +16,21 @@ a natural voice, can be interrupted, and keeps everything on your own machine.
 - **Local voice-to-voice.** Speech recognition, the language model and the voice run on one GPU, or on
   Ollama and the CPU.
 - **Hands through Home Assistant.** Anything you expose, over Home Assistant's own MCP server.
-- **Interruptible and fast.** Around 1.3 s from the end of your sentence to the first spoken word.
+- **Interruptible and fast.** Around 1.3 s from the end of your sentence to the first spoken word
+  (measured headless; barge-in timing is not measured yet).
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
   capped per day.
+- **Speaks on its own.** A Home Assistant automation says "the washing machine is done": a chime, the
+  words, and you can ask a follow-up. Quiet hours send it to Discord instead.
+- **Discord.** Talk to Winston in DMs from anywhere, get announcements there, have it message friends.
 - **Swappable parts.** Every model is an adapter picked from a dropdown, with presets for vLLM, Ollama,
   hosted APIs, a GPU voice and a CPU voice.
 - **"Hey Winston".** A custom wake word model for room satellites.
 
-**Status: early.** Voice, Home Assistant control, the web UI, memory, web search and `ask_claude` work.
-Discord and Home Assistant announcements are being built; the room satellite waits for hardware. See
-[the plan](docs/plan.md).
+**Status: early.** Voice, Home Assistant control, the web UI, memory, web search, `ask_claude` and
+announcements work. The Discord channel is built but not yet run against Discord; the room satellite
+waits for hardware. See [the plan](docs/plan.md).
 
 ## Quickstart
 
@@ -41,7 +46,8 @@ uv sync
 uv run winston init                       # creates ./data; --list shows the profiles
 ```
 
-Set your Home Assistant URL and entities in `data/config.yaml` and tokens in `data/.env`, then:
+Set your Home Assistant URL and entities in `data/config.yaml` and tokens in `data/.env` (optional
+ones for web search, Claude and Discord are listed in [tools](docs/tools.md)), then:
 
 ```sh
 uv run winston up      # everything; Ctrl-C stops it
@@ -55,18 +61,22 @@ Talk at http://localhost:7860, manage it at http://localhost:8700 (build the UI 
 ```mermaid
 flowchart LR
   mic([Browser or satellite]) <--> voice[Voice channel<br/>VAD, STT, barge-in, TTS]
-  cli([winston talk]) <--> brain
+  cli([winston talk, Discord]) <--> brain
   voice <--> brain[Brain<br/>LLM, tools, claim guard]
   brain <--> ha[Home Assistant<br/>MCP server]
   brain <--> tools[Memory, web search,<br/>ask_claude]
   winstond[winstond<br/>API and web UI] -. supervises .-> voice
   winstond -. supervises .-> engines[LLM and TTS engines]
+  ha -. announcements .-> winstond
+  winstond -. announcements .-> voice
   brain <--> engines
 ```
 
 ## Docs
 
 - [Running](docs/running.md): commands, the web UI, engines, logs
+- [Tools](docs/tools.md): memory, web search, `ask_claude`, messaging; keys and limits
+- [Announcements](docs/announcements.md) and [Discord](docs/discord.md)
 - [Architecture](docs/architecture.md): the parts and how they plug together
 - [Hardware](docs/hardware.md): profiles and measured budgets
 - [Voices](docs/voices.md) and the [Voice PE satellite](docs/voice-pe.md)
