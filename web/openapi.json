@@ -230,6 +230,40 @@
         }
       }
     },
+    "/api/speak": {
+      "post": {
+        "summary": "Text in Winston's voice as streamed 16-bit mono PCM, for the Talk page's read aloud",
+        "operationId": "speak_api_speak_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpeakRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "16-bit mono PCM, rate in X-Sample-Rate",
+            "content": {
+              "audio/pcm": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engines/{name}/start": {
       "post": {
         "summary": "Start",
@@ -2020,6 +2054,21 @@
           "voice",
           "discord"
         ]
+      },
+      "SpeakRequest": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "SpeakRequest"
       },
       "Status": {
         "properties": {

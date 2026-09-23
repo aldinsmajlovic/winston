@@ -21,6 +21,7 @@ from winston.config.restarts import restarts_for
 from winston.config.schema import LLMConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
+from winston.core.brain import api_key
 from winston.core.live import Feed, LiveEvent
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
@@ -57,6 +58,10 @@ class Ok(BaseModel):
 
 
 class ChatMessage(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
@@ -220,6 +225,34 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def chat(m: ChatMessage):
         spawn(web.ask(m.text.strip()))
         return Ok()
+
+    @app.post("/api/speak", response_class=StreamingResponse,
+              responses={200: {"content": {"audio/pcm": {}}, "description": "16-bit mono PCM, rate in X-Sample-Rate"}},
+              summary="Text in Winston's voice as streamed 16-bit mono PCM, for the Talk page's read aloud")
+    async def speak(s: SpeakRequest):
+        t = app.state.cfg.tts
+        c = httpx.AsyncClient(timeout=httpx.Timeout(10, read=60))
+        req = c.build_request("POST", f"{t.base_url.rstrip('/')}/audio/speech",
+                              headers={"Authorization": f"Bearer {api_key(t.api_key_env)}"},
+                              json={"model": "winston-tts", "input": s.text.strip(), "voice": t.voice,
+                                    "response_format": "pcm"})
+        try:
+            r = await c.send(req, stream=True)
+        except httpx.HTTPError as e:
+            await c.aclose()
+            raise HTTPException(503, f"speech server not reachable: {type(e).__name__}")
+        if r.status_code != 200:
+            detail = (await r.aread()).decode(errors="replace")[:200]
+            await r.aclose(); await c.aclose()
+            raise HTTPException(502, f"speech server answered {r.status_code}: {detail}")
+
+        async def gen():
+            try:
+                async for chunk in r.aiter_bytes():
+                    yield chunk
+            finally:
+                await r.aclose(); await c.aclose()
+        return StreamingResponse(gen(), media_type="audio/pcm", headers={"X-Sample-Rate": str(t.sample_rate)})
 
     @app.api_route("/api/voice/offer", methods=["POST", "PATCH"], include_in_schema=False)
     async def voice_offer(request: Request):

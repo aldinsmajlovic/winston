@@ -13,6 +13,8 @@ import {
   MicOff,
   Search,
   Send,
+  Volume2,
+  VolumeOff,
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
@@ -23,6 +25,7 @@ import { STATE_LABEL, clock, presence, useChat, useLive, type Item } from '@/api
 import { Presence } from '@/components/presence'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useSpeech } from '@/hooks/use-speech'
 import { useVoice } from '@/hooks/use-voice'
 import { cn } from '@/lib/utils'
 
@@ -41,6 +44,14 @@ function ToolIcon({ name, running }: { name: string; running: boolean }) {
   const base = name.split('__').pop()?.toLowerCase() ?? ''
   const Icon = TOOL_ICONS.find(([match]) => match(base))?.[1] ?? Wrench
   return <Icon className="size-4 shrink-0" />
+}
+
+/** Where the last finished sentence of a streaming reply ends, so speech can start before the rest
+ * arrives; 0 while the first is still coming. */
+function sentencesEnd(text: string): number {
+  let end = 0
+  for (const match of text.matchAll(/[.!?\n]+["')\]]*\s/g)) end = match.index + match[0].length
+  return end
 }
 
 function Line({ item }: { item: Item }) {
@@ -90,7 +101,10 @@ export default function TalkPage() {
   const end = useRef<HTMLDivElement>(null)
   const onVoiceError = useCallback((message: string) => toast.error(message), [])
   const { status: voiceStatus, start: startVoice, stop: stopVoice } = useVoice(onVoiceError)
-  const state = presence(feed, now)
+  const speech = useSpeech(onVoiceError)
+  const listened = useRef<{ since: number; said: Map<string, number> } | null>(null) // replies to what was typed here, and how much of each is spoken
+  const heard = presence(feed, now)
+  const state = speech.playing && heard === 'idle' ? 'speaking' : heard
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10_000)
@@ -100,10 +114,26 @@ export default function TalkPage() {
     void end.current?.scrollIntoView({ block: 'end' })
   }, [feed.items])
 
+  const { on: readAloud, speak } = speech
+  useEffect(() => {
+    const turn = listened.current
+    if (!readAloud || !turn) return
+    feed.items.slice(turn.since).forEach((item) => {
+      if (item.kind !== 'reply' || item.channel !== 'web') return
+      const from = turn.said.get(item.id) ?? 0
+      const to = item.done ? item.text.length : sentencesEnd(item.text)
+      if (to <= from) return
+      turn.said.set(item.id, to)
+      speak(item.text.slice(from, to).trim())
+    })
+  }, [feed.items, readAloud, speak])
+
   const send = (event: FormEvent) => {
     event.preventDefault()
     const message = text.trim()
     if (!message) return
+    if (readAloud) speech.prime()
+    listened.current = { since: feed.items.length, said: new Map() }
     chat.mutate({ body: { text: message } }, { onError: (error) => toast.error(errorText(error)) })
     setText('')
   }
@@ -117,7 +147,19 @@ export default function TalkPage() {
           <h1 className="text-xl font-bold">{status.data?.assistant ?? 'Winston'}</h1>
           <span className="text-muted-foreground">{STATE_LABEL[state]}</span>
         </div>
-        <nav className="ml-auto flex gap-6">
+        <nav className="ml-auto flex items-center gap-6">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Read replies aloud"
+            aria-pressed={readAloud}
+            title={readAloud ? 'Reading replies aloud' : 'Read replies aloud'}
+            onClick={speech.toggle}
+            className={cn('rounded-full', !readAloud && 'text-muted-foreground')}
+          >
+            {readAloud ? <Volume2 className="size-5" /> : <VolumeOff className="size-5" />}
+          </Button>
           <Link to="/dashboard" className="text-muted-foreground hover:text-foreground">
             Dashboard
           </Link>

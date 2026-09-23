@@ -54,7 +54,8 @@ flowchart TB
   pieces, tool calls, announcements). A `LiveObserver` in a channel's pipeline turns frames into
   events; the voice process posts them to `POST /api/live`, web chat publishes in process, and pages
   read `GET /api/live` (recent history, then new events). The browser's WebRTC offer goes through
-  `/api/voice/offer` to the voice channel, so the UI needs only winstond's origin.
+  `/api/voice/offer` to the voice channel, so the UI needs only winstond's origin. `POST /api/speak`
+  passes text to the speech server and streams its PCM back, for the Talk page's read aloud.
 - **Announcements** (`core/announce.py`): winstond is the hub. Home Assistant events, the API and the
   CLI publish; channel processes subscribe to `/api/events` and deliver (chime and speech, or a DM).
   An announcement joins the conversation with its context, so replies to it work.

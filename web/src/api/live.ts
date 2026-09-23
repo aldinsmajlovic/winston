@@ -15,7 +15,7 @@ export const clock = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], 
 
 export type Item =
   | { kind: 'user'; id: string; text: string; channel: string }
-  | { kind: 'reply'; id: string; text: string; done: boolean }
+  | { kind: 'reply'; id: string; text: string; done: boolean; channel: string }
   | { kind: 'tool'; id: string; name: string; label: string; status: NonNullable<LiveEvent['status']> }
   | { kind: 'announcement'; id: string; text: string; ts: number }
   | { kind: 'error'; id: string; text: string }
@@ -40,7 +40,7 @@ function apply(feed: Feed, ev: LiveEvent): Feed {
       if (feed.items.some((item) => item.id === key)) {
         return { ...feed, items: replace(key, (item) => (item.kind === 'reply' ? { ...item, text: item.text + (ev.text ?? '') } : item)) }
       }
-      return { ...feed, items: [...feed.items, { kind: 'reply', id: key, text: ev.text ?? '', done: false }] }
+      return { ...feed, items: [...feed.items, { kind: 'reply', id: key, text: ev.text ?? '', done: false, channel: ev.channel }] }
     }
     case 'reply_end':
       return { ...feed, items: replace(ev.reply ?? '', (item) => (item.kind === 'reply' ? { ...item, done: true } : item)) }

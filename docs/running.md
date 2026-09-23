@@ -29,7 +29,9 @@ winston-llm`; every tool call to `data/logs/tool_calls.jsonl`.
 Talk page: everything Winston hears, says and does on any channel (typed here, spoken through the
 talk button or the voice page), each tool call as one line, and announcements. Type and press Enter,
 or press the round button to talk; it connects the browser's mic to the voice channel through
-winstond, and press it again to hang up. Typed messages form one conversation that starts fresh
+winstond, and press it again to hang up. The speaker button at the top reads typed replies aloud in
+Winston's voice through the browser, a sentence at a time as the reply streams in (off by default,
+remembered per browser); spoken turns already are. Typed messages form one conversation that starts fresh
 after `channels.web.session_idle_mins` (30) and after a settings save. Browsers only give the mic to
 `localhost` or HTTPS, so talking from another device needs HTTPS on the LAN. The page keeps the last
 few hundred events while winstond runs; it is not a transcript archive (the tool log is the record).
