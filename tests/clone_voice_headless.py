@@ -7,17 +7,21 @@ The user asks in one VCTK voice to clone a friend; the "friend", another VCTK vo
 consent line and then talks, as audio only (no VAD frames, as a real mic under the tap sends
 none); then the user asks for Winston's own voice back. Passes when the clone and its consent
 are stored, Winston's next sentence starts within 2 s of the recording ending, and use_voice
-reverts. The test clone is deleted afterwards unless --keep.
+reverts, with no turn taken from the friend's words after the recording stopped (the passage runs
+past the 15 s the recording keeps, as a real friend mid-sentence does). The test clone is deleted afterwards unless --keep. The real clones are copied aside first
+and put back after, so a misheard name can never cost one.
 """
 import asyncio
 import json
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 import numpy as np
 from loguru import logger
-from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame, Frame, StartFrame,
+from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame, Frame, StartFrame, TranscriptionFrame,
                                    TTSAudioRawFrame, TTSStoppedFrame, UserAudioRawFrame, UserStartedSpeakingFrame,
                                    UserStoppedSpeakingFrame, VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame)
 from pipecat.pipeline.pipeline import Pipeline
@@ -34,10 +38,11 @@ from winston.config import resolve  # noqa: E402
 from winston.core import voices  # noqa: E402
 from winston.core.brain import Brain, ToolCallLogObserver  # noqa: E402
 
-USER_VOICE, FRIEND_VOICE, FRIEND = "vctk/p226_023", "vctk/p243_023", "Maria"
+USER_VOICE, FRIEND_VOICE, FRIEND = "vctk/p226_023", "vctk/p243_023", "Zelda"
 PASSAGE = ("Well, today started slowly. I made coffee, read the news for a while and then walked down to the "
            "harbour, where the wind was cold but the light was lovely. After lunch I fixed the bike, which took "
-           "far longer than it should have, and tonight I am cooking pasta for a few friends. That's about it.")
+           "far longer than it should have, and tonight I am cooking pasta for a few friends. Oh, and I still need to "
+           "buy bread on the way home, the good sourdough from the corner bakery, if they have any left.")
 
 
 class Mic(FrameProcessor):
@@ -115,6 +120,20 @@ class Speaker(FrameProcessor):
         await self.push_frame(BotStoppedSpeakingFrame(), FrameDirection.UPSTREAM)
 
 
+class Heard(FrameProcessor):
+    """What the STT passed on as the user's words, with when."""
+
+    def __init__(self):
+        super().__init__()
+        self.texts: list[tuple[float, str]] = []
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TranscriptionFrame):
+            self.texts.append((time.perf_counter(), frame.text))
+        await self.push_frame(frame, direction)
+
+
 async def wait_for(cond, timeout: float, what: str):
     t0 = time.perf_counter()
     while not cond():
@@ -129,11 +148,27 @@ def tool_calls(since: float) -> list[dict]:
 
 
 async def main(keep: bool, save_dir: Path | None) -> int:
+    backup = Path(tempfile.mkdtemp(prefix="winston-clones-"))
+    friends = voices.friends_dir()
+    if friends.is_dir():
+        shutil.copytree(friends, backup, dirs_exist_ok=True)
+    try:
+        return await run(keep, save_dir)
+    finally:
+        mine = {c.slug for c in voices.clones()} if keep else set()
+        for f in list(friends.glob("*")) if friends.is_dir() else []:
+            if not (backup / f.name).exists() and f.name.split(".")[0] not in mine:
+                f.unlink()
+        for f in backup.glob("*"):
+            shutil.copy2(f, friends / f.name)
+        shutil.rmtree(backup)
+
+
+async def run(keep: bool, save_dir: Path | None) -> int:
     ask, _ = synth_user_audio(f"Winston, clone my friend {FRIEND}'s voice.", USER_VOICE)
     consent, _ = synth_user_audio(f"I'm {FRIEND}, and I agree that Winston can copy my voice.", FRIEND_VOICE)
     talk, _ = synth_user_audio(PASSAGE, FRIEND_VOICE)
     back, _ = synth_user_audio("Thanks. Now go back to your own voice, please.", USER_VOICE)
-    voices.delete(voices.slug(FRIEND))
 
     brain = Brain(vp.CFG, channel="voice"); await brain.start()
     stt, tts, tap, mic, speaker = vp.build_stt(), vp.build_tts(), MicTap(), Mic(), Speaker()
@@ -145,7 +180,8 @@ async def main(keep: bool, save_dir: Path | None) -> int:
     for schema, handler in make_voice_tools(vp.CFG, tap, transcribe):
         brain.add_tool(schema, handler)
     agg = LLMContextAggregatorPair(brain.new_context())
-    pipeline = Pipeline([mic, tap, stt, agg.user(), brain.llm, tts, speaker, agg.assistant()])
+    heard = Heard()
+    pipeline = Pipeline([mic, tap, stt, heard, agg.user(), brain.llm, tts, speaker, agg.assistant()])
     worker = PipelineWorker(pipeline, params=PipelineParams(), idle_timeout_secs=None,
                             observers=[ToolCallLogObserver(vp.CFG, channel="clone-test")])
     run = asyncio.create_task(WorkerRunner(handle_sigint=False).run(worker))
@@ -170,6 +206,9 @@ async def main(keep: bool, save_dir: Path | None) -> int:
         ok &= clone is not None and (voices.friends_dir() / f"{clone.slug}.consent.wav").is_file() and first < 2000
         await wait_for(lambda: not speaker.speaking and not tap.muted, 30, "Winston kept talking")
         await asyncio.sleep(1)
+        leaked = [t for at, t in heard.texts if at > speaker.mark]
+        print(f"turns taken from the friend after the recording: {leaked or 'none'}")
+        ok &= not leaked
         mic.say(back, turn=True)
         await wait_for(lambda: any(c["tool"] == "use_voice" and c["event"] == "result" for c in tool_calls(t_start)),
                        30, "use_voice was not called")
@@ -189,10 +228,6 @@ async def main(keep: bool, save_dir: Path | None) -> int:
         save_dir.mkdir(parents=True, exist_ok=True)
         write_wav(save_dir / "winston.wav", np.frombuffer(bytes(speaker.audio), np.int16))
         print(f"saved Winston's side to {save_dir}/winston.wav")
-    if not keep:
-        for c in calls:
-            if c["tool"] == "clone_voice" and c["event"] == "call":
-                voices.delete(voices.slug(c["args"].get("name", "")))
     print("PASS" if ok else "FAIL")
     return 0 if ok else 1
 

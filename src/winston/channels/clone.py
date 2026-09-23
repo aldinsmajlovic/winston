@@ -174,14 +174,14 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
             await say(params, f"Alright. {name}, if you agree, please say: " + CONSENT_LINE.format(name=name))
             got = await capture.run(max_secs=12, start_timeout=8, end_silence_secs=1.0)
             if got is None:
-                await say(params, "I didn't hear anything, so I'll leave it.", wait=False)
+                await say(params, "I didn't hear anything, so I'll leave it.")
                 return await params.result_callback({"error": "nobody spoke, nothing recorded"},
                                                     properties=FunctionCallResultProperties(run_llm=False))
             consent, _ = got
             heard = "".join([t async for t in transcribe(consent)]).strip()
             logger.info(f"clone: consent from {name!r} heard as {heard!r}")
             if not agreed(heard):
-                await say(params, "That didn't sound like a yes, so I won't record anything.", wait=False)
+                await say(params, "That didn't sound like a yes, so I won't record anything.")
                 return await params.result_callback({"error": f"no consent (heard {heard!r}), nothing recorded"},
                                                     properties=FunctionCallResultProperties(run_llm=False))
             await say(params, "Thanks. Now talk to me for about fifteen seconds, about anything at all. "
@@ -190,20 +190,24 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
                                     end_silence_secs=2.5, min_speech_secs=10.0)
             speech = float(got[1].sum()) * VAD_FRAME / RATE if got else 0.0
             if got is None or speech < MIN_SPEECH_SECS:
-                await say(params, "That was too short to copy a voice from, so I'll leave it for now.", wait=False)
+                await say(params, "That was too short to copy a voice from, so I'll leave it for now.")
                 return await params.result_callback({"error": f"only {speech:.0f} s of speech, nothing stored"},
                                                     properties=FunctionCallResultProperties(run_llm=False))
             t_end = time.perf_counter()
             clip = voices.level(voices.speech_only(got[0], got[1], RATE, VAD_FRAME))
             clone = await asyncio.to_thread(voices.save, name, clip, consent, RATE, heard)
             await switch(params, clone.voice)
-            await say(params, f"Got it. This is me as {name} now.", wait=False)
             logger.info(f"clone: stored {clone.voice} ({clone.seconds} s of {speech:.0f} s speech), "
                         f"switched in {(time.perf_counter() - t_end) * 1000:.0f} ms")
+            # still muted: the friend is usually mid-sentence when the recording stops, and their last words
+            # would interrupt this line and become a turn of their own
+            await say(params, f"Got it. This is me as {name} now.")
+            await capture.run(max_secs=5, start_timeout=0.7, end_silence_secs=0.7)   # until they stop talking
             await params.result_callback(
                 {"cloned": name, "voice": clone.voice, "seconds": clone.seconds,
-                 "note": "Already switched and announced aloud. You now speak in this voice until the user asks "
-                         "for your own voice back (use_voice)."},
+                 "note": "The recording is finished and saved; nobody needs to talk for it any more. You already "
+                         "said so aloud and now speak in this voice until the user asks for your own voice back "
+                         "(use_voice)."},
                 properties=FunctionCallResultProperties(run_llm=False))
         finally:
             tap.muted = False
@@ -228,18 +232,21 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
                 result["kept"] = True
         await params.result_callback(result)
 
+    known = [c.name for c in voices.clones()]
     clone_schema = FunctionSchema(
         name="clone_voice",
-        description="Copy a friend's voice and start speaking in it. Use it when the user asks you to clone, copy "
+        description="Record a friend and start speaking in their voice. Use it when the user asks you to clone, copy "
                     "or take someone's voice. The friend must be here: you ask them out loud to agree and then to "
                     "talk for fifteen seconds, and you handle all of that yourself, so call it straight away without "
-                    "asking first.",
+                    "asking first. A voice already cloned is switched to with use_voice instead, unless the user "
+                    "asks to record it again.",
         properties={"name": {"type": "string", "description": "The friend's first name."}},
         required=["name"])
     use_schema = FunctionSchema(
         name="use_voice",
         description="Switch the voice you speak in: a friend's cloned voice by name, or \"own\" for your own voice "
-                    "back. The switch lasts this conversation; set keep only when the user asks to keep it.",
+                    "back. The switch lasts this conversation; set keep only when the user asks to keep it. "
+                    f"Cloned voices: {', '.join(known) if known else 'none yet'}.",
         properties={"name": {"type": "string", "description": "A cloned friend's name, or \"own\"."},
                     "keep": {"type": "boolean", "description": "Save it as your voice from now on."}},
         required=["name"])

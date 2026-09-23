@@ -37,8 +37,9 @@ Ask with the friend in the room: "Winston, clone my friend Maria's voice." Winst
 3. keeps only the speech, levels it and switches to it: "Got it. This is me as Maria now." That
    sentence starts about 0.4 s after she stops (measured headless).
 
-While he records, the mic goes to the recording only, so nothing Maria says counts as a turn and
-Winston stays quiet. Under 6 s of speech is too little and nothing is stored. "Back to your own
+While he records, and until she stops after his "Got it", the mic goes to the recording only, so
+nothing Maria says counts as a turn or cuts him off; Winston stays quiet while she talks. A voice
+already cloned is switched to by name ("use Maria's voice") without recording again. Under 6 s of speech is too little and nothing is stored. "Back to your own
 voice" reverts; the clone lasts the conversation unless you say to keep it, which saves it as
 `tts.voice`. Asking again for the same name records over the old clone.
 
