@@ -186,7 +186,12 @@ class WebSearchConfig(Model):
                                              "leaves the house.")
     provider: Literal["gemini"] = Field("gemini", description="Search backend. gemini: Gemini with Google Search "
                                                               "grounding (needs billing enabled on the key).")
-    model: str = Field("gemini-3.5-flash", json_schema_extra=ui("advanced"))
+    model: str = Field("gemini-3.5-flash-lite", description="Flash-Lite answers in about 1.4 s, Flash in 2.3 s "
+                                                             "(minimal thinking, measured 2026-09-23).",
+                       json_schema_extra=ui("advanced"))
+    thinking: Literal["minimal", "low", "medium", "high"] = Field("minimal", description="Reasoning at the search "
+                                                                  "model. Each step up costs about a second.",
+                                                                  json_schema_extra=ui("advanced"))
     api_key_env: str = Field("GEMINI_API_KEY", title="API key variable", json_schema_extra=ui("advanced"))
     max_per_day: int = Field(100, ge=0, title="Searches per day",
                              description="Hard cap; past it the tool refuses until midnight.")
