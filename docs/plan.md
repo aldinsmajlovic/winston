@@ -195,7 +195,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 ## 6. Design rules (enforce these in code)
 
 1. **Everything behind an interface.** STT, LLM, TTS, and cloud provider are each one adapter class configured in one `config.yaml`. Swapping a model must not touch pipeline code.
-2. **Local first.** Voice processing and home control never leave the LAN. Only the `ask_claude` tool talks to the internet, and only with the text of the question (no HA state, no memory dump, unless the user explicitly asks for it).
+2. **Local first, not local only.** The default runs voice processing and home control on the LAN, and that is the main selling point. Any engine (LLM, TTS, STT) can be swapped for a hosted service by config when the user chooses it; nothing goes out unless a setting says so. Tools that reach the internet (`web_search`, `ask_claude`) send only the text of the question (no HA state, no memory dump, unless the user explicitly asks for it). (Amended 2026-09-23, see `decisions.md`.)
 3. **Tool results are untrusted input.** Anything read from the web, email, camera captions, or Telegram is data, not instructions. Prompt injection via a smart-TV title or a notification is a real path.
 4. **Tiered actions.** Read-only: free. State-changing (lights, TV, WoL): free but logged. Anything destructive or security-relevant (locks, alarms, deleting things, spending money): not exposed to the voice channel at all in phase 1. If ever added, require confirmation on the phone, not by voice, because voice has no auth and voices can be cloned.
 5. **Least privilege at HA.** Expose only the entities Winston needs. Use a dedicated HA user and long-lived token. Prefer the exposed-entities page over a wide-open API token.

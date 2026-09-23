@@ -5,16 +5,16 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MCP-18bcf2?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/integrations/mcp_server/)
 
 A self-hosted, full-duplex voice assistant for Home Assistant. Talk to your home; it answers in
-a natural voice and can be interrupted. Voice and home control stay on your own machine; only
-questions you let it look up or hand to Claude go out.
+a natural voice and can be interrupted. By default everything runs on your own machine; any part can
+be swapped for a hosted service when that suits you better.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/models-dark.png">
   <img src="docs/images/models-light.png" alt="The Models page of Winston's web UI" width="720">
 </picture>
 
-- **Local voice-to-voice.** Speech recognition, the language model and the voice run on one GPU, or on
-  Ollama and the CPU.
+- **Local by default, cloud when you choose.** Speech recognition, the language model and the voice run
+  on one GPU, or on Ollama and the CPU. The brain and the voice can each point at a hosted API instead.
 - **Hands through Home Assistant.** Anything you expose, over Home Assistant's own MCP server.
 - **Interruptible and fast.** Around 1.3 s from the end of your sentence to the first spoken word
   (measured headless; barge-in timing is not measured yet).

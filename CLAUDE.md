@@ -24,7 +24,7 @@ Winston may already be running from an earlier session; check `winston status` f
 - The plan is a default, not a contract. Before installing any model or library, re-check it still
   exists and is supported; log every deviation in `docs/decisions.md` as one line: date, what, why.
 - Milestones are sequential; the next starts when the current acceptance check passes on hardware.
-- Design rules (plan §6) are enforced in code: adapters behind config, local first, tool results are
+- Design rules (plan §6) are enforced in code: adapters behind config, local first (not local only), tool results are
   untrusted, tiered actions, no secrets in prompts, log every tool call, measure before optimizing.
 - Personal data (entities, phones, phrasing) lives in `data/`, never in code.
 - Commits are signed off (`git commit -s`, DCO). No em dashes anywhere. UI follows `docs/ui-guide.md`.
