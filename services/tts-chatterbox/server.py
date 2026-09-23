@@ -6,8 +6,9 @@ response_format=pcm and expects 24 kHz mono int16, which is Chatterbox's native 
 
     .venv/bin/python server.py --voice ../reference/vctk/p232_023.wav --port 8880
 
-Voice conditionals are prepared once per reference clip and cached, so a request may
-name any clip under --voices-dir (e.g. "vctk/p226_023") to switch voices.
+Voice conditionals are prepared once per reference clip and cached (the default plus the eight
+most recently used), so a request may name any clip under --voices-dir (e.g. "vctk/p226_023") to
+switch voices.
 
 Streaming: Chatterbox renders a sentence whole, and its speech-token stage takes about 25 ms per
 character, so a long sentence kept the first audio waiting 1.5 to 2 s. With --stream true (default)
@@ -47,6 +48,7 @@ _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 _stream = {"on": True, "first": 24, "step": 40, "hold": 8}
 SAMPLES_PER_TOKEN = 960           # speech tokens run at 25 Hz, audio at 24 kHz
 FADE = 480                        # 20 ms cross-fade at each seam
+MAX_VOICES = 8                    # prepared clips kept besides the default, least recently used dropped
 
 
 class SpeechRequest(BaseModel):
@@ -67,13 +69,21 @@ def _resolve_voice(name: str | None) -> str:
     if not name or name in _OPENAI_VOICES:
         return _default_voice
     if name in _conds:
+        _conds[name] = _conds.pop(name)      # most recently used goes last
         return name
     path = (_voices_dir / name).with_suffix(".wav")
     if not path.is_file():
         raise HTTPException(400, f"unknown voice {name!r}; no file {path}")
     t0 = time.perf_counter()
-    _model.prepare_conditionals(str(path))
-    _conds[name] = _model.conds
+    # under the GPU lock, so a sentence being rendered keeps its voice, and without autograd, whose
+    # saved tensors otherwise stay on the GPU with every cached voice (11 clips ran a 3090 out of memory)
+    with _lock, torch.inference_mode():
+        before = _model.conds
+        _model.prepare_conditionals(str(path))
+        _conds[name], _model.conds = _model.conds, before
+        for old in [v for v in _conds if v != _default_voice][:-MAX_VOICES]:
+            del _conds[old]
+        torch.cuda.empty_cache()
     log.info("prepared voice %s in %.0f ms", name, (time.perf_counter() - t0) * 1000)
     return name
 
