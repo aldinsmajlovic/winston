@@ -22,7 +22,7 @@ are theme tokens (`--mark-*` in `web/src/index.css`); the geometry lives in `web
 (100 by 100 viewBox: disc radius 46, rim 7, W depth 11, softness 0.85).
 
 `web/public/favicon.svg` and `docs/images/logo.svg` are the mark at rest in full colour, generated
-from the same geometry.
+from the same geometry by `node scripts/mark-svg.ts` in `web/`; rerun it after changing the shape.
 
 ## How it moves
 
