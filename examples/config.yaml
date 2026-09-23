@@ -62,7 +62,7 @@ llm:
 
 stt: {provider: parakeet, model: nemo-parakeet-tdt-0.6b-v3, quantization: int8}
 tts: {provider: openai_speech, base_url: http://127.0.0.1:8880/v1, voice: onyx, sample_rate: 24000}
-vad: {provider: silero, stop_secs: 0.3}
+vad: {provider: silero, stop_secs: 0.3, unfinished_stop_secs: 1.0}
 
 channels:
   voice: {enabled: true, host: 127.0.0.1, port: 7860}

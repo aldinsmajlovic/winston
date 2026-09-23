@@ -629,6 +629,12 @@ export interface components {
              * @default 0.3
              */
             stop_secs?: number;
+            /**
+             * Pause when unfinished (s)
+             * @description Extra wait after silence when the turn detector thinks the sentence is unfinished. One-word answers pay this in full.
+             * @default 1
+             */
+            unfinished_stop_secs?: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -704,7 +710,8 @@ export interface components {
              * Voice activity
              * @default {
              *       "provider": "silero",
-             *       "stop_secs": 0.3
+             *       "stop_secs": 0.3,
+             *       "unfinished_stop_secs": 1
              *     }
              */
             vad?: components["schemas"]["VADConfig"];

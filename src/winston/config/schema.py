@@ -113,6 +113,10 @@ class VADConfig(Model):
     stop_secs: float = Field(0.3, ge=0.1, le=2.0, title="End of speech (s)",
                              description="Silence after speech before the utterance is sent.",
                              json_schema_extra=ui("advanced"))
+    unfinished_stop_secs: float = Field(1.0, ge=0.2, le=5.0, title="Pause when unfinished (s)",
+                                        description="Extra wait after silence when the turn detector thinks the "
+                                                    "sentence is unfinished. One-word answers pay this in full.",
+                                        json_schema_extra=ui("advanced"))
 
 
 class VoiceChannel(Model):

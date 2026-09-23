@@ -6,7 +6,8 @@ import time
 
 from loguru import logger
 from pipecat.frames.frames import (Frame, FunctionCallResultFrame, FunctionCallsStartedFrame,
-                                   LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame)
+                                   LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame,
+                                   TTSSpeakFrame)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -16,6 +17,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, ToolCallLogObserver
+from winston.core.guard import ClaimGuard
 
 QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-response end
 
@@ -50,6 +52,10 @@ class Printer(FrameProcessor):
                 if self._echo:
                     print(text, end="", flush=True)
                 self.buf.append(text)
+        elif isinstance(frame, TTSSpeakFrame):        # the claim guard's correction
+            if self._echo:
+                print(f"\n{frame.text}", end="", flush=True)
+            self.buf.append(f" {frame.text}")
         await self.push_frame(frame, direction)
 
     async def wait_reply(self, timeout=90) -> str:
@@ -68,10 +74,11 @@ async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True)
     """Scripted (messages given, one shared context) or interactive (None) chat."""
     brain = Brain(cfg, channel="text"); await brain.start()
     agg = LLMContextAggregatorPair(brain.new_context())
-    tracker = TurnTracker(); printer = Printer(tracker, echo)
-    worker = PipelineWorker(Pipeline([agg.user(), brain.llm, printer, agg.assistant()]),
+    tracker = TurnTracker(); printer = Printer(tracker, echo); guard = ClaimGuard(cfg, channel="text")
+    worker = PipelineWorker(Pipeline([agg.user(), brain.llm, guard, printer, agg.assistant()]),
                             params=PipelineParams(enable_metrics=False),
-                            observers=[ToolCallLogObserver(cfg, channel="text"), tracker], idle_timeout_secs=None)
+                            observers=[guard.observer, ToolCallLogObserver(cfg, channel="text"), tracker],
+                            idle_timeout_secs=None)
     run_task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(worker))
 
     async def ask(m: str) -> str:

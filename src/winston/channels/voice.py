@@ -6,6 +6,8 @@ started by the supervisor:
 
 Every model sits behind an adapter chosen in config (plan §6, rule 1)."""
 from loguru import logger
+from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import TTSSpeakFrame
@@ -19,12 +21,15 @@ from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.openai.tts import OpenAITTSService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
+from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 from winston.config import load
 from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, ToolCallLogObserver
+from winston.core.guard import ClaimGuard
 
 CFG: WinstonConfig = load()
 _STT_MODEL = None
@@ -58,21 +63,29 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     # Pipecat 1.11 runs the VAD in the user aggregator, not the transport; TransportParams has no
     # vad_analyzer field and silently drops one (the browser test never started a turn because of it).
     vad = SileroVADAnalyzer(params=VADParams(stop_secs=CFG.vad.stop_secs))
-    aggregators = LLMContextAggregatorPair(brain.new_context(),
-                                           user_params=LLMUserAggregatorParams(vad_analyzer=vad))
+    # Smart Turn decides whether a pause ends the turn. When it thinks the sentence is unfinished it
+    # waits unfinished_stop_secs more; Pipecat's default of 3 s made "Yes." take 3 s to reach the LLM.
+    turn_end = LocalSmartTurnAnalyzerV3(params=SmartTurnParams(stop_secs=CFG.vad.unfinished_stop_secs))
+    aggregators = LLMContextAggregatorPair(brain.new_context(), user_params=LLMUserAggregatorParams(
+        vad_analyzer=vad,
+        user_turn_strategies=UserTurnStrategies(stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_end)]),
+    ))
+    guard = ClaimGuard(CFG, channel="voice")
 
     pipeline = Pipeline([
         transport.input(),      # mic audio from the browser
         stt,                    # utterance -> text
         aggregators.user(),     # VAD + turn taking; text -> context
         brain.llm,              # context -> streamed text, tool calls
+        guard,                  # retracts claims no tool call backs
         tts,                    # sentences -> pcm
         transport.output(),     # speaker audio to the browser
         aggregators.assistant(),
     ])
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
-        observers=[UserBotLatencyObserver(), TranscriptionLogObserver(), ToolCallLogObserver(CFG, channel="voice")],
+        observers=[guard.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
+                   ToolCallLogObserver(CFG, channel="voice")],
         idle_timeout_secs=None,
     )
 

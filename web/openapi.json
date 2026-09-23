@@ -1137,6 +1137,15 @@
             "description": "Silence after speech before the utterance is sent.",
             "default": 0.3,
             "level": "advanced"
+          },
+          "unfinished_stop_secs": {
+            "type": "number",
+            "maximum": 5.0,
+            "minimum": 0.2,
+            "title": "Pause when unfinished (s)",
+            "description": "Extra wait after silence when the turn detector thinks the sentence is unfinished. One-word answers pay this in full.",
+            "default": 1.0,
+            "level": "advanced"
           }
         },
         "additionalProperties": false,
@@ -1263,7 +1272,8 @@
             "title": "Voice activity",
             "default": {
               "provider": "silero",
-              "stop_secs": 0.3
+              "stop_secs": 0.3,
+              "unfinished_stop_secs": 1.0
             }
           },
           "channels": {
