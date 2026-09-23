@@ -136,6 +136,100 @@
         }
       }
     },
+    "/api/live": {
+      "get": {
+        "summary": "What Winston hears, says and does: recent events, then new ones, as server-sent events (LiveEvent objects)",
+        "operationId": "live_api_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Events from a channel process into the live feed",
+        "operationId": "live_publish_api_live_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/LiveEvent"
+                },
+                "type": "array",
+                "title": "Events"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "summary": "Say something to Winston in the web conversation; the reply arrives on /api/live",
+        "operationId": "chat_api_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engines/{name}/start": {
       "post": {
         "summary": "Start",
@@ -630,11 +724,32 @@
               "session_idle_mins": 30,
               "contacts": {}
             }
+          },
+          "web": {
+            "$ref": "#/components/schemas/WebChannel",
+            "default": {
+              "session_idle_mins": 30
+            }
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "Channels"
+      },
+      "ChatMessage": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "ChatMessage"
       },
       "Choice": {
         "properties": {
@@ -1223,6 +1338,143 @@
           "voice",
           "discord"
         ]
+      },
+      "LiveEvent": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "default": ""
+          },
+          "ts": {
+            "type": "number",
+            "title": "Ts",
+            "default": 0
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "state",
+              "user",
+              "reply",
+              "reply_end",
+              "tool",
+              "announcement",
+              "error"
+            ],
+            "title": "Type"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "idle",
+                  "listening",
+                  "thinking",
+                  "speaking"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "reply": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply"
+          },
+          "call": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Call"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "running",
+                  "ok",
+                  "error"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "type"
+        ],
+        "title": "LiveEvent",
+        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text."
       },
       "LoggingConfig": {
         "properties": {
@@ -1824,6 +2076,21 @@
           "voice"
         ]
       },
+      "WebChannel": {
+        "properties": {
+          "session_idle_mins": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Conversation resets after (min)",
+            "description": "Idle minutes before the Talk page's typed conversation starts fresh (and re-reads memory).",
+            "default": 30,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WebChannel"
+      },
       "WebSearchConfig": {
         "properties": {
           "enabled": {
@@ -1956,6 +2223,9 @@
                 "enabled": false,
                 "session_idle_mins": 30,
                 "token_env": "DISCORD_BOT_TOKEN"
+              },
+              "web": {
+                "session_idle_mins": 30
               }
             }
           },

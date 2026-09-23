@@ -154,9 +154,17 @@ class DiscordChannel(Model):
                                                  "only reach people who share a server with it.")
 
 
+class WebChannel(Model):
+    session_idle_mins: int = Field(30, ge=1, title="Conversation resets after (min)",
+                                   description="Idle minutes before the Talk page's typed conversation starts fresh "
+                                               "(and re-reads memory).",
+                                   json_schema_extra=ui("advanced"))
+
+
 class Channels(Model):
     voice: VoiceChannel = VoiceChannel()
     discord: DiscordChannel = DiscordChannel()
+    web: WebChannel = WebChannel()
 
 
 class ExposedEntity(Model):

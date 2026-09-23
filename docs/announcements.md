@@ -1,10 +1,12 @@
 # Announcements
 
 Winston can speak without being spoken to: a chime, then the text as given, on every connected
-speaker (a browser tab on the voice page today, the Voice PE satellite later). Outside quiet hours
+speaker (the Talk page with its talk button on, the Voice PE satellite later). Outside quiet hours
 (`announce.quiet_hours`, default 22:00-07:00) it is spoken; `announce.discord` decides when it also
 goes to Discord (`fallback`: only when nothing could speak it). You can answer: the announcement and
-its `context` join the conversation, so "how long did it run?" works right after.
+its `context` join the conversation, so "how long did it run?" works right after. Every announcement
+also shows on the Talk page, and a typed follow-up there knows it too, even when the typed
+conversation starts after it.
 
 ```mermaid
 sequenceDiagram

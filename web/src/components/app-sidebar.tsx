@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Bot, Boxes, Brain, Cpu, House, Mic, Monitor, Moon, Radio, Settings, Sun, Wrench } from 'lucide-react'
+import { Activity, ArrowLeft, BookOpen, Bot, Boxes, Brain, Cpu, House, Mic, Monitor, Moon, Radio, Settings, Sun, Wrench } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/sidebar'
 
 const nav = [
-  { to: '/', label: 'Status', Icon: Activity },
+  { to: '/status', label: 'Status', Icon: Activity },
   { to: '/models', label: 'Models', Icon: Boxes },
   { to: '/assistant', label: 'Assistant', Icon: Bot },
   { to: '/brain', label: 'Brain', Icon: Brain },
@@ -67,10 +67,21 @@ function ThemeMenu() {
 export function AppSidebar() {
   const { pathname } = useLocation()
   const status = $api.useQuery('get', '/api/status')
-  const active = (to: string) => (to === '/' ? pathname === '/' : pathname.startsWith(to))
+  const active = (to: string) => pathname.startsWith(to)
   return (
     <Sidebar>
-      <SidebarHeader className="px-4 py-3 text-sm font-semibold">{status.data?.assistant ?? 'Winston'}</SidebarHeader>
+      <SidebarHeader className="px-2 py-3">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild className="font-semibold">
+              <NavLink to="/">
+                <ArrowLeft />
+                <span>{status.data?.assistant ?? 'Winston'}</span>
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>

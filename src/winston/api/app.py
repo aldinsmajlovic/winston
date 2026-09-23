@@ -9,10 +9,10 @@ from contextlib import asynccontextmanager
 from typing import Any, Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from winston import __version__
 from winston.config import data_dir, load, repo_root, save
@@ -20,7 +20,9 @@ from winston.config.presets import LLM, PROFILES, TTS, stt_presets
 from winston.config.registry import available
 from winston.config.restarts import restarts_for
 from winston.config.schema import LLMConfig, WinstonConfig
+from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
+from winston.core.live import Feed, LiveEvent
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
 
@@ -53,6 +55,10 @@ class Status(BaseModel):
 
 class Ok(BaseModel):
     ok: bool = True
+
+
+class ChatMessage(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
 
 
 class ConfigResult(BaseModel):
@@ -112,18 +118,33 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     cfg = cfg or load()
     sup = Supervisor(cfg)
     hub = Hub(cfg)
+    feed = Feed()
+    web = WebChat(cfg, feed)
+    tasks: set[asyncio.Task] = set()
+
+    def spawn(coro):
+        """Run in the background, holding a reference so the task is not collected mid-way."""
+        t = asyncio.create_task(coro); tasks.add(t); t.add_done_callback(tasks.discard)
+
+    def publish_announcement(a: Announcement) -> Delivery:
+        """The hub delivers to the channels; the feed and the web conversation get it too."""
+        d = hub.publish(a)
+        feed.publish(LiveEvent(channel=a.source, type="announcement", text=a.text))
+        spawn(web.announced(a.text, a.context))
+        return d
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if autostart:
             asyncio.create_task(sup.start_all())
-        listener = asyncio.create_task(ha_events.listen(cfg, hub.publish))
+        listener = asyncio.create_task(ha_events.listen(cfg, publish_announcement))
         yield
         listener.cancel()
+        await web.close()
         await sup.stop_all(owned_only=True)
 
     app = FastAPI(title="winstond", version=__version__, lifespan=lifespan)
-    app.state.supervisor, app.state.cfg, app.state.hub = sup, cfg, hub
+    app.state.supervisor, app.state.cfg, app.state.hub, app.state.feed = sup, cfg, hub, feed
 
     def status_payload() -> Status:
         return Status(
@@ -162,7 +183,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def announce(a: Announcement):
         if not app.state.cfg.announce.enabled:
             raise HTTPException(409, "announcements are off (announce.enabled)")
-        return hub.publish(a)
+        return publish_announcement(a)
 
     @app.get("/api/events", summary="Announcements for one channel process, as server-sent events")
     async def events(channel: Literal["voice", "discord"] = Query(...)):
@@ -180,6 +201,51 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             finally:
                 hub.unsubscribe(channel, q)
         return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.get("/api/live", summary="What Winston hears, says and does: recent events, then new ones, as "
+                                  "server-sent events (LiveEvent objects)")
+    async def live():
+        q = feed.subscribe()
+
+        async def gen():
+            try:
+                for ev in feed.backlog():
+                    yield f"data: {ev.model_dump_json(exclude_none=True)}\n\n"
+                while True:
+                    try:
+                        ev = await asyncio.wait_for(q.get(), timeout=15)
+                        yield f"data: {ev.model_dump_json(exclude_none=True)}\n\n"
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+            finally:
+                feed.unsubscribe(q)
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.post("/api/live", response_model=Ok, summary="Events from a channel process into the live feed")
+    async def live_publish(events: list[LiveEvent]):
+        for ev in events:
+            feed.publish(ev)
+        return Ok()
+
+    @app.post("/api/chat", response_model=Ok,
+              summary="Say something to Winston in the web conversation; the reply arrives on /api/live")
+    async def chat(m: ChatMessage):
+        spawn(web.ask(m.text.strip()))
+        return Ok()
+
+    @app.api_route("/api/voice/offer", methods=["POST", "PATCH"], include_in_schema=False)
+    async def voice_offer(request: Request):
+        """The browser's WebRTC offer and ICE candidates, passed to the voice channel, so the page
+        needs only winstond's origin."""
+        v = app.state.cfg.channels.voice
+        try:
+            async with httpx.AsyncClient(timeout=15) as c:
+                r = await c.request(request.method, f"http://{v.host}:{v.port}/api/offer",
+                                    params=request.query_params, content=await request.body(),
+                                    headers={"content-type": "application/json"})
+        except httpx.HTTPError as e:
+            raise HTTPException(503, f"voice channel not reachable: {type(e).__name__}")
+        return JSONResponse(r.json(), status_code=r.status_code)
 
     @app.post("/api/engines/{name}/start", response_model=Ok)
     async def start(name: str):
@@ -225,6 +291,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         save(new)
         app.state.cfg = new
         await sup.reload(new)
+        await web.reset(new)
         return ConfigResult(saved=True, restarts=restarts)
 
     @app.get("/api/config/schema", summary="JSON Schema of the config, with level and restarts per field")

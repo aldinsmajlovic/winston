@@ -1,5 +1,5 @@
-"""Text channel: the same brain and tools as voice, minus STT and TTS. Used by `winston talk`
-and the Discord channel, later the web chat."""
+"""Text channel: the same brain and tools as voice, minus STT and TTS. Used by `winston talk`,
+the Discord channel and the web chat."""
 import asyncio
 import sys
 import time
@@ -78,8 +78,9 @@ class TextSession:
         s = TextSession(cfg, channel="discord"); await s.start()
         reply = await s.ask("turn on the lights"); await s.close()"""
 
-    def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False):
+    def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False, observers: list | None = None):
         self.cfg, self.channel, self.echo = cfg, channel, echo
+        self._extra = observers or []
         self.last_used = time.monotonic()
         self._lock = asyncio.Lock()          # one question at a time; a second waits its turn
 
@@ -92,7 +93,7 @@ class TextSession:
         self._worker = PipelineWorker(Pipeline([agg.user(), self.brain.llm, guard, self.printer, agg.assistant()]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[guard.observer, ToolCallLogObserver(cfg, channel=self.channel),
-                                                 self._tracker],
+                                                 self._tracker, *self._extra],
                                       idle_timeout_secs=None)
         self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self._worker))
         return self

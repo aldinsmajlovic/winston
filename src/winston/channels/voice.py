@@ -35,6 +35,7 @@ from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, ToolCallLogObserver, api_key
 from winston.core.announce import note, subscribe
 from winston.core.guard import ClaimGuard
+from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 
 CFG: WinstonConfig = load()
 _STT_MODEL = None
@@ -79,6 +80,7 @@ def load_chime(cfg: WinstonConfig = CFG) -> bytes:
 
 
 CHIME = load_chime()
+FEED = FeedPoster(CFG)          # what this channel hears and says, for the Talk page
 
 
 transport_params = {
@@ -124,7 +126,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
         observers=[guard.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
-                   ToolCallLogObserver(CFG, channel="voice")],
+                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True)],
         idle_timeout_secs=None,
     )
 
@@ -155,6 +157,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         logger.info("client disconnected")
         if listener:
             listener.cancel()
+        FEED.put(LiveEvent(channel="voice", type="state", state="idle"))
         await worker.cancel()
         await brain.close()
 

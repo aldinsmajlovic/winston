@@ -20,11 +20,25 @@ winston-llm`; every tool call to `data/logs/tool_calls.jsonl`.
 ## Web UI
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/talk-dark.png">
+  <img src="images/talk-light.png" alt="The Talk page: an announcement, a typed follow-up and a web search" width="720">
+</picture>
+
+`winston up` serves the UI at http://localhost:8700 once `web/dist` exists. The home page is the
+Talk page: everything Winston hears, says and does on any channel (typed here, spoken through the
+talk button or the voice page), each tool call as one line, and announcements. Type and press Enter,
+or press the round button to talk; it connects the browser's mic to the voice channel through
+winstond, and press it again to hang up. Typed messages form one conversation that starts fresh
+after `channels.web.session_idle_mins` (30) and after a settings save. Browsers only give the mic to
+`localhost` or HTTPS, so talking from another device needs HTTPS on the LAN. The page keeps the last
+few hundred events while winstond runs; it is not a transcript archive (the tool log is the record).
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/status-dark.png">
   <img src="images/status-light.png" alt="The Status page: engines, their health and the GPU" width="720">
 </picture>
 
-`winston up` serves the UI at http://localhost:8700 once `web/dist` exists. Status lists every
+Settings is the link at the top right. Status lists every
 engine with icon actions and the GPU. Models picks the brain, voice and hearing from presets, with
 the model list read from the brain's server and the voices from the voices directory and the TTS
 server; Advanced shows the raw fields. The other settings pages are generated from the config schema:

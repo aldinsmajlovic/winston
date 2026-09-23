@@ -45,7 +45,13 @@ flowchart TB
 - **Adapters** (`winston/plugins`): Pipecat services with a settings model, discovered through Python
   entry points (`winston.stt`, `winston.tts`, ...). A third-party package adds one without touching core.
 - **Channels** (`winston/channels`): feed the same brain. Voice is the Pipecat pipeline with VAD,
-  barge-in and latency observers; text is `winston talk` and the Discord channel (DMs); web chat next.
+  barge-in and latency observers; text is `winston talk`, the Discord channel (DMs) and web chat,
+  which runs inside winstond for the Talk page.
+- **Live feed** (`core/live.py`): what Winston hears, says and does, as events (state, user, reply
+  pieces, tool calls, announcements). A `LiveObserver` in a channel's pipeline turns frames into
+  events; the voice process posts them to `POST /api/live`, web chat publishes in process, and pages
+  read `GET /api/live` (recent history, then new events). The browser's WebRTC offer goes through
+  `/api/voice/offer` to the voice channel, so the UI needs only winstond's origin.
 - **Announcements** (`core/announce.py`): winstond is the hub. Home Assistant events, the API and the
   CLI publish; channel processes subscribe to `/api/events` and deliver (chime and speech, or a DM).
   An announcement joins the conversation with its context, so replies to it work.

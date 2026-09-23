@@ -18,6 +18,7 @@ export type ValidationError = components['schemas']['HTTPValidationError']
 export type Preset = components['schemas']['Preset']
 export type Presets = components['schemas']['Presets']
 export type Options = components['schemas']['Options']
+export type LiveEvent = components['schemas']['LiveEvent']
 
 export function errorText(error: unknown): string {
   const detail = (error as ValidationError | undefined)?.detail

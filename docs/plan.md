@@ -190,6 +190,15 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - Re-evaluate quarterly: local omni model with working barge-in (Qwen omni successors via vllm-omni), full-duplex models with tool calling (PersonaPlex successors), better TTS.
 - Each experiment lives on a branch and must pass M2/M3 acceptance before merging.
 
+### UI track (added 2026-09-23, runs next to M3 to M5)
+The web UI started as settings only. Winston himself moves to the front; settings go behind him. Direction chosen from three rounds of mockups, see `decisions.md` and `docs/ui-guide.md`.
+1. **Talk page.** The home page at `/`: the conversation (typed and spoken, tool calls, announcements), his presence and state, a text field and a talk button that connects the browser's mic to the voice channel. Needs a live event feed from winstond that every channel publishes to, and web chat as a channel. **Accept:** typing a question gets a streamed answer; a spoken conversation and an announcement show up in the same feed; tool calls show as one line each.
+2. **Dashboard mode.** Full screen for a wall tablet: the presence large (it is the talk button), one line under it that follows his state, his words filling in while he speaks, announcements taking the screen. Same feed as the Talk page. Also shown inside Home Assistant through its built-in webpage card.
+3. **Home Assistant integration, installable from HACS.** Winston as a conversation agent (HA's Assist chat and the HA app reach Winston's brain, text only; voice stays with Winston), his state as entities, later a native card. Needs winstond reachable from HA on the LAN with a token.
+- Winston's logo replaces the placeholder presence when it exists; the brief is `docs/identity.md`.
+- Browsers only give the mic to HTTPS pages or localhost, so talking from a phone or tablet needs HTTPS on the LAN (a reverse proxy with a certificate). Showing the dashboard does not.
+- **Status: Talk page built 2026-09-23.** Typed turns stream into the page with tool lines (a follow-up to an announcement answered from its context, 2.3 s; a web search turn 5.3 s); the talk button connects through winstond and the voice greeting drives the presence to speaking (checked in headless Chromium with a fake mic). Not yet checked: a spoken turn with a real mic showing in the feed. Discord and `winston talk` do not publish to the feed yet.
+
 ---
 
 ## 6. Design rules (enforce these in code)

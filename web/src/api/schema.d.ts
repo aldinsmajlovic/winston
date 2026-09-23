@@ -89,6 +89,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What Winston hears, says and does: recent events, then new ones, as server-sent events (LiveEvent objects) */
+        get: operations["live_api_live_get"];
+        put?: never;
+        /** Events from a channel process into the live feed */
+        post: operations["live_publish_api_live_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Say something to Winston in the web conversation; the reply arrives on /api/live */
+        post: operations["chat_api_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines/{name}/start": {
         parameters: {
             query?: never;
@@ -369,6 +404,17 @@ export interface components {
              *     }
              */
             discord?: components["schemas"]["DiscordChannel"];
+            /**
+             * @default {
+             *       "session_idle_mins": 30
+             *     }
+             */
+            web?: components["schemas"]["WebChannel"];
+        };
+        /** ChatMessage */
+        ChatMessage: {
+            /** Text */
+            text: string;
         };
         /** Choice */
         Choice: {
@@ -658,6 +704,47 @@ export interface components {
              *     }
              */
             thinking?: components["schemas"]["Thinking"];
+        };
+        /**
+         * LiveEvent
+         * @description One thing that happened. Which fields are set depends on `type`:
+         *     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
+         *     tool: call, name, status, label, ms. announcement: text. error: text.
+         */
+        LiveEvent: {
+            /**
+             * Id
+             * @default
+             */
+            id?: string;
+            /**
+             * Ts
+             * @default 0
+             */
+            ts?: number;
+            /** Channel */
+            channel: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error";
+            /** State */
+            state?: ("idle" | "listening" | "thinking" | "speaking") | null;
+            /** Text */
+            text?: string | null;
+            /** Reply */
+            reply?: string | null;
+            /** Call */
+            call?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Status */
+            status?: ("running" | "ok" | "error") | null;
+            /** Label */
+            label?: string | null;
+            /** Ms */
+            ms?: number | null;
         };
         /** LoggingConfig */
         LoggingConfig: {
@@ -962,6 +1049,15 @@ export interface components {
              */
             port?: number;
         };
+        /** WebChannel */
+        WebChannel: {
+            /**
+             * Conversation resets after (min)
+             * @description Idle minutes before the Talk page's typed conversation starts fresh (and re-reads memory).
+             * @default 30
+             */
+            session_idle_mins?: number;
+        };
         /** WebSearchConfig */
         WebSearchConfig: {
             /**
@@ -1068,6 +1164,9 @@ export interface components {
              *         "enabled": false,
              *         "session_idle_mins": 30,
              *         "token_env": "DISCORD_BOT_TOKEN"
+             *       },
+             *       "web": {
+             *         "session_idle_mins": 30
              *       }
              *     }
              */
@@ -1249,6 +1348,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    live_api_live_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    live_publish_api_live_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveEvent"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_api_chat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatMessage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
                 };
             };
             /** @description Validation Error */

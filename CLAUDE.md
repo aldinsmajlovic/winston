@@ -35,5 +35,6 @@ Winston may already be running from an earlier session; check `winston status` f
 A change is not done until the docs say it exists. Every feature, command, tool, channel or visible
 UI change updates `README.md` and the page that owns the subject in the same commit, following
 `docs/writing-docs.md`: README stays a short front page, detail goes to `docs/`, new subjects get their
-own page, screenshots over prose, Mermaid over ASCII diagrams. Before committing, reread the README and
+own page, screenshots over prose, Mermaid over ASCII diagrams. Any visible UI change retakes the affected
+screenshots in `docs/images/` (light and dark) in the same commit. Before committing, reread the README and
 fix anything no longer true.

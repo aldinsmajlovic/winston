@@ -9,8 +9,8 @@ a natural voice and can be interrupted. By default everything runs on your own m
 be swapped for a hosted service when that suits you better.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/models-dark.png">
-  <img src="docs/images/models-light.png" alt="The Models page of Winston's web UI" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/talk-dark.png">
+  <img src="docs/images/talk-light.png" alt="The Talk page: an announcement, a typed follow-up and a web search" width="720">
 </picture>
 
 - **Local by default, cloud when you choose.** Speech recognition, the language model and the voice run
@@ -18,6 +18,8 @@ be swapped for a hosted service when that suits you better.
 - **Hands through Home Assistant.** Anything you expose, over Home Assistant's own MCP server.
 - **Interruptible and fast.** Around 1.3 s from the end of your sentence to the first spoken word
   (measured headless; barge-in timing is not measured yet).
+- **A Talk page.** Type or talk to Winston in the browser and see what he heard, said and did,
+  announcements included; settings sit behind it.
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
   capped per day.
@@ -28,7 +30,7 @@ be swapped for a hosted service when that suits you better.
   hosted APIs, a GPU voice and a CPU voice.
 - **"Hey Winston".** A custom wake word model for room satellites.
 
-**Status: early.** Voice, Home Assistant control, the web UI, memory, web search, `ask_claude` and
+**Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and
 announcements work. The Discord channel is built but not yet run against Discord; the room satellite
 waits for hardware. See [the plan](docs/plan.md).
 
@@ -53,8 +55,8 @@ ones for web search, Claude and Discord are listed in [tools](docs/tools.md)), t
 uv run winston up      # everything; Ctrl-C stops it
 ```
 
-Talk at http://localhost:7860, manage it at http://localhost:8700 (build the UI once with
-`cd web && pnpm install && pnpm build`).
+Talk to Winston and manage him at http://localhost:8700 (build the UI once with
+`cd web && pnpm install && pnpm build`); Pipecat's own voice page is still at http://localhost:7860.
 
 ## How it fits together
 
@@ -78,6 +80,7 @@ flowchart LR
 - [Tools](docs/tools.md): memory, web search, `ask_claude`, messaging; keys and limits
 - [Announcements](docs/announcements.md) and [Discord](docs/discord.md)
 - [Architecture](docs/architecture.md): the parts and how they plug together
+- [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks and why
 - [Hardware](docs/hardware.md): profiles and measured budgets
 - [Voices](docs/voices.md) and the [Voice PE satellite](docs/voice-pe.md)
 - [Decisions](docs/decisions.md): what changed and why
