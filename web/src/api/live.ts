@@ -4,7 +4,7 @@ import { $api, type LiveEvent } from './client'
 export type PresenceState = NonNullable<LiveEvent['state']>
 
 export const STATE_LABEL: Record<PresenceState, string> = {
-  idle: 'Here if you need me',
+  idle: 'Idle',
   listening: 'Listening',
   thinking: 'Thinking',
   speaking: 'Speaking',
