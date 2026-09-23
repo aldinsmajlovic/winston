@@ -1,4 +1,4 @@
-"""Cloning a voice by asking, on the voice channel: "clone my friend Erik's voice".
+"""Cloning a voice by asking, on the voice channel: "clone my friend Erik's voice", or "clone my voice".
 
 The clone_voice tool asks the friend to agree out loud, checks the words with the channel's own
 STT, has them talk for about fifteen seconds, keeps only the speech, stores it with the consent
@@ -235,12 +235,13 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
     known = [c.name for c in voices.clones()]
     clone_schema = FunctionSchema(
         name="clone_voice",
-        description="Record a friend and start speaking in their voice. Use it when the user asks you to clone, copy "
-                    "or take someone's voice. The friend must be here: you ask them out loud to agree and then to "
-                    "talk for fifteen seconds, and you handle all of that yourself, so call it straight away without "
-                    "asking first. A voice already cloned is switched to with use_voice instead, unless the user "
-                    "asks to record it again.",
-        properties={"name": {"type": "string", "description": "The friend's first name."}},
+        description="Record someone and start speaking in their voice: a friend, or the user themself (\"clone my "
+                    "voice\"). Use it whenever the user asks you to clone, copy or take a voice. The person must be "
+                    "at the mic: you ask them out loud to agree and then to talk for fifteen seconds, and you handle "
+                    "all of that yourself, so call it straight away without asking first. A voice already cloned is "
+                    "switched to with use_voice instead, unless the user asks to record it again.",
+        properties={"name": {"type": "string",
+                             "description": "Whose voice, by first name; the user's own name for their own voice."}},
         required=["name"])
     use_schema = FunctionSchema(
         name="use_voice",

@@ -28,7 +28,8 @@ Clone only from a permissively licensed clip or from someone who agreed to it, a
 
 ## Cloned voices
 
-Ask with the friend in the room: "Winston, clone my friend Maria's voice." Winston then:
+Ask with the friend in the room: "Winston, clone my friend Maria's voice", or "clone my voice" for
+your own. Winston then:
 
 1. asks Maria to say "I'm Maria, and I agree that Winston can copy my voice." Speech-to-text checks
    the words; without "agree" (or with "don't agree") nothing is recorded.
