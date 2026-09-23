@@ -29,3 +29,11 @@ Winston may already be running from an earlier session; check `winston status` f
 - Personal data (entities, phones, phrasing) lives in `data/`, never in code.
 - Commits are signed off (`git commit -s`, DCO). No em dashes anywhere. UI follows `docs/ui-guide.md`.
 - Python with `uv`. Secrets in `data/.env` only.
+
+## Docs
+
+A change is not done until the docs say it exists. Every feature, command, tool, channel or visible
+UI change updates `README.md` and the page that owns the subject in the same commit, following
+`docs/writing-docs.md`: README stays a short front page, detail goes to `docs/`, new subjects get their
+own page, screenshots over prose, Mermaid over ASCII diagrams. Before committing, reread the README and
+fix anything no longer true.

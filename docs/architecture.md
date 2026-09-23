@@ -21,20 +21,17 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
 
 ## Shape
 
-```
-              web UI (React, shadcn)        winston CLI (typer)
-                          \                    /
-                       winstond  (FastAPI: REST + SSE)
-                          |
-        +-----------------+------------------+
-        |                 |                  |
-   supervisor          brain              channels
-   (engines)     (LLM + tools + policy)   voice (Pipecat WebRTC), text, discord, satellites
-        |                 |
-   drivers:          tool sources:
-   docker,           MCP servers (Home Assistant is one entry),
-   subprocess,       local tool plugins
-   external URL
+```mermaid
+flowchart TB
+  ui([Web UI<br/>React, shadcn]) --> api
+  cli([winston CLI<br/>typer]) --> api
+  api[winstond<br/>FastAPI: REST + SSE] --> sup[Supervisor]
+  api --> brain[Brain<br/>LLM, tools, policy]
+  api --> ch[Channels<br/>voice, text, Discord, satellites]
+  ch --> brain
+  sup --> drv[Drivers<br/>docker, subprocess, external URL]
+  brain --> mcp[MCP servers<br/>Home Assistant is one entry]
+  brain --> local[Local tool plugins]
 ```
 
 - **Engines** (`winston/engines`): heavy processes declared in config with a driver. `docker` runs the
@@ -64,7 +61,7 @@ web/                the UI (Vite, React, shadcn/ui); built assets are served by 
 assets/             bundled voice samples (CC BY 4.0)
 examples/           config.yaml, persona.md, env.example; `winston init` copies them
 tests/              acceptance checks against real hardware, run by `winston check`
-docs/               plan, decisions, this page, running, voices, ui-guide
+docs/               plan, decisions, this page, running, voices, ui-guide, writing-docs; images/ holds screenshots
 data/               your instance; gitignored
 ```
 

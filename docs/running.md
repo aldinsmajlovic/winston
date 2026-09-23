@@ -19,6 +19,11 @@ winston-llm`; every tool call to `data/logs/tool_calls.jsonl`.
 
 ## Web UI
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/status-dark.png">
+  <img src="images/status-light.png" alt="The Status page: engines, their health and the GPU" width="720">
+</picture>
+
 `winston up` serves the UI at http://localhost:8700 once `web/dist` exists. Status lists every
 engine with icon actions and the GPU. Models picks the brain, voice and hearing from presets, with
 the model list read from the brain's server and the voices from the voices directory and the TTS
