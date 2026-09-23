@@ -158,7 +158,9 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
     capture = Capture(tap, vad)
 
     async def say(params: FunctionCallParams, text: str, wait: bool = True):
-        await params.llm.push_frame(TTSSpeakFrame(text))
+        # kept out of the context: "now talk to me for fifteen seconds" read back later as his own words
+        # made him wait for the user to talk ("talk about something" got "Sure." and nothing more)
+        await params.llm.push_frame(TTSSpeakFrame(text, append_to_context=False))
         if wait:
             await tap.said()
 
@@ -167,11 +169,13 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
 
     async def clone_voice(params: FunctionCallParams):
         name = " ".join(str(params.arguments.get("name", "")).split()).strip()
+        own = bool(params.arguments.get("own", False))
         if not voices.slug(name):
             return await params.result_callback({"error": "say whose voice it is, by first name"})
         tap.muted = True
         try:
-            await say(params, f"Alright. {name}, if you agree, please say: " + CONSENT_LINE.format(name=name))
+            await say(params, ("Alright. So I know you agree, say: " if own else
+                               f"Alright. {name}, if you agree, please say: ") + CONSENT_LINE.format(name=name))
             got = await capture.run(max_secs=12, start_timeout=8, end_silence_secs=1.0)
             if got is None:
                 await say(params, "I didn't hear anything, so I'll leave it.")
@@ -201,12 +205,13 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
                         f"switched in {(time.perf_counter() - t_end) * 1000:.0f} ms")
             # still muted: the friend is usually mid-sentence when the recording stops, and their last words
             # would interrupt this line and become a turn of their own
-            await say(params, f"Got it. This is me as {name} now.")
+            await say(params, "Got it. This is me in your voice now." if own else f"Got it. This is me as {name} now.")
             await capture.run(max_secs=5, start_timeout=0.7, end_silence_secs=0.7)   # until they stop talking
             await params.result_callback(
                 {"cloned": name, "voice": clone.voice, "seconds": clone.seconds,
-                 "note": "The recording is finished and saved; nobody needs to talk for it any more. You already "
-                         "said so aloud and now speak in this voice until the user asks for your own voice back "
+                 "note": "Done and over: consent given, recording finished and saved, and you have already said "
+                         "aloud that you now speak in this voice. Nobody needs to talk for it any more; carry on the "
+                         "conversation normally, in this voice, until the user asks for your own voice back "
                          "(use_voice)."},
                 properties=FunctionCallResultProperties(run_llm=False))
         finally:
@@ -235,13 +240,14 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
     known = [c.name for c in voices.clones()]
     clone_schema = FunctionSchema(
         name="clone_voice",
-        description="Record someone and start speaking in their voice: a friend, or the user themself (\"clone my "
-                    "voice\"). Use it whenever the user asks you to clone, copy or take a voice. The person must be "
-                    "at the mic: you ask them out loud to agree and then to talk for fifteen seconds, and you handle "
-                    "all of that yourself, so call it straight away without asking first. A voice already cloned is "
-                    "switched to with use_voice instead, unless the user asks to record it again.",
+        description="Clone a voice and switch to it: a friend's, or the user's own (\"clone my voice\"). Only this "
+                    "tool can record; it speaks the instructions and records by itself. So whenever the user asks "
+                    "to clone, copy or take a voice, call it at once and say nothing first: never ask anyone to "
+                    "start talking yourself. For a voice already cloned, use use_voice instead unless the user asks "
+                    "to record it again.",
         properties={"name": {"type": "string",
-                             "description": "Whose voice, by first name; the user's own name for their own voice."}},
+                             "description": "Whose voice, by first name; the user's own name for their own voice."},
+                    "own": {"type": "boolean", "description": "True when it is the user's own voice."}},
         required=["name"])
     use_schema = FunctionSchema(
         name="use_voice",
