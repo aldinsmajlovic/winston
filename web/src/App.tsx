@@ -4,6 +4,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import AssistantPage from '@/pages/assistant'
 import BrainPage from '@/pages/brain'
 import ChannelsPage from '@/pages/channels'
+import DashboardPage from '@/pages/dashboard'
 import EnginePage from '@/pages/engine'
 import EnginesPage from '@/pages/engines'
 import HomeAssistantPage from '@/pages/home-assistant'
@@ -30,6 +31,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<TalkPage />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
       <Route element={<SettingsLayout />}>
         <Route path="/status" element={<StatusPage />} />
         <Route path="/models" element={<ModelsPage />} />

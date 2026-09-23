@@ -19,19 +19,12 @@ import {
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { $api, errorText } from '@/api/client'
-import { presence, useChat, useLive, type Item, type PresenceState } from '@/api/live'
+import { STATE_LABEL, clock, presence, useChat, useLive, type Item } from '@/api/live'
 import { Presence } from '@/components/presence'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useVoice } from '@/hooks/use-voice'
 import { cn } from '@/lib/utils'
-
-const STATE_LABEL: Record<PresenceState, string> = {
-  idle: 'Here if you need me',
-  listening: 'Listening',
-  thinking: 'Thinking',
-  speaking: 'Speaking',
-}
 
 const TOOL_ICONS: [(base: string) => boolean, LucideIcon][] = [
   [(b) => b.startsWith('hass'), Lightbulb],
@@ -49,8 +42,6 @@ function ToolIcon({ name, running }: { name: string; running: boolean }) {
   const Icon = TOOL_ICONS.find(([match]) => match(base))?.[1] ?? Wrench
   return <Icon className="size-4 shrink-0" />
 }
-
-const clock = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 function Line({ item }: { item: Item }) {
   switch (item.kind) {
@@ -127,6 +118,9 @@ export default function TalkPage() {
           <span className="text-muted-foreground">{STATE_LABEL[state]}</span>
         </div>
         <nav className="ml-auto flex gap-6">
+          <Link to="/dashboard" className="text-muted-foreground hover:text-foreground">
+            Dashboard
+          </Link>
           <Link to="/status" className="text-muted-foreground hover:text-foreground">
             Settings
           </Link>

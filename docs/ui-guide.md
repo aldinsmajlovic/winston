@@ -1,6 +1,6 @@
 # UI guide
 
-The web UI has two areas. **Winston** is the front: the Talk page and, later, dashboard mode. It is
+The web UI has two areas. **Winston** is the front: the Talk page and dashboard mode. It is
 where you talk to him and see what he did. **Settings** is behind it: status, models, engines and the
 config forms. Both use one component library and no hand-written CSS beyond theme tokens.
 
@@ -35,7 +35,10 @@ transport), connecting through winstond to the voice channel.
 - His presence is his logo, one component, `Presence`, driven by his state (idle, listening,
   thinking, speaking); see [identity](identity.md). Pages never draw their own version of it.
 - Voice and typing sit side by side at the bottom: a text field and one round talk button.
-- Links to Settings are plain text at the top right, not a sidebar.
+- Links to Dashboard and Settings are plain text at the top right, not a sidebar.
+- Dashboard mode shows the logo large as the talk button, one line for his state, the last exchange
+  in large type and announcements across the screen; a plain Close link at the top right is its only
+  control besides the logo.
 
 ## Settings
 

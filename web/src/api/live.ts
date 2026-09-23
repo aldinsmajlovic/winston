@@ -3,6 +3,16 @@ import { $api, type LiveEvent } from './client'
 
 export type PresenceState = NonNullable<LiveEvent['state']>
 
+export const STATE_LABEL: Record<PresenceState, string> = {
+  idle: 'Here if you need me',
+  listening: 'Listening',
+  thinking: 'Thinking',
+  speaking: 'Speaking',
+}
+
+/** A server timestamp (seconds) as a local time of day. */
+export const clock = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
 export type Item =
   | { kind: 'user'; id: string; text: string; channel: string }
   | { kind: 'reply'; id: string; text: string; done: boolean }
@@ -59,6 +69,11 @@ export function presence(feed: Feed, now: number): PresenceState {
   const latest = Object.values(feed.states).sort((a, b) => b.ts - a.ts)[0]
   if (!latest || (latest.state !== 'idle' && now / 1000 - latest.ts > STALE_SECS)) return 'idle'
   return latest.state
+}
+
+/** When any channel last changed state, in server seconds; 0 if none has. */
+export function lastChange(feed: Feed): number {
+  return Math.max(0, ...Object.values(feed.states).map((s) => s.ts))
 }
 
 /** The live feed: recent history on connect, then events as they happen. A reconnect resends the

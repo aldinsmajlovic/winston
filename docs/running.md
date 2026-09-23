@@ -34,6 +34,19 @@ after `channels.web.session_idle_mins` (30) and after a settings save. Browsers 
 few hundred events while winstond runs; it is not a transcript archive (the tool log is the record).
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/dashboard-dark.png">
+  <img src="images/dashboard-light.png" alt="Dashboard mode: Winston's logo large, speaking, with the question and his answer under it" width="720">
+</picture>
+
+Dashboard mode, at http://localhost:8700/dashboard (the Dashboard link on the Talk page), is the
+same feed full screen for a wall tablet. Tap the logo to talk and again to hang up. The line under it
+follows his state; what you said and his answer show while he is busy and for 20 seconds after. An
+announcement takes the screen for a minute, or until you tap it. The page asks the browser to keep
+the screen on, which like the mic only works on `localhost` or HTTPS. To show it in Home Assistant,
+add a Webpage card pointing at the dashboard URL; if Home Assistant itself is on HTTPS, the browser
+blocks a plain `http://` page inside it, so Winston needs HTTPS too.
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/status-dark.png">
   <img src="images/status-light.png" alt="The Status page: engines, their health and the GPU" width="720">
 </picture>

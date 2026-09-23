@@ -22,6 +22,8 @@ be swapped for a hosted service when that suits you better.
   (measured headless; barge-in timing is not measured yet).
 - **A Talk page.** Type or talk to Winston in the browser and see what he heard, said and did,
   announcements included; his logo moves as he listens, thinks and speaks. Settings sit behind it.
+- **A wall dashboard.** Full screen for a tablet: tap the logo to talk, his answer in large type,
+  announcements across the screen.
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
   capped per day.

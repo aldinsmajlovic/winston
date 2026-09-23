@@ -2,8 +2,8 @@
 
 <img src="images/logo.svg" alt="Winston's logo" width="120">
 
-Winston's logo is also his presence: the mark in the Talk page header, the favicon, later the thing that
-fills a wall screen in dashboard mode and the light pattern on a Voice PE. Every page draws him through
+Winston's logo is also his presence: the mark in the Talk page header, the talk button that fills a
+wall screen in dashboard mode, the favicon, and later the light pattern on a Voice PE. Every page draws him through
 one component, `web/src/components/presence.tsx`, so he looks and moves the same everywhere.
 
 ## The mark
@@ -42,7 +42,7 @@ a still. Once Winston is idle and settled the animation stops, so an idle page c
 ## Where it shows
 
 - Talk page header, next to the name and the state.
+- Dashboard mode, large, as the talk button.
 - The browser tab (favicon) and the README.
-- Planned: dashboard mode, large, as the talk button; a Home Assistant card through the planned
-  integration (`docs/plan.md`); the Voice PE's 12 lights, upper lights sky and lower lights charcoal,
+- Planned: a Home Assistant card through the planned integration (`docs/plan.md`); the Voice PE's 12 lights, upper lights sky and lower lights charcoal,
   the lower ones brightening when he speaks (`docs/voice-pe.md`).
