@@ -29,35 +29,47 @@ class Model(BaseModel):
 class AssistantConfig(Model):
     model_config = section("voice", "discord")
     name: str = Field("Winston", description="What the assistant calls itself.")
-    persona: str = Field("persona.md", title="Persona file", description="Persona file, relative to the data directory.",
-                         json_schema_extra=ui("advanced"))
+    persona: str = Field("persona.md", title="Persona file",
+                         description="Persona file, relative to the data directory.",
+                         json_schema_extra=ui("advanced", options="personas"))
 
 
 class EngineConfig(Model):
     """A heavy process Winston depends on: LLM server, TTS server, later STT. Managed by the supervisor."""
     model_config = section("{engine}")
-    driver: Literal["docker", "subprocess", "external"] = Field(description="How the engine is run.")
-    enabled: bool = True
+    driver: Literal["docker", "subprocess", "external"] = Field(
+        description="How the engine is run. Docker container: Winston runs an image. Process: Winston runs a "
+                    "command on this machine. External server: something you run yourself; Winston only checks it.",
+        json_schema_extra=ui(labels={"docker": "Docker container", "subprocess": "Process", "external": "External server"},
+                             icons={"docker": "docker", "subprocess": "process", "external": "external"}))
+    enabled: bool = Field(True, description="Start it with winston up. Off keeps the entry without running it.")
     port: int = Field(description="Local port the engine listens on.")
     health: str = Field("/health", title="Health path",
                         description="HTTP path that returns 200 when ready. Empty: no check, the engine counts as up "
                                     "whenever its process is (hosted APIs).",
                         json_schema_extra=ui("advanced"))
-    startup_timeout: int = Field(600, title="Startup timeout (s)", description="Seconds to wait for health before giving up.",
+    startup_timeout: int = Field(600, title="Startup timeout (s)",
+                                 description="Seconds to wait for health before giving up.",
                                  json_schema_extra=ui("advanced"))
     # docker
-    image: str | None = Field(None, description="Container image (docker driver).", json_schema_extra=ui(drivers=["docker"]))
+    image: str | None = Field(None,
+                              description="Container image (docker driver).", json_schema_extra=ui(drivers=["docker"]))
     args: list[str] = Field(default_factory=list, title="Arguments",
                             description="Command arguments (docker driver). {model} expands to the brain's model.",
                             json_schema_extra=ui("advanced", drivers=["docker"]))
     env: dict[str, str] = Field(default_factory=dict, title="Environment",
+                                description="Environment variables for the engine's process or container.",
                                 json_schema_extra=ui("advanced", drivers=["docker", "subprocess"]))
     volumes: dict[str, str] = Field(default_factory=dict, description="host path -> container path",
                                     json_schema_extra=ui("advanced", drivers=["docker"]))
-    gpu: bool = Field(False, title="GPU", description="Give the container the GPU.", json_schema_extra=ui(drivers=["docker"]))
+    gpu: bool = Field(False, title="GPU",
+                      description="Give the container the GPU.", json_schema_extra=ui(drivers=["docker"]))
     runtime: str | None = Field(None, description="Container runtime, e.g. nvidia.",
                                 json_schema_extra=ui("advanced", drivers=["docker"]))
-    ipc_host: bool = Field(False, title="IPC host", json_schema_extra=ui("advanced", drivers=["docker"]))
+    ipc_host: bool = Field(False, title="IPC host",
+                           description="Share the host's IPC namespace; vLLM needs it for shared memory between "
+                                       "workers.",
+                           json_schema_extra=ui("advanced", drivers=["docker"]))
     # subprocess
     cmd: list[str] = Field(default_factory=list, title="Command",
                            description="Command line (subprocess driver). {data}, {repo} and {model} expand.",
@@ -73,9 +85,17 @@ class Sampling(Model):
     model_config = section("voice", "discord")
     temperature: float = Field(0.3, ge=0, le=2, description="Lower is more reliable at tool calls.",
                                json_schema_extra=ui("advanced"))
-    top_p: float = Field(0.8, ge=0, le=1, title="Top-p", json_schema_extra=ui("advanced"))
-    presence_penalty: float = Field(0.0, ge=-2, le=2, title="Presence penalty", json_schema_extra=ui("advanced"))
-    max_tokens: int = Field(512, ge=16, title="Max tokens", json_schema_extra=ui("advanced"))
+    top_p: float = Field(0.8, ge=0, le=1, title="Top-p",
+                         description="Samples only from the most likely tokens that add up to this share. Lower is "
+                                     "more focused.",
+                         json_schema_extra=ui("advanced"))
+    presence_penalty: float = Field(0.0, ge=-2, le=2, title="Presence penalty",
+                                    description="Positive values push the model away from repeating itself. Qwen's "
+                                                "chat default is 1.5; 0 calls tools more reliably.",
+                                    json_schema_extra=ui("advanced"))
+    max_tokens: int = Field(512, ge=16, title="Max tokens",
+                            description="Longest reply in tokens. Spoken replies are short; this is a safety cap.",
+                            json_schema_extra=ui("advanced"))
 
 
 class Thinking(Model):
@@ -85,44 +105,65 @@ class Thinking(Model):
     control: Literal["chat_template", "reasoning_effort", "none"] = Field(
         "chat_template", description="How the server is told to think or not: chat_template for vLLM and llama.cpp "
                                      "(enable_thinking), reasoning_effort for Ollama, none for servers without a switch.",
-        json_schema_extra=ui("advanced"))
+        json_schema_extra=ui("advanced", labels={"chat_template": "Chat template (vLLM, llama.cpp)",
+                                                 "reasoning_effort": "Reasoning effort (Ollama)", "none": "No switch"}))
 
 
 class LLMConfig(Model):
     model_config = section("voice", "discord")
-    provider: str = Field("openai_compatible", json_schema_extra=ui("advanced"))
-    base_url: str = Field("http://127.0.0.1:8000/v1", title="Base URL", json_schema_extra=ui("advanced"))
+    provider: Literal["openai_compatible"] = Field("openai_compatible",
+                                                   description="Protocol the brain is spoken to with. Every "
+                                                               "supported server speaks the OpenAI chat API.",
+        json_schema_extra=ui(
+        "advanced", labels={"openai_compatible": "OpenAI-compatible"}))
+    base_url: str = Field("http://127.0.0.1:8000/v1", title="Base URL",
+                          description="Where the brain's OpenAI-compatible API answers, ending in /v1. Presets set it.",
+                          json_schema_extra=ui("advanced"))
     api_key_env: str | None = Field(None, title="API key variable",
                                     description="Environment variable holding the API key. Unset for local servers.",
-                                    json_schema_extra=ui("advanced"))
-    model: str = Field(description="Model name as the server knows it.", json_schema_extra=ui(restarts=["llm", "voice", "discord"]))
+                                    json_schema_extra=ui("advanced", options="env"))
+    model: str = Field(description="Model name as the server knows it.",
+                       json_schema_extra=ui(restarts=["llm", "voice", "discord"], options="llm_models"))
     sampling: Sampling = Sampling()
     thinking: Thinking = Thinking()
 
 
 class STTConfig(Model):
     model_config = section("voice")
-    provider: str = Field("parakeet", description="Speech-to-text adapter.")
-    model: str = Field("nemo-parakeet-tdt-0.6b-v3", json_schema_extra=ui("advanced"))
-    quantization: str | None = Field("int8", json_schema_extra=ui("advanced"))
+    provider: str = Field("parakeet",
+                          description="Speech-to-text adapter.", json_schema_extra=ui(options="stt_adapters"))
+    model: str = Field("nemo-parakeet-tdt-0.6b-v3",
+                       description="Speech-to-text model. Parakeet TDT 0.6B v3 is multilingual; v2 is English only.",
+                       json_schema_extra=ui("advanced", options="stt_models"))
+    quantization: str | None = Field("int8",
+                                     description="Weight precision. int8 is faster on the CPU at no audible "
+                                                 "accuracy cost; empty for full precision.",
+                                     json_schema_extra=ui("advanced"))
 
 
 class TTSConfig(Model):
     model_config = section("voice")
-    provider: str = Field("openai_speech", description="Text-to-speech adapter (OpenAI speech protocol).",
+    provider: Literal["openai_speech"] = Field("openai_speech", description="Text-to-speech adapter.",
+                                              json_schema_extra=ui("advanced", labels={"openai_speech": "OpenAI speech protocol"}))
+    base_url: str = Field("http://127.0.0.1:8880/v1", title="Base URL",
+                          description="Where the speech server's OpenAI speech API answers, ending in /v1. Presets "
+                                      "set it.",
                           json_schema_extra=ui("advanced"))
-    base_url: str = Field("http://127.0.0.1:8880/v1", title="Base URL", json_schema_extra=ui("advanced"))
     api_key_env: str | None = Field(None, title="API key variable",
                                     description="Environment variable holding the API key. Unset for local servers.",
-                                    json_schema_extra=ui("advanced"))
-    voice: str = Field("onyx", description="Voice name sent to the server. OpenAI names map to the server's default clip.",
-                       json_schema_extra=ui("advanced"))
-    sample_rate: int = Field(24000, title="Sample rate", json_schema_extra=ui("advanced"))
+                                    json_schema_extra=ui("advanced", options="env"))
+    voice: str = Field("onyx",
+                       description="Voice name sent to the server. OpenAI names map to the server's default clip.",
+                       json_schema_extra=ui(options="voices"))
+    sample_rate: int = Field(24000, title="Sample rate", description="Audio rate the speech server returns, in Hz.",
+                             json_schema_extra=ui("advanced"))
 
 
 class VADConfig(Model):
     model_config = section("voice")
-    provider: str = Field("silero", json_schema_extra=ui("advanced"))
+    provider: Literal["silero"] = Field("silero",
+                                        description="Voice activity detector that decides when you are speaking.",
+                                        json_schema_extra=ui("advanced", labels={"silero": "Silero"}))
     stop_secs: float = Field(0.3, ge=0.1, le=2.0, title="End of speech (s)",
                              description="Silence after speech before the utterance is sent.",
                              json_schema_extra=ui("advanced"))
@@ -134,18 +175,25 @@ class VADConfig(Model):
 
 class VoiceChannel(Model):
     model_config = section("voice")
-    enabled: bool = True
-    host: str = Field("127.0.0.1", json_schema_extra=ui("advanced"))
-    port: int = Field(7860, json_schema_extra=ui("advanced"))
+    enabled: bool = Field(True, description="Talk to Winston by voice from the browser and, later, satellites.")
+    host: str = Field("127.0.0.1",
+                      description="Address the voice channel listens on. 127.0.0.1 keeps it on this machine; "
+                                  "winstond passes the browser's offer to it.",
+                      json_schema_extra=ui("advanced"))
+    port: int = Field(7860,
+                      description="Port the voice channel listens on; Pipecat's own test page is served here too.",
+                      json_schema_extra=ui("advanced"))
 
 
 class DiscordChannel(Model):
     model_config = section("discord")
     enabled: bool = Field(False, description="Talk to Winston in Discord DMs and get announcements there.")
-    token_env: str = Field("DISCORD_BOT_TOKEN", title="Token variable", json_schema_extra=ui("advanced"))
+    token_env: str = Field("DISCORD_BOT_TOKEN", title="Token variable",
+                           description="Environment variable holding the Discord bot token.",
+                           json_schema_extra=ui("advanced", options="env"))
     allowed_user_env: str = Field("DISCORD_ALLOWED_USER_ID", title="Allowed user variable",
                                   description="Environment variable with the one Discord user id Winston answers.",
-                                  json_schema_extra=ui("advanced"))
+                                  json_schema_extra=ui("advanced", options="env"))
     session_idle_mins: int = Field(30, ge=1, title="Conversation resets after (min)",
                                    description="Idle minutes before a DM conversation starts fresh (and re-reads memory).",
                                    json_schema_extra=ui("advanced"))
@@ -176,14 +224,17 @@ class ExposedEntity(Model):
 class HomeAssistantConfig(Model):
     model_config = section("voice", "discord")
     url: str = Field(title="URL", description="Home Assistant base URL on the LAN.")
-    token_env: str = Field("HA_TOKEN", title="Token variable", description="Environment variable holding the long-lived token.",
-                           json_schema_extra=ui("advanced"))
-    mcp_path: str = Field("/api/mcp", title="MCP path", json_schema_extra=ui("advanced"))
+    token_env: str = Field("HA_TOKEN", title="Token variable",
+                           description="Environment variable holding the long-lived token.",
+                           json_schema_extra=ui("advanced", options="env"))
+    mcp_path: str = Field("/api/mcp", title="MCP path", description="Path of Home Assistant's MCP server integration.",
+                          json_schema_extra=ui("advanced"))
     expose: dict[str, ExposedEntity] = Field(default_factory=dict, title="Entities",
-                                             description="Entities Winston may see and control, with aliases.")
+                                             description="Entities Winston may see and control, with the names people say for them. Nothing else in "
+                                                         "Home Assistant is visible to him; winston ha expose applies the list.")
     expose_domains: list[str] = Field(default_factory=lambda: ["person", "weather", "todo"], title="Domains",
                                       description="Whole domains to expose, without aliases.",
-                                      json_schema_extra=ui("advanced"))
+                                      json_schema_extra=ui("advanced", options="ha_domains"))
 
 
 class Providers(Model):
@@ -192,8 +243,12 @@ class Providers(Model):
 
 class SensorPair(Model):
     model_config = section("voice", "discord")
-    level: str = Field(title="Value sensor", description="Entity id of the value sensor.")
-    state: str | None = Field(None, title="State sensor", description="Optional companion state sensor (charging, etc.).")
+    level: str = Field(title="Value sensor", description="Entity id of the value sensor.",
+                       json_schema_extra=ui(options="ha_entities", options_query={"domain": "sensor"}))
+    state: str | None = Field(None, title="State sensor",
+                              description="Optional companion state sensor (charging, etc.).",
+                              json_schema_extra=ui(options="ha_entities",
+                                                   options_query={"domain": "sensor,binary_sensor"}))
 
 
 class WebSearchConfig(Model):
@@ -201,31 +256,43 @@ class WebSearchConfig(Model):
     enabled: bool = Field(False, description="Let Winston look up current facts on the web. Only the search question "
                                              "leaves the house.")
     provider: Literal["gemini"] = Field("gemini", description="Search backend. gemini: Gemini with Google Search "
-                                                              "grounding (needs billing enabled on the key).")
+                                                              "grounding (needs billing enabled on the key).",
+                                        json_schema_extra=ui(labels={"gemini": "Gemini with Google Search"},
+                                                             icons={"gemini": "gemini"}))
     model: str = Field("gemini-3.5-flash-lite", description="Flash-Lite answers in about 1.4 s, Flash in 2.3 s "
                                                              "(minimal thinking, measured 2026-09-23).",
-                       json_schema_extra=ui("advanced"))
+                       json_schema_extra=ui("advanced", options="gemini_models"))
     thinking: Literal["minimal", "low", "medium", "high"] = Field("minimal", description="Reasoning at the search "
                                                                   "model. Each step up costs about a second.",
                                                                   json_schema_extra=ui("advanced"))
-    api_key_env: str = Field("GEMINI_API_KEY", title="API key variable", json_schema_extra=ui("advanced"))
+    api_key_env: str = Field("GEMINI_API_KEY", title="API key variable",
+                             description="Environment variable holding the Gemini API key.",
+                             json_schema_extra=ui("advanced", options="env"))
     max_per_day: int = Field(100, ge=0, title="Searches per day",
                              description="Hard cap; past it the tool refuses until midnight.")
-    timeout: float = Field(15.0, ge=1, title="Timeout (s)", json_schema_extra=ui("advanced"))
+    timeout: float = Field(15.0, ge=1, title="Timeout (s)",
+                           description="Seconds before a search gives up and Winston says it could not look it up.",
+                           json_schema_extra=ui("advanced"))
 
 
 class AskClaudeConfig(Model):
     model_config = section("voice", "discord")
-    enabled: bool = Field(False, description="Hand hard questions to Claude. Uses the Claude Code login on this machine, "
+    enabled: bool = Field(False,
+                          description="Hand hard questions to Claude. Uses the Claude Code login on this machine, "
                                              "CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. "
                                              "Only the question leaves the house.")
-    model: str = Field("claude-opus-5", json_schema_extra=ui("advanced"))
+    model: str = Field("claude-opus-5",
+                       description="Claude model the question goes to. Opus is best at hard questions, Sonnet and "
+                                   "Haiku are faster and cheaper.",
+                       json_schema_extra=ui("advanced", options="claude_models"))
     effort: Literal["low", "medium", "high"] = Field("low", description="Reasoning effort. Low answered in about 3 to "
                                                      "5 s; each step up is slower.", json_schema_extra=ui("advanced"))
     max_usd_per_day: float = Field(3.0, ge=0, title="Budget per day (USD)",
                                    description="Past it the tool refuses until midnight. A Max 5x plan's monthly "
                                                "Agent SDK credit is 100 USD.")
-    max_usd_per_question: float = Field(0.5, gt=0, title="Budget per question (USD)", json_schema_extra=ui("advanced"))
+    max_usd_per_question: float = Field(0.5, gt=0, title="Budget per question (USD)",
+                                        description="Hard cap for one question; a longer answer is cut off.",
+                                        json_schema_extra=ui("advanced"))
 
 
 class ToolsConfig(Model):
@@ -238,9 +305,15 @@ class ToolsConfig(Model):
 
 class MemoryConfig(Model):
     model_config = section("voice", "discord")
-    enabled: bool = Field(True, description="Load remembered facts into every new conversation and offer the remember tool.")
-    dir: str = Field("memory", title="Directory", json_schema_extra=ui("advanced"))
-    commit_on_write: bool = Field(True, title="Commit on write", json_schema_extra=ui("advanced"))
+    enabled: bool = Field(True,
+                          description="Load remembered facts into every new conversation and offer the remember tool.")
+    dir: str = Field("memory", title="Directory",
+                     description="Where the fact files live, relative to the data directory.",
+                     json_schema_extra=ui("advanced"))
+    commit_on_write: bool = Field(True, title="Commit on write",
+                                  description="Commit every remembered fact to the vault's git repository, so "
+                                              "changes can be reviewed and undone.",
+                                  json_schema_extra=ui("advanced"))
 
 
 class AnnounceConfig(Model):
@@ -248,14 +321,17 @@ class AnnounceConfig(Model):
     enabled: bool = Field(True, description="Let Winston speak on its own: Home Assistant automations, the API and "
                                             "`winston announce` send it something to say.")
     chime: str = Field("{repo}/assets/sounds/chime.wav", description="Sound played before an announcement, so it "
-                       "is clearly a notification. Empty for none.", json_schema_extra=ui("advanced", restarts=["voice"]))
+                       "is clearly a notification. Empty for none.",
+                       json_schema_extra=ui("advanced", restarts=["voice"], options="sounds"))
     quiet_hours: str | None = Field("22:00-07:00", title="Quiet hours",
                                     description="HH:MM-HH:MM when announcements are not spoken, only sent to Discord. "
-                                                "Empty for never quiet.")
+                                                "Empty for never quiet.",
+                                    json_schema_extra=ui(widget="time_range"))
     discord: Literal["always", "fallback", "never"] = Field(
         "fallback", title="Also to Discord",
         description="always: every announcement; fallback: when nothing can speak it (quiet hours, no speaker "
-                    "connected); never.")
+                    "connected); never.",
+        json_schema_extra=ui(labels={"always": "Always", "fallback": "When it cannot be spoken", "never": "Never"}))
     ha_event: str = Field("winston_announce", title="Home Assistant event",
                           description="Event type an automation fires with data {text, context} to announce.",
                           json_schema_extra=ui("advanced"))
@@ -263,14 +339,23 @@ class AnnounceConfig(Model):
 
 class LoggingConfig(Model):
     model_config = section("voice", "discord")
-    tool_calls: str = Field("logs/tool_calls.jsonl", title="Tool calls", json_schema_extra=ui("advanced"))
-    latency: str = Field("logs/latency.jsonl", json_schema_extra=ui("advanced"))
+    tool_calls: str = Field("logs/tool_calls.jsonl", title="Tool calls",
+                            description="Every tool call with its arguments and result, one JSON line each, "
+                                        "relative to the data directory.",
+                            json_schema_extra=ui("advanced"))
+    latency: str = Field("logs/latency.jsonl",
+                         description="Per-turn timings (speech end, first token, first audio), one JSON line each.",
+                         json_schema_extra=ui("advanced"))
 
 
 class ControlConfig(Model):
     model_config = section("control")
-    host: str = Field("127.0.0.1", json_schema_extra=ui("advanced"))
-    port: int = Field(8700, json_schema_extra=ui("advanced"))
+    host: str = Field("127.0.0.1",
+                      description="Address winstond listens on. 127.0.0.1 keeps the API and web UI on this machine; "
+                                  "it has no login.",
+                      json_schema_extra=ui("advanced"))
+    port: int = Field(8700, description="Port for the API and the web UI.",
+                      json_schema_extra=ui("advanced"))
 
 
 class WinstonConfig(Model):

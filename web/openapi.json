@@ -489,7 +489,7 @@
     },
     "/api/options/{name}": {
       "get": {
-        "summary": "Live choices for a dropdown: llm_models (from the brain's server), voices, stt_adapters",
+        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains",
         "operationId": "get_options_api_options__name__get",
         "parameters": [
           {
@@ -518,6 +518,24 @@
               "title": "Base Url"
             },
             "description": "Server to ask instead of the saved one, for an unsaved draft"
+          },
+          {
+            "name": "domain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ha_entities: comma-separated domains to keep",
+              "title": "Domain"
+            },
+            "description": "ha_entities: comma-separated domains to keep"
           }
         ],
         "responses": {
@@ -527,6 +545,54 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Options"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/home_assistant/check": {
+      "get": {
+        "summary": "Whether Home Assistant answers at the URL with the configured token",
+        "operationId": "ha_check_api_providers_home_assistant_check_get",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "URL to try instead of the saved one",
+              "title": "Url"
+            },
+            "description": "URL to try instead of the saved one"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeAssistantCheck"
                 }
               }
             }
@@ -561,6 +627,7 @@
             "description": "Sound played before an announcement, so it is clearly a notification. Empty for none.",
             "default": "{repo}/assets/sounds/chime.wav",
             "level": "advanced",
+            "options": "sounds",
             "restarts": [
               "voice"
             ]
@@ -576,7 +643,9 @@
             ],
             "title": "Quiet hours",
             "description": "HH:MM-HH:MM when announcements are not spoken, only sent to Discord. Empty for never quiet.",
-            "default": "22:00-07:00"
+            "default": "22:00-07:00",
+            "level": "basic",
+            "widget": "time_range"
           },
           "discord": {
             "type": "string",
@@ -587,7 +656,13 @@
             ],
             "title": "Also to Discord",
             "description": "always: every announcement; fallback: when nothing can speak it (quiet hours, no speaker connected); never.",
-            "default": "fallback"
+            "default": "fallback",
+            "labels": {
+              "always": "Always",
+              "fallback": "When it cannot be spoken",
+              "never": "Never"
+            },
+            "level": "basic"
           },
           "ha_event": {
             "type": "string",
@@ -644,7 +719,8 @@
             "type": "string",
             "title": "Model",
             "default": "claude-opus-5",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "claude_models"
           },
           "effort": {
             "type": "string",
@@ -694,7 +770,8 @@
             "title": "Persona file",
             "description": "Persona file, relative to the data directory.",
             "default": "persona.md",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "personas"
           }
         },
         "additionalProperties": false,
@@ -771,6 +848,28 @@
               }
             ],
             "title": "Hint"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
           }
         },
         "type": "object",
@@ -863,14 +962,16 @@
             "type": "string",
             "title": "Token variable",
             "default": "DISCORD_BOT_TOKEN",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "env"
           },
           "allowed_user_env": {
             "type": "string",
             "title": "Allowed user variable",
             "description": "Environment variable with the one Discord user id Winston answers.",
             "default": "DISCORD_ALLOWED_USER_ID",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "env"
           },
           "session_idle_mins": {
             "type": "integer",
@@ -911,7 +1012,18 @@
               "external"
             ],
             "title": "Driver",
-            "description": "How the engine is run."
+            "description": "How the engine is run.",
+            "icons": {
+              "docker": "docker",
+              "external": "external",
+              "subprocess": "process"
+            },
+            "labels": {
+              "docker": "Docker container",
+              "external": "External server",
+              "subprocess": "Process"
+            },
+            "level": "basic"
           },
           "enabled": {
             "type": "boolean",
@@ -1223,6 +1335,46 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HomeAssistantCheck": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "HomeAssistantCheck"
+      },
       "HomeAssistantConfig": {
         "properties": {
           "url": {
@@ -1235,7 +1387,8 @@
             "title": "Token variable",
             "description": "Environment variable holding the long-lived token.",
             "default": "HA_TOKEN",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "env"
           },
           "mcp_path": {
             "type": "string",
@@ -1258,7 +1411,8 @@
             "type": "array",
             "title": "Domains",
             "description": "Whole domains to expose, without aliases.",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "ha_domains"
           }
         },
         "additionalProperties": false,
@@ -1276,8 +1430,12 @@
         "properties": {
           "provider": {
             "type": "string",
+            "const": "openai_compatible",
             "title": "Provider",
             "default": "openai_compatible",
+            "labels": {
+              "openai_compatible": "OpenAI-compatible"
+            },
             "level": "advanced"
           },
           "base_url": {
@@ -1297,13 +1455,15 @@
             ],
             "title": "API key variable",
             "description": "Environment variable holding the API key. Unset for local servers.",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "env"
           },
           "model": {
             "type": "string",
             "title": "Model",
             "description": "Model name as the server knows it.",
             "level": "basic",
+            "options": "llm_models",
             "restarts": [
               "llm",
               "voice",
@@ -1556,6 +1716,11 @@
             "type": "string",
             "title": "Source",
             "default": ""
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
           }
         },
         "type": "object",
@@ -1578,6 +1743,17 @@
           "hint": {
             "type": "string",
             "title": "Hint"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
           },
           "needs": {
             "items": {
@@ -1709,13 +1885,16 @@
             "type": "string",
             "title": "Provider",
             "description": "Speech-to-text adapter.",
-            "default": "parakeet"
+            "default": "parakeet",
+            "level": "basic",
+            "options": "stt_adapters"
           },
           "model": {
             "type": "string",
             "title": "Model",
             "default": "nemo-parakeet-tdt-0.6b-v3",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "stt_models"
           },
           "quantization": {
             "anyOf": [
@@ -1786,7 +1965,12 @@
           "level": {
             "type": "string",
             "title": "Value sensor",
-            "description": "Entity id of the value sensor."
+            "description": "Entity id of the value sensor.",
+            "level": "basic",
+            "options": "ha_entities",
+            "options_query": {
+              "domain": "sensor"
+            }
           },
           "state": {
             "anyOf": [
@@ -1798,7 +1982,12 @@
               }
             ],
             "title": "State sensor",
-            "description": "Optional companion state sensor (charging, etc.)."
+            "description": "Optional companion state sensor (charging, etc.).",
+            "level": "basic",
+            "options": "ha_entities",
+            "options_query": {
+              "domain": "sensor,binary_sensor"
+            }
           }
         },
         "additionalProperties": false,
@@ -1852,9 +2041,13 @@
         "properties": {
           "provider": {
             "type": "string",
+            "const": "openai_speech",
             "title": "Provider",
-            "description": "Text-to-speech adapter (OpenAI speech protocol).",
+            "description": "Text-to-speech adapter.",
             "default": "openai_speech",
+            "labels": {
+              "openai_speech": "OpenAI speech protocol"
+            },
             "level": "advanced"
           },
           "base_url": {
@@ -1874,14 +2067,16 @@
             ],
             "title": "API key variable",
             "description": "Environment variable holding the API key. Unset for local servers.",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "env"
           },
           "voice": {
             "type": "string",
             "title": "Voice",
             "description": "Voice name sent to the server. OpenAI names map to the server's default clip.",
             "default": "onyx",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "voices"
           },
           "sample_rate": {
             "type": "integer",
@@ -1921,6 +2116,11 @@
             "title": "Control",
             "description": "How the server is told to think or not: chat_template for vLLM and llama.cpp (enable_thinking), reasoning_effort for Ollama, none for servers without a switch.",
             "default": "chat_template",
+            "labels": {
+              "chat_template": "Chat template (vLLM, llama.cpp)",
+              "none": "No switch",
+              "reasoning_effort": "Reasoning effort (Ollama)"
+            },
             "level": "advanced"
           }
         },
@@ -1979,8 +2179,12 @@
         "properties": {
           "provider": {
             "type": "string",
+            "const": "silero",
             "title": "Provider",
             "default": "silero",
+            "labels": {
+              "silero": "Silero"
+            },
             "level": "advanced"
           },
           "stop_secs": {
@@ -2104,14 +2308,22 @@
             "const": "gemini",
             "title": "Provider",
             "description": "Search backend. gemini: Gemini with Google Search grounding (needs billing enabled on the key).",
-            "default": "gemini"
+            "default": "gemini",
+            "icons": {
+              "gemini": "gemini"
+            },
+            "labels": {
+              "gemini": "Gemini with Google Search"
+            },
+            "level": "basic"
           },
           "model": {
             "type": "string",
             "title": "Model",
             "description": "Flash-Lite answers in about 1.4 s, Flash in 2.3 s (minimal thinking, measured 2026-09-23).",
             "default": "gemini-3.5-flash-lite",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "gemini_models"
           },
           "thinking": {
             "type": "string",
@@ -2130,7 +2342,8 @@
             "type": "string",
             "title": "API key variable",
             "default": "GEMINI_API_KEY",
-            "level": "advanced"
+            "level": "advanced",
+            "options": "env"
           },
           "max_per_day": {
             "type": "integer",

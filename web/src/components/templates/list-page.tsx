@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Plus } from 'lucide-react'
 import { IconButton } from '@/components/icon-button'
 import { Page } from '@/components/page'
-import { SaveControls } from '@/components/save-controls'
+import { AdvancedToggle, SaveControls } from '@/components/save-controls'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { SettingsState } from '@/hooks/use-settings'
 
@@ -58,16 +58,19 @@ type PageProps<T> = TableProps<T> & {
   page: SettingsState
   onAdd?: () => void
   addLabel?: string
+  /** Show the Advanced toggle, for pages whose extra sections have advanced fields. */
+  advancedToggle?: boolean
   children?: ReactNode
 }
 
 /** Template: list page. Rows with icon actions, one Add, one Save. */
-export function ListPage<T>({ title, page, onAdd, addLabel = 'Add', children, ...table }: PageProps<T>) {
+export function ListPage<T>({ title, page, onAdd, addLabel = 'Add', advancedToggle, children, ...table }: PageProps<T>) {
   return (
     <Page
       title={title}
       actions={
         <>
+          {advancedToggle ? <AdvancedToggle checked={page.advanced} onChange={page.setAdvanced} /> : null}
           {onAdd ? (
             <IconButton label={addLabel} variant="outline" size="icon" onClick={onAdd}>
               <Plus />

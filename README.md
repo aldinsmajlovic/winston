@@ -32,6 +32,8 @@ be swapped for a hosted service when that suits you better.
 - **Discord.** Talk to Winston in DMs from anywhere, get announcements there, have it message friends.
 - **Swappable parts.** Every model is an adapter picked from a dropdown, with presets for vLLM, Ollama,
   hosted APIs, a GPU voice and a CPU voice.
+- **Settings that fill themselves in.** Models, voices, Home Assistant entities and key names are
+  dropdowns read from the servers that know them, not text you type.
 - **"Hey Winston".** A custom wake word model for room satellites.
 
 **Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and

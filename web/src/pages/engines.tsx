@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router'
 import { $api, type EngineConfig, type EngineStatus } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
 import { ItemDialog } from '@/components/item-dialog'
+import { KindIcon } from '@/components/kind-icon'
 import { PageSkeleton } from '@/components/page'
 import { StateIcon } from '@/components/state-icon'
 import { ListPage, type Column } from '@/components/templates/list-page'
@@ -17,7 +18,11 @@ type Driver = EngineConfig['driver']
 type Row = EngineConfig & { name: string; status?: EngineStatus }
 type Adding = { name: string; driver: Driver }
 
-const drivers: Driver[] = ['docker', 'subprocess', 'external']
+const drivers: { value: Driver; label: string; icon: string }[] = [
+  { value: 'docker', label: 'Docker container', icon: 'docker' },
+  { value: 'subprocess', label: 'Process', icon: 'process' },
+  { value: 'external', label: 'External server', icon: 'external' },
+]
 
 export default function EnginesPage() {
   const s = useSettings([])
@@ -43,7 +48,19 @@ export default function EnginesPage() {
       render: (r) => <StateIcon state={r.status?.state ?? 'stopped'} detail={r.status?.detail} />,
     },
     { key: 'name', title: 'Name', render: (r) => <span className="font-medium">{r.name}</span> },
-    { key: 'driver', title: 'Driver', render: (r) => r.driver },
+    {
+      key: 'driver',
+      title: 'Driver',
+      render: (r) => {
+        const d = drivers.find((x) => x.value === r.driver)
+        return (
+          <span className="flex items-center gap-2">
+            <KindIcon name={d?.icon} className="text-muted-foreground" />
+            {d?.label ?? r.driver}
+          </span>
+        )
+      },
+    },
     { key: 'port', title: 'Port', render: (r) => r.port },
     {
       key: 'enabled',
@@ -118,8 +135,9 @@ export default function EnginesPage() {
             </SelectTrigger>
             <SelectContent>
               {drivers.map((d) => (
-                <SelectItem key={d} value={d}>
-                  {d}
+                <SelectItem key={d.value} value={d.value}>
+                  <KindIcon name={d.icon} />
+                  {d.label}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -63,14 +63,12 @@ function isAdvanced(schema: JsonSchema): boolean {
   return schema.level === 'advanced'
 }
 
-/** A self-contained form schema: refs inlined, advanced fields dropped unless asked for, hints
- * only on advanced fields, no root title. */
+/** A self-contained form schema: refs inlined, advanced fields dropped unless asked for, no root title. */
 export function prune(schema: JsonSchema, root: JsonSchema, options: PruneOptions, depth = 0): JsonSchema {
   const s = deref(schema, root)
   const out: JsonSchema = { ...s }
   delete out.$defs
   if (depth === 0) delete out.title
-  if (!isAdvanced(s)) delete out.description
   if (s.properties) {
     const properties: Record<string, JsonSchema> = {}
     for (const [key, child] of Object.entries(s.properties)) {
@@ -88,7 +86,11 @@ export function prune(schema: JsonSchema, root: JsonSchema, options: PruneOption
   if (typeof s.additionalProperties === 'object') {
     out.additionalProperties = prune(s.additionalProperties, root, options, depth + 1)
   }
-  if (s.items) out.items = prune(s.items, root, options, depth + 1)
+  if (s.items) {
+    // A list whose schema names a live list (options) picks each item from it.
+    const items = s.options && !s.items.options ? { ...s.items, options: s.options } : s.items
+    out.items = prune(items, root, options, depth + 1)
+  }
   return out
 }
 

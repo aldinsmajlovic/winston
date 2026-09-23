@@ -51,12 +51,35 @@ blocks a plain `http://` page inside it, so Winston needs HTTPS too.
   <img src="images/status-light.png" alt="The Status page: engines, their health and the GPU" width="720">
 </picture>
 
-Settings is the link at the top right. Status lists every
-engine with icon actions and the GPU. Models picks the brain, voice and hearing from presets, with
-the model list read from the brain's server and the voices from the voices directory and the TTS
-server; Advanced shows the raw fields. The other settings pages are generated from the config schema:
-basic fields first, Advanced behind a toggle. Saving validates on the server, says which engines
-the change restarts and roughly how long each takes, and offers to restart them.
+Settings is the link at the top right. Status lists every engine with icon actions and the GPU.
+Brain picks the engine from presets (vLLM, Ollama, hosted) and the model from the list the brain's
+server reports; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
+hearing. Picking a preset rewrites the engine block and the settings that go with it. The other
+pages are generated from the config schema: basic fields first, Advanced behind a toggle, and an (i)
+beside each label that explains the field (and, for an engine, what the chosen preset needs).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/brain-dark.png">
+  <img src="images/brain-light.png" alt="The Brain page: engine preset with its logo, the model picked from the server's list, thinking" width="720">
+</picture>
+
+Anything a machine already knows is a searchable dropdown filled from `/api/options/{name}`, and a
+typed value still works when the list is empty:
+
+| Field | Filled from |
+| --- | --- |
+| Brain model | the brain's server (`/models`), following an unsaved base URL |
+| Voice | clips in `data/voices/` and the TTS server's built-in voices |
+| Speech-to-text model | the models onnx-asr knows, downloaded ones marked |
+| Web search and Claude models | the Gemini API; the Anthropic API when `ANTHROPIC_API_KEY` is set, else a built-in list |
+| Home Assistant entities, sensors, domains | Home Assistant's states, with each entity's name, state and an icon for its type |
+| Key and token variables | the names in `data/.env`, with an icon for set or empty; values never leave winstond |
+| Persona, chime | `*.md` in the data directory, sounds in `assets/sounds/` and `data/sounds/` |
+
+Home Assistant shows whether it answers at the URL with the token. Adding a sensor on the Tools
+page fills its label from Home Assistant and finds its state sensor (`_level` to `_state`). Saving
+validates on the server, says which engines the change restarts and roughly how long each takes,
+and offers to restart them.
 
 Build it once (Node 22 or newer, pnpm):
 

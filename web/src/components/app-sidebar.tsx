@@ -1,8 +1,9 @@
-import { Activity, ArrowLeft, BookOpen, Bot, Boxes, Brain, Cpu, House, Mic, Monitor, Moon, Radio, Settings, Sun, Wrench } from 'lucide-react'
+import { Activity, ArrowLeft, BookOpen, Bot, Brain, Cpu, Mic, Monitor, Moon, Radio, Settings, Sun, Wrench } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
+import { KindIcon } from '@/components/kind-icon'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,14 +23,17 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 
+function HomeAssistantLogo() {
+  return <KindIcon name="homeassistant" />
+}
+
 const nav = [
   { to: '/status', label: 'Status', Icon: Activity },
-  { to: '/models', label: 'Models', Icon: Boxes },
   { to: '/assistant', label: 'Assistant', Icon: Bot },
   { to: '/brain', label: 'Brain', Icon: Brain },
-  { to: '/speech', label: 'Speech', Icon: Mic },
+  { to: '/voice', label: 'Voice', Icon: Mic },
   { to: '/channels', label: 'Channels', Icon: Radio },
-  { to: '/home-assistant', label: 'Home Assistant', Icon: House },
+  { to: '/home-assistant', label: 'Home Assistant', Icon: HomeAssistantLogo },
   { to: '/tools', label: 'Tools', Icon: Wrench },
   { to: '/engines', label: 'Engines', Icon: Cpu },
   { to: '/system', label: 'System', Icon: Settings },

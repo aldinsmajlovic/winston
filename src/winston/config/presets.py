@@ -26,7 +26,7 @@ _VLLM_ARGS = [
 
 LLM: list[Fragment] = [
     {
-        "id": "vllm", "title": "vLLM on NVIDIA (Docker)", "needs": ["docker", "nvidia"],
+        "id": "vllm", "icon": "vllm", "title": "vLLM on NVIDIA (Docker)", "needs": ["docker", "nvidia"],
         "hint": "Fastest tool calls and vision. Docker with the NVIDIA toolkit, 16 GB of VRAM for the default "
                 "model, about 3 minutes to start.",
         "engine": {
@@ -40,7 +40,7 @@ LLM: list[Fragment] = [
                              "model": "QuantTrio/Qwen3.5-9B-AWQ", "thinking": {"control": "chat_template"}}},
     },
     {
-        "id": "ollama", "title": "Ollama (local)", "needs": ["ollama"],
+        "id": "ollama", "icon": "ollama", "title": "Ollama (local)", "needs": ["ollama"],
         "hint": "Any GPU or a CPU. Install Ollama, pull a model with tool support, done. Thinking is switched "
                 "with reasoning_effort.",
         "engine": {"driver": "external", "url": "http://127.0.0.1:11434", "port": 11434, "health": "/",
@@ -49,7 +49,7 @@ LLM: list[Fragment] = [
                              "model": "qwen3.5:4b", "thinking": {"control": "reasoning_effort"}}},
     },
     {
-        "id": "hosted", "title": "Hosted (OpenAI-compatible URL)", "needs": ["internet"],
+        "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI-compatible URL)", "needs": ["internet"],
         "hint": "A cloud model behind any OpenAI-compatible endpoint. The key goes in .env. Requests leave the LAN.",
         "engine": {"driver": "external", "url": "https://api.openai.com", "port": 443, "health": "",
                    "startup_timeout": 10},
@@ -60,7 +60,7 @@ LLM: list[Fragment] = [
 
 TTS: list[Fragment] = [
     {
-        "id": "chatterbox", "title": "Chatterbox-Turbo on GPU", "needs": ["cuda"],
+        "id": "chatterbox", "icon": "chatterbox", "title": "Chatterbox-Turbo on GPU", "needs": ["cuda"],
         "hint": "Voice cloning from any clip in the voices directory. About 3 GB of VRAM, CUDA only, its own venv.",
         "engine": {
             "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 180,
@@ -72,7 +72,7 @@ TTS: list[Fragment] = [
                              "voice": "vctk/p254_023", "sample_rate": 24000}},
     },
     {
-        "id": "pocket", "title": "Pocket TTS on CPU", "needs": [],
+        "id": "pocket", "icon": "pocket", "title": "Pocket TTS on CPU", "needs": [],
         "hint": "Kyutai's 100M model on two CPU cores, streaming. 26 built-in voices; cloning from a clip after "
                 "accepting the terms on Hugging Face.",
         "engine": {
@@ -85,7 +85,7 @@ TTS: list[Fragment] = [
                              "voice": "george", "sample_rate": 24000}},
     },
     {
-        "id": "hosted", "title": "Hosted (OpenAI speech URL)", "needs": ["internet"],
+        "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI speech URL)", "needs": ["internet"],
         "hint": "Any server speaking the OpenAI speech protocol. The key goes in .env. Speech leaves the LAN.",
         "engine": {"driver": "external", "url": "https://api.openai.com", "port": 443, "health": "",
                    "startup_timeout": 10},
@@ -99,14 +99,21 @@ PROFILES: list[Fragment] = [
      "hint": "The reference setup: vLLM and Chatterbox share one card. About 1 s to the first word."},
     {"id": "ollama", "title": "Ollama, any GPU or CPU", "presets": {"llm": "ollama", "tts": "pocket"},
      "hint": "Ollama serves the model, Pocket TTS speaks on the CPU. Small cards, AMD, Apple silicon, no Docker."},
-    {"id": "hosted", "title": "Hosted LLM", "presets": {"llm": "hosted", "tts": "pocket"},
+    {"id": "hosted", "icon": "cloud", "title": "Hosted LLM", "presets": {"llm": "hosted", "tts": "pocket"},
      "hint": "A cloud model over an OpenAI-compatible URL; hearing and speaking stay local."},
 ]
 
 
+STT_HINTS = {
+    "parakeet": "NVIDIA Parakeet TDT 0.6B on the CPU through onnx-asr: about 0.2 s per sentence, keeps the GPU "
+                "free. v3 understands 25 European languages, v2 English only.",
+}
+
+
 def stt_presets() -> list[Fragment]:
     """STT adapters come from the registry; each is a preset with no engine (they run in-process)."""
-    return [{"id": name, "title": name.capitalize(), "needs": [], "hint": f"Adapter {path}", "engine": None,
+    return [{"id": name, "icon": name, "title": name.capitalize(), "needs": [],
+             "hint": STT_HINTS.get(name, f"Adapter {path}"), "engine": None,
              "settings": {"stt": {"provider": name}}} for name, path in sorted(available("stt").items())]
 
 

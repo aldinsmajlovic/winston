@@ -16,6 +16,9 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
 - **Presets over hand-written engine blocks.** `config/presets.py` names the engine and model choices per
   slot (vLLM, Ollama, hosted; Chatterbox, Pocket TTS, hosted) and composes them into hardware profiles.
   The UI offers them as dropdowns, `winston init --profile` writes one, and the config stays the truth.
+- **Choices come from where the truth lives.** A field names a live list in the schema (`options`);
+  `api/options.py` fills it from the brain's server, Home Assistant, the data directory or a provider's
+  model list, so the UI never asks for something a machine already knows.
 - **Policy in code, prompt for tone.** Tool tiers (read, act, restricted), allow lists and logging are
   mechanisms, not prompt text.
 

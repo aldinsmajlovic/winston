@@ -3,7 +3,6 @@ and the CLI use, and serves the built UI from web/dist. Bound to localhost by de
 behind auth before exposing it."""
 import asyncio
 import json
-import os
 import subprocess
 from contextlib import asynccontextmanager
 from typing import Any, Literal
@@ -15,9 +14,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from winston import __version__
-from winston.config import data_dir, load, repo_root, save
+from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
+from winston.config import load, repo_root, save
 from winston.config.presets import LLM, PROFILES, TTS, stt_presets
-from winston.config.registry import available
 from winston.config.restarts import restarts_for
 from winston.config.schema import LLMConfig, WinstonConfig
 from winston.channels.web import WebChat
@@ -70,6 +69,7 @@ class Preset(BaseModel):
     id: str
     title: str
     hint: str
+    icon: str | None = None                 # a logo or kind the UI draws next to the title
     needs: list[str]
     engine: dict[str, Any] | None = None    # EngineConfig fields for the slot, None for in-process adapters
     settings: dict[str, Any]                # section fields that go with it (llm, tts, stt)
@@ -87,18 +87,6 @@ class Presets(BaseModel):
     tts: list[Preset]
     stt: list[Preset]
     profiles: list[Profile]
-
-
-class Choice(BaseModel):
-    value: str
-    label: str
-    hint: str | None = None
-
-
-class Options(BaseModel):
-    name: str
-    choices: list[Choice]
-    source: str = ""        # where the list came from, or why it is empty
 
 
 def gpu_status() -> GpuStatus | None:
@@ -304,43 +292,19 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return Presets(llm=LLM, tts=TTS, stt=stt_presets(), profiles=PROFILES)
 
     @app.get("/api/options/{name}", response_model=Options,
-             summary="Live choices for a dropdown: llm_models (from the brain's server), voices, stt_adapters")
-    async def get_options(name: str, base_url: str | None = Query(None, description="Server to ask instead of the saved one, for an unsaved draft")):
-        cfg: WinstonConfig = app.state.cfg
-        llm_url = (base_url or cfg.llm.base_url).rstrip("/")
-        tts_url = (base_url or cfg.tts.base_url).rstrip("/").removesuffix("/v1")
-        if name == "stt_adapters":
-            return Options(name=name, source="registry",
-                           choices=[Choice(value=n, label=n.capitalize(), hint=path) for n, path in sorted(available("stt").items())])
-        if name == "llm_models":
-            headers = {}
-            if cfg.llm.api_key_env and (key := os.environ.get(cfg.llm.api_key_env)):
-                headers["Authorization"] = f"Bearer {key}"
-            try:
-                async with httpx.AsyncClient(timeout=3) as c:
-                    r = await c.get(llm_url + "/models", headers=headers)
-                r.raise_for_status()
-                ids = sorted(m.get("id", "") for m in r.json().get("data", []) if m.get("id"))
-                return Options(name=name, source=llm_url, choices=[Choice(value=i, label=i) for i in ids])
-            except Exception as e:                                          # noqa: BLE001
-                return Options(name=name, source=f"{llm_url}: {type(e).__name__}", choices=[])
-        if name == "voices":
-            choices: list[Choice] = []
-            voices = data_dir() / "voices"
-            for wav in sorted(voices.rglob("*.wav")) if voices.is_dir() else []:
-                rel = str(wav.relative_to(voices).with_suffix(""))
-                choices.append(Choice(value=rel, label=rel, hint="clip"))
-            source = str(voices)
-            try:
-                async with httpx.AsyncClient(timeout=3) as c:
-                    r = await c.get(tts_url + "/health")
-                for v in r.json().get("builtin_voices", []) if r.status_code == 200 else []:
-                    choices.append(Choice(value=v, label=v, hint="built in"))
-                source += " and the TTS server"
-            except Exception:                                               # noqa: BLE001
-                pass
-            return Options(name=name, source=source, choices=choices)
-        raise HTTPException(404, f"no options named {name}")
+             summary="Live choices for a dropdown: " + ", ".join(OPTION_NAMES))
+    async def get_options(name: str,
+                          base_url: str | None = Query(None, description="Server to ask instead of the saved one, for an unsaved draft"),
+                          domain: str | None = Query(None, description="ha_entities: comma-separated domains to keep")):
+        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain})
+        if out is None:
+            raise HTTPException(404, f"no options named {name}")
+        return out
+
+    @app.get("/api/providers/home_assistant/check", response_model=HomeAssistantCheck,
+             summary="Whether Home Assistant answers at the URL with the configured token")
+    async def ha_check(url: str | None = Query(None, description="URL to try instead of the saved one")):
+        return await check_home_assistant(app.state.cfg, url)
 
     dist = repo_root() / "web" / "dist"
     if (dist / "index.html").is_file():

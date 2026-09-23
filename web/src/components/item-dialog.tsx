@@ -13,6 +13,8 @@ type Props = {
   keyLabel: string
   keyValue: string
   onKeyChange?: (key: string) => void
+  /** Replaces the key's text field, e.g. with a picker. */
+  keyInput?: ReactNode
   schema?: JsonSchema
   value?: unknown
   onChange?: (next: unknown) => void
@@ -34,13 +36,15 @@ export function ItemDialog(props: Props) {
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="item-key">{keyLabel}</Label>
-            <Input
-              id="item-key"
-              value={keyValue}
-              disabled={!onKeyChange}
-              onChange={(e) => onKeyChange?.(e.target.value)}
-              autoFocus={Boolean(onKeyChange)}
-            />
+            {props.keyInput ?? (
+              <Input
+                id="item-key"
+                value={keyValue}
+                disabled={!onKeyChange}
+                onChange={(e) => onKeyChange?.(e.target.value)}
+                autoFocus={Boolean(onKeyChange)}
+              />
+            )}
           </div>
           {props.children}
           {schema && onChange ? <SchemaForm schema={schema} value={value} onChange={onChange} /> : null}

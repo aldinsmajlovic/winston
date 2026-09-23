@@ -52,8 +52,8 @@ short pages over one long one.
 
   ```html
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/models-dark.png">
-    <img src="docs/images/models-light.png" alt="The Models page" width="720">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/brain-dark.png">
+    <img src="docs/images/brain-light.png" alt="The Brain page" width="720">
   </picture>
   ```
 

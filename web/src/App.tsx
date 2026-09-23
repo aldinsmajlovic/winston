@@ -8,12 +8,11 @@ import DashboardPage from '@/pages/dashboard'
 import EnginePage from '@/pages/engine'
 import EnginesPage from '@/pages/engines'
 import HomeAssistantPage from '@/pages/home-assistant'
-import ModelsPage from '@/pages/models'
-import SpeechPage from '@/pages/speech'
 import StatusPage from '@/pages/status'
 import SystemPage from '@/pages/system'
 import TalkPage from '@/pages/talk'
 import ToolsPage from '@/pages/tools'
+import VoicePage from '@/pages/voice'
 
 /** Settings: the sidebar and its pages, behind the Talk page. */
 function SettingsLayout() {
@@ -34,10 +33,11 @@ export default function App() {
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route element={<SettingsLayout />}>
         <Route path="/status" element={<StatusPage />} />
-        <Route path="/models" element={<ModelsPage />} />
+        <Route path="/models" element={<Navigate to="/brain" replace />} />
         <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/brain" element={<BrainPage />} />
-        <Route path="/speech" element={<SpeechPage />} />
+        <Route path="/voice" element={<VoicePage />} />
+        <Route path="/speech" element={<Navigate to="/voice" replace />} />
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/home-assistant" element={<HomeAssistantPage />} />
         <Route path="/tools" element={<ToolsPage />} />

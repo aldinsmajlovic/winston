@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import type { SensorPair } from '@/api/client'
+import type { Choice } from '@/components/combobox'
 import { IconButton } from '@/components/icon-button'
 import { ItemDialog } from '@/components/item-dialog'
 import { PageSkeleton } from '@/components/page'
 import { SectionForm } from '@/components/section-form'
 import { ListPage, type Column } from '@/components/templates/list-page'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useOptions } from '@/hooks/use-options'
 import { useSettings } from '@/hooks/use-settings'
 import { prune, section } from '@/lib/schema'
 
@@ -14,20 +16,43 @@ const SENSORS = ['tools', 'sensors']
 const WEB = ['tools', 'web_search']
 const CLAUDE = ['tools', 'ask_claude']
 const MEMORY = ['memory']
+const SENSOR_DOMAINS = { domain: 'sensor,binary_sensor' }
 
 type Row = SensorPair & { label: string }
 type Editing = { label: string; original?: string; value: SensorPair }
 
-const columns: Column<Row>[] = [
-  { key: 'label', title: 'Label', render: (r) => <span className="font-medium">{r.label}</span> },
-  { key: 'level', title: 'Value sensor', className: 'break-all whitespace-normal', render: (r) => <span className="font-mono text-xs">{r.level}</span> },
-  { key: 'state', title: 'State sensor', className: 'break-all whitespace-normal', render: (r) => <span className="font-mono text-xs">{r.state}</span> },
-]
+/** A picked value sensor fills in what can be known from it: the label from its name in Home
+ * Assistant, the state sensor from its sibling (battery_level -> battery_state). */
+function autofill(e: Editing, next: SensorPair, known: Map<string, Choice>): Editing {
+  if (!next.level || next.level === e.value.level) return { ...e, value: next }
+  const label = e.label.trim() ? e.label : (known.get(next.level)?.label ?? e.label)
+  const sibling = next.level.replace(/_level$/, '_state')
+  const state = next.state || (sibling !== next.level && known.has(sibling) ? sibling : undefined)
+  return { ...e, label, value: { ...next, state } }
+}
+
+function Sensor({ id, known }: { id?: string | null; known: Map<string, Choice> }) {
+  if (!id) return null
+  const c = known.get(id)
+  return (
+    <div className="flex flex-col">
+      <span>{c?.hint ?? id}</span>
+      <span className="text-xs break-all text-muted-foreground">{id}</span>
+    </div>
+  )
+}
 
 export default function ToolsPage() {
   const s = useSettings([WEB, CLAUDE, MEMORY])
   const ask = useConfirm()
   const [editing, setEditing] = useState<Editing | null>(null)
+  const sensorOptions = useOptions('ha_entities', SENSOR_DOMAINS)
+  const known = new Map(sensorOptions.choices.map((c) => [c.value, c]))
+  const columns: Column<Row>[] = [
+    { key: 'label', title: 'Label', className: 'whitespace-normal', render: (r) => <span className="font-medium">{r.label}</span> },
+    { key: 'level', title: 'Value', className: 'whitespace-normal', render: (r) => <Sensor id={r.level} known={known} /> },
+    { key: 'state', title: 'State', className: 'whitespace-normal', render: (r) => <Sensor id={r.state} known={known} /> },
+  ]
   const sensorSchema = useMemo(
     () => (s.page ? prune(section(s.page.schema, [...SENSORS, 'item']), s.page.schema, { advanced: true }) : null),
     [s.page],
@@ -59,6 +84,7 @@ export default function ToolsPage() {
     <ListPage
       title="Tools"
       page={page}
+      advancedToggle
       addLabel="Add sensor"
       onAdd={() => setEditing({ label: '', value: { level: '' } })}
       columns={columns}
@@ -83,7 +109,7 @@ export default function ToolsPage() {
         onKeyChange={(label) => setEditing((e) => e && { ...e, label })}
         schema={sensorSchema}
         value={editing?.value}
-        onChange={(value) => setEditing((e) => e && { ...e, value: value as SensorPair })}
+        onChange={(value) => setEditing((e) => e && autofill(e, value as SensorPair, known))}
         onSubmit={commit}
       />
     </ListPage>

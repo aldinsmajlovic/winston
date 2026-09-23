@@ -268,8 +268,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: llm_models (from the brain's server), voices, stt_adapters */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains */
         get: operations["get_options_api_options__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/home_assistant/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether Home Assistant answers at the URL with the configured token */
+        get: operations["ha_check_api_providers_home_assistant_check_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -424,6 +441,10 @@ export interface components {
             label: string;
             /** Hint */
             hint?: string | null;
+            /** Icon */
+            icon?: string | null;
+            /** Group */
+            group?: string | null;
         };
         /** ConfigResult */
         ConfigResult: {
@@ -634,6 +655,20 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HomeAssistantCheck */
+        HomeAssistantCheck: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /** Version */
+            version?: string | null;
+            /** Location */
+            location?: string | null;
+        };
         /** HomeAssistantConfig */
         HomeAssistantConfig: {
             /**
@@ -670,8 +705,9 @@ export interface components {
             /**
              * Provider
              * @default openai_compatible
+             * @constant
              */
-            provider?: string;
+            provider?: "openai_compatible";
             /**
              * Base URL
              * @default http://127.0.0.1:8000/v1
@@ -797,6 +833,11 @@ export interface components {
              * @default
              */
             source?: string;
+            /**
+             * Ok
+             * @default true
+             */
+            ok?: boolean;
         };
         /** Preset */
         Preset: {
@@ -806,6 +847,8 @@ export interface components {
             title: string;
             /** Hint */
             hint: string;
+            /** Icon */
+            icon?: string | null;
             /** Needs */
             needs: string[];
             /** Engine */
@@ -916,10 +959,11 @@ export interface components {
         TTSConfig: {
             /**
              * Provider
-             * @description Text-to-speech adapter (OpenAI speech protocol).
+             * @description Text-to-speech adapter.
              * @default openai_speech
+             * @constant
              */
-            provider?: string;
+            provider?: "openai_speech";
             /**
              * Base URL
              * @default http://127.0.0.1:8880/v1
@@ -1003,8 +1047,9 @@ export interface components {
             /**
              * Provider
              * @default silero
+             * @constant
              */
-            provider?: string;
+            provider?: "silero";
             /**
              * End of speech (s)
              * @description Silence after speech before the utterance is sent.
@@ -1682,6 +1727,8 @@ export interface operations {
             query?: {
                 /** @description Server to ask instead of the saved one, for an unsaved draft */
                 base_url?: string | null;
+                /** @description ha_entities: comma-separated domains to keep */
+                domain?: string | null;
             };
             header?: never;
             path: {
@@ -1698,6 +1745,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Options"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ha_check_api_providers_home_assistant_check_get: {
+        parameters: {
+            query?: {
+                /** @description URL to try instead of the saved one */
+                url?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeAssistantCheck"];
                 };
             };
             /** @description Validation Error */

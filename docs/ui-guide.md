@@ -22,7 +22,7 @@ transport), connecting through winstond to the voice channel.
 - One accent colour (`--primary`). Semantic colours (ok, warning, error) are not the accent.
 - No glows, gradients or decorative shadows. Light and dark come from the theme tokens, nothing
   hand-tuned per theme.
-- Winston's logo is the one exception to both: its own two colours (`--mark-*`) with a gentle shade in
+- Winston's logo is the one exception to both (other logos stay one colour): its own two colours (`--mark-*`) with a gentle shade in
   each field, and it stays out of the rest of the UI.
 - No welcome text, no explanations, no marketing.
 - No inline styles, no custom CSS classes, no em dashes. The build fails on all three.
@@ -43,7 +43,15 @@ transport), connecting through winstond to the voice channel.
 ## Settings
 
 - Only shadcn components and the three page templates: settings page, status page, list page.
-- Labels, values and controls. A hint is one line and appears only under Advanced.
+- Labels, values and controls. Every field's explanation sits behind an (i) beside its label, opened
+  by hover or tap, never as text under the control. The schema's `description` is the text; a field
+  without one is a gap to fill.
+- Never ask for what a machine already knows. A field whose answers can be listed (models, voices,
+  entities, env variables) names its list in the schema (`options`) and renders as a searchable
+  dropdown that still takes a typed value. Enums carry `labels`; bounded numbers are sliders.
+- Each setting lives on one page. Brain owns the model, Voice owns speaking and hearing.
+- Makers' logos (Simple Icons) mark engines and services, drawn in the text colour like any icon.
+  Home Assistant entities get a lucide icon for their domain.
 - Icons for actions and state. A status is an icon plus a colour, never a sentence.
 - Basic first, Advanced behind a toggle on every page. The schema decides which is which.
 - Destructive or slow actions confirm once, say what they cost ("restarts the brain, about 3 minutes").

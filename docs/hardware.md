@@ -48,7 +48,7 @@ before vLLM starts again.
 
 Mixing is normal. The plan's bigger brain (a 35B mixture model that fills the whole card) is the
 vLLM engine with Pocket TTS on the CPU: pick the vLLM preset for the brain and the Pocket preset
-for the voice on the Models page.
+for the voice on the Voice page.
 
 ## Notes per engine
 
