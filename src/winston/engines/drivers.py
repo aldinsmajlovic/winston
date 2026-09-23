@@ -107,6 +107,7 @@ class SubprocessDriver:
             await asyncio.wait_for(self._proc.wait(), 15)
         except asyncio.TimeoutError:
             self._proc.kill()
+            await self._proc.wait()   # reap it, or running() stays True and the next start() is a no-op
 
     def log_path(self) -> Path | None:
         return self._log

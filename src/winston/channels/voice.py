@@ -13,7 +13,8 @@ from pipecat.observers.loggers.transcription_log_observer import TranscriptionLo
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+from pipecat.processors.aggregators.llm_response_universal import (LLMContextAggregatorPair,
+                                                                    LLMUserAggregatorParams)
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.openai.tts import OpenAITTSService
@@ -47,22 +48,23 @@ def build_tts(cfg: WinstonConfig = CFG):
 
 
 transport_params = {
-    "webrtc": lambda: TransportParams(
-        audio_in_enabled=True, audio_out_enabled=True,
-        vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=CFG.vad.stop_secs)),
-    ),
+    "webrtc": lambda: TransportParams(audio_in_enabled=True, audio_out_enabled=True),
 }
 
 
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     brain = Brain(CFG, channel="voice"); await brain.start()
     stt, tts = build_stt(), build_tts()
-    aggregators = LLMContextAggregatorPair(brain.new_context())
+    # Pipecat 1.11 runs the VAD in the user aggregator, not the transport; TransportParams has no
+    # vad_analyzer field and silently drops one (the browser test never started a turn because of it).
+    vad = SileroVADAnalyzer(params=VADParams(stop_secs=CFG.vad.stop_secs))
+    aggregators = LLMContextAggregatorPair(brain.new_context(),
+                                           user_params=LLMUserAggregatorParams(vad_analyzer=vad))
 
     pipeline = Pipeline([
-        transport.input(),      # mic audio from the browser (+ VAD)
+        transport.input(),      # mic audio from the browser
         stt,                    # utterance -> text
-        aggregators.user(),     # text -> context
+        aggregators.user(),     # VAD + turn taking; text -> context
         brain.llm,              # context -> streamed text, tool calls
         tts,                    # sentences -> pcm
         transport.output(),     # speaker audio to the browser
