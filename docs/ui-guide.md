@@ -22,6 +22,8 @@ transport), connecting through winstond to the voice channel.
 - One accent colour (`--primary`). Semantic colours (ok, warning, error) are not the accent.
 - No glows, gradients or decorative shadows. Light and dark come from the theme tokens, nothing
   hand-tuned per theme.
+- Winston's logo is the one exception to both: its own two colours (`--mark-*`) with a gentle shade in
+  each field, and it stays out of the rest of the UI.
 - No welcome text, no explanations, no marketing.
 - No inline styles, no custom CSS classes, no em dashes. The build fails on all three.
 
@@ -30,9 +32,8 @@ transport), connecting through winstond to the voice channel.
 - The conversation is the page. You on the right in a soft bubble, Winston on the left as plain text.
   Tool calls are one muted line with an icon ("Searched the web for ..."), announcements a line with
   a bell and the time.
-- His presence is one component, `Presence`, driven by his state (idle, listening, thinking,
-  speaking). It stands in for the logo until the logo exists; see [identity](identity.md). Pages never
-  draw their own version of it.
+- His presence is his logo, one component, `Presence`, driven by his state (idle, listening,
+  thinking, speaking); see [identity](identity.md). Pages never draw their own version of it.
 - Voice and typing sit side by side at the bottom: a text field and one round talk button.
 - Links to Settings are plain text at the top right, not a sidebar.
 

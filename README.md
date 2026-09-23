@@ -1,3 +1,5 @@
+<img src="docs/images/logo.svg" alt="Winston's logo" width="72">
+
 # Winston
 
 [![Licence](https://img.shields.io/badge/licence-Apache--2.0-blue)](LICENSE)
@@ -19,7 +21,7 @@ be swapped for a hosted service when that suits you better.
 - **Interruptible and fast.** Around 1.3 s from the end of your sentence to the first spoken word
   (measured headless; barge-in timing is not measured yet).
 - **A Talk page.** Type or talk to Winston in the browser and see what he heard, said and did,
-  announcements included; settings sit behind it.
+  announcements included; his logo moves as he listens, thinks and speaks. Settings sit behind it.
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
   capped per day.
@@ -80,7 +82,7 @@ flowchart LR
 - [Tools](docs/tools.md): memory, web search, `ask_claude`, messaging; keys and limits
 - [Announcements](docs/announcements.md) and [Discord](docs/discord.md)
 - [Architecture](docs/architecture.md): the parts and how they plug together
-- [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks and why
+- [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks, Winston's logo and how it moves
 - [Hardware](docs/hardware.md): profiles and measured budgets
 - [Voices](docs/voices.md) and the [Voice PE satellite](docs/voice-pe.md)
 - [Decisions](docs/decisions.md): what changed and why

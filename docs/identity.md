@@ -1,39 +1,48 @@
 # Identity
 
-Winston's logo is also his presence: the mark in the corner of the Talk page, the thing that fills a
-wall screen in dashboard mode, the favicon, and later the light pattern on a Voice PE. It is not
-designed yet. Until it is, a ring of dots stands in (`web/src/components/presence.tsx`), and every
-page draws Winston through that one component, so the logo replaces one file.
+<img src="images/logo.svg" alt="Winston's logo" width="120">
 
-## What the mark has to do
+Winston's logo is also his presence: the mark in the Talk page header, the favicon, later the thing that
+fills a wall screen in dashboard mode and the light pattern on a Voice PE. Every page draws him through
+one component, `web/src/components/presence.tsx`, so he looks and moves the same everywhere.
 
-It is an animation with five states, not a picture:
+## The mark
 
-| State | When | What it should say |
+A disc split in two by a soft W: sky above, charcoal below. The W takes the middle 70% of the width
+and the line runs flat to the edge on both sides. An inset rim, as wide as the band outside it, is cut
+out of the disc, so the mark sits on any background. Each field shades from top to bottom.
+
+| Part | Light background | Dark background |
 | --- | --- | --- |
-| Idle | Nothing happening | At rest, still there |
-| Listening | You are speaking | Attention on you |
-| Thinking | Between your words and his, tools running | Working on it |
-| Speaking | His voice is playing | It is him talking |
-| Announcing | He speaks unprompted (washing machine done) | Look up, this is new |
+| Sky, top to horizon | `#97BAD8` to `#C9DDEE` | same |
+| Charcoal, horizon to bottom | `#40454F` to `#2A2E35` | `#6C7380` to `#59606C` |
 
-It must:
+On dark backgrounds the charcoal lifts to slate so the lower half does not disappear. The colours
+are theme tokens (`--mark-*` in `web/src/index.css`); the geometry lives in `web/src/lib/mark.ts`
+(100 by 100 viewBox: disc radius 46, rim 7, W depth 11, softness 0.85).
 
-- read at 16 px in a browser tab and at half a wall screen, with the same shape;
-- work in one colour on light and dark, with the accent as the only colour;
-- change state by motion and brightness, not by swapping to a different drawing;
-- map onto a ring of 12 LEDs, which is what the Voice PE has (`docs/voice-pe.md`);
-- not look AI-made: the glowing orb and the waveform were tried in the first mockups and rejected.
+`web/public/favicon.svg` and `docs/images/logo.svg` are the mark at rest in full colour, generated
+from the same geometry.
 
-## Where it will show
+## How it moves
 
-- Talk page header, small, next to the name and the state.
-- Dashboard mode, large, as the talk button.
-- Favicon and the sidebar header in Settings.
-- The README header, once it exists.
-- A Home Assistant card, through the planned integration (`docs/plan.md`).
+The drawing never changes; motion and brightness carry the state.
 
-## Placeholder
+| State | What the mark does |
+| --- | --- |
+| Idle | Still, just under full colour. |
+| Listening | Full colour; the W settles almost flat and a gentle wave runs through the line, left to right. |
+| Thinking | Dims; a light runs along the line. |
+| Speaking | The shape holds and the charcoal glows lighter in a slow swell, about every 1.5 s. |
+| Announcing | The W at its deepest, the whole mark pulsing. Ready in the mark; the live feed has no announcing state yet. |
 
-Twelve dots on a circle. Idle: all dim. Listening: all lit. Thinking: a light chasing round.
-Speaking: the dots pulse out of step. It is deliberately plain so it is not mistaken for the logo.
+Changes between states ease rather than cut. With reduced motion turned on, each state is shown as
+a still. Once Winston is idle and settled the animation stops, so an idle page costs nothing.
+
+## Where it shows
+
+- Talk page header, next to the name and the state.
+- The browser tab (favicon) and the README.
+- Planned: dashboard mode, large, as the talk button; a Home Assistant card through the planned
+  integration (`docs/plan.md`); the Voice PE's 12 lights, upper lights sky and lower lights charcoal,
+  the lower ones brightening when he speaks (`docs/voice-pe.md`).
