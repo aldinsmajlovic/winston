@@ -5,12 +5,16 @@ started by the supervisor:
     python -m winston.channels.voice --host 127.0.0.1 --port 7860
 
 Every model sits behind an adapter chosen in config (plan §6, rule 1)."""
+import asyncio
+import wave
+
+import numpy as np
 from loguru import logger
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import TTSSpeakFrame
+from pipecat.frames.frames import LLMMessagesAppendFrame, OutputAudioRawFrame, TTSSpeakFrame
 from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
@@ -25,10 +29,11 @@ from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
-from winston.config import load
+from winston.config import load, resolve
 from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, ToolCallLogObserver, api_key
+from winston.core.announce import note, subscribe
 from winston.core.guard import ClaimGuard
 
 CFG: WinstonConfig = load()
@@ -50,6 +55,30 @@ def build_tts(cfg: WinstonConfig = CFG):
         raise ValueError(f"unsupported tts provider {c.provider}")
     return OpenAITTSService(api_key=api_key(c.api_key_env), base_url=c.base_url, model="winston-tts", voice=c.voice,
                             sample_rate=c.sample_rate)
+
+
+def load_chime(cfg: WinstonConfig = CFG) -> bytes:
+    """The announcement chime as 16-bit mono PCM at the TTS sample rate, or b"" for none."""
+    if not cfg.announce.chime:
+        return b""
+    try:
+        with wave.open(str(resolve(cfg.announce.chime))) as w:
+            if w.getsampwidth() != 2:
+                raise ValueError("chime must be 16-bit PCM")
+            x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float32)
+            if w.getnchannels() > 1:
+                x = x.reshape(-1, w.getnchannels()).mean(axis=1)
+            rate = w.getframerate()
+    except (OSError, ValueError, wave.Error) as e:
+        logger.warning(f"no announcement chime: {e}")
+        return b""
+    if rate != cfg.tts.sample_rate:                  # linear resampling is plenty for a chime
+        n = int(len(x) * cfg.tts.sample_rate / rate)
+        x = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x)
+    return x.astype("<i2").tobytes()
+
+
+CHIME = load_chime()
 
 
 transport_params = {
@@ -99,14 +128,33 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         idle_timeout_secs=None,
     )
 
+    async def announcements():
+        """Announcements from winstond while this browser is connected: the note first, so a reply
+        has context, then the chime and the text spoken as is."""
+        async for ev in subscribe(CFG, "voice"):
+            logger.info(f"announcement: {ev['text']!r}")
+            frames = [LLMMessagesAppendFrame(messages=[{"role": "user", "content": note(ev["text"], ev["context"])}],
+                                             run_llm=False)]
+            if CHIME:
+                frames.append(OutputAudioRawFrame(audio=CHIME, sample_rate=CFG.tts.sample_rate, num_channels=1))
+            frames.append(TTSSpeakFrame(ev["text"]))
+            await worker.queue_frames(frames)
+
+    listener: asyncio.Task | None = None
+
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
+        nonlocal listener
         logger.info("client connected")
         await worker.queue_frames([TTSSpeakFrame(f"{CFG.assistant.name} online.")])
+        if CFG.announce.enabled:
+            listener = asyncio.create_task(announcements())
 
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("client disconnected")
+        if listener:
+            listener.cancel()
         await worker.cancel()
         await brain.close()
 

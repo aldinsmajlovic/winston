@@ -1,5 +1,5 @@
 """Text channel: the same brain and tools as voice, minus STT and TTS. Used by `winston talk`
-and, later, Telegram and the web chat."""
+and the Discord channel, later the web chat."""
 import asyncio
 import sys
 import time
@@ -16,6 +16,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.workers.runner import WorkerRunner
 
 from winston.config.schema import WinstonConfig
+from winston.core.announce import note
 from winston.core.brain import Brain, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
 
@@ -70,27 +71,66 @@ class Printer(FrameProcessor):
         reply = "".join(self.buf).strip(); self.replies.append(reply); return reply
 
 
+class TextSession:
+    """One conversation over text: the brain, the claim guard and the tool log, minus STT and TTS.
+    `winston talk` runs one; the Discord channel runs one per conversation.
+
+        s = TextSession(cfg, channel="discord"); await s.start()
+        reply = await s.ask("turn on the lights"); await s.close()"""
+
+    def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False):
+        self.cfg, self.channel, self.echo = cfg, channel, echo
+        self.last_used = time.monotonic()
+        self._lock = asyncio.Lock()          # one question at a time; a second waits its turn
+
+    async def start(self):
+        cfg = self.cfg
+        self.brain = Brain(cfg, channel="text"); await self.brain.start()
+        agg = LLMContextAggregatorPair(self.brain.new_context())
+        self._tracker = TurnTracker(); self.printer = Printer(self._tracker, self.echo)
+        guard = ClaimGuard(cfg, channel=self.channel)
+        self._worker = PipelineWorker(Pipeline([agg.user(), self.brain.llm, guard, self.printer, agg.assistant()]),
+                                      params=PipelineParams(enable_metrics=False),
+                                      observers=[guard.observer, ToolCallLogObserver(cfg, channel=self.channel),
+                                                 self._tracker],
+                                      idle_timeout_secs=None)
+        self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self._worker))
+        return self
+
+    @property
+    def busy(self) -> bool:
+        return self._lock.locked()
+
+    async def ask(self, m: str) -> str:
+        async with self._lock:
+            self.last_used = time.monotonic()
+            await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}],
+                                                                    run_llm=True)])
+            reply = await self.printer.wait_reply()
+            self.last_used = time.monotonic()
+            return reply
+
+    async def announced(self, text: str, context: dict):
+        """An announcement delivered on this channel joins the conversation, so replies to it work."""
+        async with self._lock:
+            self.last_used = time.monotonic()
+            await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[
+                {"role": "user", "content": note(text, context)}, {"role": "assistant", "content": text}],
+                run_llm=False)])
+
+    async def close(self):
+        await self._worker.cancel(); await self._task; await self.brain.close()
+
+
 async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True) -> list[str]:
     """Scripted (messages given, one shared context) or interactive (None) chat."""
-    brain = Brain(cfg, channel="text"); await brain.start()
-    agg = LLMContextAggregatorPair(brain.new_context())
-    tracker = TurnTracker(); printer = Printer(tracker, echo); guard = ClaimGuard(cfg, channel="text")
-    worker = PipelineWorker(Pipeline([agg.user(), brain.llm, guard, printer, agg.assistant()]),
-                            params=PipelineParams(enable_metrics=False),
-                            observers=[guard.observer, ToolCallLogObserver(cfg, channel="text"), tracker],
-                            idle_timeout_secs=None)
-    run_task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(worker))
-
-    async def ask(m: str) -> str:
-        await worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}], run_llm=True)])
-        return await printer.wait_reply()
-
+    s = await TextSession(cfg, echo=echo).start()
     try:
         if messages:
             for m in messages:
                 if echo:
                     print(f"\n> {m}\n{cfg.assistant.name}: ", end="", flush=True)
-                await ask(m)
+                await s.ask(m)
         else:
             print(f"{cfg.assistant.name} is listening (Ctrl-D to quit).")
             while True:
@@ -100,10 +140,10 @@ async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True)
                     break
                 if m.strip():
                     print(f"{cfg.assistant.name}: ", end="", flush=True)
-                    await ask(m)
+                    await s.ask(m)
     finally:
-        await worker.cancel(); await run_task; await brain.close()
-    return printer.replies
+        await s.close()
+    return s.printer.replies
 
 
 if __name__ == "__main__":

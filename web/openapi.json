@@ -57,6 +57,85 @@
         }
       }
     },
+    "/api/announce": {
+      "post": {
+        "summary": "Say something unprompted: chime and speech on connected speakers, Discord per config",
+        "operationId": "announce_api_announce_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Announcement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Delivery"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "get": {
+        "summary": "Announcements for one channel process, as server-sent events",
+        "operationId": "events_api_events_get",
+        "parameters": [
+          {
+            "name": "channel",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "voice",
+                "discord"
+              ],
+              "type": "string",
+              "title": "Channel"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engines/{name}/start": {
       "post": {
         "summary": "Start",
@@ -374,6 +453,140 @@
   },
   "components": {
     "schemas": {
+      "AnnounceConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Let Winston speak on its own: Home Assistant automations, the API and `winston announce` send it something to say.",
+            "default": true
+          },
+          "chime": {
+            "type": "string",
+            "title": "Chime",
+            "description": "Sound played before an announcement, so it is clearly a notification. Empty for none.",
+            "default": "{repo}/assets/sounds/chime.wav",
+            "level": "advanced",
+            "restarts": [
+              "voice"
+            ]
+          },
+          "quiet_hours": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiet hours",
+            "description": "HH:MM-HH:MM when announcements are not spoken, only sent to Discord. Empty for never quiet.",
+            "default": "22:00-07:00"
+          },
+          "discord": {
+            "type": "string",
+            "enum": [
+              "always",
+              "fallback",
+              "never"
+            ],
+            "title": "Also to Discord",
+            "description": "always: every announcement; fallback: when nothing can speak it (quiet hours, no speaker connected); never.",
+            "default": "fallback"
+          },
+          "ha_event": {
+            "type": "string",
+            "title": "Home Assistant event",
+            "description": "Event type an automation fires with data {text, context} to announce.",
+            "default": "winston_announce",
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AnnounceConfig",
+        "restarts": [
+          "control"
+        ]
+      },
+      "Announcement": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Text",
+            "description": "Spoken as is."
+          },
+          "context": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Context",
+            "description": "Details Winston keeps for follow-up questions but does not read out."
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "Who asked: api, cli, home_assistant.",
+            "default": "api"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "Announcement"
+      },
+      "AskClaudeConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Hand hard questions to Claude. Uses the Claude Code login on this machine, CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. Only the question leaves the house.",
+            "default": false
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "default": "claude-opus-5",
+            "level": "advanced"
+          },
+          "effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Effort",
+            "description": "Reasoning effort. Low answered in about 3 to 5 s; each step up is slower.",
+            "default": "low",
+            "level": "advanced"
+          },
+          "max_usd_per_day": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Budget per day (USD)",
+            "description": "Past it the tool refuses until midnight. A Max 5x plan's monthly Agent SDK credit is 100 USD.",
+            "default": 3.0
+          },
+          "max_usd_per_question": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Budget per question (USD)",
+            "default": 0.5,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "AskClaudeConfig",
+        "restarts": [
+          "voice",
+          "discord"
+        ]
+      },
       "AssistantConfig": {
         "properties": {
           "name": {
@@ -394,7 +607,8 @@
         "type": "object",
         "title": "AssistantConfig",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "Channels": {
@@ -407,12 +621,14 @@
               "port": 7860
             }
           },
-          "telegram": {
-            "$ref": "#/components/schemas/TelegramChannel",
+          "discord": {
+            "$ref": "#/components/schemas/DiscordChannel",
             "default": {
               "enabled": false,
-              "token_env": "TELEGRAM_BOT_TOKEN",
-              "allowed_user_id_env": "TELEGRAM_ALLOWED_USER_ID"
+              "token_env": "DISCORD_BOT_TOKEN",
+              "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
+              "session_idle_mins": 30,
+              "contacts": {}
             }
           }
         },
@@ -490,6 +706,84 @@
         "title": "ControlConfig",
         "restarts": [
           "control"
+        ]
+      },
+      "Delivery": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "spoken_on": {
+            "type": "integer",
+            "title": "Spoken On"
+          },
+          "discord": {
+            "type": "boolean",
+            "title": "Discord"
+          },
+          "quiet": {
+            "type": "boolean",
+            "title": "Quiet"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "spoken_on",
+          "discord",
+          "quiet"
+        ],
+        "title": "Delivery"
+      },
+      "DiscordChannel": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Talk to Winston in Discord DMs and get announcements there.",
+            "default": false
+          },
+          "token_env": {
+            "type": "string",
+            "title": "Token variable",
+            "default": "DISCORD_BOT_TOKEN",
+            "level": "advanced"
+          },
+          "allowed_user_env": {
+            "type": "string",
+            "title": "Allowed user variable",
+            "description": "Environment variable with the one Discord user id Winston answers.",
+            "default": "DISCORD_ALLOWED_USER_ID",
+            "level": "advanced"
+          },
+          "session_idle_mins": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Conversation resets after (min)",
+            "description": "Idle minutes before a DM conversation starts fresh (and re-reads memory).",
+            "default": 30,
+            "level": "advanced"
+          },
+          "contacts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Contacts",
+            "description": "People Winston may message, name -> Discord user id. The bot can only reach people who share a server with it.",
+            "level": "basic",
+            "restarts": [
+              "voice",
+              "discord"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DiscordChannel",
+        "restarts": [
+          "discord"
         ]
       },
       "EngineConfig": {
@@ -774,7 +1068,8 @@
         "type": "object",
         "title": "ExposedEntity",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "GpuStatus": {
@@ -858,7 +1153,8 @@
         ],
         "title": "HomeAssistantConfig",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "LLMConfig": {
@@ -895,7 +1191,8 @@
             "level": "basic",
             "restarts": [
               "llm",
-              "voice"
+              "voice",
+              "discord"
             ]
           },
           "sampling": {
@@ -923,7 +1220,8 @@
         ],
         "title": "LLMConfig",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "LoggingConfig": {
@@ -945,11 +1243,18 @@
         "type": "object",
         "title": "LoggingConfig",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "MemoryConfig": {
         "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Load remembered facts into every new conversation and offer the remember tool.",
+            "default": true
+          },
           "dir": {
             "type": "string",
             "title": "Directory",
@@ -965,7 +1270,11 @@
         },
         "additionalProperties": false,
         "type": "object",
-        "title": "MemoryConfig"
+        "title": "MemoryConfig",
+        "restarts": [
+          "voice",
+          "discord"
+        ]
       },
       "Ok": {
         "properties": {
@@ -1216,7 +1525,8 @@
         "type": "object",
         "title": "Sampling",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "SensorPair": {
@@ -1246,7 +1556,8 @@
         ],
         "title": "SensorPair",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "Status": {
@@ -1334,30 +1645,6 @@
           "voice"
         ]
       },
-      "TelegramChannel": {
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled",
-            "default": false
-          },
-          "token_env": {
-            "type": "string",
-            "title": "Token variable",
-            "default": "TELEGRAM_BOT_TOKEN",
-            "level": "advanced"
-          },
-          "allowed_user_id_env": {
-            "type": "string",
-            "title": "Allowed user variable",
-            "default": "TELEGRAM_ALLOWED_USER_ID",
-            "level": "advanced"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "title": "TelegramChannel"
-      },
       "Thinking": {
         "properties": {
           "voice": {
@@ -1389,7 +1676,8 @@
         "type": "object",
         "title": "Thinking",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "ToolsConfig": {
@@ -1401,13 +1689,38 @@
             "type": "object",
             "title": "Sensors",
             "description": "Watched sensors by label; readings come with their age."
+          },
+          "web_search": {
+            "$ref": "#/components/schemas/WebSearchConfig",
+            "title": "Web search",
+            "default": {
+              "enabled": false,
+              "provider": "gemini",
+              "model": "gemini-3.5-flash-lite",
+              "thinking": "minimal",
+              "api_key_env": "GEMINI_API_KEY",
+              "max_per_day": 100,
+              "timeout": 15.0
+            }
+          },
+          "ask_claude": {
+            "$ref": "#/components/schemas/AskClaudeConfig",
+            "title": "Ask Claude",
+            "default": {
+              "enabled": false,
+              "model": "claude-opus-5",
+              "effort": "low",
+              "max_usd_per_day": 3.0,
+              "max_usd_per_question": 0.5
+            }
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "ToolsConfig",
         "restarts": [
-          "voice"
+          "voice",
+          "discord"
         ]
       },
       "VADConfig": {
@@ -1511,6 +1824,70 @@
           "voice"
         ]
       },
+      "WebSearchConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Let Winston look up current facts on the web. Only the search question leaves the house.",
+            "default": false
+          },
+          "provider": {
+            "type": "string",
+            "const": "gemini",
+            "title": "Provider",
+            "description": "Search backend. gemini: Gemini with Google Search grounding (needs billing enabled on the key).",
+            "default": "gemini"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "Flash-Lite answers in about 1.4 s, Flash in 2.3 s (minimal thinking, measured 2026-09-23).",
+            "default": "gemini-3.5-flash-lite",
+            "level": "advanced"
+          },
+          "thinking": {
+            "type": "string",
+            "enum": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Thinking",
+            "description": "Reasoning at the search model. Each step up costs about a second.",
+            "default": "minimal",
+            "level": "advanced"
+          },
+          "api_key_env": {
+            "type": "string",
+            "title": "API key variable",
+            "default": "GEMINI_API_KEY",
+            "level": "advanced"
+          },
+          "max_per_day": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Searches per day",
+            "description": "Hard cap; past it the tool refuses until midnight.",
+            "default": 100
+          },
+          "timeout": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Timeout (s)",
+            "default": 15.0,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "WebSearchConfig",
+        "restarts": [
+          "voice",
+          "discord"
+        ]
+      },
       "WinstonConfig": {
         "properties": {
           "version": {
@@ -1573,10 +1950,12 @@
                 "host": "127.0.0.1",
                 "port": 7860
               },
-              "telegram": {
-                "allowed_user_id_env": "TELEGRAM_ALLOWED_USER_ID",
+              "discord": {
+                "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
+                "contacts": {},
                 "enabled": false,
-                "token_env": "TELEGRAM_BOT_TOKEN"
+                "session_idle_mins": 30,
+                "token_env": "DISCORD_BOT_TOKEN"
               }
             }
           },
@@ -1587,14 +1966,41 @@
           "tools": {
             "$ref": "#/components/schemas/ToolsConfig",
             "default": {
-              "sensors": {}
+              "sensors": {},
+              "web_search": {
+                "api_key_env": "GEMINI_API_KEY",
+                "enabled": false,
+                "max_per_day": 100,
+                "model": "gemini-3.5-flash-lite",
+                "provider": "gemini",
+                "thinking": "minimal",
+                "timeout": 15.0
+              },
+              "ask_claude": {
+                "effort": "low",
+                "enabled": false,
+                "max_usd_per_day": 3.0,
+                "max_usd_per_question": 0.5,
+                "model": "claude-opus-5"
+              }
             }
           },
           "memory": {
             "$ref": "#/components/schemas/MemoryConfig",
             "default": {
+              "enabled": true,
               "dir": "memory",
               "commit_on_write": true
+            }
+          },
+          "announce": {
+            "$ref": "#/components/schemas/AnnounceConfig",
+            "default": {
+              "enabled": true,
+              "chime": "{repo}/assets/sounds/chime.wav",
+              "quiet_hours": "22:00-07:00",
+              "discord": "fallback",
+              "ha_event": "winston_announce"
             }
           },
           "logging": {

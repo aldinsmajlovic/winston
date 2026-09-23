@@ -1,5 +1,5 @@
-"""The supervisor owns every process Winston depends on: engines from config plus the voice
-channel. Start, stop, health, status, and adopting a changed config. The API and the CLI talk
+"""The supervisor owns every process Winston depends on: engines from config plus the channel
+processes (voice, Discord). Start, stop, health, status, and adopting a changed config. The API and the CLI talk
 to this, never to processes."""
 from __future__ import annotations
 
@@ -11,7 +11,8 @@ import httpx
 from loguru import logger
 
 from winston.config.schema import EngineConfig, WinstonConfig
-from winston.engines.drivers import DockerDriver, Driver, ExternalDriver, SubprocessDriver, voice_channel_cmd
+from winston.engines.drivers import (DockerDriver, Driver, ExternalDriver, SubprocessDriver, discord_channel_cmd,
+                                     voice_channel_cmd)
 
 
 @dataclass
@@ -64,6 +65,10 @@ class Supervisor:
             vcfg = EngineConfig(driver="subprocess", port=v.port, health="/client/", startup_timeout=120)
             items["voice"] = Managed("voice", vcfg, SubprocessDriver("voice", vcfg, voice_channel_cmd(v.host, v.port)),
                                      kind="channel")
+        if cfg.channels.discord.enabled:            # no port and no health path: up while the process runs
+            dcfg = EngineConfig(driver="subprocess", port=0, health="", startup_timeout=60)
+            items["discord"] = Managed("discord", dcfg, SubprocessDriver("discord", dcfg, discord_channel_cmd()),
+                                       kind="channel")
         return items
 
     async def reload(self, cfg: WinstonConfig) -> list[str]:
@@ -160,8 +165,9 @@ class Supervisor:
     async def start_all(self) -> list[Managed]:
         engines = [n for n, m in self.items.items() if m.kind == "engine"]
         await asyncio.gather(*(self.start(n) for n in engines))          # engines in parallel
-        if "voice" in self.items and all(self.items[n].state == "healthy" for n in engines):
-            await self.start("voice")
+        if all(self.items[n].state == "healthy" for n in engines):
+            channels = [n for n, m in self.items.items() if m.kind == "channel"]
+            await asyncio.gather(*(self.start(n) for n in channels))
         return list(self.items.values())
 
     async def stop_all(self, owned_only: bool = False) -> None:

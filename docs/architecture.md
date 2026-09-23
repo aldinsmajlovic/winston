@@ -29,7 +29,7 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
         +-----------------+------------------+
         |                 |                  |
    supervisor          brain              channels
-   (engines)     (LLM + tools + policy)   voice (Pipecat WebRTC), text, telegram, satellites
+   (engines)     (LLM + tools + policy)   voice (Pipecat WebRTC), text, discord, satellites
         |                 |
    drivers:          tool sources:
    docker,           MCP servers (Home Assistant is one entry),
@@ -48,7 +48,10 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
 - **Adapters** (`winston/plugins`): Pipecat services with a settings model, discovered through Python
   entry points (`winston.stt`, `winston.tts`, ...). A third-party package adds one without touching core.
 - **Channels** (`winston/channels`): feed the same brain. Voice is the Pipecat pipeline with VAD,
-  barge-in and latency observers; text is the CLI today and Telegram and web chat next.
+  barge-in and latency observers; text is `winston talk` and the Discord channel (DMs); web chat next.
+- **Announcements** (`core/announce.py`): winstond is the hub. Home Assistant events, the API and the
+  CLI publish; channel processes subscribe to `/api/events` and deliver (chime and speech, or a DM).
+  An announcement joins the conversation with its context, so replies to it work.
 - **Providers** (`winston/providers`): platform helpers, currently Home Assistant's exposure allowlist.
 - **Control** (`winston/api`, `winston/cli`): `winstond` and the `winston` command.
 

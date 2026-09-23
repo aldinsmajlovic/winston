@@ -78,7 +78,7 @@ def init(force: bool = typer.Option(False, help="Overwrite existing files."),
 @app.command()
 def up(host: str = typer.Option(None), port: int = typer.Option(None),
        no_start: bool = typer.Option(False, "--no-start", help="Run the control service without starting engines.")):
-    """Run winstond: start the engines and the voice channel, serve the control API. Ctrl-C stops everything."""
+    """Run winstond: start the engines and the channels, serve the control API. Ctrl-C stops everything."""
     import uvicorn
     from winston.api.app import create_app
     cfg = load()
@@ -102,7 +102,7 @@ def status():
 
 @app.command()
 def restart(name: str):
-    """Restart one engine or the voice channel."""
+    """Restart one engine or channel."""
     r = httpx.post(f"{_api()}/api/engines/{name}/restart", timeout=30)
     print(r.json() if r.status_code == 200 else r.text)
 
@@ -122,6 +122,25 @@ def talk(message: list[str] = typer.Argument(None, help="Messages to send; none 
 
 
 @app.command()
+def announce(text: str = typer.Argument(..., help="What Winston says."),
+             context: list[str] = typer.Option(None, "--context", "-c",
+                                               help="key=value details kept for follow-up questions; repeatable.")):
+    """Make Winston say something on its own: chime and speech on connected speakers, Discord per config."""
+    ctx = dict(kv.split("=", 1) for kv in context or [] if "=" in kv)
+    try:
+        r = httpx.post(f"{_api()}/api/announce", json={"text": text, "context": ctx, "source": "cli"}, timeout=10)
+    except httpx.HTTPError:
+        print("winstond is not running (start it with `winston up`)"); raise typer.Exit(1)
+    if r.status_code != 200:
+        print(r.text); raise typer.Exit(1)
+    d = r.json()
+    where = [f"{d['spoken_on']} speaker(s)"] if d["spoken_on"] else []
+    where += ["Discord"] if d["discord"] else []
+    print(f"announced on {', '.join(where)}" if where else
+          "delivered nowhere: no speaker connected" + (" (quiet hours)" if d["quiet"] else "") + " and Discord off")
+
+
+@app.command()
 def memory():
     """Show what Winston remembers, as it goes into the prompt. Edit the files to change it."""
     from winston.core.memory import prompt_block, vault
@@ -134,7 +153,8 @@ def memory():
 def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | all")):
     """Run the checks: unit needs nothing, the milestones need the engines up."""
     tests = repo_root() / "tests"
-    plan = {"unit": ["bash", "-c", f"{sys.executable} {tests / 'guard_cases.py'} && {sys.executable} {tests / 'memory_cases.py'} && {sys.executable} {tests / 'profiles_load.py'}"],
+    unit = ["guard_cases.py", "memory_cases.py", "announce_cases.py", "profiles_load.py"]
+    plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {tests / t}" for t in unit)],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],
             "m2": [sys.executable, str(tests / "m2_components.py")]}

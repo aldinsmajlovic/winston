@@ -4,12 +4,16 @@ import type { SensorPair } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
 import { ItemDialog } from '@/components/item-dialog'
 import { PageSkeleton } from '@/components/page'
+import { SectionForm } from '@/components/section-form'
 import { ListPage, type Column } from '@/components/templates/list-page'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useSettings } from '@/hooks/use-settings'
 import { prune, section } from '@/lib/schema'
 
 const SENSORS = ['tools', 'sensors']
+const WEB = ['tools', 'web_search']
+const CLAUDE = ['tools', 'ask_claude']
+const MEMORY = ['memory']
 
 type Row = SensorPair & { label: string }
 type Editing = { label: string; original?: string; value: SensorPair }
@@ -21,7 +25,7 @@ const columns: Column<Row>[] = [
 ]
 
 export default function ToolsPage() {
-  const s = useSettings([])
+  const s = useSettings([WEB, CLAUDE, MEMORY])
   const ask = useConfirm()
   const [editing, setEditing] = useState<Editing | null>(null)
   const sensorSchema = useMemo(
@@ -67,6 +71,9 @@ export default function ToolsPage() {
         </IconButton>
       )}
     >
+      <SectionForm page={page} path={WEB} title="Web search" />
+      <SectionForm page={page} path={CLAUDE} title="Ask Claude" />
+      <SectionForm page={page} path={MEMORY} title="Memory" />
       <ItemDialog
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}

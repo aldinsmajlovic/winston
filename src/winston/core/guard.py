@@ -55,9 +55,10 @@ _SKIP = re.compile(r"\?|\b(?:would you|do you want|shall i|should i|can't|cannot
 # "I set", "I'll set", "I'm going to set", "setting ... now", "has been set", "turned on", "done".
 _ACT_STRONG = re.compile(
     r"\bi(?:'ve| have|'ll| will|'m| am)?(?: just| going to)? "
-    r"(?:set|turned?|switch(?:ed)?|dimm?(?:ed)?|changed?|adjust(?:ed)?|boot(?:ed)?|start(?:ed)?|woke|wake|put)\b"
+    r"(?:set|turned?|switch(?:ed)?|dimm?(?:ed)?|changed?|adjust(?:ed)?|boot(?:ed)?|start(?:ed)?|woke|wake|put|"
+    r"sen[dt]|messag(?:e|ed))\b"
     r"|\b(?:setting|turning|switching|dimming|changing|adjusting|booting|waking)\b"
-    r"|\b(?:has|have) been (?:set|turned|switched|dimmed|changed|adjusted|booted)\b"
+    r"|\b(?:has|have) been (?:set|turned|switched|dimmed|changed|adjusted|booted|sent)\b"
     r"|\b(?:turned|switched) (?:on|off)\b|\bdone\b")
 # "I'll remember that", "noted": a memory claim, which needs the remember tool (an act tool). Bare
 # "I remember" is recall from the prompt, not a claim.

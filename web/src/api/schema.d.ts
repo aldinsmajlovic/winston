@@ -55,6 +55,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/announce": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Say something unprompted: chime and speech on connected speakers, Discord per config */
+        post: operations["announce_api_announce_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Announcements for one channel process, as server-sent events */
+        get: operations["events_api_events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines/{name}/start": {
         parameters: {
             query?: never;
@@ -213,6 +247,93 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnnounceConfig */
+        AnnounceConfig: {
+            /**
+             * Enabled
+             * @description Let Winston speak on its own: Home Assistant automations, the API and `winston announce` send it something to say.
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Chime
+             * @description Sound played before an announcement, so it is clearly a notification. Empty for none.
+             * @default {repo}/assets/sounds/chime.wav
+             */
+            chime?: string;
+            /**
+             * Quiet hours
+             * @description HH:MM-HH:MM when announcements are not spoken, only sent to Discord. Empty for never quiet.
+             * @default 22:00-07:00
+             */
+            quiet_hours?: string | null;
+            /**
+             * Also to Discord
+             * @description always: every announcement; fallback: when nothing can speak it (quiet hours, no speaker connected); never.
+             * @default fallback
+             * @enum {string}
+             */
+            discord?: "always" | "fallback" | "never";
+            /**
+             * Home Assistant event
+             * @description Event type an automation fires with data {text, context} to announce.
+             * @default winston_announce
+             */
+            ha_event?: string;
+        };
+        /** Announcement */
+        Announcement: {
+            /**
+             * Text
+             * @description Spoken as is.
+             */
+            text: string;
+            /**
+             * Context
+             * @description Details Winston keeps for follow-up questions but does not read out.
+             */
+            context?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source
+             * @description Who asked: api, cli, home_assistant.
+             * @default api
+             */
+            source?: string;
+        };
+        /** AskClaudeConfig */
+        AskClaudeConfig: {
+            /**
+             * Enabled
+             * @description Hand hard questions to Claude. Uses the Claude Code login on this machine, CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. Only the question leaves the house.
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Model
+             * @default claude-opus-5
+             */
+            model?: string;
+            /**
+             * Effort
+             * @description Reasoning effort. Low answered in about 3 to 5 s; each step up is slower.
+             * @default low
+             * @enum {string}
+             */
+            effort?: "low" | "medium" | "high";
+            /**
+             * Budget per day (USD)
+             * @description Past it the tool refuses until midnight. A Max 5x plan's monthly Agent SDK credit is 100 USD.
+             * @default 3
+             */
+            max_usd_per_day?: number;
+            /**
+             * Budget per question (USD)
+             * @default 0.5
+             */
+            max_usd_per_question?: number;
+        };
         /** AssistantConfig */
         AssistantConfig: {
             /**
@@ -241,11 +362,13 @@ export interface components {
             /**
              * @default {
              *       "enabled": false,
-             *       "token_env": "TELEGRAM_BOT_TOKEN",
-             *       "allowed_user_id_env": "TELEGRAM_ALLOWED_USER_ID"
+             *       "token_env": "DISCORD_BOT_TOKEN",
+             *       "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
+             *       "session_idle_mins": 30,
+             *       "contacts": {}
              *     }
              */
-            telegram?: components["schemas"]["TelegramChannel"];
+            discord?: components["schemas"]["DiscordChannel"];
         };
         /** Choice */
         Choice: {
@@ -275,6 +398,50 @@ export interface components {
              * @default 8700
              */
             port?: number;
+        };
+        /** Delivery */
+        Delivery: {
+            /** Id */
+            id: string;
+            /** Spoken On */
+            spoken_on: number;
+            /** Discord */
+            discord: boolean;
+            /** Quiet */
+            quiet: boolean;
+        };
+        /** DiscordChannel */
+        DiscordChannel: {
+            /**
+             * Enabled
+             * @description Talk to Winston in Discord DMs and get announcements there.
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Token variable
+             * @default DISCORD_BOT_TOKEN
+             */
+            token_env?: string;
+            /**
+             * Allowed user variable
+             * @description Environment variable with the one Discord user id Winston answers.
+             * @default DISCORD_ALLOWED_USER_ID
+             */
+            allowed_user_env?: string;
+            /**
+             * Conversation resets after (min)
+             * @description Idle minutes before a DM conversation starts fresh (and re-reads memory).
+             * @default 30
+             */
+            session_idle_mins?: number;
+            /**
+             * Contacts
+             * @description People Winston may message, name -> Discord user id. The bot can only reach people who share a server with it.
+             */
+            contacts?: {
+                [key: string]: string;
+            };
         };
         /**
          * EngineConfig
@@ -508,6 +675,12 @@ export interface components {
         /** MemoryConfig */
         MemoryConfig: {
             /**
+             * Enabled
+             * @description Load remembered facts into every new conversation and offer the remember tool.
+             * @default true
+             */
+            enabled?: boolean;
+            /**
              * Directory
              * @default memory
              */
@@ -682,24 +855,6 @@ export interface components {
              */
             sample_rate?: number;
         };
-        /** TelegramChannel */
-        TelegramChannel: {
-            /**
-             * Enabled
-             * @default false
-             */
-            enabled?: boolean;
-            /**
-             * Token variable
-             * @default TELEGRAM_BOT_TOKEN
-             */
-            token_env?: string;
-            /**
-             * Allowed user variable
-             * @default TELEGRAM_ALLOWED_USER_ID
-             */
-            allowed_user_id_env?: string;
-        };
         /** Thinking */
         Thinking: {
             /**
@@ -731,6 +886,30 @@ export interface components {
             sensors?: {
                 [key: string]: components["schemas"]["SensorPair"];
             };
+            /**
+             * Web search
+             * @default {
+             *       "enabled": false,
+             *       "provider": "gemini",
+             *       "model": "gemini-3.5-flash-lite",
+             *       "thinking": "minimal",
+             *       "api_key_env": "GEMINI_API_KEY",
+             *       "max_per_day": 100,
+             *       "timeout": 15
+             *     }
+             */
+            web_search?: components["schemas"]["WebSearchConfig"];
+            /**
+             * Ask Claude
+             * @default {
+             *       "enabled": false,
+             *       "model": "claude-opus-5",
+             *       "effort": "low",
+             *       "max_usd_per_day": 3,
+             *       "max_usd_per_question": 0.5
+             *     }
+             */
+            ask_claude?: components["schemas"]["AskClaudeConfig"];
         };
         /** VADConfig */
         VADConfig: {
@@ -782,6 +961,51 @@ export interface components {
              * @default 7860
              */
             port?: number;
+        };
+        /** WebSearchConfig */
+        WebSearchConfig: {
+            /**
+             * Enabled
+             * @description Let Winston look up current facts on the web. Only the search question leaves the house.
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Provider
+             * @description Search backend. gemini: Gemini with Google Search grounding (needs billing enabled on the key).
+             * @default gemini
+             * @constant
+             */
+            provider?: "gemini";
+            /**
+             * Model
+             * @description Flash-Lite answers in about 1.4 s, Flash in 2.3 s (minimal thinking, measured 2026-09-23).
+             * @default gemini-3.5-flash-lite
+             */
+            model?: string;
+            /**
+             * Thinking
+             * @description Reasoning at the search model. Each step up costs about a second.
+             * @default minimal
+             * @enum {string}
+             */
+            thinking?: "minimal" | "low" | "medium" | "high";
+            /**
+             * API key variable
+             * @default GEMINI_API_KEY
+             */
+            api_key_env?: string;
+            /**
+             * Searches per day
+             * @description Hard cap; past it the tool refuses until midnight.
+             * @default 100
+             */
+            max_per_day?: number;
+            /**
+             * Timeout (s)
+             * @default 15
+             */
+            timeout?: number;
         };
         /** WinstonConfig */
         WinstonConfig: {
@@ -838,10 +1062,12 @@ export interface components {
              *         "host": "127.0.0.1",
              *         "port": 7860
              *       },
-             *       "telegram": {
-             *         "allowed_user_id_env": "TELEGRAM_ALLOWED_USER_ID",
+             *       "discord": {
+             *         "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
+             *         "contacts": {},
              *         "enabled": false,
-             *         "token_env": "TELEGRAM_BOT_TOKEN"
+             *         "session_idle_mins": 30,
+             *         "token_env": "DISCORD_BOT_TOKEN"
              *       }
              *     }
              */
@@ -850,17 +1076,44 @@ export interface components {
             providers?: components["schemas"]["Providers"];
             /**
              * @default {
-             *       "sensors": {}
+             *       "sensors": {},
+             *       "web_search": {
+             *         "api_key_env": "GEMINI_API_KEY",
+             *         "enabled": false,
+             *         "max_per_day": 100,
+             *         "model": "gemini-3.5-flash-lite",
+             *         "provider": "gemini",
+             *         "thinking": "minimal",
+             *         "timeout": 15
+             *       },
+             *       "ask_claude": {
+             *         "effort": "low",
+             *         "enabled": false,
+             *         "max_usd_per_day": 3,
+             *         "max_usd_per_question": 0.5,
+             *         "model": "claude-opus-5"
+             *       }
              *     }
              */
             tools?: components["schemas"]["ToolsConfig"];
             /**
              * @default {
+             *       "enabled": true,
              *       "dir": "memory",
              *       "commit_on_write": true
              *     }
              */
             memory?: components["schemas"]["MemoryConfig"];
+            /**
+             * @default {
+             *       "enabled": true,
+             *       "chime": "{repo}/assets/sounds/chime.wav",
+             *       "quiet_hours": "22:00-07:00",
+             *       "discord": "fallback",
+             *       "ha_event": "winston_announce"
+             *     }
+             */
+            announce?: components["schemas"]["AnnounceConfig"];
             /**
              * @default {
              *       "tool_calls": "logs/tool_calls.jsonl",
@@ -941,6 +1194,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    announce_api_announce_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Announcement"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Delivery"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    events_api_events_get: {
+        parameters: {
+            query: {
+                channel: "voice" | "discord";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

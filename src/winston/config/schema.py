@@ -27,7 +27,7 @@ class Model(BaseModel):
 
 
 class AssistantConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     name: str = Field("Winston", description="What the assistant calls itself.")
     persona: str = Field("persona.md", title="Persona file", description="Persona file, relative to the data directory.",
                          json_schema_extra=ui("advanced"))
@@ -70,7 +70,7 @@ class EngineConfig(Model):
 
 
 class Sampling(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     temperature: float = Field(0.3, ge=0, le=2, description="Lower is more reliable at tool calls.",
                                json_schema_extra=ui("advanced"))
     top_p: float = Field(0.8, ge=0, le=1, title="Top-p", json_schema_extra=ui("advanced"))
@@ -79,7 +79,7 @@ class Sampling(Model):
 
 
 class Thinking(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     voice: bool = Field(False, description="Reasoning before answering on the voice channel. Costs seconds.")
     text: bool = Field(True, description="Reasoning on text channels. Much better at multi-part requests.")
     control: Literal["chat_template", "reasoning_effort", "none"] = Field(
@@ -89,13 +89,13 @@ class Thinking(Model):
 
 
 class LLMConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     provider: str = Field("openai_compatible", json_schema_extra=ui("advanced"))
     base_url: str = Field("http://127.0.0.1:8000/v1", title="Base URL", json_schema_extra=ui("advanced"))
     api_key_env: str | None = Field(None, title="API key variable",
                                     description="Environment variable holding the API key. Unset for local servers.",
                                     json_schema_extra=ui("advanced"))
-    model: str = Field(description="Model name as the server knows it.", json_schema_extra=ui(restarts=["llm", "voice"]))
+    model: str = Field(description="Model name as the server knows it.", json_schema_extra=ui(restarts=["llm", "voice", "discord"]))
     sampling: Sampling = Sampling()
     thinking: Thinking = Thinking()
 
@@ -139,26 +139,34 @@ class VoiceChannel(Model):
     port: int = Field(7860, json_schema_extra=ui("advanced"))
 
 
-class TelegramChannel(Model):
-    enabled: bool = False
-    token_env: str = Field("TELEGRAM_BOT_TOKEN", title="Token variable", json_schema_extra=ui("advanced"))
-    allowed_user_id_env: str = Field("TELEGRAM_ALLOWED_USER_ID", title="Allowed user variable",
-                                     json_schema_extra=ui("advanced"))
+class DiscordChannel(Model):
+    model_config = section("discord")
+    enabled: bool = Field(False, description="Talk to Winston in Discord DMs and get announcements there.")
+    token_env: str = Field("DISCORD_BOT_TOKEN", title="Token variable", json_schema_extra=ui("advanced"))
+    allowed_user_env: str = Field("DISCORD_ALLOWED_USER_ID", title="Allowed user variable",
+                                  description="Environment variable with the one Discord user id Winston answers.",
+                                  json_schema_extra=ui("advanced"))
+    session_idle_mins: int = Field(30, ge=1, title="Conversation resets after (min)",
+                                   description="Idle minutes before a DM conversation starts fresh (and re-reads memory).",
+                                   json_schema_extra=ui("advanced"))
+    contacts: dict[str, str] = Field(default_factory=dict, json_schema_extra=ui(restarts=["voice", "discord"]),
+                                     description="People Winston may message, name -> Discord user id. The bot can "
+                                                 "only reach people who share a server with it.")
 
 
 class Channels(Model):
     voice: VoiceChannel = VoiceChannel()
-    telegram: TelegramChannel = TelegramChannel()
+    discord: DiscordChannel = DiscordChannel()
 
 
 class ExposedEntity(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     name: str | None = Field(None, description="Friendly name to set in Home Assistant.")
     aliases: list[str] = Field(default_factory=list, description="Other names people say for it.")
 
 
 class HomeAssistantConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     url: str = Field(title="URL", description="Home Assistant base URL on the LAN.")
     token_env: str = Field("HA_TOKEN", title="Token variable", description="Environment variable holding the long-lived token.",
                            json_schema_extra=ui("advanced"))
@@ -175,13 +183,13 @@ class Providers(Model):
 
 
 class SensorPair(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     level: str = Field(title="Value sensor", description="Entity id of the value sensor.")
     state: str | None = Field(None, title="State sensor", description="Optional companion state sensor (charging, etc.).")
 
 
 class WebSearchConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     enabled: bool = Field(False, description="Let Winston look up current facts on the web. Only the search question "
                                              "leaves the house.")
     provider: Literal["gemini"] = Field("gemini", description="Search backend. gemini: Gemini with Google Search "
@@ -199,7 +207,7 @@ class WebSearchConfig(Model):
 
 
 class AskClaudeConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     enabled: bool = Field(False, description="Hand hard questions to Claude. Uses the Claude Code login on this machine, "
                                              "CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. "
                                              "Only the question leaves the house.")
@@ -213,7 +221,7 @@ class AskClaudeConfig(Model):
 
 
 class ToolsConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     sensors: dict[str, SensorPair] = Field(default_factory=dict,
                                            description="Watched sensors by label; readings come with their age.")
     web_search: WebSearchConfig = Field(WebSearchConfig(), title="Web search")
@@ -221,14 +229,32 @@ class ToolsConfig(Model):
 
 
 class MemoryConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     enabled: bool = Field(True, description="Load remembered facts into every new conversation and offer the remember tool.")
     dir: str = Field("memory", title="Directory", json_schema_extra=ui("advanced"))
     commit_on_write: bool = Field(True, title="Commit on write", json_schema_extra=ui("advanced"))
 
 
+class AnnounceConfig(Model):
+    model_config = section("control")
+    enabled: bool = Field(True, description="Let Winston speak on its own: Home Assistant automations, the API and "
+                                            "`winston announce` send it something to say.")
+    chime: str = Field("{repo}/assets/sounds/chime.wav", description="Sound played before an announcement, so it "
+                       "is clearly a notification. Empty for none.", json_schema_extra=ui("advanced", restarts=["voice"]))
+    quiet_hours: str | None = Field("22:00-07:00", title="Quiet hours",
+                                    description="HH:MM-HH:MM when announcements are not spoken, only sent to Discord. "
+                                                "Empty for never quiet.")
+    discord: Literal["always", "fallback", "never"] = Field(
+        "fallback", title="Also to Discord",
+        description="always: every announcement; fallback: when nothing can speak it (quiet hours, no speaker "
+                    "connected); never.")
+    ha_event: str = Field("winston_announce", title="Home Assistant event",
+                          description="Event type an automation fires with data {text, context} to announce.",
+                          json_schema_extra=ui("advanced"))
+
+
 class LoggingConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "discord")
     tool_calls: str = Field("logs/tool_calls.jsonl", title="Tool calls", json_schema_extra=ui("advanced"))
     latency: str = Field("logs/latency.jsonl", json_schema_extra=ui("advanced"))
 
@@ -251,5 +277,6 @@ class WinstonConfig(Model):
     providers: Providers = Providers()
     tools: ToolsConfig = ToolsConfig()
     memory: MemoryConfig = MemoryConfig()
+    announce: AnnounceConfig = AnnounceConfig()
     logging: LoggingConfig = LoggingConfig()
     control: ControlConfig = ControlConfig()

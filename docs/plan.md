@@ -177,13 +177,13 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 ### M4, Cloud handoff, memory, text channel
 - `ask_claude` tool with a tight system prompt and per-day spend cap.
 - Memory vault: `memory/preferences.md`, `memory/people.md`, `memory/projects.md`, loaded into the system prompt at start; a `remember` tool that appends distilled facts and commits to git.
-- Telegram bot wired to the same agent loop.
+- Telegram bot wired to the same agent loop. (Changed 2026-09-23: Discord, see `decisions.md`.)
 - **Accept:** "Tell my friend a fun fact" works locally; a hard question routes to Claude; a fact told to Winston is recalled in a fresh session; Telegram works.
-- **Status: started 2026-09-23, ahead of M2/M3 acceptance (see `decisions.md`).** Memory vault done: `remember` stores, refuses secrets, commits; a fresh session recalls (typed test with the 9B, `tests/memory_cases.py` in `winston check unit`). Web search measured working (1.4 s at the search model). `ask_claude` works through the Claude Agent SDK on the Max plan's credit (about 6 s, 0.05 USD a question, 3 USD a day cap). Telegram waits for a bot token in `data/.env`.
+- **Status: started 2026-09-23, ahead of M2/M3 acceptance (see `decisions.md`).** Memory vault done: `remember` stores, refuses secrets, commits; a fresh session recalls (typed test with the 9B, `tests/memory_cases.py` in `winston check unit`). Web search measured working (1.4 s at the search model). `ask_claude` works through the Claude Agent SDK on the Max plan's credit (about 6 s, 0.05 USD a question, 3 USD a day cap). Discord channel (replacing Telegram) and announcements (moved up from M5) built: an announcement from Home Assistant plays chime and speech in a connected browser and a spoken follow-up is answered from its context (`tests/announce_voice.py`); Discord waits for a bot token.
 
 ### M5, Vision and extras
 - `describe_camera(entity)` tool: HA camera snapshot → local VLM → spoken description.
-- More HA entities/scenes; proactive notifications (optional, low priority).
+- More HA entities/scenes. (Proactive notifications moved to M4 on 2026-09-23 as announcements.)
 - **Accept:** "Who's at the door?" produces a sensible description within ~4 s.
 
 ### M6, Model swap experiments (ongoing)

@@ -31,6 +31,10 @@ CASES = [
     ("I can't do that by voice.", [], None),
     ("Sweden has about 10.6 million people as of 2025.", [("web_search", True)], None),
     ("Done, the lights are warm.", [("web_search", True)], "act"),        # a search is not an action
+    ("I've sent Omar a fun fact about octopuses.", [], "act"),
+    ("Your message has been sent.", [], "act"),
+    ("I sent Omar this: octopuses have three hearts.", [("send_message", True)], None),
+    ("I couldn't message Omar, he doesn't share a server with me.", [("send_message", False)], None),
     ("Got it, I'll remember that you prefer warm light.", [], "act"),
     ("Noted.", [], "act"),
     ("I'll keep that in mind.", [], "act"),

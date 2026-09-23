@@ -125,3 +125,7 @@ class ExternalDriver:
 
 def voice_channel_cmd(host: str, port: int) -> list[str]:
     return [sys.executable, "-m", "winston.channels.voice", "--host", host, "--port", str(port)]
+
+
+def discord_channel_cmd() -> list[str]:
+    return [sys.executable, "-m", "winston.channels.discord"]

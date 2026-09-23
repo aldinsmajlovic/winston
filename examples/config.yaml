@@ -65,7 +65,7 @@ vad: {provider: silero, stop_secs: 0.3, unfinished_stop_secs: 1.0}
 
 channels:
   voice: {enabled: true, host: 127.0.0.1, port: 7860}
-  telegram: {enabled: false}
+  discord: {enabled: false}
 
 providers:
   home_assistant:

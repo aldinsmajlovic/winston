@@ -2,6 +2,7 @@
 and the CLI use, and serves the built UI from web/dist. Bound to localhost by default; put it
 behind auth before exposing it."""
 import asyncio
+import json
 import os
 import subprocess
 from contextlib import asynccontextmanager
@@ -19,7 +20,9 @@ from winston.config.presets import LLM, PROFILES, TTS, stt_presets
 from winston.config.registry import available
 from winston.config.restarts import restarts_for
 from winston.config.schema import LLMConfig, WinstonConfig
+from winston.core.announce import Announcement, Delivery, Hub
 from winston.engines.supervisor import Supervisor
+from winston.providers import ha_events
 
 
 class EngineStatus(BaseModel):
@@ -108,16 +111,19 @@ def _dump(cfg: WinstonConfig) -> dict:
 def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> FastAPI:
     cfg = cfg or load()
     sup = Supervisor(cfg)
+    hub = Hub(cfg)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if autostart:
             asyncio.create_task(sup.start_all())
+        listener = asyncio.create_task(ha_events.listen(cfg, hub.publish))
         yield
+        listener.cancel()
         await sup.stop_all(owned_only=True)
 
     app = FastAPI(title="winstond", version=__version__, lifespan=lifespan)
-    app.state.supervisor, app.state.cfg = sup, cfg
+    app.state.supervisor, app.state.cfg, app.state.hub = sup, cfg, hub
 
     def status_payload() -> Status:
         return Status(
@@ -149,6 +155,30 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                 await sup.refresh()
                 yield f"data: {status_payload().model_dump_json()}\n\n"
                 await asyncio.sleep(2)
+        return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.post("/api/announce", response_model=Delivery,
+              summary="Say something unprompted: chime and speech on connected speakers, Discord per config")
+    async def announce(a: Announcement):
+        if not app.state.cfg.announce.enabled:
+            raise HTTPException(409, "announcements are off (announce.enabled)")
+        return hub.publish(a)
+
+    @app.get("/api/events", summary="Announcements for one channel process, as server-sent events")
+    async def events(channel: Literal["voice", "discord"] = Query(...)):
+        q = hub.subscribe(channel)
+
+        async def gen():
+            try:
+                yield ": subscribed\n\n"
+                while True:
+                    try:
+                        ev = await asyncio.wait_for(q.get(), timeout=15)
+                        yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"           # also lets a dead client be noticed
+            finally:
+                hub.unsubscribe(channel, q)
         return StreamingResponse(gen(), media_type="text/event-stream")
 
     @app.post("/api/engines/{name}/start", response_model=Ok)
@@ -188,7 +218,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     @app.put("/api/config", response_model=ConfigResult,
              summary="Validate and save the config; dry_run only reports which engines a change restarts")
     async def put_config(new: WinstonConfig, dry_run: bool = Query(False)):
-        restarts = sorted(restarts_for(_dump(app.state.cfg), _dump(new), WinstonConfig.model_json_schema()))
+        restarts = sorted(r for r in restarts_for(_dump(app.state.cfg), _dump(new), WinstonConfig.model_json_schema())
+                          if r in sup.items or r == "control")      # only what runs here
         if dry_run:
             return ConfigResult(saved=False, restarts=restarts)
         save(new)
