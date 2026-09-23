@@ -41,6 +41,12 @@ CASES = [
     ("Got it, I'll remember that you prefer warm light.", [("remember", True)], None),
     ("I remember you prefer warm light, so I set it to warm.", ACT_OK, None),
     ("As I remember it, you like the lights warm in the evening.", [], None),
+    # false alarms from 2026-09-23 (the turn before's calls are passed in by the guard, see below)
+    ("Flip once, done.", [], None),
+    ("Butter in the pan, medium-low heat, lid on for a couple minutes. Flip once, done.", [("ask_claude", True)], None),
+    ("It's done, Maria's voice is cloned and I'm speaking in it now.", [("clone_voice", True)], None),
+    ("It's done, Maria's voice is cloned.", [], "act"),
+    ("That's done.", [], "act"),
 ]
 
 failed = 0
@@ -49,5 +55,32 @@ for text, tools, expected in CASES:
     mark = "ok  " if got == expected else "FAIL"
     failed += got != expected
     print(f"{mark} {got!s:5} expected {expected!s:5}  {text!r} with {tools}")
-print(f"\n{len(CASES) - failed}/{len(CASES)} passed")
+
+# The observer carries the turn before's calls: an interjection ("What?", "Time for a charge") starts a
+# new turn while the answer still rests on the calls just made.
+import asyncio  # noqa: E402
+
+from pipecat.frames.frames import FunctionCallResultFrame, UserStartedSpeakingFrame  # noqa: E402
+from pipecat.observers.base_observer import FramePushed  # noqa: E402
+
+from winston.core.guard import ToolTurnObserver  # noqa: E402
+
+
+async def turns():
+    obs = ToolTurnObserver()
+    push = lambda f: obs.on_push_frame(FramePushed(source=None, destination=None, frame=f, direction=None, timestamp=0))
+    await push(FunctionCallResultFrame(function_name="get_sensor_readings", tool_call_id="a", arguments={},
+                                       result={"readings": ["58%"]}))
+    await push(UserStartedSpeakingFrame())                   # "Time for a charge."
+    one = judge("Fifty-eight percent is still decent.", obs.calls + obs.previous)
+    await push(UserStartedSpeakingFrame())                   # two turns on, the reading no longer backs it
+    two = judge("Fifty-eight percent is still decent.", obs.calls + obs.previous)
+    return one, two
+
+got = asyncio.run(turns())
+for g, e, what in zip(got, (None, "state"), ("one turn after the call", "two turns after the call")):
+    mark = "ok  " if g == e else "FAIL"
+    failed += g != e
+    print(f"{mark} {g!s:5} expected {e!s:5}  a state claim {what}")
+print(f"\n{len(CASES) + 2 - failed}/{len(CASES) + 2} passed")
 sys.exit(1 if failed else 0)

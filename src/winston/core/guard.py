@@ -1,5 +1,5 @@
 """Claim guard: plan §6 rule 4 as code. A reply that claims an action or a current state must be
-backed by a tool call in the same user turn; otherwise the claim is retracted aloud and in the
+backed by a tool call in the same user turn or the one before; otherwise the claim is retracted aloud and in the
 context, so the model cannot build on it. Seen twice on 2026-09-23 with the 9B: "Setting the
 lights now" with no call, then "already on at one hundred percent" built on its own earlier claim.
 
@@ -52,14 +52,15 @@ def result_ok(result) -> bool:
 # Sentences that are questions, refusals or failure reports claim nothing.
 _SKIP = re.compile(r"\?|\b(?:would you|do you want|shall i|should i|can't|cannot|couldn't|could not|"
                    r"unable|not able|didn't|did not|failed|not something)\b")
-# "I set", "I'll set", "I'm going to set", "setting ... now", "has been set", "turned on", "done".
+# "I set", "I'll set", "I'm going to set", "setting ... now", "has been set", "turned on", "done" (a
+# sentence that starts with it; "flip once, done" in a recipe claims nothing).
 _ACT_STRONG = re.compile(
     r"\bi(?:'ve| have|'ll| will|'m| am)?(?: just| going to)? "
     r"(?:set|turned?|switch(?:ed)?|dimm?(?:ed)?|changed?|adjust(?:ed)?|boot(?:ed)?|start(?:ed)?|woke|wake|put|"
     r"sen[dt]|messag(?:e|ed))\b"
     r"|\b(?:setting|turning|switching|dimming|changing|adjusting|booting|waking)\b"
     r"|\b(?:has|have) been (?:set|turned|switched|dimmed|changed|adjusted|booted|sent)\b"
-    r"|\b(?:turned|switched) (?:on|off)\b|\bdone\b")
+    r"|\b(?:turned|switched) (?:on|off)\b|^(?:(?:it'?s|it is|that'?s|that is|all) )?done\b")
 # "I'll remember that", "noted": a memory claim, which needs the remember tool (an act tool). Bare
 # "I remember" is recall from the prompt, not a claim.
 _REMEMBER = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? (?:remember|noted?|saved?|stored?|made a note)\b"
@@ -86,12 +87,15 @@ def judge(text: str, tools: list[tuple[str, bool]]) -> str | None:
 
 
 class ToolTurnObserver(BaseObserver):
-    """Tool calls and their outcomes since the current user turn began."""
+    """Tool calls and their outcomes since the current user turn began, and those of the turn
+    before. A reply may rest on the turn before: "What?" said while the lights were changing, or
+    "is it done?" after a clone, gets an answer about calls that ran just before it."""
 
     def __init__(self):
         super().__init__()
         self.pending: set[str] = set()
         self.calls: list[tuple[str, bool]] = []
+        self.previous: list[tuple[str, bool]] = []
         self._seen: set[tuple[str, str]] = set()   # observers see a frame once per pipeline hop
         self._last_reset: int | None = None
 
@@ -113,7 +117,7 @@ class ToolTurnObserver(BaseObserver):
             if f.id != self._last_reset:            # a new user turn: forget the previous turn's tools
                 self._last_reset = f.id
                 self.pending.clear()
-                self.calls.clear()
+                self.previous, self.calls = self.calls, []
 
 
 def _role(message) -> str | None:
@@ -149,14 +153,16 @@ class ClaimGuard(FrameProcessor):
         obs = self.observer
         if not text or obs.pending:                 # a call is still running: the reply is not final
             return
-        verdict = judge(text, obs.calls)
+        verdict = judge(text, obs.calls + obs.previous)
         if verdict is None:
             return
-        logger.warning(f"claim guard: {verdict} claim without a backing tool call: {text!r} (tools this turn: {obs.calls})")
+        logger.warning(f"claim guard: {verdict} claim without a backing tool call: {text!r} "
+                       f"(tools this turn: {obs.calls}, the turn before: {obs.previous})")
         self._log.parent.mkdir(parents=True, exist_ok=True)
         with self._log.open("a") as f:
             f.write(json.dumps({"ts": time.time(), "channel": self._channel, "event": "guard",
-                                "verdict": verdict, "text": text, "tools": obs.calls}) + "\n")
+                                "verdict": verdict, "text": text, "tools": obs.calls,
+                                "previous": obs.previous}) + "\n")
         correction = CORRECTION[verdict]
         await self.push_frame(TTSSpeakFrame(text=correction))
         if self._channel != "voice":                # no TTS to carry the words into the context
