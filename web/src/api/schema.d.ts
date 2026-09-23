@@ -175,6 +175,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Engine and model presets the UI offers per slot, and the hardware profiles */
+        get: operations["get_presets_api_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/options/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live choices for a dropdown: llm_models (from the brain's server), voices, stt_adapters */
+        get: operations["get_options_api_options__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -212,6 +246,15 @@ export interface components {
              *     }
              */
             telegram?: components["schemas"]["TelegramChannel"];
+        };
+        /** Choice */
+        Choice: {
+            /** Value */
+            value: string;
+            /** Label */
+            label: string;
+            /** Hint */
+            hint?: string | null;
         };
         /** ConfigResult */
         ConfigResult: {
@@ -256,7 +299,7 @@ export interface components {
             port: number;
             /**
              * Health path
-             * @description HTTP path that returns 200 when ready.
+             * @description HTTP path that returns 200 when ready. Empty: no check, the engine counts as up whenever its process is (hosted APIs).
              * @default /health
              */
             health?: string;
@@ -273,7 +316,7 @@ export interface components {
             image?: string | null;
             /**
              * Arguments
-             * @description Command arguments (docker driver).
+             * @description Command arguments (docker driver). {model} expands to the brain's model.
              */
             args?: string[];
             /** Environment */
@@ -305,7 +348,7 @@ export interface components {
             ipc_host?: boolean;
             /**
              * Command
-             * @description Command line (subprocess driver). {data} and {repo} expand.
+             * @description Command line (subprocess driver). {data}, {repo} and {model} expand.
              */
             cmd?: string[];
             /**
@@ -422,6 +465,11 @@ export interface components {
              */
             base_url?: string;
             /**
+             * API key variable
+             * @description Environment variable holding the API key. Unset for local servers.
+             */
+            api_key_env?: string | null;
+            /**
              * Model
              * @description Model name as the server knows it.
              */
@@ -438,7 +486,8 @@ export interface components {
             /**
              * @default {
              *       "voice": false,
-             *       "text": true
+             *       "text": true,
+             *       "control": "chat_template"
              *     }
              */
             thinking?: components["schemas"]["Thinking"];
@@ -476,6 +525,61 @@ export interface components {
              * @default true
              */
             ok?: boolean;
+        };
+        /** Options */
+        Options: {
+            /** Name */
+            name: string;
+            /** Choices */
+            choices: components["schemas"]["Choice"][];
+            /**
+             * Source
+             * @default
+             */
+            source?: string;
+        };
+        /** Preset */
+        Preset: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Hint */
+            hint: string;
+            /** Needs */
+            needs: string[];
+            /** Engine */
+            engine?: {
+                [key: string]: unknown;
+            } | null;
+            /** Settings */
+            settings: {
+                [key: string]: unknown;
+            };
+        };
+        /** Presets */
+        Presets: {
+            /** Llm */
+            llm: components["schemas"]["Preset"][];
+            /** Tts */
+            tts: components["schemas"]["Preset"][];
+            /** Stt */
+            stt: components["schemas"]["Preset"][];
+            /** Profiles */
+            profiles: components["schemas"]["Profile"][];
+        };
+        /** Profile */
+        Profile: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Hint */
+            hint: string;
+            /** Presets */
+            presets: {
+                [key: string]: string;
+            };
         };
         /** Providers */
         Providers: {
@@ -562,6 +666,11 @@ export interface components {
              */
             base_url?: string;
             /**
+             * API key variable
+             * @description Environment variable holding the API key. Unset for local servers.
+             */
+            api_key_env?: string | null;
+            /**
              * Voice
              * @description Voice name sent to the server. OpenAI names map to the server's default clip.
              * @default onyx
@@ -605,6 +714,13 @@ export interface components {
              * @default true
              */
             text?: boolean;
+            /**
+             * Control
+             * @description How the server is told to think or not: chat_template for vLLM and llama.cpp (enable_thinking), reasoning_effort for Ollama, none for servers without a switch.
+             * @default chat_template
+             * @enum {string}
+             */
+            control?: "chat_template" | "reasoning_effort" | "none";
         };
         /** ToolsConfig */
         ToolsConfig: {
@@ -1035,6 +1151,60 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_presets_api_presets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Presets"];
+                };
+            };
+        };
+    };
+    get_options_api_options__name__get: {
+        parameters: {
+            query?: {
+                /** @description Server to ask instead of the saved one, for an unsaved draft */
+                base_url?: string | null;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Options"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

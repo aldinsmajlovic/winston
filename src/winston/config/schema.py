@@ -39,13 +39,16 @@ class EngineConfig(Model):
     driver: Literal["docker", "subprocess", "external"] = Field(description="How the engine is run.")
     enabled: bool = True
     port: int = Field(description="Local port the engine listens on.")
-    health: str = Field("/health", title="Health path", description="HTTP path that returns 200 when ready.",
+    health: str = Field("/health", title="Health path",
+                        description="HTTP path that returns 200 when ready. Empty: no check, the engine counts as up "
+                                    "whenever its process is (hosted APIs).",
                         json_schema_extra=ui("advanced"))
     startup_timeout: int = Field(600, title="Startup timeout (s)", description="Seconds to wait for health before giving up.",
                                  json_schema_extra=ui("advanced"))
     # docker
     image: str | None = Field(None, description="Container image (docker driver).", json_schema_extra=ui(drivers=["docker"]))
-    args: list[str] = Field(default_factory=list, title="Arguments", description="Command arguments (docker driver).",
+    args: list[str] = Field(default_factory=list, title="Arguments",
+                            description="Command arguments (docker driver). {model} expands to the brain's model.",
                             json_schema_extra=ui("advanced", drivers=["docker"]))
     env: dict[str, str] = Field(default_factory=dict, title="Environment",
                                 json_schema_extra=ui("advanced", drivers=["docker", "subprocess"]))
@@ -57,7 +60,7 @@ class EngineConfig(Model):
     ipc_host: bool = Field(False, title="IPC host", json_schema_extra=ui("advanced", drivers=["docker"]))
     # subprocess
     cmd: list[str] = Field(default_factory=list, title="Command",
-                           description="Command line (subprocess driver). {data} and {repo} expand.",
+                           description="Command line (subprocess driver). {data}, {repo} and {model} expand.",
                            json_schema_extra=ui("advanced", drivers=["subprocess"]))
     cwd: str | None = Field(None, title="Working directory", description="Working directory, {repo}-relative allowed.",
                             json_schema_extra=ui("advanced", drivers=["subprocess"]))
@@ -79,12 +82,19 @@ class Thinking(Model):
     model_config = section("voice")
     voice: bool = Field(False, description="Reasoning before answering on the voice channel. Costs seconds.")
     text: bool = Field(True, description="Reasoning on text channels. Much better at multi-part requests.")
+    control: Literal["chat_template", "reasoning_effort", "none"] = Field(
+        "chat_template", description="How the server is told to think or not: chat_template for vLLM and llama.cpp "
+                                     "(enable_thinking), reasoning_effort for Ollama, none for servers without a switch.",
+        json_schema_extra=ui("advanced"))
 
 
 class LLMConfig(Model):
     model_config = section("voice")
     provider: str = Field("openai_compatible", json_schema_extra=ui("advanced"))
     base_url: str = Field("http://127.0.0.1:8000/v1", title="Base URL", json_schema_extra=ui("advanced"))
+    api_key_env: str | None = Field(None, title="API key variable",
+                                    description="Environment variable holding the API key. Unset for local servers.",
+                                    json_schema_extra=ui("advanced"))
     model: str = Field(description="Model name as the server knows it.", json_schema_extra=ui(restarts=["llm", "voice"]))
     sampling: Sampling = Sampling()
     thinking: Thinking = Thinking()
@@ -102,6 +112,9 @@ class TTSConfig(Model):
     provider: str = Field("openai_speech", description="Text-to-speech adapter (OpenAI speech protocol).",
                           json_schema_extra=ui("advanced"))
     base_url: str = Field("http://127.0.0.1:8880/v1", title="Base URL", json_schema_extra=ui("advanced"))
+    api_key_env: str | None = Field(None, title="API key variable",
+                                    description="Environment variable holding the API key. Unset for local servers.",
+                                    json_schema_extra=ui("advanced"))
     voice: str = Field("onyx", description="Voice name sent to the server. OpenAI names map to the server's default clip.",
                        json_schema_extra=ui("advanced"))
     sample_rate: int = Field(24000, title="Sample rate", json_schema_extra=ui("advanced"))

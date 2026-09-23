@@ -6,7 +6,8 @@ a natural voice, can be interrupted, and keeps everything on your own machine.
 - **Local voice-to-voice.** Speech recognition, the language model and the voice all run on one GPU.
 - **Hands through Home Assistant.** Lights, sensors, scenes, anything you expose, over Home Assistant's own MCP server.
 - **Interruptible and fast.** Around 1.3 s from the end of your sentence to the first spoken word.
-- **Swappable parts.** Every model is an adapter chosen in config. Bring your own LLM server, TTS or STT.
+- **Swappable parts.** Every model is an adapter chosen in config, with presets for vLLM, Ollama, hosted APIs,
+  a GPU voice and a CPU voice. Switch them from dropdowns in the web UI or bring your own server.
 - **One control service.** `winstond` supervises the engines and serves the web UI and API.
 
 Status: early. Voice round trip, Home Assistant control, a text CLI and the web UI work, and a
@@ -15,14 +16,17 @@ satellite are in progress. See `docs/plan.md`.
 
 ## Quickstart
 
-Requirements: Linux, an NVIDIA GPU with 24 GB (a 3090 is the reference), Docker with the NVIDIA
-container toolkit, [uv](https://docs.astral.sh/uv/), and a Home Assistant instance.
+Requirements: Linux, [uv](https://docs.astral.sh/uv/), a Home Assistant instance, and one of the
+hardware profiles in `docs/hardware.md`: an NVIDIA card with 24 GB and Docker (the reference),
+Ollama on any GPU or CPU, or a hosted model behind an OpenAI-compatible URL.
 
 ```sh
 git clone https://github.com/aldinsmajlovic/winston && cd winston
 uv sync                                   # the pipeline environment
-(cd services/tts-chatterbox && uv sync)   # the TTS server, isolated for its torch pins
-uv run winston init                       # creates ./data with example config, persona and voices
+(cd services/tts-chatterbox && uv sync)   # the GPU voice, isolated for its torch pins (nvidia-24gb profile)
+(cd services/tts-pocket && uv sync)       # the CPU voice, CPU-only torch (ollama and hosted profiles)
+uv run winston init --list                # the profiles
+uv run winston init                       # creates ./data for your profile (--profile ollama, hosted)
 ```
 
 Edit `data/config.yaml` (Home Assistant URL, entities to expose) and `data/.env` (tokens), then:

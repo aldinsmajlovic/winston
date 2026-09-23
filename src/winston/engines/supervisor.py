@@ -37,6 +37,14 @@ class Managed:
         return self.cfg == other.cfg and getattr(self.driver, "cmd", None) == getattr(other.driver, "cmd", None)
 
 
+def _expand_model(e: EngineConfig, cfg: WinstonConfig) -> EngineConfig:
+    """"{model}" in an engine's args or cmd stands for llm.model, so the model name lives in one place."""
+    sub = lambda xs: [x.replace("{model}", cfg.llm.model) for x in xs]   # noqa: E731
+    if any("{model}" in x for x in e.args + e.cmd):
+        return e.model_copy(update={"args": sub(e.args), "cmd": sub(e.cmd)})
+    return e
+
+
 class Supervisor:
     def __init__(self, cfg: WinstonConfig):
         self.cfg = cfg
@@ -48,6 +56,7 @@ class Supervisor:
         for name, e in cfg.engines.items():
             if not e.enabled:
                 continue
+            e = _expand_model(e, cfg)
             driver = {"docker": DockerDriver, "subprocess": SubprocessDriver, "external": ExternalDriver}[e.driver](name, e)
             items[name] = Managed(name, e, driver)
         v = cfg.channels.voice
@@ -92,6 +101,8 @@ class Supervisor:
         m.state, m.detail = state, detail
 
     async def healthy(self, m: Managed) -> bool:
+        if not m.cfg.health:                    # no health path: up whenever the process is (hosted APIs)
+            return await m.driver.running()
         try:
             async with httpx.AsyncClient(timeout=3) as c:
                 return (await c.get(m.health_url)).status_code == 200

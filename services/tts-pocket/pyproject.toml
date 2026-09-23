@@ -1,0 +1,24 @@
+[project]
+name = "winston-tts-pocket"
+version = "0.1.0"
+description = "OpenAI-compatible /v1/audio/speech server for Kyutai Pocket TTS on the CPU (Winston TTS adapter)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pocket-tts>=3.1.0",
+    "torch>=2.5",        # listed directly so the CPU index below applies (uv sources only cover direct dependencies)
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "numpy",
+]
+
+[tool.uv]
+package = false
+
+# CPU-only torch: the CUDA wheels are gigabytes and pointless here.
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

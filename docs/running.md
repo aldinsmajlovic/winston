@@ -4,14 +4,14 @@ One command runs everything: `winston up` starts the engines from `data/config.y
 to be healthy, starts the voice channel and serves the control API. Ctrl-C stops all of it.
 
 ```sh
-uv run winston init            # once: creates data/ from the examples
+uv run winston init            # once: creates data/ from the examples (--profile ollama | hosted; --list)
 uv run winston up              # engines + voice channel + API on :8700
 uv run winston status          # health of every engine, GPU memory
 uv run winston restart tts     # one engine or the voice channel
 uv run winston down            # stop engines and channel; winstond keeps serving
 uv run winston talk            # text chat, same brain and tools
 uv run winston ha expose       # make Home Assistant's exposure match config
-uv run winston check           # acceptance checks (m0, m1, m2) on real hardware
+uv run winston check           # unit (no hardware), then the m0, m1, m2 acceptance checks on real hardware
 ```
 
 Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs
@@ -20,7 +20,9 @@ winston-llm`; every tool call to `data/logs/tool_calls.jsonl`.
 ## Web UI
 
 `winston up` serves the UI at http://localhost:8700 once `web/dist` exists. Status lists every
-engine with icon actions and the GPU. The settings pages are generated from the config schema:
+engine with icon actions and the GPU. Models picks the brain, voice and hearing from presets, with
+the model list read from the brain's server and the voices from the voices directory and the TTS
+server; Advanced shows the raw fields. The other settings pages are generated from the config schema:
 basic fields first, Advanced behind a toggle. Saving validates on the server, says which engines
 the change restarts and roughly how long each takes, and offers to restart them.
 

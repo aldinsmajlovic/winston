@@ -14,13 +14,12 @@ engines:
     runtime: nvidia            # explicit: this host's CDI spec is stale, see docs/decisions.md
     ipc_host: true
     env:
-      HF_HUB_OFFLINE: "1"
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
       ~/.cache/huggingface: /root/.cache/huggingface
     args:
-      - QuantTrio/Qwen3.5-9B-AWQ
+      - "{model}"                # the brain's model (llm.model below), so it is set in one place
       - --max-model-len
       - "32768"
       - --max-num-seqs
@@ -58,10 +57,10 @@ llm:
   base_url: http://127.0.0.1:8000/v1
   model: QuantTrio/Qwen3.5-9B-AWQ
   sampling: {temperature: 0.3, top_p: 0.8, presence_penalty: 0.0, max_tokens: 512}
-  thinking: {voice: false, text: true}
+  thinking: {voice: false, text: true, control: chat_template}   # control: reasoning_effort for Ollama, none for hosted
 
 stt: {provider: parakeet, model: nemo-parakeet-tdt-0.6b-v3, quantization: int8}
-tts: {provider: openai_speech, base_url: http://127.0.0.1:8880/v1, voice: onyx, sample_rate: 24000}
+tts: {provider: openai_speech, base_url: http://127.0.0.1:8880/v1, voice: vctk/p254_023, sample_rate: 24000}
 vad: {provider: silero, stop_secs: 0.3, unfinished_stop_secs: 1.0}
 
 channels:

@@ -37,19 +37,39 @@ def thinking_for(cfg: WinstonConfig, channel: str) -> bool:
     return str(v).strip().lower() in ("1", "true", "yes")
 
 
+def api_key(env_name: str | None) -> str:
+    """The key named by config, or "local" for servers that want none. A named but unset variable is an error."""
+    if not env_name:
+        return "local"
+    if not (key := os.environ.get(env_name)):
+        raise RuntimeError(f"{env_name} is not set (data/.env)")
+    return key
+
+
+def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
+    """Request fields that switch reasoning on or off, per the server's dialect (llm.thinking.control)."""
+    think, control = thinking_for(cfg, channel), cfg.llm.thinking.control
+    if control == "chat_template":                       # vLLM, llama.cpp: Qwen's enable_thinking template flag
+        return {"chat_template_kwargs": {"enable_thinking": think}}
+    if control == "reasoning_effort" and not think:      # Ollama: "none" switches it off; on is the model default
+        return {"reasoning_effort": "none"}
+    return {}
+
+
 def build_llm(cfg: WinstonConfig, channel: str = "voice") -> OpenAILLMService:
     c = cfg.llm
     if c.provider != "openai_compatible":
         raise ValueError(f"unsupported llm provider {c.provider}")
     s = c.sampling
+    body = thinking_body(cfg, channel)
     return OpenAILLMService(
-        api_key="local", base_url=c.base_url,
+        api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=c.model,
             system_instruction=persona(cfg),   # must live in Settings; a bare kwarg is ignored when settings= is given
             temperature=s.temperature, top_p=s.top_p, presence_penalty=s.presence_penalty,
             max_completion_tokens=s.max_tokens,
-            extra={"extra_body": {"chat_template_kwargs": {"enable_thinking": thinking_for(cfg, channel)}}},
+            extra={"extra_body": body} if body else {},
         ),
     )
 

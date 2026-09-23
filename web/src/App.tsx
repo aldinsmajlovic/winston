@@ -7,6 +7,7 @@ import ChannelsPage from '@/pages/channels'
 import EnginePage from '@/pages/engine'
 import EnginesPage from '@/pages/engines'
 import HomeAssistantPage from '@/pages/home-assistant'
+import ModelsPage from '@/pages/models'
 import SpeechPage from '@/pages/speech'
 import StatusPage from '@/pages/status'
 import SystemPage from '@/pages/system'
@@ -19,6 +20,7 @@ export default function App() {
       <SidebarInset>
         <Routes>
           <Route path="/" element={<StatusPage />} />
+          <Route path="/models" element={<ModelsPage />} />
           <Route path="/assistant" element={<AssistantPage />} />
           <Route path="/brain" element={<BrainPage />} />
           <Route path="/speech" element={<SpeechPage />} />

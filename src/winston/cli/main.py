@@ -38,8 +38,16 @@ def version():
 
 
 @app.command()
-def init(force: bool = typer.Option(False, help="Overwrite existing files.")):
-    """Create the data directory from the examples (config, persona, bundled voices)."""
+def init(force: bool = typer.Option(False, help="Overwrite existing files."),
+         profile: str = typer.Option("nvidia-24gb", help="Hardware profile for the config; see --list."),
+         list_profiles: bool = typer.Option(False, "--list", help="Show the profiles and exit.")):
+    """Create the data directory from the examples (config for your hardware, persona, bundled voices)."""
+    from winston.config.presets import PROFILES, apply_profile, profile as get_profile
+    if list_profiles:
+        for p in PROFILES:
+            print(f"{p['id']:<13} {p['title']}: {p['hint']}")
+        return
+    get_profile(profile)                           # fail early on a typo
     d = data_dir()
     d.mkdir(parents=True, exist_ok=True)
     ex = repo_root() / "examples"
@@ -47,6 +55,13 @@ def init(force: bool = typer.Option(False, help="Overwrite existing files.")):
         src, dst = ex / (name if name != ".env" else "env.example"), d / name
         if dst.exists() and not force:
             print(f"keep   {dst}")
+        elif name == "config.yaml" and profile != "nvidia-24gb":
+            import yaml
+            from winston.config.schema import WinstonConfig
+            cfg = WinstonConfig.model_validate(apply_profile(yaml.safe_load(src.read_text()), profile))
+            dst.write_text(yaml.safe_dump(cfg.model_dump(mode="json", exclude_none=True), sort_keys=False,
+                                          allow_unicode=True))
+            print(f"create {dst} (profile {profile})")
         else:
             shutil.copy(src, dst); print(f"create {dst}")
     for sub in ("memory", "logs", "voices"):
@@ -107,10 +122,11 @@ def talk(message: list[str] = typer.Argument(None, help="Messages to send; none 
 
 
 @app.command()
-def check(which: str = typer.Argument("all", help="m0 | m1 | m2 | all")):
-    """Run the acceptance checks on real hardware (engines must be up)."""
+def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | all")):
+    """Run the checks: unit needs nothing, the milestones need the engines up."""
     tests = repo_root() / "tests"
-    plan = {"m0": ["bash", str(tests / "m0_tool_call.sh")],
+    plan = {"unit": ["bash", "-c", f"{sys.executable} {tests / 'guard_cases.py'} && {sys.executable} {tests / 'profiles_load.py'}"],
+            "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],
             "m2": [sys.executable, str(tests / "m2_components.py")]}
     names = list(plan) if which == "all" else [which]

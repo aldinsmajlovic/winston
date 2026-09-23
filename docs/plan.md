@@ -172,6 +172,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - Streams audio to the brain box over LAN (WireGuard/Tailscale if the satellite is ever off-LAN).
 - **Accept:** wake word from across the room at normal volume, with no more than a false activation or two per day of normal household noise; can interrupt the assistant mid-sentence without it tripping on its own speaker output.
 - **Status: wake word model trained 2026-09-22; satellite hardware pending.** `services/wakeword/` trains "Hey Winston" with livekit-wakeword (openWakeWord's front end, maintained trainer); the model is `assets/wake/hey_winston.onnx`. Synthetic validation: 0 false positives per hour over 20 h, recall 84% at threshold 0.5 and 95% at 0.22. Unseen-voice check with Winston's own TTS: the phrase 0.76 to 0.83, but "hey winter" and bare "winston" score close to it. Threshold and real recall get set on a real mic (`listen.py`).
+- **Satellite hardware decision (2026-09-23):** Home Assistant's Voice Preview Edition instead of a Pi plus speakerphone, with its stock firmware and Winston as the ESPHome API client first, streaming-during-playback firmware second for barge-in. Reasoning, path and the growth angle in `docs/voice-pe.md`.
 
 ### M4, Cloud handoff, memory, text channel
 - `ask_claude` tool with a tight system prompt and per-day spend cap.

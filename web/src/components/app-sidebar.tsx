@@ -1,4 +1,4 @@
-import { Activity, BookOpen, Bot, Brain, Cpu, House, Mic, Monitor, Moon, Radio, Settings, Sun, Wrench } from 'lucide-react'
+import { Activity, BookOpen, Bot, Boxes, Brain, Cpu, House, Mic, Monitor, Moon, Radio, Settings, Sun, Wrench } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
@@ -24,6 +24,7 @@ import {
 
 const nav = [
   { to: '/', label: 'Status', Icon: Activity },
+  { to: '/models', label: 'Models', Icon: Boxes },
   { to: '/assistant', label: 'Assistant', Icon: Bot },
   { to: '/brain', label: 'Brain', Icon: Brain },
   { to: '/speech', label: 'Speech', Icon: Mic },

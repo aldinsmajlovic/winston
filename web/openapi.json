@@ -295,6 +295,81 @@
           }
         }
       }
+    },
+    "/api/presets": {
+      "get": {
+        "summary": "Engine and model presets the UI offers per slot, and the hardware profiles",
+        "operationId": "get_presets_api_presets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Presets"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/options/{name}": {
+      "get": {
+        "summary": "Live choices for a dropdown: llm_models (from the brain's server), voices, stt_adapters",
+        "operationId": "get_options_api_options__name__get",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "base_url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Server to ask instead of the saved one, for an unsaved draft",
+              "title": "Base Url"
+            },
+            "description": "Server to ask instead of the saved one, for an unsaved draft"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Options"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -344,6 +419,35 @@
         "additionalProperties": false,
         "type": "object",
         "title": "Channels"
+      },
+      "Choice": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "Choice"
       },
       "ConfigResult": {
         "properties": {
@@ -413,7 +517,7 @@
           "health": {
             "type": "string",
             "title": "Health path",
-            "description": "HTTP path that returns 200 when ready.",
+            "description": "HTTP path that returns 200 when ready. Empty: no check, the engine counts as up whenever its process is (hosted APIs).",
             "default": "/health",
             "level": "advanced"
           },
@@ -446,7 +550,7 @@
             },
             "type": "array",
             "title": "Arguments",
-            "description": "Command arguments (docker driver).",
+            "description": "Command arguments (docker driver). {model} expands to the brain's model.",
             "drivers": [
               "docker"
             ],
@@ -517,7 +621,7 @@
             },
             "type": "array",
             "title": "Command",
-            "description": "Command line (subprocess driver). {data} and {repo} expand.",
+            "description": "Command line (subprocess driver). {data}, {repo} and {model} expand.",
             "drivers": [
               "subprocess"
             ],
@@ -771,6 +875,19 @@
             "default": "http://127.0.0.1:8000/v1",
             "level": "advanced"
           },
+          "api_key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "API key variable",
+            "description": "Environment variable holding the API key. Unset for local servers.",
+            "level": "advanced"
+          },
           "model": {
             "type": "string",
             "title": "Model",
@@ -794,7 +911,8 @@
             "$ref": "#/components/schemas/Thinking",
             "default": {
               "voice": false,
-              "text": true
+              "text": true,
+              "control": "chat_template"
             }
           }
         },
@@ -859,6 +977,152 @@
         },
         "type": "object",
         "title": "Ok"
+      },
+      "Options": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/Choice"
+            },
+            "type": "array",
+            "title": "Choices"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "choices"
+        ],
+        "title": "Options"
+      },
+      "Preset": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint"
+          },
+          "needs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Needs"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "hint",
+          "needs",
+          "settings"
+        ],
+        "title": "Preset"
+      },
+      "Presets": {
+        "properties": {
+          "llm": {
+            "items": {
+              "$ref": "#/components/schemas/Preset"
+            },
+            "type": "array",
+            "title": "Llm"
+          },
+          "tts": {
+            "items": {
+              "$ref": "#/components/schemas/Preset"
+            },
+            "type": "array",
+            "title": "Tts"
+          },
+          "stt": {
+            "items": {
+              "$ref": "#/components/schemas/Preset"
+            },
+            "type": "array",
+            "title": "Stt"
+          },
+          "profiles": {
+            "items": {
+              "$ref": "#/components/schemas/Profile"
+            },
+            "type": "array",
+            "title": "Profiles"
+          }
+        },
+        "type": "object",
+        "required": [
+          "llm",
+          "tts",
+          "stt",
+          "profiles"
+        ],
+        "title": "Presets"
+      },
+      "Profile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint"
+          },
+          "presets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Presets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "hint",
+          "presets"
+        ],
+        "title": "Profile"
       },
       "Providers": {
         "properties": {
@@ -1036,6 +1300,19 @@
             "default": "http://127.0.0.1:8880/v1",
             "level": "advanced"
           },
+          "api_key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "API key variable",
+            "description": "Environment variable holding the API key. Unset for local servers.",
+            "level": "advanced"
+          },
           "voice": {
             "type": "string",
             "title": "Voice",
@@ -1094,6 +1371,18 @@
             "title": "Text",
             "description": "Reasoning on text channels. Much better at multi-part requests.",
             "default": true
+          },
+          "control": {
+            "type": "string",
+            "enum": [
+              "chat_template",
+              "reasoning_effort",
+              "none"
+            ],
+            "title": "Control",
+            "description": "How the server is told to think or not: chat_template for vLLM and llama.cpp (enable_thinking), reasoning_effort for Ollama, none for servers without a switch.",
+            "default": "chat_template",
+            "level": "advanced"
           }
         },
         "additionalProperties": false,

@@ -13,6 +13,9 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
   Nothing exists only in the UI.
 - **Typed, versioned config.** Pydantic models with defaults and a JSON Schema export. Every field carries
   its UI level (basic or advanced) and which engine a change restarts. Forms and docs come from the schema.
+- **Presets over hand-written engine blocks.** `config/presets.py` names the engine and model choices per
+  slot (vLLM, Ollama, hosted; Chatterbox, Pocket TTS, hosted) and composes them into hardware profiles.
+  The UI offers them as dropdowns, `winston init --profile` writes one, and the config stays the truth.
 - **Policy in code, prompt for tone.** Tool tiers (read, act, restricted), allow lists and logging are
   mechanisms, not prompt text.
 

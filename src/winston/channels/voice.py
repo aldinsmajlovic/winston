@@ -28,7 +28,7 @@ from pipecat.workers.runner import WorkerRunner
 from winston.config import load
 from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
-from winston.core.brain import Brain, ToolCallLogObserver
+from winston.core.brain import Brain, ToolCallLogObserver, api_key
 from winston.core.guard import ClaimGuard
 
 CFG: WinstonConfig = load()
@@ -48,7 +48,7 @@ def build_tts(cfg: WinstonConfig = CFG):
     c = cfg.tts
     if c.provider != "openai_speech":
         raise ValueError(f"unsupported tts provider {c.provider}")
-    return OpenAITTSService(api_key="local", base_url=c.base_url, model="winston-tts", voice=c.voice,
+    return OpenAITTSService(api_key=api_key(c.api_key_env), base_url=c.base_url, model="winston-tts", voice=c.voice,
                             sample_rate=c.sample_rate)
 
 

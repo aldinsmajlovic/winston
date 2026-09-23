@@ -2,17 +2,21 @@
 and the CLI use, and serves the built UI from web/dist. Bound to localhost by default; put it
 behind auth before exposing it."""
 import asyncio
+import os
 import subprocess
 from contextlib import asynccontextmanager
-from typing import Literal
+from typing import Any, Literal
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from winston import __version__
-from winston.config import load, repo_root, save
+from winston.config import data_dir, load, repo_root, save
+from winston.config.presets import LLM, PROFILES, TTS, stt_presets
+from winston.config.registry import available
 from winston.config.restarts import restarts_for
 from winston.config.schema import LLMConfig, WinstonConfig
 from winston.engines.supervisor import Supervisor
@@ -51,6 +55,41 @@ class Ok(BaseModel):
 class ConfigResult(BaseModel):
     saved: bool
     restarts: list[str]     # engines that must restart before the change is live
+
+
+class Preset(BaseModel):
+    id: str
+    title: str
+    hint: str
+    needs: list[str]
+    engine: dict[str, Any] | None = None    # EngineConfig fields for the slot, None for in-process adapters
+    settings: dict[str, Any]                # section fields that go with it (llm, tts, stt)
+
+
+class Profile(BaseModel):
+    id: str
+    title: str
+    hint: str
+    presets: dict[str, str]
+
+
+class Presets(BaseModel):
+    llm: list[Preset]
+    tts: list[Preset]
+    stt: list[Preset]
+    profiles: list[Profile]
+
+
+class Choice(BaseModel):
+    value: str
+    label: str
+    hint: str | None = None
+
+
+class Options(BaseModel):
+    name: str
+    choices: list[Choice]
+    source: str = ""        # where the list came from, or why it is empty
 
 
 def gpu_status() -> GpuStatus | None:
@@ -160,6 +199,50 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     @app.get("/api/config/schema", summary="JSON Schema of the config, with level and restarts per field")
     async def get_schema() -> dict:
         return WinstonConfig.model_json_schema()
+
+    @app.get("/api/presets", response_model=Presets,
+             summary="Engine and model presets the UI offers per slot, and the hardware profiles")
+    async def get_presets():
+        return Presets(llm=LLM, tts=TTS, stt=stt_presets(), profiles=PROFILES)
+
+    @app.get("/api/options/{name}", response_model=Options,
+             summary="Live choices for a dropdown: llm_models (from the brain's server), voices, stt_adapters")
+    async def get_options(name: str, base_url: str | None = Query(None, description="Server to ask instead of the saved one, for an unsaved draft")):
+        cfg: WinstonConfig = app.state.cfg
+        llm_url = (base_url or cfg.llm.base_url).rstrip("/")
+        tts_url = (base_url or cfg.tts.base_url).rstrip("/").removesuffix("/v1")
+        if name == "stt_adapters":
+            return Options(name=name, source="registry",
+                           choices=[Choice(value=n, label=n.capitalize(), hint=path) for n, path in sorted(available("stt").items())])
+        if name == "llm_models":
+            headers = {}
+            if cfg.llm.api_key_env and (key := os.environ.get(cfg.llm.api_key_env)):
+                headers["Authorization"] = f"Bearer {key}"
+            try:
+                async with httpx.AsyncClient(timeout=3) as c:
+                    r = await c.get(llm_url + "/models", headers=headers)
+                r.raise_for_status()
+                ids = sorted(m.get("id", "") for m in r.json().get("data", []) if m.get("id"))
+                return Options(name=name, source=llm_url, choices=[Choice(value=i, label=i) for i in ids])
+            except Exception as e:                                          # noqa: BLE001
+                return Options(name=name, source=f"{llm_url}: {type(e).__name__}", choices=[])
+        if name == "voices":
+            choices: list[Choice] = []
+            voices = data_dir() / "voices"
+            for wav in sorted(voices.rglob("*.wav")) if voices.is_dir() else []:
+                rel = str(wav.relative_to(voices).with_suffix(""))
+                choices.append(Choice(value=rel, label=rel, hint="clip"))
+            source = str(voices)
+            try:
+                async with httpx.AsyncClient(timeout=3) as c:
+                    r = await c.get(tts_url + "/health")
+                for v in r.json().get("builtin_voices", []) if r.status_code == 200 else []:
+                    choices.append(Choice(value=v, label=v, hint="built in"))
+                source += " and the TTS server"
+            except Exception:                                               # noqa: BLE001
+                pass
+            return Options(name=name, source=source, choices=choices)
+        raise HTTPException(404, f"no options named {name}")
 
     dist = repo_root() / "web" / "dist"
     if (dist / "index.html").is_file():
