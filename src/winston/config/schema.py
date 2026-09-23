@@ -187,6 +187,8 @@ class ToolsConfig(Model):
 
 
 class MemoryConfig(Model):
+    model_config = section("voice")
+    enabled: bool = Field(True, description="Load remembered facts into every new conversation and offer the remember tool.")
     dir: str = Field("memory", title="Directory", json_schema_extra=ui("advanced"))
     commit_on_write: bool = Field(True, title="Commit on write", json_schema_extra=ui("advanced"))
 

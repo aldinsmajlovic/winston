@@ -23,11 +23,14 @@ from pipecat.services.openai.llm import OpenAILLMService
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
+from winston.core.memory import make_memory_tool, prompt_block
 from winston.core.tools.sensors import make_sensor_tool
 
 
 def persona(cfg: WinstonConfig) -> str:
-    return resolve(cfg.assistant.persona).read_text().strip()
+    """The persona file plus the remembered facts, read when a session's LLM is built."""
+    text = resolve(cfg.assistant.persona).read_text().strip()
+    return f"{text}\n\n{mem}" if (mem := prompt_block(cfg)) else text
 
 
 def thinking_for(cfg: WinstonConfig, channel: str) -> bool:
@@ -95,10 +98,11 @@ class Brain:
             self.tools = await self._mcp.register_tools(self.llm)
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
-        if local := make_sensor_tool(self.cfg):
-            schema, handler = local
-            self.llm.register_function(schema.name, handler)
-            self.tools.standard_tools.append(schema)
+        for local in (make_sensor_tool(self.cfg), make_memory_tool(self.cfg)):
+            if local:
+                schema, handler = local
+                self.llm.register_function(schema.name, handler)
+                self.tools.standard_tools.append(schema)
         logger.info(f"tools: {[t.name for t in self.tools.standard_tools]}")
 
     async def close(self):

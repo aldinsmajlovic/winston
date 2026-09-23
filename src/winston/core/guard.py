@@ -54,6 +54,10 @@ _ACT_STRONG = re.compile(
     r"|\b(?:setting|turning|switching|dimming|changing|adjusting|booting|waking)\b"
     r"|\b(?:has|have) been (?:set|turned|switched|dimmed|changed|adjusted|booted)\b"
     r"|\b(?:turned|switched) (?:on|off)\b|\bdone\b")
+# "I'll remember that", "noted": a memory claim, which needs the remember tool (an act tool). Bare
+# "I remember" is recall from the prompt, not a claim.
+_REMEMBER = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? (?:remember|noted?|saved?|stored?|made a note)\b"
+                       r"|\bi'll keep (?:that|it|this) in mind\b|^(?:got it, )?noted\b")
 # "are now on", "now set to warm": a change claim unless a tool of any kind ran this turn.
 _ACT_WEAK = re.compile(r"\b(?:is|are|'s|'re) now\b|\bnow (?:set|on|off|at|turned|dimmed|warm|cool|back)\b")
 # "is already on", "are currently at": a state claim that needs some tool to have looked.
@@ -68,7 +72,7 @@ def judge(text: str, tools: list[tuple[str, bool]]) -> str | None:
     for s in re.split(r"(?<=[.!])\s+", text.lower()):
         if _SKIP.search(s):
             continue
-        if ACT not in ok and (_ACT_STRONG.search(s) or (not ok and _ACT_WEAK.search(s))):
+        if ACT not in ok and (_ACT_STRONG.search(s) or _REMEMBER.search(s) or (not ok and _ACT_WEAK.search(s))):
             return ACT
         if not ok and _STATE.search(s):
             return "state"

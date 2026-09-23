@@ -179,6 +179,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - Memory vault: `memory/preferences.md`, `memory/people.md`, `memory/projects.md`, loaded into the system prompt at start; a `remember` tool that appends distilled facts and commits to git.
 - Telegram bot wired to the same agent loop.
 - **Accept:** "Tell my friend a fun fact" works locally; a hard question routes to Claude; a fact told to Winston is recalled in a fresh session; Telegram works.
+- **Status: started 2026-09-23, ahead of M2/M3 acceptance (see `decisions.md`).** Memory vault done: `remember` stores, refuses secrets, commits; a fresh session recalls (typed test with the 9B, `tests/memory_cases.py` in `winston check unit`). Cloud handoff and Telegram wait for `ANTHROPIC_API_KEY` and a bot token in `data/.env`.
 
 ### M5, Vision and extras
 - `describe_camera(entity)` tool: HA camera snapshot → local VLM → spoken description.

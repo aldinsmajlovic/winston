@@ -29,6 +29,12 @@ CASES = [
     ("Hey Aldin. What can I help you with today?", [], None),
     ("Hello! I'm here to help you around the house.", [], None),
     ("I can't do that by voice.", [], None),
+    ("Got it, I'll remember that you prefer warm light.", [], "act"),
+    ("Noted.", [], "act"),
+    ("I'll keep that in mind.", [], "act"),
+    ("Got it, I'll remember that you prefer warm light.", [("remember", True)], None),
+    ("I remember you prefer warm light, so I set it to warm.", ACT_OK, None),
+    ("As I remember it, you like the lights warm in the evening.", [], None),
 ]
 
 failed = 0

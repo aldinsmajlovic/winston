@@ -122,10 +122,19 @@ def talk(message: list[str] = typer.Argument(None, help="Messages to send; none 
 
 
 @app.command()
+def memory():
+    """Show what Winston remembers, as it goes into the prompt. Edit the files to change it."""
+    from winston.core.memory import prompt_block, vault
+    cfg = load()
+    print(prompt_block(cfg) or "Nothing remembered yet.")
+    print(f"\n({vault(cfg)})")
+
+
+@app.command()
 def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | all")):
     """Run the checks: unit needs nothing, the milestones need the engines up."""
     tests = repo_root() / "tests"
-    plan = {"unit": ["bash", "-c", f"{sys.executable} {tests / 'guard_cases.py'} && {sys.executable} {tests / 'profiles_load.py'}"],
+    plan = {"unit": ["bash", "-c", f"{sys.executable} {tests / 'guard_cases.py'} && {sys.executable} {tests / 'memory_cases.py'} && {sys.executable} {tests / 'profiles_load.py'}"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],
             "m2": [sys.executable, str(tests / "m2_components.py")]}
