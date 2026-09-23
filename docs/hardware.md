@@ -20,10 +20,10 @@ hosted profile sends only the conversation text to the model provider.
 
 | | `nvidia-24gb` | `ollama` on the same box, GPU already full |
 |---|---|---|
-| End of speech to first word | about 1 s | not measured by voice |
+| End of speech to first audio | 1.2 to 1.3 s median (measured with the 27B brain, streamed TTS) | not measured by voice |
 | Tool call, thinking off | 0.9 s | 3 s with the 4B model split between CPU and GPU |
 | Tool call, thinking on | 3.5 s | 8 s, same split |
-| TTS first audio, short sentence | 325 ms, sentence at a time | 60 ms, streamed while it generates |
+| TTS first audio | about 330 ms at any sentence length, streamed | 60 ms, streamed while it generates |
 | TTS real-time factor | 0.3 on the GPU | 0.23 on four CPU threads (Ryzen 5800X) |
 | Brain memory | 16 GB of VRAM | 8 GB for the 4B model with a 32K context |
 
@@ -50,9 +50,10 @@ On the reference box (2026-09-23), 14 requests, three rounds each:
 | Start | about 3 minutes | 10 s once downloaded |
 | Vision | yes | not in this preset |
 
-Over voice both land at about 2.2 to 2.5 s from the end of speech to first audio on the same five
-questions. Most of that is Chatterbox speaking the first sentence, and the 9B adds 8 to 9 s turns
-when it web-searches trivia.
+Over voice, before Chatterbox streamed, both landed at about 2.2 to 2.5 s from the end of speech to
+first audio on the same five questions, most of it Chatterbox rendering the first sentence whole. With
+streaming the 27B measures 1.2 to 1.3 s median. The 9B also adds 8 to 9 s turns when it web-searches
+trivia.
 
 ## Choosing
 
@@ -97,7 +98,12 @@ system prompt in about 2.3 s; after that it is cached.
 `tool_choice`, which Winston does not use.
 
 **Chatterbox-Turbo.** CUDA only, its own venv (`services/tts-chatterbox`) because it pins torch 2.6.
-Clones any clip under `data/voices`; six CC BY 4.0 VCTK samples come bundled.
+Clones any clip under `data/voices`; six CC BY 4.0 VCTK samples come bundled. Chatterbox itself
+renders a sentence whole, at about 25 ms per character, so our server streams: it generates the
+speech tokens one at a time and vocodes the prefix every 40 tokens (the first chunk after 24), sending
+only the new audio with a 20 ms cross-fade. First audio arrives in about 330 ms whatever the sentence
+length, and a sentence renders at about 0.3 of real time, so playback never waits. `--no-stream`
+goes back to whole sentences; `--first`, `--step` and `--hold` tune the chunks.
 
 **Pocket TTS.** Kyutai's 100M model, MIT code and CC BY 4.0 weights, its own venv
 (`services/tts-pocket`) with a CPU-only torch. Streams audio as it generates. 26 built-in voices

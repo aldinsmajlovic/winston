@@ -121,7 +121,7 @@ TTS: list[Fragment] = [
 
 PROFILES: list[Fragment] = [
     {"id": "nvidia-24gb", "title": "NVIDIA, 24 GB", "presets": {"llm": "vllm", "tts": "chatterbox"},
-     "hint": "The reference setup: vLLM and Chatterbox share one card. About 1 s to the first word."},
+     "hint": "The reference setup: vLLM and Chatterbox share one card."},
     {"id": "nvidia-24gb-27b", "title": "NVIDIA, 24 GB, bigger brain", "presets": {"llm": "llamacpp", "tts": "chatterbox"},
      "hint": "Qwen3.8-27B through llama.cpp instead of the 9B through vLLM: better at multi-part requests, "
              "same speed to the first word, no vision."},
