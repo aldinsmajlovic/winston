@@ -7,7 +7,7 @@ Restart metadata lives on the field when one field is special, else on the model
 "{engine}" stands for the engine an EngineConfig belongs to."""
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 def ui(level: str = "basic", restarts: list[str] | None = None, **extra: Any) -> dict[str, Any]:
@@ -55,7 +55,8 @@ class EngineConfig(Model):
     image: str | None = Field(None,
                               description="Container image (docker driver).", json_schema_extra=ui(drivers=["docker"]))
     args: list[str] = Field(default_factory=list, title="Arguments",
-                            description="Command arguments (docker driver). {model} expands to the brain's model.",
+                            description="Command arguments (docker driver). {model} expands to the brain's model, "
+                                        "{section.field} (say {tts.streaming.chunk_secs}) to that config value.",
                             json_schema_extra=ui("advanced", drivers=["docker"]))
     env: dict[str, str] = Field(default_factory=dict, title="Environment",
                                 description="Environment variables for the engine's process or container.",
@@ -72,7 +73,8 @@ class EngineConfig(Model):
                            json_schema_extra=ui("advanced", drivers=["docker"]))
     # subprocess
     cmd: list[str] = Field(default_factory=list, title="Command",
-                           description="Command line (subprocess driver). {data}, {repo} and {model} expand.",
+                           description="Command line (subprocess driver). {data}, {repo}, {model} and "
+                                       "{section.field} (say {tts.streaming.chunk_secs}) expand.",
                            json_schema_extra=ui("advanced", drivers=["subprocess"]))
     cwd: str | None = Field(None, title="Working directory", description="Working directory, {repo}-relative allowed.",
                             json_schema_extra=ui("advanced", drivers=["subprocess"]))
@@ -141,6 +143,34 @@ class STTConfig(Model):
                                      json_schema_extra=ui("advanced"))
 
 
+class TTSStreamingConfig(Model):
+    """Reaches the speech server through `{tts.streaming.*}` in its engine command; the Chatterbox preset
+    passes them. Pocket TTS streams on its own and has no such arguments."""
+    model_config = section("tts")
+    enabled: bool = Field(True, title="Stream speech",
+                          description="Start speaking before a sentence is fully rendered: first audio in about "
+                                      "0.3 s instead of up to 2 s for a long sentence, with a join between chunks "
+                                      "that can sound a little choppy. Off renders whole sentences. For the "
+                                      "Chatterbox server.")
+    chunk_secs: float = Field(1.6, ge=0.8, le=6.0, title="Chunk length (s)",
+                              description="Audio per chunk after the first. Longer means fewer joins and smoother "
+                                          "speech; how soon he starts talking depends only on the first chunk.")
+    first_secs: float = Field(0.96, ge=0.4, le=3.0, title="First chunk (s)",
+                              description="Audio rendered before anything is sent. Shorter starts sooner; below "
+                                          "about 0.9 s the second chunk can arrive late and leave a short gap.",
+                              json_schema_extra=ui("advanced"))
+    lookahead_secs: float = Field(0.32, ge=0.08, le=1.0, title="Look-ahead (s)",
+                                  description="Audio held back at the end of each chunk until the sounds after it "
+                                              "are known. More smooths the joins but makes the first chunk shorter.",
+                                  json_schema_extra=ui("advanced"))
+
+    @model_validator(mode="after")
+    def _lookahead_inside_first(self):
+        if self.lookahead_secs >= self.first_secs:
+            raise ValueError("look-ahead must be shorter than the first chunk")
+        return self
+
+
 class TTSConfig(Model):
     model_config = section("voice")
     provider: Literal["openai_speech"] = Field("openai_speech", description="Text-to-speech adapter.",
@@ -157,6 +187,7 @@ class TTSConfig(Model):
                        json_schema_extra=ui(options="voices"))
     sample_rate: int = Field(24000, title="Sample rate", description="Audio rate the speech server returns, in Hz.",
                              json_schema_extra=ui("advanced"))
+    streaming: TTSStreamingConfig = Field(default_factory=TTSStreamingConfig, title="Streaming")
 
 
 class VADConfig(Model):

@@ -4,6 +4,7 @@ to this, never to processes."""
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -38,10 +39,25 @@ class Managed:
         return self.cfg == other.cfg and getattr(self.driver, "cmd", None) == getattr(other.driver, "cmd", None)
 
 
+_SETTING = re.compile(r"\{([a-z_]+(?:\.[a-z_]+)+)\}")      # {tts.streaming.chunk_secs}
+
+
+def _setting(cfg: WinstonConfig, path: str) -> str:
+    v = cfg
+    for part in path.split("."):
+        if not hasattr(v, part):
+            logger.warning(f"engine command names {{{path}}}, which is not a config value; left as written")
+            return "{" + path + "}"
+        v = getattr(v, part)
+    return str(v).lower() if isinstance(v, bool) else str(v)
+
+
 def _expand_model(e: EngineConfig, cfg: WinstonConfig) -> EngineConfig:
-    """"{model}" in an engine's args or cmd stands for llm.model, so the model name lives in one place."""
-    sub = lambda xs: [x.replace("{model}", cfg.llm.model) for x in xs]   # noqa: E731
-    if any("{model}" in x for x in e.args + e.cmd):
+    """"{model}" in an engine's args or cmd stands for llm.model, so the model name lives in one place;
+    "{section.field}" stands for any other config value, so a server's options are settings too."""
+    def sub(xs: list[str]) -> list[str]:
+        return [_SETTING.sub(lambda m: _setting(cfg, m.group(1)), x.replace("{model}", cfg.llm.model)) for x in xs]
+    if any("{" in x for x in e.args + e.cmd):
         return e.model_copy(update={"args": sub(e.args), "cmd": sub(e.cmd)})
     return e
 

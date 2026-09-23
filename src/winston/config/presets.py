@@ -83,6 +83,11 @@ LLM: list[Fragment] = [
     },
 ]
 
+_CHATTERBOX_STREAMING = [                        # the Voice page's Streaming settings, see TTSStreamingConfig
+    "--stream", "{tts.streaming.enabled}", "--chunk-secs", "{tts.streaming.chunk_secs}",
+    "--first-secs", "{tts.streaming.first_secs}", "--lookahead-secs", "{tts.streaming.lookahead_secs}",
+]
+
 TTS: list[Fragment] = [
     {
         "id": "chatterbox", "icon": "chatterbox", "title": "Chatterbox-Turbo on GPU", "needs": ["cuda"],
@@ -91,7 +96,8 @@ TTS: list[Fragment] = [
             "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 180,
             "cwd": "{repo}/services/tts-chatterbox",
             "cmd": ["{repo}/services/tts-chatterbox/.venv/bin/python", "server.py",
-                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880"],
+                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880",
+                    *_CHATTERBOX_STREAMING],
         },
         "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
                              "voice": "vctk/p254_023", "sample_rate": 24000}},

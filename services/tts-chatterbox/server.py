@@ -10,11 +10,13 @@ Voice conditionals are prepared once per reference clip and cached, so a request
 name any clip under --voices-dir (e.g. "vctk/p226_023") to switch voices.
 
 Streaming: Chatterbox renders a sentence whole, and its speech-token stage takes about 25 ms per
-character, so a long sentence kept the first audio waiting 1.5 to 2 s. With --stream (default) the
-speech tokens are generated one by one and the prefix so far is vocoded every --step tokens (first
-after --first); only the new samples go out, minus the last --hold tokens whose right context is
-still missing, cross-faded into the next chunk. The vocoder is non-causal, so each prefix is a
-fresh render of the whole; the words come out the same (Parakeet transcribes both identically).
+character, so a long sentence kept the first audio waiting 1.5 to 2 s. With --stream true (default)
+the speech tokens are generated one by one and the prefix so far is vocoded after --first-secs of
+audio, then in chunks that double up to --chunk-secs, so the next chunk is always ready before
+playback catches up. Only the new samples go out, minus the last --lookahead-secs whose right
+context is still missing, cross-faded into the next chunk. Winston passes these from tts.streaming.
+The vocoder is non-causal, so each prefix is a fresh render of the whole; the words come out the
+same (Parakeet transcribes both identically).
 """
 import argparse
 import asyncio
@@ -142,6 +144,8 @@ def _synth_stream(text: str, voice: str, emit):
         g = _model.s3gen
         noise = torch.randn(1, 80, 2 * 1010, dtype=g.dtype, device=_model.device)
         tokens, emitted, tail, due = [], 0, None, _stream["first"]
+        inc = min(_stream["step"], _stream["first"])   # chunks double up to --chunk-secs, so the next one
+                                                        # is always ready before the audio sent so far runs out
         gen = _speech_tokens(text)
         while True:
             done = False
@@ -159,7 +163,8 @@ def _synth_stream(text: str, voice: str, emit):
             if tail is not None and len(seg) >= FADE:
                 r = np.linspace(0, 1, FADE, dtype=np.float32)
                 seg[:FADE] = tail[:FADE] * (1 - r) + seg[:FADE] * r
-            tail, emitted, due = wav[end:end + FADE], end, due + _stream["step"]
+            tail, emitted, due = wav[end:end + FADE], end, due + inc
+            inc = min(_stream["step"], inc * 2)
             if len(seg):
                 emit(_pcm(seg))
             if done:
@@ -238,13 +243,18 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8880)
     ap.add_argument("--device", default="cuda")
-    ap.add_argument("--stream", action=argparse.BooleanOptionalAction, default=True,
-                    help="send audio while a sentence is still being generated")
-    ap.add_argument("--first", type=int, default=24, help="speech tokens (40 ms each) before the first chunk")
-    ap.add_argument("--step", type=int, default=40, help="speech tokens per later chunk")
-    ap.add_argument("--hold", type=int, default=8, help="tokens held back at a chunk's end, still missing context")
+    ap.add_argument("--stream", type=lambda v: v.lower() in ("1", "true", "yes", "on"), default=True,
+                    help="true: send audio while a sentence is still being generated; false: whole sentences")
+    ap.add_argument("--first-secs", type=float, default=0.96, help="audio rendered before the first chunk")
+    ap.add_argument("--chunk-secs", type=float, default=1.6, help="audio per later chunk; longer is smoother")
+    ap.add_argument("--lookahead-secs", type=float, default=0.32,
+                    help="audio held back at a chunk's end until what follows is known")
     args = ap.parse_args()
-    _stream.update(on=args.stream, first=args.first, step=args.step, hold=args.hold)
+    tokens = lambda secs: max(1, round(secs * 25))   # speech tokens run at 25 Hz
+    _stream.update(on=args.stream, first=tokens(args.first_secs), step=tokens(args.chunk_secs),
+                   hold=tokens(args.lookahead_secs))
+    if _stream["hold"] >= _stream["first"]:
+        ap.error("--lookahead-secs must be shorter than --first-secs")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     from chatterbox.tts_turbo import ChatterboxTurboTTS

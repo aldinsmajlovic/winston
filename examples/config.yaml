@@ -51,6 +51,14 @@ engines:
       - "{data}/voices"
       - --port
       - "8880"
+      - --stream                             # the Streaming settings under tts: below
+      - "{tts.streaming.enabled}"
+      - --chunk-secs
+      - "{tts.streaming.chunk_secs}"
+      - --first-secs
+      - "{tts.streaming.first_secs}"
+      - --lookahead-secs
+      - "{tts.streaming.lookahead_secs}"
 
 llm:
   provider: openai_compatible
@@ -60,7 +68,9 @@ llm:
   thinking: {voice: false, text: true, control: chat_template}   # control: reasoning_effort for Ollama, none for hosted
 
 stt: {provider: parakeet, model: nemo-parakeet-tdt-0.6b-v3, quantization: int8}
-tts: {provider: openai_speech, base_url: http://127.0.0.1:8880/v1, voice: vctk/p254_023, sample_rate: 24000}
+tts:
+  {provider: openai_speech, base_url: http://127.0.0.1:8880/v1, voice: vctk/p254_023, sample_rate: 24000,
+   streaming: {enabled: true, chunk_secs: 1.6, first_secs: 0.96, lookahead_secs: 0.32}}   # Chatterbox; longer chunks are smoother
 vad: {provider: silero, stop_secs: 0.3, unfinished_stop_secs: 1.0}
 
 channels:

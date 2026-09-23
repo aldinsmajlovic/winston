@@ -55,7 +55,7 @@ blocks a plain `http://` page inside it, so Winston needs HTTPS too.
 Settings is the link at the top right. Status lists every engine with icon actions and the GPU.
 Brain picks the engine from presets (vLLM, llama.cpp, Ollama, hosted) and the model from the list the brain's
 server reports; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
-hearing. Picking a preset rewrites the engine block and the settings that go with it. The other
+hearing, and for Chatterbox has Streaming: on or off and the chunk length, longer being smoother. Picking a preset rewrites the engine block and the settings that go with it. The other
 pages are generated from the config schema: basic fields first, Advanced behind a toggle, and an (i)
 beside each label that explains the field (and, for an engine, what the chosen preset needs).
 
@@ -103,6 +103,11 @@ Declared under `engines:` in config with a driver:
 - `subprocess`: cmd and cwd, with `{data}` and `{repo}` expanding. Used for the Chatterbox TTS server,
   which has its own venv because it pins torch 2.6.
 - `external`: a URL you already run; Winston only health-checks it.
+
+In args and cmd, `{model}` stands for `llm.model` and `{section.field}` for any other config value,
+so a server's own options can be ordinary settings: the Chatterbox command passes
+`--chunk-secs {tts.streaming.chunk_secs}` and friends, and changing the setting restarts the engine
+with the new value.
 
 ## Exposure
 

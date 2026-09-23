@@ -100,10 +100,12 @@ system prompt in about 2.3 s; after that it is cached.
 **Chatterbox-Turbo.** CUDA only, its own venv (`services/tts-chatterbox`) because it pins torch 2.6.
 Clones any clip under `data/voices`; six CC BY 4.0 VCTK samples come bundled. Chatterbox itself
 renders a sentence whole, at about 25 ms per character, so our server streams: it generates the
-speech tokens one at a time and vocodes the prefix every 40 tokens (the first chunk after 24), sending
-only the new audio with a 20 ms cross-fade. First audio arrives in about 330 ms whatever the sentence
-length, and a sentence renders at about 0.3 of real time, so playback never waits. `--no-stream`
-goes back to whole sentences; `--first`, `--step` and `--hold` tune the chunks.
+speech tokens one at a time and vocodes what it has in chunks, sending only the new audio with a 20 ms
+cross-fade. First audio arrives in about 330 ms whatever the sentence length. The joins can sound a
+little choppy, so it is a setting: under Voice, Streaming turns it off (whole sentences) or makes the
+chunks longer (fewer joins, same start time, 1.6 s by default, up to 6 s); Advanced adds the first
+chunk (0.96 s) and the look-ahead held back at each join (0.32 s). Chunks double from the first up to
+the chosen length, so playback never catches up at any length (measured at 1.6, 3.2 and 6 s).
 
 **Pocket TTS.** Kyutai's 100M model, MIT code and CC BY 4.0 weights, its own venv
 (`services/tts-pocket`) with a CPU-only torch. Streams audio as it generates. 26 built-in voices

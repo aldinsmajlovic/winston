@@ -364,6 +364,7 @@ export interface components {
             enabled?: boolean;
             /**
              * Model
+             * @description Claude model the question goes to. Opus is best at hard questions, Sonnet and Haiku are faster and cheaper.
              * @default claude-opus-5
              */
             model?: string;
@@ -382,6 +383,7 @@ export interface components {
             max_usd_per_day?: number;
             /**
              * Budget per question (USD)
+             * @description Hard cap for one question; a longer answer is cut off.
              * @default 0.5
              */
             max_usd_per_question?: number;
@@ -457,11 +459,13 @@ export interface components {
         ControlConfig: {
             /**
              * Host
+             * @description Address winstond listens on. 127.0.0.1 keeps the API and web UI on this machine; it has no login.
              * @default 127.0.0.1
              */
             host?: string;
             /**
              * Port
+             * @description Port for the API and the web UI.
              * @default 8700
              */
             port?: number;
@@ -487,6 +491,7 @@ export interface components {
             enabled?: boolean;
             /**
              * Token variable
+             * @description Environment variable holding the Discord bot token.
              * @default DISCORD_BOT_TOKEN
              */
             token_env?: string;
@@ -517,12 +522,13 @@ export interface components {
         EngineConfig: {
             /**
              * Driver
-             * @description How the engine is run.
+             * @description How the engine is run. Docker container: Winston runs an image. Process: Winston runs a command on this machine. External server: something you run yourself; Winston only checks it.
              * @enum {string}
              */
             driver: "docker" | "subprocess" | "external";
             /**
              * Enabled
+             * @description Start it with winston up. Off keeps the entry without running it.
              * @default true
              */
             enabled?: boolean;
@@ -550,10 +556,13 @@ export interface components {
             image?: string | null;
             /**
              * Arguments
-             * @description Command arguments (docker driver). {model} expands to the brain's model.
+             * @description Command arguments (docker driver). {model} expands to the brain's model, {section.field} (say {tts.streaming.chunk_secs}) to that config value.
              */
             args?: string[];
-            /** Environment */
+            /**
+             * Environment
+             * @description Environment variables for the engine's process or container.
+             */
             env?: {
                 [key: string]: string;
             };
@@ -577,12 +586,13 @@ export interface components {
             runtime?: string | null;
             /**
              * IPC host
+             * @description Share the host's IPC namespace; vLLM needs it for shared memory between workers.
              * @default false
              */
             ipc_host?: boolean;
             /**
              * Command
-             * @description Command line (subprocess driver). {data}, {repo} and {model} expand.
+             * @description Command line (subprocess driver). {data}, {repo}, {model} and {section.field} (say {tts.streaming.chunk_secs}) expand.
              */
             cmd?: string[];
             /**
@@ -684,12 +694,13 @@ export interface components {
             token_env?: string;
             /**
              * MCP path
+             * @description Path of Home Assistant's MCP server integration.
              * @default /api/mcp
              */
             mcp_path?: string;
             /**
              * Entities
-             * @description Entities Winston may see and control, with aliases.
+             * @description Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him; winston ha expose applies the list.
              */
             expose?: {
                 [key: string]: components["schemas"]["ExposedEntity"];
@@ -704,12 +715,14 @@ export interface components {
         LLMConfig: {
             /**
              * Provider
+             * @description Protocol the brain is spoken to with. Every supported server speaks the OpenAI chat API.
              * @default openai_compatible
              * @constant
              */
             provider?: "openai_compatible";
             /**
              * Base URL
+             * @description Where the brain's OpenAI-compatible API answers, ending in /v1. Presets set it.
              * @default http://127.0.0.1:8000/v1
              */
             base_url?: string;
@@ -786,11 +799,13 @@ export interface components {
         LoggingConfig: {
             /**
              * Tool calls
+             * @description Every tool call with its arguments and result, one JSON line each, relative to the data directory.
              * @default logs/tool_calls.jsonl
              */
             tool_calls?: string;
             /**
              * Latency
+             * @description Per-turn timings (speech end, first token, first audio), one JSON line each.
              * @default logs/latency.jsonl
              */
             latency?: string;
@@ -805,11 +820,13 @@ export interface components {
             enabled?: boolean;
             /**
              * Directory
+             * @description Where the fact files live, relative to the data directory.
              * @default memory
              */
             dir?: string;
             /**
              * Commit on write
+             * @description Commit every remembered fact to the vault's git repository, so changes can be reviewed and undone.
              * @default true
              */
             commit_on_write?: boolean;
@@ -899,11 +916,13 @@ export interface components {
             provider?: string;
             /**
              * Model
+             * @description Speech-to-text model. Parakeet TDT 0.6B v3 is multilingual; v2 is English only.
              * @default nemo-parakeet-tdt-0.6b-v3
              */
             model?: string;
             /**
              * Quantization
+             * @description Weight precision. int8 is faster on the CPU at no audible accuracy cost; empty for full precision.
              * @default int8
              */
             quantization?: string | null;
@@ -918,16 +937,19 @@ export interface components {
             temperature?: number;
             /**
              * Top-p
+             * @description Samples only from the most likely tokens that add up to this share. Lower is more focused.
              * @default 0.8
              */
             top_p?: number;
             /**
              * Presence penalty
+             * @description Positive values push the model away from repeating itself. Qwen's chat default is 1.5; 0 calls tools more reliably.
              * @default 0
              */
             presence_penalty?: number;
             /**
              * Max tokens
+             * @description Longest reply in tokens. Spoken replies are short; this is a safety cap.
              * @default 512
              */
             max_tokens?: number;
@@ -966,6 +988,7 @@ export interface components {
             provider?: "openai_speech";
             /**
              * Base URL
+             * @description Where the speech server's OpenAI speech API answers, ending in /v1. Presets set it.
              * @default http://127.0.0.1:8880/v1
              */
             base_url?: string;
@@ -982,9 +1005,43 @@ export interface components {
             voice?: string;
             /**
              * Sample rate
+             * @description Audio rate the speech server returns, in Hz.
              * @default 24000
              */
             sample_rate?: number;
+            /** Streaming */
+            streaming?: components["schemas"]["TTSStreamingConfig"];
+        };
+        /**
+         * TTSStreamingConfig
+         * @description Reaches the speech server through `{tts.streaming.*}` in its engine command; the Chatterbox preset
+         *     passes them. Pocket TTS streams on its own and has no such arguments.
+         */
+        TTSStreamingConfig: {
+            /**
+             * Stream speech
+             * @description Start speaking before a sentence is fully rendered: first audio in about 0.3 s instead of up to 2 s for a long sentence, with a join between chunks that can sound a little choppy. Off renders whole sentences. For the Chatterbox server.
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Chunk length (s)
+             * @description Audio per chunk after the first. Longer means fewer joins and smoother speech; how soon he starts talking depends only on the first chunk.
+             * @default 1.6
+             */
+            chunk_secs?: number;
+            /**
+             * First chunk (s)
+             * @description Audio rendered before anything is sent. Shorter starts sooner; below about 0.9 s the second chunk can arrive late and leave a short gap.
+             * @default 0.96
+             */
+            first_secs?: number;
+            /**
+             * Look-ahead (s)
+             * @description Audio held back at the end of each chunk until the sounds after it are known. More smooths the joins but makes the first chunk shorter.
+             * @default 0.32
+             */
+            lookahead_secs?: number;
         };
         /** Thinking */
         Thinking: {
@@ -1046,6 +1103,7 @@ export interface components {
         VADConfig: {
             /**
              * Provider
+             * @description Voice activity detector that decides when you are speaking.
              * @default silero
              * @constant
              */
@@ -1080,16 +1138,19 @@ export interface components {
         VoiceChannel: {
             /**
              * Enabled
+             * @description Talk to Winston by voice from the browser and, later, satellites.
              * @default true
              */
             enabled?: boolean;
             /**
              * Host
+             * @description Address the voice channel listens on. 127.0.0.1 keeps it on this machine; winstond passes the browser's offer to it.
              * @default 127.0.0.1
              */
             host?: string;
             /**
              * Port
+             * @description Port the voice channel listens on; Pipecat's own test page is served here too.
              * @default 7860
              */
             port?: number;
@@ -1133,6 +1194,7 @@ export interface components {
             thinking?: "minimal" | "low" | "medium" | "high";
             /**
              * API key variable
+             * @description Environment variable holding the Gemini API key.
              * @default GEMINI_API_KEY
              */
             api_key_env?: string;
@@ -1144,6 +1206,7 @@ export interface components {
             max_per_day?: number;
             /**
              * Timeout (s)
+             * @description Seconds before a search gives up and Winston says it could not look it up.
              * @default 15
              */
             timeout?: number;
@@ -1183,7 +1246,13 @@ export interface components {
              *       "provider": "openai_speech",
              *       "base_url": "http://127.0.0.1:8880/v1",
              *       "voice": "onyx",
-             *       "sample_rate": 24000
+             *       "sample_rate": 24000,
+             *       "streaming": {
+             *         "chunk_secs": 1.6,
+             *         "enabled": true,
+             *         "first_secs": 0.96,
+             *         "lookahead_secs": 0.32
+             *       }
              *     }
              */
             tts?: components["schemas"]["TTSConfig"];
