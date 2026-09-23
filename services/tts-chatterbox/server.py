@@ -8,7 +8,7 @@ response_format=pcm and expects 24 kHz mono int16, which is Chatterbox's native 
 
 Voice conditionals are prepared once per reference clip and cached (the default plus the eight
 most recently used), so a request may name any clip under --voices-dir (e.g. "vctk/p226_023") to
-switch voices.
+switch voices. A clip written again (a friend's voice cloned anew) is prepared again.
 
 Streaming: Chatterbox renders a sentence whole, and its speech-token stage takes about 25 ms per
 character, so a long sentence kept the first audio waiting 1.5 to 2 s. With --stream true (default)
@@ -44,6 +44,7 @@ _lock = threading.Lock()          # one generate at a time on the GPU
 _conds: dict[str, object] = {}    # voice name -> prepared Conditionals
 _default_voice = ""
 _voices_dir = Path(".")
+_mtimes: dict[str, float] = {}    # voice name -> its clip's mtime when prepared; a re-recorded clone is prepared again
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
 _stream = {"on": True, "first": 24, "step": 40, "hold": 8}
 SAMPLES_PER_TOKEN = 960           # speech tokens run at 25 Hz, audio at 24 kHz
@@ -64,15 +65,23 @@ _OPENAI_VOICES = {"alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "
                   "sage", "shimmer", "verse", "default", "winston"}
 
 
+def _mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
 def _resolve_voice(name: str | None) -> str:
     # OpenAI clients validate voice names against OpenAI's list, so any of those means "the default clip"
     if not name or name in _OPENAI_VOICES:
         return _default_voice
-    if name in _conds:
+    path = (_voices_dir / name).with_suffix(".wav")
+    if name in _conds and (name == _default_voice or _mtimes.get(name) == _mtime(path)):
         _conds[name] = _conds.pop(name)      # most recently used goes last
         return name
-    path = (_voices_dir / name).with_suffix(".wav")
     if not path.is_file():
+        _conds.pop(name, None)
         raise HTTPException(400, f"unknown voice {name!r}; no file {path}")
     t0 = time.perf_counter()
     # under the GPU lock, so a sentence being rendered keeps its voice, and without autograd, whose
@@ -80,7 +89,9 @@ def _resolve_voice(name: str | None) -> str:
     with _lock, torch.inference_mode():
         before = _model.conds
         _model.prepare_conditionals(str(path))
+        _conds.pop(name, None)
         _conds[name], _model.conds = _model.conds, before
+        _mtimes[name] = _mtime(path)
         for old in [v for v in _conds if v != _default_voice][:-MAX_VOICES]:
             del _conds[old]
         torch.cuda.empty_cache()

@@ -1,4 +1,5 @@
 import { $api } from '@/api/client'
+import { ClonedVoices } from '@/components/cloned-voices'
 import { PageSkeleton } from '@/components/page'
 import { SectionForm } from '@/components/section-form'
 import { SlotCard } from '@/components/slot-card'
@@ -26,6 +27,7 @@ export default function VoicePage() {
       <SlotCard page={page} kind="tts" title="Speaking" presets={presets.data.tts}>
         <SectionForm page={page} path={TTS} omit={streams ? undefined : STREAMING} />
       </SlotCard>
+      <ClonedVoices current={page.value.tts?.voice} />
       <SlotCard page={page} kind="stt" title="Hearing" presets={presets.data.stt}>
         <SectionForm page={page} path={STT} omit={PROVIDER} />
       </SlotCard>

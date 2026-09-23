@@ -13,6 +13,7 @@ uv run winston talk            # text chat, same brain and tools
 uv run winston ha expose       # make Home Assistant's exposure match config
 uv run winston check           # unit (no hardware), then the m0, m1, m2 acceptance checks on real hardware
 uv run winston check brain     # the configured brain on the trial requests: tool calls and speed
+uv run winston check clone     # clone a synthetic friend's voice headless and switch back (about 90 s)
 ```
 
 Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs

@@ -264,6 +264,116 @@
         }
       }
     },
+    "/api/voices/clones": {
+      "get": {
+        "summary": "Voices cloned from friends by asking, each with its consent recording",
+        "operationId": "list_clones_api_voices_clones_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClonedVoice"
+                  },
+                  "type": "array",
+                  "title": "Response List Clones Api Voices Clones Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voices/clones/{slug}/audio": {
+      "get": {
+        "summary": "A clone's voice clip or its consent recording",
+        "operationId": "clone_audio_api_voices_clones__slug__audio_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "voice",
+                "consent"
+              ],
+              "type": "string",
+              "default": "voice",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "audio/wav": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/voices/clones/{slug}": {
+      "delete": {
+        "summary": "Delete a cloned voice and its consent",
+        "operationId": "delete_clone_api_voices_clones__slug__delete",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slug"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engines/{name}/start": {
       "post": {
         "summary": "Start",
@@ -914,6 +1024,44 @@
           "label"
         ],
         "title": "Choice"
+      },
+      "ClonedVoice": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "voice": {
+            "type": "string",
+            "title": "Voice"
+          },
+          "created": {
+            "type": "number",
+            "title": "Created"
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds"
+          },
+          "consent_text": {
+            "type": "string",
+            "title": "Consent Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "voice",
+          "created",
+          "seconds",
+          "consent_text"
+        ],
+        "title": "ClonedVoice"
       },
       "ConfigResult": {
         "properties": {

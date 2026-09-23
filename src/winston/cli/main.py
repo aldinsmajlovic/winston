@@ -151,7 +151,7 @@ def memory():
 
 
 @app.command()
-def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | brain | all")):
+def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | brain | clone | all")):
     """Run the checks: unit needs nothing, the milestones need the engines up."""
     tests = repo_root() / "tests"
     unit = ["guard_cases.py", "memory_cases.py", "announce_cases.py", "live_cases.py", "profiles_load.py"]
@@ -159,8 +159,10 @@ def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | brain |
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],
             "m2": [sys.executable, str(tests / "m2_components.py")],
-            "brain": [sys.executable, str(tests / "brain_trials.py")]}
-    names = [n for n in plan if n != "brain"] if which == "all" else [which]   # brain: a comparison, run on purpose
+            "brain": [sys.executable, str(tests / "brain_trials.py")],
+            "clone": [sys.executable, str(tests / "clone_voice_headless.py")]}
+    # brain is a comparison and clone takes a minute and a half; both run on purpose
+    names = [n for n in plan if n not in ("brain", "clone")] if which == "all" else [which]
     failed = []
     for n in names:
         print(f"\n=== {n}")

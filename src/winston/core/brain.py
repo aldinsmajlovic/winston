@@ -109,6 +109,11 @@ class Brain:
                 self.tools.standard_tools.append(schema)
         logger.info(f"tools: {[t.name for t in self.tools.standard_tools]}")
 
+    def add_tool(self, schema, handler):
+        """A channel's own tool, registered before the first new_context()."""
+        self.llm.register_function(schema.name, handler)
+        self.tools.standard_tools.append(schema)
+
     async def close(self):
         if self._mcp:
             await self._mcp.close()

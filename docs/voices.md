@@ -7,8 +7,8 @@ returning 24 kHz mono PCM (or WAV). It has its own Python 3.11 venv because Chat
 torch 2.6. Start it from this directory:
 
 ```sh
-cd voice/tts/chatterbox_server
-.venv/bin/python server.py --voice ../reference/vctk/p232_023.wav --voices-dir ../reference
+cd services/tts-chatterbox
+.venv/bin/python server.py --voice ../../data/voices/vctk/p254_023.wav --voices-dir ../../data/voices
 ```
 
 Try another voice without restarting by naming a clip relative to `--voices-dir`, e.g.
@@ -24,4 +24,32 @@ British male candidates: p226 (Surrey), p232 (Southern England), p243 (London),
 p254 (Surrey, **default**, chosen by Aldin 2026-09-22), p258 (Southern England), p273 (Suffolk).
 
 Anything dropped into `data/voices/` (a personal clip, for instance) stays out of git.
-Plan M2: clone only from a consented or permissively licensed clip; never an actor.
+Clone only from a permissively licensed clip or from someone who agreed to it, as below; never an actor.
+
+## Cloned voices
+
+Ask with the friend in the room: "Winston, clone my friend Maria's voice." Winston then:
+
+1. asks Maria to say "I'm Maria, and I agree that Winston can copy my voice." Speech-to-text checks
+   the words; without "agree" (or with "don't agree") nothing is recorded.
+2. asks her to talk about anything for about fifteen seconds, and stops at 15 s of speech, or at a
+   2.5 s pause after 10 s.
+3. keeps only the speech, levels it and switches to it: "Got it. This is me as Maria now." That
+   sentence starts about 0.4 s after she stops (measured headless).
+
+While he records, the mic goes to the recording only, so nothing Maria says counts as a turn and
+Winston stays quiet. Under 6 s of speech is too little and nothing is stored. "Back to your own
+voice" reverts; the clone lasts the conversation unless you say to keep it, which saves it as
+`tts.voice`. Asking again for the same name records over the old clone.
+
+Each clone is `data/voices/friends/<name>.wav`, with the consent recording (`<name>.consent.wav`)
+and what it was heard to say (`<name>.json`) beside it. The Voice page lists them, plays both
+recordings and deletes them.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
+  <img src="images/voice-light.png" alt="The Voice page with one cloned voice listed" width="720">
+</picture>
+
+`winston check clone` runs the whole exchange headless with two VCTK voices as the user and the
+friend. Recording from a satellite's far-field mic waits for M3.

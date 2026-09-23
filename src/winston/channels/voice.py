@@ -14,7 +14,8 @@ from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import LLMMessagesAppendFrame, OutputAudioRawFrame, TTSSpeakFrame
+from pipecat.frames.frames import (ErrorFrame, LLMMessagesAppendFrame, OutputAudioRawFrame, TTSAudioRawFrame,
+                                   TTSSpeakFrame)
 from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
@@ -23,7 +24,7 @@ from pipecat.processors.aggregators.llm_response_universal import (LLMContextAgg
                                                                     LLMUserAggregatorParams)
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
-from pipecat.services.openai.tts import OpenAITTSService
+from pipecat.services.openai.tts import VALID_VOICES, OpenAITTSService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
@@ -33,6 +34,7 @@ from winston.config import load, resolve
 from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, ToolCallLogObserver, api_key
+from winston.channels.clone import MicTap, make_voice_tools
 from winston.core.announce import note, subscribe
 from winston.core.guard import ClaimGuard
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
@@ -50,12 +52,33 @@ def build_stt(cfg: WinstonConfig = CFG):
     return cls(model=_STT_MODEL, model_name=cfg.stt.model)
 
 
+class SpeechTTS(OpenAITTSService):
+    """OpenAI's speech protocol with any voice name. Pipecat only lets OpenAI's own names through,
+    but a local server names its clips by path ("vctk/p226_023", "friends/erik")."""
+
+    async def run_tts(self, text: str, context_id: str):
+        if self._settings.voice in VALID_VOICES:
+            async for f in super().run_tts(text, context_id):
+                yield f
+            return
+        args = {"input": text, "model": self._settings.model, "voice": self._settings.voice, "response_format": "pcm"}
+        async with self._client.audio.speech.with_streaming_response.create(**args) as r:
+            if r.status_code != 200:
+                yield ErrorFrame(error=f"speech server answered {r.status_code}: {await r.text()}")
+                return
+            await self.start_tts_usage_metrics(text)
+            async for chunk in r.iter_bytes(self.chunk_size):
+                if chunk:
+                    await self.stop_ttfb_metrics()
+                    yield TTSAudioRawFrame(chunk, self.sample_rate, 1, context_id=context_id)
+
+
 def build_tts(cfg: WinstonConfig = CFG):
     c = cfg.tts
     if c.provider != "openai_speech":
         raise ValueError(f"unsupported tts provider {c.provider}")
-    return OpenAITTSService(api_key=api_key(c.api_key_env), base_url=c.base_url, model="winston-tts", voice=c.voice,
-                            sample_rate=c.sample_rate)
+    return SpeechTTS(api_key=api_key(c.api_key_env), base_url=c.base_url, sample_rate=c.sample_rate,
+                     settings=SpeechTTS.Settings(model="winston-tts", voice=c.voice))
 
 
 def load_chime(cfg: WinstonConfig = CFG) -> bytes:
@@ -91,6 +114,14 @@ transport_params = {
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     brain = Brain(CFG, channel="voice"); await brain.start()
     stt, tts = build_stt(), build_tts()
+    tap = MicTap()                  # lets clone_voice record a friend without it becoming a turn
+
+    async def transcribe(pcm):
+        async for f in stt.run_stt(pcm.tobytes()):
+            if f is not None and getattr(f, "text", None):
+                yield f.text
+    for schema, handler in make_voice_tools(CFG, tap, transcribe):
+        brain.add_tool(schema, handler)
     # Pipecat 1.11 runs the VAD in the user aggregator, not the transport; TransportParams has no
     # vad_analyzer field and silently drops one (the browser test never started a turn because of it).
     vad = SileroVADAnalyzer(params=VADParams(stop_secs=CFG.vad.stop_secs))
@@ -115,6 +146,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     pipeline = Pipeline([
         transport.input(),      # mic audio from the browser
+        tap,                    # held while a voice is being cloned
         stt,                    # utterance -> text
         aggregators.user(),     # VAD + turn taking; text -> context
         brain.llm,              # context -> streamed text, tool calls

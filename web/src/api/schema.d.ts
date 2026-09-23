@@ -141,6 +141,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voices/clones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Voices cloned from friends by asking, each with its consent recording */
+        get: operations["list_clones_api_voices_clones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voices/clones/{slug}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A clone's voice clip or its consent recording */
+        get: operations["clone_audio_api_voices_clones__slug__audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voices/clones/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a cloned voice and its consent */
+        delete: operations["delete_clone_api_voices_clones__slug__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines/{name}/start": {
         parameters: {
             query?: never;
@@ -464,6 +515,21 @@ export interface components {
             icon?: string | null;
             /** Group */
             group?: string | null;
+        };
+        /** ClonedVoice */
+        ClonedVoice: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Voice */
+            voice: string;
+            /** Created */
+            created: number;
+            /** Seconds */
+            seconds: number;
+            /** Consent Text */
+            consent_text: string;
         };
         /** ConfigResult */
         ConfigResult: {
@@ -1603,6 +1669,90 @@ export interface operations {
                 };
                 content: {
                     "audio/pcm": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clones_api_voices_clones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClonedVoice"][];
+                };
+            };
+        };
+    };
+    clone_audio_api_voices_clones__slug__audio_get: {
+        parameters: {
+            query?: {
+                kind?: "voice" | "consent";
+            };
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/wav": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_clone_api_voices_clones__slug__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
                 };
             };
             /** @description Validation Error */

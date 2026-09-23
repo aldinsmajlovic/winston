@@ -24,6 +24,8 @@ be swapped for a hosted service when that suits you better.
   announcements included, with typed replies read aloud if you like; his logo moves as he listens, thinks and speaks. Settings sit behind it.
 - **A wall dashboard.** Full screen for a tablet: tap the logo to talk, his answer in large type,
   announcements across the screen.
+- **Clones a friend's voice by asking.** "Clone my friend's voice": they agree out loud, talk for fifteen
+  seconds, and Winston speaks as them until you ask for his own voice back.
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
   capped per day.

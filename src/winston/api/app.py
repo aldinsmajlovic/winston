@@ -22,6 +22,7 @@ from winston.config.schema import LLMConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
 from winston.core.brain import api_key
+from winston.core import voices
 from winston.core.live import Feed, LiveEvent
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
@@ -63,6 +64,15 @@ class ChatMessage(BaseModel):
 
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+
+
+class ClonedVoice(BaseModel):
+    slug: str
+    name: str
+    voice: str              # the name the speech server knows it by, "friends/<slug>"
+    created: float
+    seconds: float
+    consent_text: str       # what the consent recording was heard to say
 
 
 class ConfigResult(BaseModel):
@@ -253,6 +263,31 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             finally:
                 await r.aclose(); await c.aclose()
         return StreamingResponse(gen(), media_type="audio/pcm", headers={"X-Sample-Rate": str(t.sample_rate)})
+
+    def clone(slug: str) -> voices.Clone:
+        if not (c := next((c for c in voices.clones() if c.slug == slug), None)):
+            raise HTTPException(404, f"no cloned voice {slug}")
+        return c
+
+    @app.get("/api/voices/clones", response_model=list[ClonedVoice],
+             summary="Voices cloned from friends by asking, each with its consent recording")
+    async def list_clones():
+        return [ClonedVoice(**vars(c), voice=c.voice) for c in voices.clones()]
+
+    @app.get("/api/voices/clones/{slug}/audio", response_class=FileResponse,
+             responses={200: {"content": {"audio/wav": {}}}}, summary="A clone's voice clip or its consent recording")
+    async def clone_audio(slug: str, kind: Literal["voice", "consent"] = Query("voice")):
+        c = clone(slug)
+        return FileResponse(voices.friends_dir() / f"{c.slug}{'.consent' if kind == 'consent' else ''}.wav",
+                            media_type="audio/wav")
+
+    @app.delete("/api/voices/clones/{slug}", response_model=Ok, summary="Delete a cloned voice and its consent")
+    async def delete_clone(slug: str):
+        c = clone(slug)
+        if app.state.cfg.tts.voice == c.voice:
+            raise HTTPException(409, f"{c.name}'s voice is Winston's voice now; pick another voice first")
+        voices.delete(c.slug)
+        return Ok()
 
     @app.api_route("/api/voice/offer", methods=["POST", "PATCH"], include_in_schema=False)
     async def voice_offer(request: Request):
