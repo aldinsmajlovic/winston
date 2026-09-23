@@ -72,6 +72,13 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     ))
     guard = ClaimGuard(CFG, channel="voice")
 
+    @brain.llm.event_handler("on_function_calls_started")
+    async def on_function_calls_started(service, function_calls):
+        # A web search takes seconds; say so instead of leaving silence. Spoken by code, not the
+        # model, so it cannot turn into a claim about the answer.
+        if any(c.function_name == "web_search" for c in function_calls):
+            await worker.queue_frames([TTSSpeakFrame("Let me look that up.")])
+
     pipeline = Pipeline([
         transport.input(),      # mic audio from the browser
         stt,                    # utterance -> text

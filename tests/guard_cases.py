@@ -29,6 +29,8 @@ CASES = [
     ("Hey Aldin. What can I help you with today?", [], None),
     ("Hello! I'm here to help you around the house.", [], None),
     ("I can't do that by voice.", [], None),
+    ("Sweden has about 10.6 million people as of 2025.", [("web_search", True)], None),
+    ("Done, the lights are warm.", [("web_search", True)], "act"),        # a search is not an action
     ("Got it, I'll remember that you prefer warm light.", [], "act"),
     ("Noted.", [], "act"),
     ("I'll keep that in mind.", [], "act"),

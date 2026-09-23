@@ -180,10 +180,24 @@ class SensorPair(Model):
     state: str | None = Field(None, title="State sensor", description="Optional companion state sensor (charging, etc.).")
 
 
+class WebSearchConfig(Model):
+    model_config = section("voice")
+    enabled: bool = Field(False, description="Let Winston look up current facts on the web. Only the search question "
+                                             "leaves the house.")
+    provider: Literal["gemini"] = Field("gemini", description="Search backend. gemini: Gemini with Google Search "
+                                                              "grounding (needs billing enabled on the key).")
+    model: str = Field("gemini-3.5-flash", json_schema_extra=ui("advanced"))
+    api_key_env: str = Field("GEMINI_API_KEY", title="API key variable", json_schema_extra=ui("advanced"))
+    max_per_day: int = Field(100, ge=0, title="Searches per day",
+                             description="Hard cap; past it the tool refuses until midnight.")
+    timeout: float = Field(15.0, ge=1, title="Timeout (s)", json_schema_extra=ui("advanced"))
+
+
 class ToolsConfig(Model):
     model_config = section("voice")
     sensors: dict[str, SensorPair] = Field(default_factory=dict,
                                            description="Watched sensors by label; readings come with their age.")
+    web_search: WebSearchConfig = Field(WebSearchConfig(), title="Web search")
 
 
 class MemoryConfig(Model):
