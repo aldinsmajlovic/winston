@@ -1473,6 +1473,82 @@
           }
         }
       }
+    },
+    "/api/providers/home_assistant/exposure": {
+      "get": {
+        "summary": "Winston's list as Home Assistant has it: exposed or not, aliases, area, device and state per entity, what else is exposed (drift), the MCP server and whether a save would change anything",
+        "operationId": "ha_exposure_api_providers_home_assistant_exposure_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HAExposure"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/home_assistant/registry": {
+      "get": {
+        "summary": "Every entity in Home Assistant grouped by area, with its type, state, device, name and aliases, for the picker. Without an admin token: one group, no areas or aliases",
+        "operationId": "ha_registry_api_providers_home_assistant_registry_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HARegistry"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/home_assistant/tools": {
+      "get": {
+        "summary": "The tools Home Assistant's MCP server offers, one row per job in plain words (cached a minute)",
+        "operationId": "ha_tools_api_providers_home_assistant_tools_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HATool"
+                  },
+                  "type": "array",
+                  "title": "Response Ha Tools Api Providers Home Assistant Tools Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/providers/home_assistant/apply": {
+      "post": {
+        "summary": "Apply the saved list to Home Assistant again (after it was away during a save). Adds and exposes; removes no aliases, since it has no earlier list to compare with",
+        "operationId": "ha_apply_now_api_providers_home_assistant_apply_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HAApply"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1955,6 +2031,16 @@
           "version": {
             "type": "string",
             "title": "Version"
+          },
+          "ha_apply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HAApply"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2421,7 +2507,7 @@
               }
             ],
             "title": "Name",
-            "description": "Friendly name to set in Home Assistant."
+            "description": "What you call it. Saved to Home Assistant as an alias; Home Assistant's own name is never changed."
           },
           "aliases": {
             "items": {
@@ -2429,7 +2515,7 @@
             },
             "type": "array",
             "title": "Aliases",
-            "description": "Other names people say for it."
+            "description": "Other names people say for it, saved to Home Assistant as aliases."
           }
         },
         "additionalProperties": false,
@@ -2438,6 +2524,79 @@
         "restarts": [
           "{brains}"
         ]
+      },
+      "ExposurePlan": {
+        "properties": {
+          "expose": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expose",
+            "default": []
+          },
+          "unexpose": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unexpose",
+            "default": []
+          },
+          "aliases_add": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Aliases Add",
+            "default": {}
+          },
+          "aliases_remove": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Aliases Remove",
+            "default": {}
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "default": []
+          },
+          "no_registry": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "No Registry",
+            "default": []
+          },
+          "auto_expose_off": {
+            "type": "boolean",
+            "title": "Auto Expose Off",
+            "default": false
+          },
+          "targets": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Targets",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "ExposurePlan"
       },
       "FactEdit": {
         "properties": {
@@ -2494,6 +2653,434 @@
           "total_mb"
         ],
         "title": "GpuStatus"
+      },
+      "HAApply": {
+        "properties": {
+          "applied": {
+            "type": "boolean",
+            "title": "Applied"
+          },
+          "exposed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exposed",
+            "default": []
+          },
+          "unexposed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unexposed",
+            "default": []
+          },
+          "aliases_added": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Aliases Added",
+            "default": {}
+          },
+          "aliases_removed": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Aliases Removed",
+            "default": {}
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped",
+            "default": []
+          },
+          "no_registry": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "No Registry",
+            "default": []
+          },
+          "auto_expose_turned_off": {
+            "type": "boolean",
+            "title": "Auto Expose Turned Off",
+            "default": false
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "applied"
+        ],
+        "title": "HAApply",
+        "description": "What a save (or winston ha expose) did in Home Assistant."
+      },
+      "HAArea": {
+        "properties": {
+          "area_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/HAEntity"
+            },
+            "type": "array",
+            "title": "Entities"
+          }
+        },
+        "type": "object",
+        "required": [
+          "area_id",
+          "name",
+          "entities"
+        ],
+        "title": "HAArea"
+      },
+      "HAEntity": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "in_ha": {
+            "type": "boolean",
+            "title": "In Ha"
+          },
+          "exposed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exposed"
+          },
+          "friendly_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Friendly Name"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Aliases"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area"
+          },
+          "area_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Area Id"
+          },
+          "device": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          },
+          "state_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Text"
+          },
+          "listed": {
+            "type": "boolean",
+            "title": "Listed"
+          },
+          "applied": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied"
+          },
+          "missing_aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Aliases",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "entity_id",
+          "domain",
+          "in_ha",
+          "exposed",
+          "friendly_name",
+          "aliases",
+          "area",
+          "area_id",
+          "device",
+          "state",
+          "state_text",
+          "listed"
+        ],
+        "title": "HAEntity"
+      },
+      "HAExposure": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "mcp_server": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Server"
+          },
+          "registry": {
+            "type": "boolean",
+            "title": "Registry",
+            "default": false
+          },
+          "auto_expose": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Expose"
+          },
+          "in_sync": {
+            "type": "boolean",
+            "title": "In Sync",
+            "default": false
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/HAEntity"
+            },
+            "type": "array",
+            "title": "Entities",
+            "default": []
+          },
+          "domains": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Domains",
+            "default": {}
+          },
+          "drift": {
+            "items": {
+              "$ref": "#/components/schemas/HAEntity"
+            },
+            "type": "array",
+            "title": "Drift",
+            "default": []
+          },
+          "pending": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExposurePlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "HAExposure"
+      },
+      "HARegistry": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "areas_known": {
+            "type": "boolean",
+            "title": "Areas Known",
+            "default": false
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/HAArea"
+            },
+            "type": "array",
+            "title": "Groups",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "HARegistry"
+      },
+      "HATool": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Names"
+          },
+          "domain": {
+            "type": "string",
+            "title": "Domain"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "names",
+          "domain",
+          "source",
+          "description"
+        ],
+        "title": "HATool"
       },
       "HTTPValidationError": {
         "properties": {
@@ -2599,7 +3186,7 @@
             },
             "type": "object",
             "title": "Entities",
-            "description": "Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him; winston ha expose applies the list.",
+            "description": "Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: exposes it, un-exposes the rest and adds the aliases.",
             "key_options": "ha_entities",
             "key_title": "Entity",
             "level": "basic"
@@ -2613,6 +3200,15 @@
             "description": "Whole domains to expose, without aliases.",
             "level": "advanced",
             "options": "ha_domains"
+          },
+          "verify": {
+            "$ref": "#/components/schemas/VerifyConfig",
+            "title": "After an action",
+            "description": "Home Assistant says done before a device has acted. He answers straight away, then checks and corrects himself if it did not happen.",
+            "default": {
+              "enabled": true,
+              "wait_secs": 3.0
+            }
           }
         },
         "additionalProperties": false,
@@ -4145,6 +4741,31 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerifyConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Check after an action",
+            "description": "After he turns something on or off or sets a light, he reads its state from Home Assistant and says so when it did not change (\"The shelf lamp did not respond.\"). His answer is not delayed; the correction follows it.",
+            "default": true
+          },
+          "wait_secs": {
+            "type": "number",
+            "maximum": 15.0,
+            "minimum": 0.5,
+            "title": "Give up after (s)",
+            "description": "Seconds a device has to show the change before he says it did not. He reads it at 0.5 s, 1.5 s and this, and stops as soon as it matches.",
+            "default": 3.0,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "VerifyConfig",
+        "restarts": [
+          "{brains}"
+        ]
       },
       "VoiceChannel": {
         "properties": {

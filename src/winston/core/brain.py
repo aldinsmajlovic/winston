@@ -33,6 +33,7 @@ from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.messaging import make_send_message_tool
 from winston.core.tools.sensors import make_sensor_tool
 from winston.core.tools.web_search import make_web_search_tool
+from winston.core.verify import Verifier
 
 
 def today() -> str:
@@ -112,6 +113,9 @@ class Brain:
         self.llm = build_llm(cfg, channel)
         self.tools: ToolsSchema = ToolsSchema(standard_tools=[])
         self._mcp: MCPClient | None = None
+        # Checks Home Assistant's state after an action; the channel sets verifier.deliver and adds
+        # verifier.observer to its pipeline (core/verify.py).
+        self.verifier = Verifier(cfg, channel)
 
     async def start(self):
         ha = self.cfg.providers.ha
@@ -124,6 +128,8 @@ class Brain:
             t0 = time.perf_counter()
             await self._mcp.start()
             self.tools = await self._mcp.register_tools(self.llm)
+            if checked := self.verifier.wrap(self.llm, [t.name for t in self.tools.standard_tools]):
+                logger.info(f"state check after {checked}, up to {self.verifier.wait_secs:g} s")
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
         for local in (make_sensor_tool(self.cfg), make_memory_tool(self.cfg), make_web_search_tool(self.cfg),
@@ -142,6 +148,7 @@ class Brain:
         self.tools.standard_tools.append(schema)
 
     async def close(self):
+        await self.verifier.close()
         if self._mcp:
             await self._mcp.close()
 

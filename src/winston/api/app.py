@@ -35,6 +35,8 @@ from winston.core.live import Feed, LiveEvent
 from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
+from winston.providers.home_assistant import (HAApply, HAExposure, HARegistry, HATool, HomeAssistant,
+                                              apply_saved, exposure_view, ha_changed, registry_view)
 
 
 class EngineStatus(BaseModel):
@@ -183,6 +185,9 @@ class ConfigResult(BaseModel):
     saved: bool
     restarts: list[str]     # engines that must restart before the change is live; "control" is winstond itself
     version: str            # the saved file's version after this call (unchanged by a dry run), as in ETag
+    # Set when the save changed the Home Assistant list, domains or switch and Home Assistant is on: what
+    # applying it there did. A Home Assistant that is away never fails the save; applied says false.
+    ha_apply: HAApply | None = None
 
 
 class ConfigVersion(BaseModel):
@@ -670,13 +675,16 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         save(new)
         app.state.cfg, app.state.version = new, file_version()
         remember(app.state.version, new)
+        # Before the reload, so channels that restart read Home Assistant's new tool list. A live voice
+        # switch never touches Home Assistant.
+        ha_apply = await apply_saved(cur, new) if "voice" not in applied and ha_changed(cur, new) else None
         await sup.reload(new)
         new_d = _dump(new)
         sup.mark_stale((r for r in restarts if r != "control"), base=_dump(cur))
         sup.settle(lambda base: restarts_for(base, new_d, schema))     # a change undone needs no restart
         await web.reset(new)
         response.headers["ETag"] = _etag(app.state.version)
-        return ConfigResult(saved=True, restarts=restarts, version=app.state.version)
+        return ConfigResult(saved=True, restarts=restarts, version=app.state.version, ha_apply=ha_apply)
 
     conflict = {409: {"model": ConfigConflict, "description": "Changed on disk since the If-Match version"}}
 
@@ -799,6 +807,71 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
              summary="Whether Home Assistant answers at the URL with the configured token")
     async def ha_check(url: str | None = Query(None, description="URL to try instead of the saved one")):
         return await check_home_assistant(app.state.cfg, url)
+
+    def ha_client() -> HomeAssistant:
+        try:
+            return HomeAssistant(app.state.cfg)
+        except RuntimeError as e:
+            raise HTTPException(409, str(e))
+
+    def ha_away(e: BaseException) -> str:
+        """Why Home Assistant could not be read, in words: the MCP client wraps its errors in
+        exception groups, so the first leaf is the one that says what happened."""
+        while isinstance(e, BaseExceptionGroup) and e.exceptions:
+            e = e.exceptions[0]
+        text = str(e)
+        if text.startswith("Token"):
+            return text
+        if isinstance(e, (TimeoutError, asyncio.TimeoutError)):
+            return "Not reachable: it did not answer in time"
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status == 404:
+            return "Not found: is the MCP server integration loaded?"
+        if status in (401, 403):
+            return "Refused: the token was not accepted"
+        if status:
+            return f"Not reachable: it answered {status}"
+        name = type(e).__name__
+        return "Not reachable: nothing answered at that address" if "Connect" in name else f"Not reachable ({name})"
+
+    @app.get("/api/providers/home_assistant/exposure", response_model=HAExposure,
+             summary="Winston's list as Home Assistant has it: exposed or not, aliases, area, device and state per "
+                     "entity, what else is exposed (drift), the MCP server and whether a save would change anything")
+    async def ha_exposure():
+        ha = ha_client()
+        try:
+            snap = await ha.snapshot(list(ha.ha.expose))
+        except Exception as e:                                          # noqa: BLE001
+            return HAExposure(ok=False, detail=ha_away(e))
+        return exposure_view(ha.ha, snap)
+
+    @app.get("/api/providers/home_assistant/registry", response_model=HARegistry,
+             summary="Every entity in Home Assistant grouped by area, with its type, state, device, name and "
+                     "aliases, for the picker. Without an admin token: one group, no areas or aliases")
+    async def ha_registry():
+        ha = ha_client()
+        try:
+            snap = await ha.snapshot()
+        except Exception as e:                                          # noqa: BLE001
+            return HARegistry(ok=False, detail=ha_away(e))
+        return registry_view(ha.ha, snap)
+
+    @app.get("/api/providers/home_assistant/tools", response_model=list[HATool],
+             summary="The tools Home Assistant's MCP server offers, one row per job in plain words (cached a minute)")
+    async def ha_tools():
+        ha = ha_client()
+        try:
+            return await ha.tools()
+        except Exception as e:                                          # noqa: BLE001
+            raise HTTPException(502, f"Home Assistant's MCP server: {ha_away(e)}")
+
+    @app.post("/api/providers/home_assistant/apply", response_model=HAApply,
+              summary="Apply the saved list to Home Assistant again (after it was away during a save). Adds and "
+                      "exposes; removes no aliases, since it has no earlier list to compare with")
+    async def ha_apply_now():
+        ha_client()
+        async with config_lock:
+            return await apply_saved(app.state.cfg, app.state.cfg)
 
     dist = repo_root() / "web" / "dist"
     if (dist / "index.html").is_file():

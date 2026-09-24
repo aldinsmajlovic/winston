@@ -17,7 +17,9 @@ be swapped for a hosted service when that suits you better.
 
 - **Local by default, cloud when you choose.** Speech recognition, the language model and the voice run
   on one GPU, or on Ollama and the CPU. The brain and the voice can each point at a hosted API instead.
-- **Hands through Home Assistant.** Anything you expose, over Home Assistant's own MCP server.
+- **Hands through Home Assistant.** Anything you expose, over Home Assistant's own MCP server, picked
+  from your rooms on one page. After switching a light he checks it happened and says so when it did not
+  ([how](docs/home-assistant.md)).
 - **Interruptible and fast.** Around 1.3 s from the end of your sentence to the first spoken word
   (measured headless; barge-in timing is not measured yet).
 - **A Talk page.** Type or talk to Winston in the browser and see what he heard, said and did,
@@ -95,6 +97,7 @@ flowchart LR
 ## Docs
 
 - [Running](docs/running.md): commands, the web UI, engines, logs
+- [Home Assistant](docs/home-assistant.md): what he sees and does, and how the list reaches Home Assistant
 - [Tools](docs/tools.md): memory, web search, `ask_claude`, messaging; keys and limits
 - [Announcements](docs/announcements.md) and [Discord](docs/discord.md)
 - [Architecture](docs/architecture.md): the parts and how they plug together

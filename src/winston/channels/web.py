@@ -5,6 +5,7 @@ live feed; `POST /api/chat` only queues the message.
 A conversation starts fresh after channels.web.session_idle_mins, and after a config save."""
 import asyncio
 import time
+import uuid
 from collections import deque
 
 from loguru import logger
@@ -27,6 +28,7 @@ class WebChat:
             if self.session is None:
                 obs = LiveObserver("web", self.feed.publish)
                 self.session = await TextSession(self.cfg, channel="web", observers=[obs]).start()
+                self.session.notify = self._correction
                 window = self.cfg.channels.web.session_idle_mins * 60
                 for at, text, context in self._recent:
                     if time.monotonic() - at < window:
@@ -44,6 +46,11 @@ class WebChat:
             logger.exception("web chat failed")
             self.feed.publish(LiveEvent(channel="web", type="error", text=f"{type(e).__name__}: {e}"))
             self.feed.publish(LiveEvent(channel="web", type="state", state="idle"))
+
+    async def _correction(self, text: str):
+        """A state check's correction (core/verify.py), shown on the Talk page as a reply of his."""
+        ev = self.feed.publish(LiveEvent(channel="web", type="reply", reply=uuid.uuid4().hex[:12], text=text))
+        self.feed.publish(LiveEvent(channel="web", type="reply_end", reply=ev.reply))
 
     async def announced(self, text: str, context: dict):
         """An announcement joins the conversation, so a typed follow-up has its context. Kept for a

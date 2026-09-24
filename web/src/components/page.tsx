@@ -15,8 +15,8 @@ export function Page({ title, actions, children }: Props) {
       <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
         <Separator orientation="vertical" className="mr-2 h-4" />
-        <h1 className="text-base font-medium">{title}</h1>
-        <div className="ml-auto flex items-center gap-3">{actions}</div>
+        <h1 className="min-w-0 truncate text-base font-medium">{title}</h1>
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">{actions}</div>
       </header>
       <main className="flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6">{children}</main>
     </>

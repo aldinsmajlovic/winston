@@ -556,6 +556,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/providers/home_assistant/exposure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Winston's list as Home Assistant has it: exposed or not, aliases, area, device and state per entity, what else is exposed (drift), the MCP server and whether a save would change anything */
+        get: operations["ha_exposure_api_providers_home_assistant_exposure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/home_assistant/registry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every entity in Home Assistant grouped by area, with its type, state, device, name and aliases, for the picker. Without an admin token: one group, no areas or aliases */
+        get: operations["ha_registry_api_providers_home_assistant_registry_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/home_assistant/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tools Home Assistant's MCP server offers, one row per job in plain words (cached a minute) */
+        get: operations["ha_tools_api_providers_home_assistant_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/home_assistant/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply the saved list to Home Assistant again (after it was away during a save). Adds and exposes; removes no aliases, since it has no earlier list to compare with */
+        post: operations["ha_apply_now_api_providers_home_assistant_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -793,6 +861,7 @@ export interface components {
             restarts: string[];
             /** Version */
             version: string;
+            ha_apply?: components["schemas"]["HAApply"] | null;
         };
         /** ConfigVersion */
         ConfigVersion: {
@@ -997,14 +1066,61 @@ export interface components {
         ExposedEntity: {
             /**
              * Name
-             * @description Friendly name to set in Home Assistant.
+             * @description What you call it. Saved to Home Assistant as an alias; Home Assistant's own name is never changed.
              */
             name?: string | null;
             /**
              * Aliases
-             * @description Other names people say for it.
+             * @description Other names people say for it, saved to Home Assistant as aliases.
              */
             aliases?: string[];
+        };
+        /** ExposurePlan */
+        ExposurePlan: {
+            /**
+             * Expose
+             * @default []
+             */
+            expose?: string[];
+            /**
+             * Unexpose
+             * @default []
+             */
+            unexpose?: string[];
+            /**
+             * Aliases Add
+             * @default {}
+             */
+            aliases_add?: {
+                [key: string]: string[];
+            };
+            /**
+             * Aliases Remove
+             * @default {}
+             */
+            aliases_remove?: {
+                [key: string]: string[];
+            };
+            /**
+             * Skipped
+             * @default []
+             */
+            skipped?: string[];
+            /**
+             * No Registry
+             * @default []
+             */
+            no_registry?: string[];
+            /**
+             * Auto Expose Off
+             * @default false
+             */
+            auto_expose_off?: boolean;
+            /**
+             * Targets
+             * @default []
+             */
+            targets?: string[];
         };
         /** FactEdit */
         FactEdit: {
@@ -1026,6 +1142,175 @@ export interface components {
             used_mb: number;
             /** Total Mb */
             total_mb: number;
+        };
+        /**
+         * HAApply
+         * @description What a save (or winston ha expose) did in Home Assistant.
+         */
+        HAApply: {
+            /** Applied */
+            applied: boolean;
+            /**
+             * Exposed
+             * @default []
+             */
+            exposed?: string[];
+            /**
+             * Unexposed
+             * @default []
+             */
+            unexposed?: string[];
+            /**
+             * Aliases Added
+             * @default {}
+             */
+            aliases_added?: {
+                [key: string]: string[];
+            };
+            /**
+             * Aliases Removed
+             * @default {}
+             */
+            aliases_removed?: {
+                [key: string]: string[];
+            };
+            /**
+             * Skipped
+             * @default []
+             */
+            skipped?: string[];
+            /**
+             * No Registry
+             * @default []
+             */
+            no_registry?: string[];
+            /**
+             * Auto Expose Turned Off
+             * @default false
+             */
+            auto_expose_turned_off?: boolean;
+            /** Error */
+            error?: string | null;
+        };
+        /** HAArea */
+        HAArea: {
+            /** Area Id */
+            area_id: string | null;
+            /** Name */
+            name: string | null;
+            /** Entities */
+            entities: components["schemas"]["HAEntity"][];
+        };
+        /** HAEntity */
+        HAEntity: {
+            /** Entity Id */
+            entity_id: string;
+            /** Domain */
+            domain: string;
+            /** In Ha */
+            in_ha: boolean;
+            /** Exposed */
+            exposed: boolean | null;
+            /** Friendly Name */
+            friendly_name: string | null;
+            /** Aliases */
+            aliases: string[];
+            /** Area */
+            area: string | null;
+            /** Area Id */
+            area_id: string | null;
+            /** Device */
+            device: string | null;
+            /** State */
+            state: string | null;
+            /** State Text */
+            state_text: string | null;
+            /** Listed */
+            listed: boolean;
+            /** Applied */
+            applied?: boolean | null;
+            /**
+             * Missing Aliases
+             * @default []
+             */
+            missing_aliases?: string[];
+        };
+        /** HAExposure */
+        HAExposure: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /** Version */
+            version?: string | null;
+            /** Mcp Server */
+            mcp_server?: boolean | null;
+            /**
+             * Registry
+             * @default false
+             */
+            registry?: boolean;
+            /** Auto Expose */
+            auto_expose?: boolean | null;
+            /**
+             * In Sync
+             * @default false
+             */
+            in_sync?: boolean;
+            /**
+             * Entities
+             * @default []
+             */
+            entities?: components["schemas"]["HAEntity"][];
+            /**
+             * Domains
+             * @default {}
+             */
+            domains?: {
+                [key: string]: string[];
+            };
+            /**
+             * Drift
+             * @default []
+             */
+            drift?: components["schemas"]["HAEntity"][];
+            pending?: components["schemas"]["ExposurePlan"] | null;
+        };
+        /** HARegistry */
+        HARegistry: {
+            /** Ok */
+            ok: boolean;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /**
+             * Areas Known
+             * @default false
+             */
+            areas_known?: boolean;
+            /**
+             * Groups
+             * @default []
+             */
+            groups?: components["schemas"]["HAArea"][];
+        };
+        /** HATool */
+        HATool: {
+            /** Label */
+            label: string;
+            /** Names */
+            names: string[];
+            /** Domain */
+            domain: string;
+            /** Source */
+            source: string;
+            /** Description */
+            description: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -1073,7 +1358,7 @@ export interface components {
             mcp_path?: string;
             /**
              * Entities
-             * @description Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him; winston ha expose applies the list.
+             * @description Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: exposes it, un-exposes the rest and adds the aliases.
              */
             expose?: {
                 [key: string]: components["schemas"]["ExposedEntity"];
@@ -1083,6 +1368,15 @@ export interface components {
              * @description Whole domains to expose, without aliases.
              */
             expose_domains?: string[];
+            /**
+             * After an action
+             * @description Home Assistant says done before a device has acted. He answers straight away, then checks and corrects himself if it did not happen.
+             * @default {
+             *       "enabled": true,
+             *       "wait_secs": 3
+             *     }
+             */
+            verify?: components["schemas"]["VerifyConfig"];
         };
         /** LLMConfig */
         LLMConfig: {
@@ -1761,6 +2055,21 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /** VerifyConfig */
+        VerifyConfig: {
+            /**
+             * Check after an action
+             * @description After he turns something on or off or sets a light, he reads its state from Home Assistant and says so when it did not change ("The shelf lamp did not respond."). His answer is not delayed; the correction follows it.
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Give up after (s)
+             * @description Seconds a device has to show the change before he says it did not. He reads it at 0.5 s, 1.5 s and this, and stops as soon as it matches.
+             * @default 3
+             */
+            wait_secs?: number;
         };
         /** VoiceChannel */
         VoiceChannel: {
@@ -3152,6 +3461,86 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ha_exposure_api_providers_home_assistant_exposure_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HAExposure"];
+                };
+            };
+        };
+    };
+    ha_registry_api_providers_home_assistant_registry_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HARegistry"];
+                };
+            };
+        };
+    };
+    ha_tools_api_providers_home_assistant_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HATool"][];
+                };
+            };
+        };
+    };
+    ha_apply_now_api_providers_home_assistant_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HAApply"];
                 };
             };
         };

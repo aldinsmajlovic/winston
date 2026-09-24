@@ -8,6 +8,7 @@ import { configKey, patchConfig, useConfig, useSchema, type ConfigChange, type P
 import { engineLabel, restartCost, statusKey, useEngineActions } from '@/api/status'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useDraft } from '@/hooks/use-draft'
+import { refreshHomeAssistant, toastSaved, type HAApply } from '@/hooks/use-home-assistant'
 import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
 import { deepEqual, deref, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
 
@@ -330,9 +331,11 @@ export function useSettings(paths: string[][]): Loading | Ready {
     }
 
     // The config first, so a variable name a key is pasted under is saved before the key.
+    let haApply: HAApply | null | undefined
     if (changes.length) {
       const saved = await patchConfig(changes, { version, client })
       if (!saved.ok) return refused(saved)
+      haApply = saved.result.ha_apply
     }
     const written = await secrets.save()
     for (const line of written.errors) toast.error(`Key not saved: ${line}`)
@@ -342,7 +345,9 @@ export function useSettings(paths: string[][]): Loading | Ready {
     void client.invalidateQueries({ queryKey: statusKey })
     // A renamed key variable changes which variables are Set, and a new token which lists work.
     void client.invalidateQueries({ queryKey: secretsKey })
-    if (changes.length || written.saved.length) toast.success('Saved')
+    // A saved Home Assistant list was applied there too (or not): the toast says which.
+    if (changes.some((c) => c.path[0] === 'providers')) refreshHomeAssistant(client)
+    if (changes.length || written.saved.length) toastSaved(haApply)
     if (restart) {
       for (const e of restartable) actions.restart.mutate({ params: { path: { name: e.name } } })
     }

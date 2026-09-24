@@ -8,6 +8,7 @@ Every model sits behind an adapter chosen in config (plan §6, rule 1)."""
 import asyncio
 import json
 import time
+import uuid
 import wave
 
 import numpy as np
@@ -239,10 +240,19 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     ])
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
-        observers=[guard.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
+        observers=[guard.observer, brain.verifier.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
                    ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), latency],
         idle_timeout_secs=None,
     )
+
+    async def correct(text: str):
+        """A state check found a device that did not do what he said (core/verify.py). Spoken like an
+        announcement, without the chime, once his reply is over; the TTS puts the words in the context."""
+        rid = uuid.uuid4().hex[:12]
+        FEED.put(LiveEvent(channel="voice", type="reply", reply=rid, text=text))
+        FEED.put(LiveEvent(channel="voice", type="reply_end", reply=rid))
+        await worker.queue_frames([TTSSpeakFrame(text)])
+    brain.verifier.deliver = correct
 
     async def announcements():
         """Announcements from winstond while this browser is connected: the note first, so a reply

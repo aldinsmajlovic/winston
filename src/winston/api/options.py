@@ -5,7 +5,6 @@ nothing is typed by hand that a machine already knows. Secrets never leave: the 
 variables and says whether they hold a value, nothing more. Every provider answers with a reason in
 `source` rather than an error, so a dropdown still takes a typed value when its source is down."""
 import os
-from datetime import datetime
 from pathlib import Path
 from typing import get_args
 
@@ -221,11 +220,8 @@ async def _ha_states(cfg: WinstonConfig, params: dict) -> tuple[list[dict], str]
 
 
 def _state_hint(s: dict) -> str:
-    state, unit = str(s.get("state")), s.get("attributes", {}).get("unit_of_measurement")
-    try:        # buttons and timestamp sensors report an ISO time
-        return datetime.fromisoformat(state).astimezone().strftime("%-d %b %H:%M")
-    except ValueError:
-        return f"{state} {unit}" if unit else state
+    from winston.providers.home_assistant import state_text
+    return state_text(s) or ""
 
 
 async def _ha_entities(cfg: WinstonConfig, params: dict) -> Options:

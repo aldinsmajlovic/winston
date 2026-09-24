@@ -3,6 +3,7 @@ the Discord channel and the web chat."""
 import asyncio
 import sys
 import time
+from typing import Awaitable, Callable
 
 from loguru import logger
 from pipecat.frames.frames import (Frame, FunctionCallResultFrame, FunctionCallsStartedFrame,
@@ -83,20 +84,40 @@ class TextSession:
         self._extra = observers or []
         self.last_used = time.monotonic()
         self._lock = asyncio.Lock()          # one question at a time; a second waits its turn
+        # Where a state-check correction goes besides the context and the terminal: a Discord DM, the
+        # Talk page. Set by the channel that owns the session.
+        self.notify: Callable[[str], Awaitable[None]] | None = None
 
     async def start(self):
         cfg = self.cfg
         self.brain = Brain(cfg, channel="text"); await self.brain.start()
+        self.brain.verifier.channel = self.channel          # its log says web or discord, not text
         agg = LLMContextAggregatorPair(self.brain.new_context())
         self._tracker = TurnTracker(); self.printer = Printer(self._tracker, self.echo)
         guard = ClaimGuard(cfg, channel=self.channel)
         self._worker = PipelineWorker(Pipeline([agg.user(), self.brain.llm, guard, self.printer, agg.assistant()]),
                                       params=PipelineParams(enable_metrics=False),
-                                      observers=[guard.observer, ToolCallLogObserver(cfg, channel=self.channel),
+                                      observers=[guard.observer, self.brain.verifier.observer,
+                                                 ToolCallLogObserver(cfg, channel=self.channel),
                                                  self._tracker, *self._extra],
                                       idle_timeout_secs=None)
         self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self._worker))
+        self.brain.verifier.deliver = self._correct
         return self
+
+    async def _correct(self, text: str):
+        """A state check found a device that did not do what he said (core/verify.py): into the
+        context as his own words, so "try again" has it, and out to wherever this session shows replies."""
+        await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": text}],
+                                                                run_llm=False)])
+        if self.echo:
+            print(f"\n{self.cfg.assistant.name}: {text}", flush=True)
+        if self.notify:
+            await self.notify(text)
+
+    async def settle(self):
+        """Until the state checks of the last reply are done and their corrections delivered."""
+        await self.brain.verifier.drained()
 
     @property
     def busy(self) -> bool:
@@ -132,6 +153,7 @@ async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True)
                 if echo:
                     print(f"\n> {m}\n{cfg.assistant.name}: ", end="", flush=True)
                 await s.ask(m)
+                await s.settle()
         else:
             print(f"{cfg.assistant.name} is listening (Ctrl-D to quit).")
             while True:
@@ -142,6 +164,7 @@ async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True)
                 if m.strip():
                     print(f"{cfg.assistant.name}: ", end="", flush=True)
                     await s.ask(m)
+                    await s.settle()
     finally:
         await s.close()
     return s.printer.replies

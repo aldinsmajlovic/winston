@@ -10,7 +10,7 @@ uv run winston status          # health of every engine, GPU memory
 uv run winston restart tts     # one engine or the voice channel
 uv run winston down            # stop engines and channel; winstond keeps serving
 uv run winston talk            # text chat, same brain and tools
-uv run winston ha expose       # make Home Assistant's exposure match config
+uv run winston ha expose       # apply the Home Assistant list (Save on the page does it too); --list shows the plan
 uv run winston check           # unit (no hardware), ui, then the m0, m1, m2 acceptance checks on real hardware
 uv run winston check ui        # the settings smoke test in Chromium on a throwaway winstond (needs pnpm build)
 uv run winston check brain     # the configured brain on the trial requests: tool calls and speed
@@ -177,9 +177,11 @@ with the new value.
 
 ## Exposure
 
-Home Assistant's Assist exposure is a strict allowlist under `providers.home_assistant.expose`, with
-friendly names and the aliases people actually say. `winston ha expose` applies it, un-exposes anything
-else, and turns off HA's auto-expose. The model sees exactly that list.
+Home Assistant's Assist exposure is a strict allowlist under `providers.home_assistant.expose`, with the
+names people actually say as aliases. Saving it on the Home Assistant page applies it: exposes the list,
+un-exposes anything else, adds aliases (never renaming Home Assistant's own entities) and turns off HA's
+auto-expose. `winston ha expose` does the same from the shell and `--list` prints the plan. The model sees
+exactly that list. Details in [Home Assistant](home-assistant.md).
 
 ## Announcements, Discord, tools
 

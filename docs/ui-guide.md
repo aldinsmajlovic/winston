@@ -80,9 +80,25 @@ transport), connecting through winstond to the voice channel.
   stays under Advanced.
 - A map in a form (contacts, engine environment, volumes) is a table with an Add icon and a dialog,
   column titles from the schema (`key_title`, `value_title`), trash with Undo in its toast. A page keeps
-  its own table only where it adds what the generic one cannot: Home Assistant's entities (domain
-  icon, name and state from Home Assistant, only unexposed entities offered) and Tools' sensors (label
-  and state sensor filled in from the picked value sensor).
+  its own table only where it adds what the generic one cannot: Home Assistant's entities (below) and
+  Tools' sensors (label and state sensor filled in from the picked value sensor).
+- The Home Assistant page shows the path from Home Assistant to Winston as data, in four cards. It
+  draws its own tables and never uses `KeyedMapField` for the list. Connection holds the form fields,
+  with three icons beside the title: reachable (the version in the tooltip), MCP server loaded, and in
+  sync (the tooltip lists what a save would still change and what Home Assistant exposes off the list).
+  After them come Sync, which reads Home Assistant again, and Apply, shown only while it is out of sync.
+  What he sees is the list grouped by Home Assistant's rooms, with 'No room' last. Each row has the
+  domain icon, the name he hears over Home Assistant's own name (muted), the aliases as small badges
+  (two, then +N), the state (Unavailable in the destructive colour) and an icon for Applied or Not
+  applied yet, the words in its tooltip. A search box filters names, aliases and rooms. Whole domains
+  are one muted line with an (i). Add from Home Assistant opens a picker: search, a type filter that
+  hides noisy types by default (`NOISY_DOMAINS`), checkboxes grouped by room, listed ones left out,
+  Add N. An added entity starts with Home Assistant's name and no aliases of its own (Home Assistant's
+  still show). What he can do lists the tools Home Assistant's MCP server gives him. After an action is the state
+  check's own form: the switch, and Give up after (s) under Advanced. It has no wait before his
+  answer, since he answers first and corrects afterwards. After a save
+  that touched the list, the toast says what Home Assistant got ("Saved; 1 exposed, 2 aliases
+  added"), or "Saved; Home Assistant was not updated" and the reason.
 - A list that cannot be fetched (no token yet, the server down) leaves a plain text box with a warning
   icon whose tooltip gives the reason; a value the list does not hold is looked up by itself when the
   list works, and shown with a warning icon when it is not found.

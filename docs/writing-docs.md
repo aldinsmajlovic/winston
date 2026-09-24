@@ -59,6 +59,8 @@ short pages over one long one.
 
   Take them against a running `winstond` with Playwright and the system Chromium. Never capture
   anything from `data/` that is personal: entity names, phone numbers, memory facts, tokens.
+  For the Home Assistant page, point a throwaway instance at `tests/fake_ha.py --seed home`, a made-up
+  home with fake names and a fake token, never at the real Home Assistant.
 - **Diagrams in Mermaid, never ASCII art.** GitHub renders a ```` ```mermaid ```` block as an image
   and it stays editable in the diff. Keep one diagram to one idea and under about a dozen nodes.
 - **Icons and badges** come from real sources: shields.io badges in the README header, the project's

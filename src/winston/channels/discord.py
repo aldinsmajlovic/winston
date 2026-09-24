@@ -57,6 +57,7 @@ class DiscordChannel:
         async with self._session_lock:
             if self.session is None:
                 self.session = await TextSession(self.cfg, channel="discord").start()
+                self.session.notify = self.correction
                 logger.info("new conversation")
             return self.session
 
@@ -75,6 +76,13 @@ class DiscordChannel:
     async def dm(self) -> discord.DMChannel:
         user = self.client.get_user(self.allowed) or await self.client.fetch_user(self.allowed)
         return user.dm_channel or await user.create_dm()
+
+    async def correction(self, text: str):
+        """A state check's correction (core/verify.py), sent as its own message."""
+        try:
+            await (await self.dm()).send(text)
+        except discord.DiscordException as e:
+            logger.warning(f"correction not delivered: {e}")
 
     async def announcements(self):
         async for ev in subscribe(self.cfg, "discord"):

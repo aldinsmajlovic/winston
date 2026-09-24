@@ -155,3 +155,53 @@ test('the Voice page plays the unsaved voice and streaming, and not an unsaved e
   expect(bodies).toHaveLength(2)
   expect(errors).toEqual([])
 })
+
+test('the Home Assistant page shows the list by room and saves aliases only', async ({ page }) => {
+  const fake = process.env.FAKE_HA_URL
+  test.skip(!fake, 'the fake Home Assistant did not start')
+  const errors = watchErrors(page)
+  await open(page, '/home-assistant')
+
+  // Home Assistant's rooms, the name he hears over Home Assistant's own, and what is not applied yet.
+  const living = page.getByRole('table', { name: 'Living room' })
+  await expect(living.getByText('Ceiling lamp', { exact: true })).toBeVisible()
+  await expect(living.getByText('Taklampa in Home Assistant')).toBeVisible()
+  await expect(living.getByLabel('Not applied yet')).toBeVisible()
+  await expect(page.getByRole('table', { name: 'No room' }).getByText('Phone battery', { exact: true })).toBeVisible()
+  await expect(page.getByText('Also everything in: person, weather, todo')).toBeVisible()
+  await expect(page.getByRole('table', { name: 'What he can do' }).getByText('Turn things on and off')).toBeVisible()
+  await expect(page.getByLabel('Not in sync')).toBeVisible()
+
+  // The picker hides what is listed and the noisy types, and adds with Home Assistant's name.
+  await page.getByRole('button', { name: 'Add from Home Assistant' }).click()
+  const picker = page.getByRole('dialog')
+  await expect(picker.getByText('Plex client')).toHaveCount(0)
+  await expect(picker.getByText('Taklampa')).toHaveCount(0)
+  await picker.getByRole('group', { name: 'Kitchen' }).getByText('Köksspotlights').click()
+  await picker.getByRole('button', { name: 'Add 1' }).click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByRole('table', { name: 'Kitchen' }).getByText('Köksspotlights')).toBeVisible()
+
+  // Search filters by room.
+  await page.getByRole('searchbox', { name: 'Search names, aliases or rooms' }).fill('kitchen')
+  await expect(page.getByRole('table', { name: 'Living room' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Clear search' }).click()
+
+  const header = page.locator('header')
+  await header.getByRole('button', { name: 'Save', exact: true }).click()
+  const dialog = page.getByRole('alertdialog')
+  if (await dialog.isVisible().catch(() => false)) await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText(/^Saved; .*exposed/)).toBeVisible()
+
+  // Home Assistant got exposure and aliases, and never a new name.
+  const writes = (await (await page.request.get(`${fake}/fake/log`)).json()) as Record<string, unknown>[]
+  const updates = writes.filter((w) => w.type === 'config/entity_registry/update')
+  expect(updates.length).toBeGreaterThan(0)
+  for (const w of updates) expect(w).not.toHaveProperty('name')
+  expect(writes.some((w) => w.type === 'homeassistant/expose_entity' && (w.entity_ids as string[]).includes('light.kok'))).toBe(true)
+
+  await expect(page.getByLabel('Applied', { exact: true })).toHaveCount(3)
+  await expect(page.getByLabel('In sync')).toBeVisible()
+  expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('light.kok')
+  expect(errors).toEqual([])
+})

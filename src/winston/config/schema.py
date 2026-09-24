@@ -368,8 +368,22 @@ class Channels(Model):
 
 class ExposedEntity(Model):
     model_config = section("{brains}")
-    name: str | None = Field(None, description="Friendly name to set in Home Assistant.")
-    aliases: list[str] = Field(default_factory=list, description="Other names people say for it.")
+    name: str | None = Field(None, description="What you call it. Saved to Home Assistant as an alias; "
+                                               "Home Assistant's own name is never changed.")
+    aliases: list[str] = Field(default_factory=list, description="Other names people say for it, saved to Home "
+                                                                 "Assistant as aliases.")
+
+
+class VerifyConfig(Model):
+    model_config = section("{brains}")
+    enabled: bool = Field(True, title="Check after an action",
+                          description="After he turns something on or off or sets a light, he reads its state from "
+                                      "Home Assistant and says so when it did not change (\"The shelf lamp did not "
+                                      "respond.\"). His answer is not delayed; the correction follows it.")
+    wait_secs: float = Field(3.0, ge=0.5, le=15, title="Give up after (s)",
+                             description="Seconds a device has to show the change before he says it did not. He "
+                                         "reads it at 0.5 s, 1.5 s and this, and stops as soon as it matches.",
+                             json_schema_extra=ui("advanced"))
 
 
 class HomeAssistantConfig(Model):
@@ -389,11 +403,16 @@ class HomeAssistantConfig(Model):
                           json_schema_extra=ui("advanced"))
     expose: dict[str, ExposedEntity] = Field(default_factory=dict, title="Entities",
                                              description="Entities Winston may see and control, with the names people say for them. Nothing else in "
-                                                         "Home Assistant is visible to him; winston ha expose applies the list.",
+                                                         "Home Assistant is visible to him. Saving applies the list to Home "
+                                                         "Assistant: exposes it, un-exposes the rest and adds the "
+                                                         "aliases.",
                                              json_schema_extra=ui(key_title="Entity", key_options="ha_entities"))
     expose_domains: list[str] = Field(default_factory=lambda: ["person", "weather", "todo"], title="Domains",
                                       description="Whole domains to expose, without aliases.",
                                       json_schema_extra=ui("advanced", options="ha_domains"))
+    verify: VerifyConfig = Field(VerifyConfig(), title="After an action",
+                                 description="Home Assistant says done before a device has acted. He answers "
+                                             "straight away, then checks and corrects himself if it did not happen.")
 
 
 class Providers(Model):

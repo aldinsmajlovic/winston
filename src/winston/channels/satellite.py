@@ -32,8 +32,8 @@ from aioesphomeapi import VoiceAssistantEventType as Ev
 from aiohttp import web
 from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import (Frame, LLMMessagesAppendFrame, TTSAudioRawFrame, TTSStartedFrame, TTSStoppedFrame,
-                                   TTSTextFrame)
+from pipecat.frames.frames import (Frame, LLMMessagesAppendFrame, TTSAudioRawFrame, TTSSpeakFrame, TTSStartedFrame,
+                                   TTSStoppedFrame, TTSTextFrame)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
@@ -130,10 +130,30 @@ class Conversation:
         self.worker = PipelineWorker(
             Pipeline([agg.user(), self.brain.llm, guard, build_tts(cfg), self.speaker, agg.assistant()]),
             params=PipelineParams(enable_metrics=False), idle_timeout_secs=None,
-            observers=[guard.observer, self.tracker, ToolCallLogObserver(cfg, channel="satellite"),
+            observers=[guard.observer, self.brain.verifier.observer, self.tracker,
+                       ToolCallLogObserver(cfg, channel="satellite"),
                        LiveObserver("satellite", self.feed.put, spoken=True), self.latency])
         self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self.worker))
+        self.brain.verifier.deliver = self.correct
         return self
+
+    async def correct(self, text: str):
+        """A state check found a device that did not do what he said (core/verify.py). Spoken into the
+        reply that is still open, after what he said, without a chime. Without a transport the spoken
+        text never reaches the context, so it goes in as his own words, as the claim guard's does."""
+        rid = uuid.uuid4().hex[:12]
+        self.feed.put(LiveEvent(channel="satellite", type="reply", reply=rid, text=text))
+        self.feed.put(LiveEvent(channel="satellite", type="reply_end", reply=rid))
+        if self.speaker.run is None:
+            logger.warning(f"{self.room}: correction after the reply closed, not spoken: {text!r}")
+        await self.worker.queue_frames([
+            TTSSpeakFrame(text, append_to_context=False),
+            LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": text}], run_llm=False)])
+        t0 = time.perf_counter()
+        while not self.speaker.busy and time.perf_counter() - t0 < 5:       # wait for it to start...
+            await asyncio.sleep(0.05)
+        while self.speaker.busy and time.perf_counter() - t0 < 30:          # ...and to be spoken
+            await asyncio.sleep(0.05)
 
     async def reply(self, text: str, run: Run, timeout: float = 90) -> str:
         """Speak the reply to text into run.out; returns what was said once the turn is over."""
@@ -151,9 +171,23 @@ class Conversation:
         t1 = time.perf_counter()
         while self.speaker.busy and time.perf_counter() - t1 < 30:     # the last sentence is still being spoken
             await asyncio.sleep(0.05)
+        await self._settle(run)
         self.speaker.run = None
         self.last_used = time.monotonic()
         return " ".join(s.strip() for s in self.speaker.text if s.strip())
+
+    async def _settle(self, run: Run):
+        """Keep the reply open while a state check is still running, so a correction is spoken into it.
+        Only after an action whose device has not shown the change yet; the box hears silence meanwhile."""
+        v = self.brain.verifier
+        if v.idle:
+            return
+        silence = b"\0" * (OUT_RATE * 2 // 10)                                # 100 ms at the box's rate
+        end = time.perf_counter() + v.wait_secs + 5
+        while not v.idle and time.perf_counter() < end:
+            if not self.speaker.busy and run.first_audio.is_set():
+                run.out.put_nowait(silence)
+            await asyncio.sleep(0.1)
 
     async def close(self):
         await self.worker.cancel(); await self._task; await self.brain.close()

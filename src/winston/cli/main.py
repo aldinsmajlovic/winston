@@ -159,7 +159,8 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     """Run the checks: unit needs nothing, ui a built web UI (a throwaway winstond on a copy of data/),
     the milestones need the engines up."""
     tests = repo_root() / "tests"
-    unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py", "profiles_load.py"]
+    unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py",
+            "verify_cases.py", "profiles_load.py"]
     plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {tests / t}" for t in unit)],
             "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
@@ -212,17 +213,45 @@ def ha_ping():
 
 
 @ha_app.command("expose")
-def ha_expose(list_only: bool = typer.Option(False, "--list", help="Show what is exposed, change nothing.")):
-    """Make Home Assistant's Assist exposure match the allowlist in config."""
+def ha_expose(list_only: bool = typer.Option(False, "--list", help="Show the plan and what is exposed, change nothing.")):
+    """Make Home Assistant's Assist exposure match the list in config (Save on the page does the same).
+    Adds aliases, never renames; aliases are removed only by a save that drops them."""
     from winston.providers.home_assistant import HomeAssistant
-    r = asyncio.run(HomeAssistant(load()).apply_exposure(list_only))
-    if "error" in r:
-        print(r["error"]); raise typer.Exit(1)
-    if r.get("unexposed"):
-        print(f"un-exposed {r['unexposed']} entities not on the list")
-    print(f"exposed ({len(r['exposed'])}):")
-    for eid in r["exposed"]:
-        print("  ", eid)
+
+    ha = HomeAssistant(load())
+
+    async def run():
+        p, snap = await ha.plan()
+        if snap.errors:
+            print("Home Assistant refused:", "; ".join(snap.errors))
+        for eid in p.skipped:
+            print(f"skip       {eid} (Home Assistant does not know it)")
+        for eid in p.no_registry:
+            print(f"no aliases {eid} (not in Home Assistant's entity registry)")
+        if p.auto_expose_off:
+            print("turn off   Home Assistant's auto-expose for Assist")
+        for eid in p.expose:
+            print(f"expose     {eid}")
+        for eid in p.unexpose:
+            print(f"un-expose  {eid}")
+        for eid, add in p.aliases_add.items():
+            print(f"aliases    {eid} + {', '.join(add)}")
+        if p.empty:
+            print("in sync: nothing to change")
+        if list_only or p.empty:
+            print(f"exposed ({len(snap.exposed or ())}):")
+            for eid in sorted(snap.exposed or ()):
+                print("  ", eid)
+            return 0
+        r = await ha.apply()
+        if r.error:
+            print("not applied:", r.error)
+            return 1
+        print(f"applied: exposed {len(r.exposed)}, un-exposed {len(r.unexposed)}, "
+              f"aliases added on {len(r.aliases_added)} entities")
+        return 0
+
+    raise typer.Exit(asyncio.run(run()))
 
 
 if __name__ == "__main__":
