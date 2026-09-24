@@ -19,7 +19,8 @@ from pipecat.utils.time import time_now_iso8601
 
 class ParakeetSTTService(SegmentedSTTService):
     """Adapter contract for STT plugins: `load_model(name, quantization)` returns a reusable model
-    object, the constructor takes it as `model=` so one load serves every connection."""
+    object, the constructor takes it as `model=` so one load serves every connection, and
+    `transcribe(model, pcm, rate)` turns int16 audio into text outside a pipeline (satellites)."""
 
     @staticmethod
     def load_model(model_name: str = "nemo-parakeet-tdt-0.6b-v3", quantization: str | None = "int8"):
@@ -28,6 +29,10 @@ class ParakeetSTTService(SegmentedSTTService):
         model.recognize(np.zeros(16000, dtype=np.float32), sample_rate=16000)   # warm up
         logger.info(f"Parakeet {model_name} ({quantization}) loaded in {time.perf_counter() - t0:.1f}s")
         return model
+
+    @staticmethod
+    def transcribe(model, pcm: np.ndarray, rate: int) -> str:
+        return (model.recognize(pcm.astype(np.float32) / 32768.0, sample_rate=rate) or "").strip()
 
     def __init__(self, *, model=None, model_name: str = "nemo-parakeet-tdt-0.6b-v3",
                  quantization: str | None = "int8", sample_rate: int | None = None, **kwargs):

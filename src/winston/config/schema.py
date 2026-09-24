@@ -236,6 +236,41 @@ class DiscordChannel(Model):
                                                  "only reach people who share a server with it.")
 
 
+class SatelliteDevice(Model):
+    model_config = section("satellite")
+    host: str = Field(description="Address of the box on the LAN, an IP or its .local name.")
+    port: int = Field(6053, ge=1, le=65535, description="ESPHome API port.", json_schema_extra=ui("advanced"))
+    key_env: str | None = Field(None, title="Encryption key variable",
+                                description="Environment variable holding the box's API encryption key (the one "
+                                            "Home Assistant shows for it). Unset for a box without encryption.",
+                                json_schema_extra=ui(options="env"))
+    wake_word: str | None = Field(None, title="Wake word",
+                                  description="On-device wake word to switch on, by id (okay_nabu, hey_jarvis, "
+                                              "hey_mycroft on a stock Voice PE). Unset keeps the box's choice.")
+
+
+class SatelliteChannel(Model):
+    model_config = section("satellite")
+    enabled: bool = Field(False, description="Talk to Winston through room satellites such as Home Assistant's "
+                                             "Voice Preview Edition. The box must not also be in Home Assistant's "
+                                             "voice pipeline: only one client can have its microphone.")
+    devices: dict[str, SatelliteDevice] = Field(default_factory=dict,
+                                                description="Satellites by room or name, e.g. \"living room\".")
+    http_port: int = Field(8702, ge=1, le=65535, title="Audio port",
+                           description="Port the boxes fetch Winston's spoken replies from, on every interface.",
+                           json_schema_extra=ui("advanced"))
+    public_host: str | None = Field(None, title="Address the boxes use",
+                                    description="This machine's address as the boxes reach it. Unset finds it from "
+                                                "the route to each box.",
+                                    json_schema_extra=ui("advanced"))
+    end_silence_secs: float = Field(0.8, ge=0.3, le=3.0, title="End of speech (s)",
+                                    description="Silence after speech that ends a request.",
+                                    json_schema_extra=ui("advanced"))
+    session_idle_mins: int = Field(10, ge=1, title="Conversation resets after (min)",
+                                   description="Idle minutes before a box's conversation starts fresh.",
+                                   json_schema_extra=ui("advanced"))
+
+
 class WebChannel(Model):
     session_idle_mins: int = Field(30, ge=1, title="Conversation resets after (min)",
                                    description="Idle minutes before the Talk page's typed conversation starts fresh "
@@ -246,6 +281,7 @@ class WebChannel(Model):
 class Channels(Model):
     voice: VoiceChannel = VoiceChannel()
     discord: DiscordChannel = DiscordChannel()
+    satellite: SatelliteChannel = SatelliteChannel()
     web: WebChannel = WebChannel()
 
 

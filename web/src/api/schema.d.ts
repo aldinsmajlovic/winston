@@ -499,6 +499,16 @@ export interface components {
             discord?: components["schemas"]["DiscordChannel"];
             /**
              * @default {
+             *       "enabled": false,
+             *       "devices": {},
+             *       "http_port": 8702,
+             *       "end_silence_secs": 0.8,
+             *       "session_idle_mins": 10
+             *     }
+             */
+            satellite?: components["schemas"]["SatelliteChannel"];
+            /**
+             * @default {
              *       "session_idle_mins": 30
              *     }
              */
@@ -1043,6 +1053,69 @@ export interface components {
              */
             max_tokens?: number;
         };
+        /** SatelliteChannel */
+        SatelliteChannel: {
+            /**
+             * Enabled
+             * @description Talk to Winston through room satellites such as Home Assistant's Voice Preview Edition. The box must not also be in Home Assistant's voice pipeline: only one client can have its microphone.
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Devices
+             * @description Satellites by room or name, e.g. "living room".
+             */
+            devices?: {
+                [key: string]: components["schemas"]["SatelliteDevice"];
+            };
+            /**
+             * Audio port
+             * @description Port the boxes fetch Winston's spoken replies from, on every interface.
+             * @default 8702
+             */
+            http_port?: number;
+            /**
+             * Address the boxes use
+             * @description This machine's address as the boxes reach it. Unset finds it from the route to each box.
+             */
+            public_host?: string | null;
+            /**
+             * End of speech (s)
+             * @description Silence after speech that ends a request.
+             * @default 0.8
+             */
+            end_silence_secs?: number;
+            /**
+             * Conversation resets after (min)
+             * @description Idle minutes before a box's conversation starts fresh.
+             * @default 10
+             */
+            session_idle_mins?: number;
+        };
+        /** SatelliteDevice */
+        SatelliteDevice: {
+            /**
+             * Host
+             * @description Address of the box on the LAN, an IP or its .local name.
+             */
+            host: string;
+            /**
+             * Port
+             * @description ESPHome API port.
+             * @default 6053
+             */
+            port?: number;
+            /**
+             * Encryption key variable
+             * @description Environment variable holding the box's API encryption key (the one Home Assistant shows for it). Unset for a box without encryption.
+             */
+            key_env?: string | null;
+            /**
+             * Wake word
+             * @description On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE). Unset keeps the box's choice.
+             */
+            wake_word?: string | null;
+        };
         /** SensorPair */
         SensorPair: {
             /**
@@ -1373,6 +1446,13 @@ export interface components {
              *         "enabled": false,
              *         "session_idle_mins": 30,
              *         "token_env": "DISCORD_BOT_TOKEN"
+             *       },
+             *       "satellite": {
+             *         "devices": {},
+             *         "enabled": false,
+             *         "end_silence_secs": 0.8,
+             *         "http_port": 8702,
+             *         "session_idle_mins": 10
              *       },
              *       "web": {
              *         "session_idle_mins": 30

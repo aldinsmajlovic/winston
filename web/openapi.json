@@ -954,6 +954,16 @@
               "contacts": {}
             }
           },
+          "satellite": {
+            "$ref": "#/components/schemas/SatelliteChannel",
+            "default": {
+              "enabled": false,
+              "devices": {},
+              "http_port": 8702,
+              "end_silence_secs": 0.8,
+              "session_idle_mins": 10
+            }
+          },
           "web": {
             "$ref": "#/components/schemas/WebChannel",
             "default": {
@@ -2168,6 +2178,122 @@
           "discord"
         ]
       },
+      "SatelliteChannel": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Talk to Winston through room satellites such as Home Assistant's Voice Preview Edition. The box must not also be in Home Assistant's voice pipeline: only one client can have its microphone.",
+            "default": false
+          },
+          "devices": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SatelliteDevice"
+            },
+            "type": "object",
+            "title": "Devices",
+            "description": "Satellites by room or name, e.g. \"living room\"."
+          },
+          "http_port": {
+            "type": "integer",
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Audio port",
+            "description": "Port the boxes fetch Winston's spoken replies from, on every interface.",
+            "default": 8702,
+            "level": "advanced"
+          },
+          "public_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address the boxes use",
+            "description": "This machine's address as the boxes reach it. Unset finds it from the route to each box.",
+            "level": "advanced"
+          },
+          "end_silence_secs": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.3,
+            "title": "End of speech (s)",
+            "description": "Silence after speech that ends a request.",
+            "default": 0.8,
+            "level": "advanced"
+          },
+          "session_idle_mins": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Conversation resets after (min)",
+            "description": "Idle minutes before a box's conversation starts fresh.",
+            "default": 10,
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SatelliteChannel",
+        "restarts": [
+          "satellite"
+        ]
+      },
+      "SatelliteDevice": {
+        "properties": {
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "Address of the box on the LAN, an IP or its .local name."
+          },
+          "port": {
+            "type": "integer",
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "description": "ESPHome API port.",
+            "default": 6053,
+            "level": "advanced"
+          },
+          "key_env": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryption key variable",
+            "description": "Environment variable holding the box's API encryption key (the one Home Assistant shows for it). Unset for a box without encryption.",
+            "level": "basic",
+            "options": "env"
+          },
+          "wake_word": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wake word",
+            "description": "On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE). Unset keeps the box's choice."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "host"
+        ],
+        "title": "SatelliteDevice",
+        "restarts": [
+          "satellite"
+        ]
+      },
       "SensorPair": {
         "properties": {
           "level": {
@@ -2721,6 +2847,13 @@
                 "enabled": false,
                 "session_idle_mins": 30,
                 "token_env": "DISCORD_BOT_TOKEN"
+              },
+              "satellite": {
+                "devices": {},
+                "enabled": false,
+                "end_silence_secs": 0.8,
+                "http_port": 8702,
+                "session_idle_mins": 10
               },
               "web": {
                 "session_idle_mins": 30

@@ -76,6 +76,9 @@ vad: {provider: silero, stop_secs: 0.3, unfinished_stop_secs: 1.0}
 channels:
   voice: {enabled: true, host: 127.0.0.1, port: 7860}
   discord: {enabled: false}
+  satellite:
+    enabled: false             # Voice PE boxes; see docs/voice-pe.md
+    devices: {}                # room: {host: ..., key_env: VOICE_PE_KEY, wake_word: hey_jarvis}
 
 providers:
   home_assistant:

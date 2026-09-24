@@ -13,7 +13,7 @@ from loguru import logger
 
 from winston.config.schema import EngineConfig, WinstonConfig
 from winston.engines.drivers import (DockerDriver, Driver, ExternalDriver, SubprocessDriver, discord_channel_cmd,
-                                     voice_channel_cmd)
+                                     satellite_channel_cmd, voice_channel_cmd)
 
 
 @dataclass
@@ -85,6 +85,11 @@ class Supervisor:
             dcfg = EngineConfig(driver="subprocess", port=0, health="", startup_timeout=60)
             items["discord"] = Managed("discord", dcfg, SubprocessDriver("discord", dcfg, discord_channel_cmd()),
                                        kind="channel")
+        s = cfg.channels.satellite
+        if s.enabled and s.devices:
+            scfg = EngineConfig(driver="subprocess", port=s.http_port, health="/health", startup_timeout=60)
+            items["satellite"] = Managed("satellite", scfg, SubprocessDriver("satellite", scfg, satellite_channel_cmd()),
+                                         kind="channel")
         return items
 
     async def reload(self, cfg: WinstonConfig) -> list[str]:

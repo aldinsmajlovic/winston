@@ -16,6 +16,9 @@ uv run winston check brain     # the configured brain on the trial requests: too
 uv run winston check clone     # clone a synthetic friend's voice headless and switch back (about 90 s)
 ```
 
+`.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
+localhost: wake, request, streamed reply, a follow-up without the wake word, silence.
+
 `.venv/bin/python tests/conversations.py [name ...]` talks to the voice pipeline headless in sixteen
 scripted conversations (vague requests, things he cannot do, Swedish, talking over him, prompt
 injection and more) and prints each transcript: what speech-to-text heard, tool calls, what he said,

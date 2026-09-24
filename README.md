@@ -37,7 +37,10 @@ be swapped for a hosted service when that suits you better.
   requests.
 - **Settings that fill themselves in.** Models, voices, Home Assistant entities and key names are
   dropdowns read from the servers that know them, not text you type.
-- **"Hey Winston".** A custom wake word model for room satellites.
+- **Room satellites.** Home Assistant's Voice Preview Edition as Winston's microphone and speaker in a
+  room ([setup](docs/voice-pe.md)); built and tested against a fake box, the real one is next.
+- **"Hey Winston".** A custom wake word model for room satellites (for now the Voice PE uses its own
+  wake words).
 
 **Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and
 announcements work. The Discord channel is built but not yet run against Discord; the room satellite

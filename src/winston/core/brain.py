@@ -44,9 +44,12 @@ def persona(cfg: WinstonConfig) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+SPOKEN = ("voice", "satellite")      # channels whose replies are heard, not read
+
+
 def thinking_for(cfg: WinstonConfig, channel: str) -> bool:
     """WINSTON_THINKING=1|0 overrides the per-channel setting, for experiments."""
-    default = cfg.llm.thinking.voice if channel == "voice" else cfg.llm.thinking.text
+    default = cfg.llm.thinking.voice if channel in SPOKEN else cfg.llm.thinking.text
     v = os.environ.get("WINSTON_THINKING", str(default))
     return str(v).strip().lower() in ("1", "true", "yes")
 
