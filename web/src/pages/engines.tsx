@@ -6,23 +6,22 @@ import { IconButton } from '@/components/icon-button'
 import { ItemDialog } from '@/components/item-dialog'
 import { KindIcon } from '@/components/kind-icon'
 import { PageSkeleton } from '@/components/page'
-import { StateIcon } from '@/components/state-icon'
+import { DriverLabel, StateIcon } from '@/components/state-icon'
 import { ListPage, type Column } from '@/components/templates/list-page'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useDrivers } from '@/hooks/use-drivers'
 import { useSettings } from '@/hooks/use-settings'
 
 type Driver = EngineConfig['driver']
 type Row = EngineConfig & { name: string; status?: EngineStatus }
 type Adding = { name: string; driver: Driver }
 
-const drivers: { value: Driver; label: string; icon: string }[] = [
-  { value: 'docker', label: 'Docker container', icon: 'docker' },
-  { value: 'subprocess', label: 'Process', icon: 'process' },
-  { value: 'external', label: 'External server', icon: 'external' },
-]
+/** The brain's usual port is 8000; a new engine takes the next port above every one in use. */
+const nextPort = (engines: Record<string, EngineConfig>) =>
+  Math.max(7999, ...Object.values(engines).map((e) => e.port ?? 0)) + 1
 
 export default function EnginesPage() {
   const s = useSettings([])
@@ -30,6 +29,7 @@ export default function EnginesPage() {
   const ask = useConfirm()
   const navigate = useNavigate()
   const [adding, setAdding] = useState<Adding | null>(null)
+  const drivers = useDrivers()
   if (s.loading) return <PageSkeleton title="Engines" />
   const { page } = s
   const engines = page.value.engines ?? {}
@@ -51,15 +51,7 @@ export default function EnginesPage() {
     {
       key: 'driver',
       title: 'Driver',
-      render: (r) => {
-        const d = drivers.find((x) => x.value === r.driver)
-        return (
-          <span className="flex items-center gap-2">
-            <KindIcon name={d?.icon} className="text-muted-foreground" />
-            {d?.label ?? r.driver}
-          </span>
-        )
-      },
+      render: (r) => <DriverLabel driver={r.driver} drivers={drivers} />,
     },
     { key: 'port', title: 'Port', render: (r) => r.port },
     {
@@ -91,7 +83,7 @@ export default function EnginesPage() {
   const add = () => {
     if (!adding) return
     const name = adding.name.trim()
-    setEngines({ ...engines, [name]: { driver: adding.driver, port: 8000 } })
+    setEngines({ ...engines, [name]: { driver: adding.driver, port: nextPort(engines) } })
     setAdding(null)
     void navigate(`/engines/${name}`)
   }
@@ -124,7 +116,8 @@ export default function EnginesPage() {
         keyLabel="Name"
         keyValue={adding?.name ?? ''}
         onKeyChange={(name) => setAdding((a) => a && { ...a, name })}
-        canSubmit={Boolean(adding?.name.trim()) && !(adding!.name.trim() in engines)}
+        existing={Object.keys(engines)}
+        canSubmit={Boolean(adding?.name.trim())}
         onSubmit={add}
       >
         <div className="flex flex-col gap-2">

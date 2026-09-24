@@ -96,7 +96,11 @@ def status():
         print("winstond is not running (start it with `winston up`)"); raise typer.Exit(1)
     icons = {"healthy": "●", "starting": "◐", "unhealthy": "◑", "stopped": "○", "error": "✕"}
     for e in s["engines"]:
-        print(f"  {icons.get(e['state'], '?')} {e['name']:<8} {e['state']:<10} :{e['port']}  {e['detail']}")
+        port = f":{e['port']}" if e["port"] else ""
+        if e["state"] == "error":           # the reason is the point: on its own line, never cut
+            print(f"  {icons['error']} {e['name']:<8} {e['state']:<10} {port}\n      {e['detail'] or 'no detail'}")
+        else:
+            print(f"  {icons.get(e['state'], '?')} {e['name']:<8} {e['state']:<10} {port:<6}  {e['detail']}")
     if g := s.get("gpu"):
         print(f"  ▮ gpu      {g['used_mb']} / {g['total_mb']} MB  {g['name']}")
 

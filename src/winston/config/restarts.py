@@ -1,9 +1,12 @@
 """Which engines a configuration change restarts, read from the schema's `restarts` metadata:
 a field's own list if it has one, else the enclosing model's. `PUT /api/config` reports the
-result, so the web UI and the CLI never compute it themselves."""
+result, so the web UI and the CLI never compute it themselves. "{brains}" expands to every channel
+that runs a brain; the web channel is not among them because winstond rebuilds it on every save."""
 from typing import Any
 
 ENGINE = "{engine}"
+BRAINS = "{brains}"
+BRAIN_CHANNELS = ("voice", "discord", "satellite")    # every channel process that builds a Brain
 
 
 def _deref(schema: dict, root: dict) -> dict:
@@ -28,6 +31,8 @@ def restarts_for(old: Any, new: Any, schema: dict, root: dict | None = None,
     own: list[str] = schema.get("restarts", inherited or [])
     out: set[str] = set()
     props = schema.get("properties")
+    if props and isinstance(old, dict) != isinstance(new, dict) and None in (old, new):
+        old, new = old or {}, new or {}     # a section added or removed: every field in it changed
     if props and isinstance(old, dict) and isinstance(new, dict):
         for key in set(old) | set(new):
             if key in props:
@@ -39,4 +44,7 @@ def restarts_for(old: Any, new: Any, schema: dict, root: dict | None = None,
             eng = key if path == ("engines",) else engine
             out |= restarts_for(old.get(key), new.get(key), extra, root, own, path + (key,), eng)
         return out
-    return {engine if r == ENGINE and engine else r for r in own} - {ENGINE}
+    out = {engine if r == ENGINE and engine else r for r in own} - {ENGINE}
+    if BRAINS in out:
+        out = (out - {BRAINS}) | set(BRAIN_CHANNELS)
+    return out

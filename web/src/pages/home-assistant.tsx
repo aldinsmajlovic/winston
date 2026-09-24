@@ -20,7 +20,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { prune, section } from '@/lib/schema'
 
 const HA = ['providers', 'home_assistant']
-const OMIT = ['expose']
+const OMIT = ['expose', 'enabled']
 
 type Row = ExposedEntity & { id: string; ha?: Choice }
 type Editing = { id: string; original?: string; value: ExposedEntity }
@@ -78,9 +78,16 @@ export default function HomeAssistantPage() {
   if (s.loading || !entitySchema) return <PageSkeleton title="Home Assistant" />
   const { page } = s
   const exposeHelp = section(page.schema, [...HA, 'expose']).description
-  const ha = page.value.providers?.home_assistant ?? null
-  const setHa = (next: HomeAssistantConfig | null) =>
-    page.update((c) => ({ ...c, providers: { ...c.providers, home_assistant: next } }))
+  const ha: HomeAssistantConfig | null = page.value.providers?.home_assistant ?? null
+  const setHa = (next: HomeAssistantConfig | null) => page.update((c) => ({ ...c, providers: { ...c.providers, home_assistant: next } }))
+  // Off keeps the URL, token and entities (enabled: false); a schema without the field unsets the block.
+  const hasEnabled = 'enabled' in (section(page.schema, HA).properties ?? {})
+  const on = ha !== null && ha.enabled !== false
+  const toggle = (next: boolean) => {
+    if (!hasEnabled) setHa(next ? { url: '' } : null)
+    else if (ha) setHa({ ...ha, enabled: next })
+    else if (next) setHa({ url: '', enabled: true })
+  }
   const byId = new Map(entities.choices.map((c) => [c.value, c]))
   const rows: Row[] = Object.entries(ha?.expose ?? {}).map(([id, e]) => ({ id, ...e, ha: byId.get(id) }))
   const exposed = new Set(Object.keys(ha?.expose ?? {}))
@@ -108,13 +115,13 @@ export default function HomeAssistantPage() {
       page={page}
       actions={
         <div className="flex items-center gap-2">
-          {ha ? <Connection url={ha.url} /> : null}
-          <Switch id="ha-enabled" checked={ha !== null} onCheckedChange={(on) => setHa(on ? { url: '' } : null)} />
+          {ha && on ? <Connection url={ha.url} /> : null}
+          <Switch id="ha-enabled" checked={on} onCheckedChange={toggle} />
           <Label htmlFor="ha-enabled">Enabled</Label>
         </div>
       }
     >
-      {ha ? (
+      {ha && on ? (
         <>
           <SectionForm page={page} path={HA} omit={OMIT} />
           <Card>
@@ -154,6 +161,8 @@ export default function HomeAssistantPage() {
             title={editing?.original ? (byId.get(editing.original)?.label ?? editing.original) : 'New entity'}
             keyLabel="Entity"
             keyValue={editing?.id ?? ''}
+            existing={exposed}
+            original={editing?.original}
             keyInput={
               <Combobox
                 id="item-key"

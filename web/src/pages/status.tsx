@@ -3,24 +3,25 @@ import type { EngineStatus } from '@/api/client'
 import { useEngineActions, useStatus } from '@/api/status'
 import { IconButton } from '@/components/icon-button'
 import { Page, PageSkeleton } from '@/components/page'
-import { ChangedIcon, StateIcon } from '@/components/state-icon'
+import { ChangedIcon, DriverLabel, StateIcon } from '@/components/state-icon'
 import { DataTable, type Column } from '@/components/templates/list-page'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useDrivers, type DriverChoice } from '@/hooks/use-drivers'
 import { duration, since } from '@/lib/format'
 
 const running = (e: EngineStatus) => e.state !== 'stopped' && e.state !== 'error'
 const cost = (e: EngineStatus) =>
   e.started_in ? `about ${duration(e.started_in)}` : `up to ${duration(e.startup_timeout)}`
 
-const columns: Column<EngineStatus>[] = [
+const columns = (drivers: DriverChoice[]): Column<EngineStatus>[] => [
   { key: 'state', title: '', className: 'w-0', render: (e) => <StateIcon state={e.state} detail={e.detail} /> },
   { key: 'name', title: 'Name', render: (e) => <span className="font-medium">{e.name}</span> },
   { key: 'kind', title: 'Kind', render: (e) => <Badge variant="outline">{e.kind}</Badge> },
-  { key: 'driver', title: 'Driver', render: (e) => e.driver },
-  { key: 'port', title: 'Port', render: (e) => e.port },
+  { key: 'driver', title: 'Driver', render: (e) => <DriverLabel driver={e.driver} drivers={drivers} /> },
+  { key: 'port', title: 'Port', render: (e) => e.port || null },
   { key: 'since', title: 'For', render: (e) => since(e.since) },
   { key: 'changed', title: '', className: 'w-0', render: (e) => (e.config_changed ? <ChangedIcon /> : null) },
 ]
@@ -30,6 +31,7 @@ export default function StatusPage() {
   const status = useStatus()
   const actions = useEngineActions()
   const ask = useConfirm()
+  const drivers = useDrivers()
   if (!status.data) return <PageSkeleton title="Status" />
   const { engines, gpu } = status.data
   const byName = (name: string) => ({ params: { path: { name } } })
@@ -66,7 +68,7 @@ export default function StatusPage() {
       }
     >
       <DataTable
-        columns={columns}
+        columns={columns(drivers)}
         rows={engines}
         rowKey={(e) => e.name}
         actions={(e) =>

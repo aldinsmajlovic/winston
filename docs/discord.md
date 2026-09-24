@@ -10,6 +10,12 @@ in `channels.discord.contacts` (name to user id) and you ("me").
 3. `data/.env`: `DISCORD_BOT_TOKEN=...` and `DISCORD_ALLOWED_USER_ID=...`, then
    `channels.discord.enabled: true` and restart winstond.
 
+If either variable is missing or empty, winstond does not start the channel: `winston status` and
+the Status page show discord in error with `DISCORD_BOT_TOKEN empty in data/.env` (or whichever
+variables it lacks). Set them and start it again from the Status page or `winston restart discord`.
+A token Discord rejects makes the process exit; the status then shows the exit code and the last log
+line, and `data/logs/discord.log` has the rest.
+
 Only that one user is answered; DMs from anyone else are ignored and logged. A conversation starts
 fresh after `session_idle_mins` of silence.
 

@@ -1358,8 +1358,7 @@
         "type": "object",
         "title": "AskClaudeConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "AssistantConfig": {
@@ -1389,8 +1388,7 @@
         "type": "object",
         "title": "AssistantConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "Channels": {
@@ -1665,8 +1663,7 @@
             "description": "People Winston may message, name -> Discord user id. The bot can only reach people who share a server with it.",
             "level": "basic",
             "restarts": [
-              "voice",
-              "discord"
+              "{brains}"
             ]
           }
         },
@@ -1973,8 +1970,7 @@
         "type": "object",
         "title": "ExposedEntity",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "FactEdit": {
@@ -2088,10 +2084,26 @@
       },
       "HomeAssistantConfig": {
         "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Connect Winston to Home Assistant: its devices as tools, sensors, units and announcement events. Off keeps the settings without using them.",
+            "default": true,
+            "level": "basic",
+            "restarts": [
+              "{brains}",
+              "control"
+            ]
+          },
           "url": {
             "type": "string",
             "title": "URL",
-            "description": "Home Assistant base URL on the LAN."
+            "description": "Home Assistant base URL on the LAN.",
+            "level": "basic",
+            "restarts": [
+              "{brains}",
+              "control"
+            ]
           },
           "token_env": {
             "type": "string",
@@ -2099,7 +2111,11 @@
             "description": "Environment variable holding the long-lived token.",
             "default": "HA_TOKEN",
             "level": "advanced",
-            "options": "env"
+            "options": "env",
+            "restarts": [
+              "{brains}",
+              "control"
+            ]
           },
           "mcp_path": {
             "type": "string",
@@ -2134,8 +2150,7 @@
         ],
         "title": "HomeAssistantConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "LLMConfig": {
@@ -2180,12 +2195,12 @@
             "options": "llm_models",
             "restarts": [
               "llm",
-              "voice",
-              "discord"
+              "{brains}"
             ]
           },
           "sampling": {
             "$ref": "#/components/schemas/Sampling",
+            "description": "How the brain picks its words. The defaults suit tool calls; change them only to fix a specific habit.",
             "default": {
               "temperature": 0.3,
               "top_p": 0.8,
@@ -2195,6 +2210,7 @@
           },
           "thinking": {
             "$ref": "#/components/schemas/Thinking",
+            "description": "Whether the brain reasons before it answers, per kind of channel. Better answers to hard requests, at the cost of time.",
             "default": {
               "voice": false,
               "text": true,
@@ -2209,8 +2225,7 @@
         ],
         "title": "LLMConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "LiveEvent": {
@@ -2371,8 +2386,7 @@
         "type": "object",
         "title": "LoggingConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "MemoryConfig": {
@@ -2402,8 +2416,7 @@
         "type": "object",
         "title": "MemoryConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "MemoryFact": {
@@ -2793,7 +2806,8 @@
                 "type": "null"
               }
             ],
-            "title": "Home Assistant"
+            "title": "Home Assistant",
+            "description": "The Home Assistant Winston sees and controls. Unset: no smart home."
           }
         },
         "additionalProperties": false,
@@ -2881,9 +2895,7 @@
         "type": "object",
         "title": "RegionConfig",
         "restarts": [
-          "voice",
-          "discord",
-          "satellite"
+          "{brains}"
         ]
       },
       "STTConfig": {
@@ -2923,7 +2935,8 @@
         "type": "object",
         "title": "STTConfig",
         "restarts": [
-          "voice"
+          "voice",
+          "satellite"
         ]
       },
       "Sampling": {
@@ -2968,8 +2981,7 @@
         "type": "object",
         "title": "Sampling",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "SatelliteChannel": {
@@ -3125,8 +3137,7 @@
         ],
         "title": "SensorPair",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "SpeakRequest": {
@@ -3231,14 +3242,16 @@
           },
           "streaming": {
             "$ref": "#/components/schemas/TTSStreamingConfig",
-            "title": "Streaming"
+            "title": "Streaming",
+            "description": "How speech is cut into chunks so he starts talking before a sentence is fully rendered."
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "TTSConfig",
         "restarts": [
-          "voice"
+          "voice",
+          "satellite"
         ]
       },
       "TTSStreamingConfig": {
@@ -3320,8 +3333,7 @@
         "type": "object",
         "title": "Thinking",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "ToolsConfig": {
@@ -3337,6 +3349,7 @@
           "web_search": {
             "$ref": "#/components/schemas/WebSearchConfig",
             "title": "Web search",
+            "description": "A cloud search for current facts: news, opening hours, prices.",
             "default": {
               "enabled": false,
               "provider": "gemini",
@@ -3350,6 +3363,7 @@
           "ask_claude": {
             "$ref": "#/components/schemas/AskClaudeConfig",
             "title": "Ask Claude",
+            "description": "Claude in the cloud for questions too hard for the local brain.",
             "default": {
               "enabled": false,
               "model": "claude-opus-5",
@@ -3363,8 +3377,7 @@
         "type": "object",
         "title": "ToolsConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "TopicRename": {
@@ -3480,7 +3493,7 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled",
-            "description": "Talk to Winston by voice from the browser and, later, satellites.",
+            "description": "Talk to Winston by voice from the browser. Room satellites have their own channel.",
             "default": true
           },
           "host": {
@@ -3591,8 +3604,7 @@
         "type": "object",
         "title": "WebSearchConfig",
         "restarts": [
-          "voice",
-          "discord"
+          "{brains}"
         ]
       },
       "WinstonConfig": {
@@ -3600,6 +3612,7 @@
           "version": {
             "type": "integer",
             "title": "Version",
+            "description": "Config file format version. Winston sets it.",
             "default": 1,
             "level": "advanced"
           },

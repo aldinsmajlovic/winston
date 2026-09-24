@@ -13,6 +13,9 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
   Nothing exists only in the UI.
 - **Typed, versioned config.** Pydantic models with defaults and a JSON Schema export. Every field carries
   its UI level (basic or advanced) and which engine a change restarts. Forms and docs come from the schema.
+  Restart lists name engines, `{engine}` (the engine a block belongs to) or `{brains}`, every channel that
+  runs a brain (voice, Discord, satellite), so a new channel joins every brain setting in one place.
+  Speech and hearing settings restart voice and satellite; the web channel is rebuilt on every save.
 - **Presets over hand-written engine blocks.** `config/presets.py` names the engine and model choices per
   slot (vLLM, llama.cpp, Ollama, hosted; Chatterbox, Pocket TTS, hosted) and composes them into hardware profiles.
   The UI offers them as dropdowns, `winston init --profile` writes one, and the config stays the truth.
@@ -42,8 +45,12 @@ flowchart TB
   something you already run. The supervisor owns start, stop, health and restart-on-change.
 - **Brain** (`winston/core`): one Pipecat LLM service plus its tools, shared by every channel. Tools come
   from MCP servers and local plugins. The persona is the system instruction, flattened to one list of rules (the file's sections are for the Memory page). A claim guard sits after
-  the LLM in every channel: a reply that claims an action or a state no tool call in that turn or the one
-  before backs is retracted aloud and in the context. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
+  the LLM in every channel. A firm claim of an action or a memory change ("I've set", "has been sent",
+  "done", "noted", "I've forgotten") needs a tool call in that turn or the one before. Looser wording ("is
+  now", "is still", "turning") counts only when the sentence names something he can act on: an exposed
+  Home Assistant name, alias or entity id, or a light word. A passive memory change ("has been removed",
+  "has been updated") counts only when no tool ran that turn. An unbacked claim is retracted aloud and in
+  the context, and every retraction is logged with what he heard. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
   starts; the `remember` tool adds to them.
 - **Adapters** (`winston/plugins`): Pipecat services with a settings model, discovered through Python
   entry points (`winston.stt`, `winston.tts`, ...). A third-party package adds one without touching core.

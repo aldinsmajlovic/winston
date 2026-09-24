@@ -125,6 +125,10 @@ class SubprocessDriver:
     def log_path(self) -> Path | None:
         return self._log
 
+    def exit_code(self) -> int | None:
+        """The return code once the process has exited, None while it runs or before it started."""
+        return self._proc.returncode if self._proc is not None else None
+
 
 class ExternalDriver:
     def __init__(self, name: str, cfg: EngineConfig):

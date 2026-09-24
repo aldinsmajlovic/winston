@@ -12,7 +12,15 @@ cd services/tts-chatterbox
 ```
 
 Try another voice without restarting by naming a clip relative to `--voices-dir`, e.g.
-`{"voice": "vctk/p226_023"}`; set the default clip in the `engines.tts` command in config.
+`{"voice": "vctk/p226_023"}`; set the default clip in the `engines.tts` command in config. A name
+that would reach outside `--voices-dir` (`..`, an absolute path, a backslash) is refused with a 400,
+here and in the Pocket server.
+
+The voice dropdown on the Voice page lists, for a local server, "Server default" with the clip the
+server started with (for instance "Server default: vctk/p254_023"; that clip is marked "server
+default" below it), then your clips under `data/voices/`, then cloned voices by the friend's name,
+marked "cloned". Consent recordings are never offered as a voice. A hosted server lists only your
+clips, cloned voices and its built-in voices.
 
 ## Reference voices
 

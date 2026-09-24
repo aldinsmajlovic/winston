@@ -10,9 +10,9 @@ from winston.config.schema import WinstonConfig
 
 class HomeAssistant:
     def __init__(self, cfg: WinstonConfig):
-        ha = cfg.providers.home_assistant
+        ha = cfg.providers.ha
         if ha is None:
-            raise RuntimeError("providers.home_assistant is not configured")
+            raise RuntimeError("providers.home_assistant is not configured or is switched off")
         self.cfg, self.ha = cfg, ha
         self.url, self.token = ha.url.rstrip("/"), os.environ.get(ha.token_env, "")
         if not self.token:

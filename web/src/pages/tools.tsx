@@ -107,6 +107,8 @@ export default function ToolsPage() {
         keyLabel="Label"
         keyValue={editing?.label ?? ''}
         onKeyChange={(label) => setEditing((e) => e && { ...e, label })}
+        existing={Object.keys(sensors)}
+        original={editing?.original}
         schema={sensorSchema}
         value={editing?.value}
         onChange={(value) => setEditing((e) => e && autofill(e, value as SensorPair, known))}

@@ -20,13 +20,19 @@ type Props = {
   onChange?: (next: unknown) => void
   onSubmit: () => void
   canSubmit?: boolean
+  /** Keys already in the map; Done stays off while the key matches one other than `original`. */
+  existing?: Iterable<string>
+  /** The key being edited, which may keep its own name. */
+  original?: string
   children?: ReactNode
 }
 
 /** Add or edit one entry of a keyed map (entity, sensor, engine): the key, then its fields. */
 export function ItemDialog(props: Props) {
   const { open, onOpenChange, title, keyLabel, keyValue, onKeyChange, schema, value, onChange, onSubmit } = props
-  const canSubmit = props.canSubmit ?? keyValue.trim().length > 0
+  const key = keyValue.trim()
+  const duplicate = key !== '' && key !== props.original && new Set(props.existing).has(key)
+  const canSubmit = (props.canSubmit ?? key.length > 0) && !duplicate
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -41,10 +47,12 @@ export function ItemDialog(props: Props) {
                 id="item-key"
                 value={keyValue}
                 disabled={!onKeyChange}
+                aria-invalid={duplicate}
                 onChange={(e) => onKeyChange?.(e.target.value)}
                 autoFocus={Boolean(onKeyChange)}
               />
             )}
+            {duplicate ? <span className="text-sm text-destructive">Already in the list</span> : null}
           </div>
           {props.children}
           {schema && onChange ? <SchemaForm schema={schema} value={value} onChange={onChange} /> : null}

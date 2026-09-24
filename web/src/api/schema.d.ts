@@ -926,6 +926,12 @@ export interface components {
         /** HomeAssistantConfig */
         HomeAssistantConfig: {
             /**
+             * Enabled
+             * @description Connect Winston to Home Assistant: its devices as tools, sensors, units and announcement events. Off keeps the settings without using them.
+             * @default true
+             */
+            enabled?: boolean;
+            /**
              * URL
              * @description Home Assistant base URL on the LAN.
              */
@@ -981,6 +987,7 @@ export interface components {
              */
             model: string;
             /**
+             * @description How the brain picks its words. The defaults suit tool calls; change them only to fix a specific habit.
              * @default {
              *       "temperature": 0.3,
              *       "top_p": 0.8,
@@ -990,6 +997,7 @@ export interface components {
              */
             sampling?: components["schemas"]["Sampling"];
             /**
+             * @description Whether the brain reasons before it answers, per kind of channel. Better answers to hard requests, at the cost of time.
              * @default {
              *       "voice": false,
              *       "text": true,
@@ -1214,7 +1222,10 @@ export interface components {
         };
         /** Providers */
         Providers: {
-            /** Home Assistant */
+            /**
+             * Home Assistant
+             * @description The Home Assistant Winston sees and controls. Unset: no smart home.
+             */
             home_assistant?: components["schemas"]["HomeAssistantConfig"] | null;
         };
         /** RegionConfig */
@@ -1425,7 +1436,10 @@ export interface components {
              * @default 24000
              */
             sample_rate?: number;
-            /** Streaming */
+            /**
+             * Streaming
+             * @description How speech is cut into chunks so he starts talking before a sentence is fully rendered.
+             */
             streaming?: components["schemas"]["TTSStreamingConfig"];
         };
         /**
@@ -1492,6 +1506,7 @@ export interface components {
             };
             /**
              * Web search
+             * @description A cloud search for current facts: news, opening hours, prices.
              * @default {
              *       "enabled": false,
              *       "provider": "gemini",
@@ -1505,6 +1520,7 @@ export interface components {
             web_search?: components["schemas"]["WebSearchConfig"];
             /**
              * Ask Claude
+             * @description Claude in the cloud for questions too hard for the local brain.
              * @default {
              *       "enabled": false,
              *       "model": "claude-opus-5",
@@ -1564,7 +1580,7 @@ export interface components {
         VoiceChannel: {
             /**
              * Enabled
-             * @description Talk to Winston by voice from the browser and, later, satellites.
+             * @description Talk to Winston by voice from the browser. Room satellites have their own channel.
              * @default true
              */
             enabled?: boolean;
@@ -1641,6 +1657,7 @@ export interface components {
         WinstonConfig: {
             /**
              * Version
+             * @description Config file format version. Winston sets it.
              * @default 1
              */
             version?: number;

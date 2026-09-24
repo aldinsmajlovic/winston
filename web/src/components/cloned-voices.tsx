@@ -6,19 +6,23 @@ import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { DataTable, type Column } from '@/components/templates/list-page'
 import { useConfirm } from '@/hooks/use-confirm'
 
 type Props = { current?: string }
+type Clone = NonNullable<ReturnType<typeof useClones>['data']>[number]
 
-const TIP =
-  'Say "Winston, clone my friend\'s voice" with your friend there. They agree out loud first, then talk for ' +
+const tip = (name: string) =>
+  `Say "${name}, clone my friend's voice" with your friend there. They agree out loud first, then talk for ` +
   'about fifteen seconds. "Back to your own voice" switches back.'
 
-/** Friends' voices Winston cloned when asked, each with the recording of them agreeing to it. */
+const useClones = () => $api.useQuery('get', '/api/voices/clones')
+
+/** Friends' voices the assistant cloned when asked, each with the recording of them agreeing to it. */
 export function ClonedVoices({ current }: Props) {
-  const clones = $api.useQuery('get', '/api/voices/clones')
-  const remove = $api.useMutation('delete', '/api/voices/clones/{slug}')
+  const name = $api.useQuery('get', '/api/status').data?.assistant ?? 'Winston'
+  const clones = useClones()
+  const remove = $api.useMutation('delete', '/api/voices/clones/{slug}', { meta: { showsErrors: true } })
   const ask = useConfirm()
   const audio = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState<string | null>(null)
@@ -59,57 +63,48 @@ export function ClonedVoices({ current }: Props) {
     void clones.refetch()
   }
 
-  const rows = clones.data ?? []
+  const columns: Column<Clone>[] = [
+    {
+      key: 'name',
+      title: 'Name',
+      render: (c) => (
+        <span className="flex items-center gap-2 font-medium">
+          {c.name}
+          {current === c.voice ? <Badge variant="secondary">{`${name}'s voice`}</Badge> : null}
+        </span>
+      ),
+    },
+    { key: 'created', title: 'Recorded', render: (c) => new Date(c.created * 1000).toLocaleDateString() },
+    { key: 'seconds', title: 'Length', render: (c) => `${Math.round(c.seconds)} s` },
+  ]
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-1.5">
           Cloned voices
-          <InfoTip text={TIP} />
+          <InfoTip text={tip(name)} />
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {rows.length === 0 ? (
-          <p className="text-muted-foreground text-sm">None yet.</p>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Recorded</TableHead>
-                <TableHead>Length</TableHead>
-                <TableHead className="w-0" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((c) => (
-                <TableRow key={c.slug}>
-                  <TableCell>
-                    <span className="flex items-center gap-2 font-medium">
-                      {c.name}
-                      {current === c.voice ? <Badge variant="secondary">Winston&apos;s voice</Badge> : null}
-                    </span>
-                  </TableCell>
-                  <TableCell>{new Date(c.created * 1000).toLocaleDateString()}</TableCell>
-                  <TableCell>{Math.round(c.seconds)} s</TableCell>
-                  <TableCell>
-                    <span className="flex justify-end">
-                      <IconButton label="Play the voice" onClick={() => play(c.slug, 'voice')}>
-                        {playing === `${c.slug}/voice` ? <Square /> : <Play />}
-                      </IconButton>
-                      <IconButton label={`Play the consent: "${c.consent_text}"`} onClick={() => play(c.slug, 'consent')}>
-                        {playing === `${c.slug}/consent` ? <Square /> : <ShieldCheck />}
-                      </IconButton>
-                      <IconButton label="Delete" onClick={() => void del(c.slug, c.name)}>
-                        <Trash2 />
-                      </IconButton>
-                    </span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+        <DataTable
+          columns={columns}
+          rows={clones.data ?? []}
+          rowKey={(c) => c.slug}
+          actions={(c) => (
+            <>
+              <IconButton label="Play the voice" onClick={() => play(c.slug, 'voice')}>
+                {playing === `${c.slug}/voice` ? <Square /> : <Play />}
+              </IconButton>
+              <IconButton label={`Play the consent: "${c.consent_text}"`} onClick={() => play(c.slug, 'consent')}>
+                {playing === `${c.slug}/consent` ? <Square /> : <ShieldCheck />}
+              </IconButton>
+              <IconButton label="Delete" onClick={() => void del(c.slug, c.name)}>
+                <Trash2 />
+              </IconButton>
+            </>
+          )}
+        />
       </CardContent>
     </Card>
   )

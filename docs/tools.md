@@ -3,6 +3,10 @@
 Besides Home Assistant's own tools (over its MCP server), Winston has these. All are logged to
 `data/logs/tool_calls.jsonl`; settings are in the web UI under Tools.
 
+Switching Home Assistant off (`providers.home_assistant.enabled: false`) keeps its settings but drops
+its tools and `get_sensor_readings`, stops announcement events from it, and makes region "auto" fall
+back to metric and a 24-hour clock.
+
 | Tool | What it does | Needs | Limits |
 | --- | --- | --- | --- |
 | `get_sensor_readings` | Watched sensors with the age of each reading | `tools.sensors` | Read only |

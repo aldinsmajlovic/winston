@@ -24,7 +24,7 @@ from winston.core.announce import Announcement
 
 async def listen(cfg: WinstonConfig, publish: Callable[[Announcement], object]):
     """Run until cancelled, reconnecting with backoff."""
-    ha = cfg.providers.home_assistant
+    ha = cfg.providers.ha
     if ha is None or not cfg.announce.enabled or not cfg.announce.ha_event:
         return
     url = ha.url.rstrip("/").replace("http", "ws", 1) + "/api/websocket"

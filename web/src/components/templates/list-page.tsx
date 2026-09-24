@@ -30,6 +30,13 @@ export function DataTable<T>({ columns, rows, rowKey, actions, onRowClick }: Tab
         </TableRow>
       </TableHeader>
       <TableBody>
+        {rows.length === 0 ? (
+          <TableRow className="hover:bg-transparent">
+            <TableCell colSpan={columns.length + (actions ? 1 : 0)} className="text-muted-foreground">
+              None yet.
+            </TableCell>
+          </TableRow>
+        ) : null}
         {rows.map((row) => (
           <TableRow
             key={rowKey(row)}

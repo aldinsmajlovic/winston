@@ -163,7 +163,7 @@ function RangeWidget({ id, value, disabled, readonly, onChange, schema }: Widget
   )
 }
 
-/** "HH:MM-HH:MM" as a switch and two time fields; off stores nothing. */
+/** "HH:MM-HH:MM" as a switch and two time fields; off stores '' (never quiet), not the default. */
 function TimeRangeWidget({ id, value, disabled, readonly, onChange }: WidgetProps) {
   const [from = '22:00', to = '07:00'] = typeof value === 'string' && value.includes('-') ? value.split('-') : []
   const on = typeof value === 'string' && value !== ''
@@ -173,7 +173,7 @@ function TimeRangeWidget({ id, value, disabled, readonly, onChange }: WidgetProp
         id={id}
         checked={on}
         disabled={disabled || readonly}
-        onCheckedChange={(checked) => onChange(checked ? `${from}-${to}` : undefined)}
+        onCheckedChange={(checked) => onChange(checked ? `${from}-${to}` : '')}
       />
       {on ? (
         <>

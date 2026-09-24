@@ -41,7 +41,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.workers.runner import WorkerRunner
 
 from winston.channels.text import QUIET_SECS, TurnTracker
-from winston.channels.voice import build_tts
+from winston.channels.voice import LatencyLog, build_tts
 from winston.config import load
 from winston.config.registry import get as get_adapter
 from winston.config.schema import SatelliteDevice, WinstonConfig
@@ -79,6 +79,7 @@ class Run:
     out: asyncio.Queue = field(default_factory=asyncio.Queue)          # WAV body chunks, None at the end
     started: float = field(default_factory=time.perf_counter)
     first_audio: asyncio.Event = field(default_factory=asyncio.Event)
+    speech_end: float = 0.0                                 # time.time() the request went quiet
 
 
 class Speaker(FrameProcessor):
@@ -125,11 +126,12 @@ class Conversation:
         self.tracker = TurnTracker()
         self.speaker = Speaker(cfg.tts.sample_rate)
         guard = ClaimGuard(cfg, channel="satellite")
+        self.latency = LatencyLog(cfg, "satellite")
         self.worker = PipelineWorker(
             Pipeline([agg.user(), self.brain.llm, guard, build_tts(cfg), self.speaker, agg.assistant()]),
             params=PipelineParams(enable_metrics=False), idle_timeout_secs=None,
             observers=[guard.observer, self.tracker, ToolCallLogObserver(cfg, channel="satellite"),
-                       LiveObserver("satellite", self.feed.put, spoken=True)])
+                       LiveObserver("satellite", self.feed.put, spoken=True), self.latency])
         self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self.worker))
         return self
 
@@ -263,6 +265,8 @@ class Satellite:
                 break
         if sum(voiced) * VAD_FRAME / MIC_RATE < 0.25:
             return None
+        last = max(i for i, v in enumerate(voiced) if v)
+        run.speech_end = time.time() - (len(buf) - (last + 1) * VAD_FRAME) / MIC_RATE
         return buf
 
     async def _transcribe(self, pcm: np.ndarray) -> str:
@@ -301,6 +305,7 @@ class Satellite:
                 self._event(Ev.VOICE_ASSISTANT_STT_END, {"text": heard})
                 self._event(Ev.VOICE_ASSISTANT_INTENT_START)
                 conv = await self._conversation()
+                conv.latency.begin(run.speech_end, round((time.time() - run.speech_end) * 1000))
 
                 async def stream_when_ready():
                     await run.first_audio.wait()
@@ -309,6 +314,7 @@ class Satellite:
                                 f"the transcript")
                 progress = asyncio.create_task(stream_when_ready())
                 said = await conv.reply(heard, run)
+                conv.latency.flush()
                 progress.cancel()
                 run.out.put_nowait(None)
                 follow_up = said.rstrip().endswith("?")

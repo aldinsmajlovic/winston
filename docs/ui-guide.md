@@ -25,6 +25,10 @@ transport), connecting through winstond to the voice channel.
 - Winston's logo is the one exception to both (other logos stay one colour): its own two colours (`--mark-*`) with a gentle shade in
   each field, and it stays out of the rest of the UI.
 - No welcome text, no explanations, no marketing.
+- Errors are never silent. A failed action shows its reason in a toast (the query client does this
+  for every mutation that does not show its own error; `meta: { showsErrors: true }` opts out). A
+  page that could not load shows `LoadError` in place of its skeleton: an error icon, the reason and
+  Retry. `PageSkeleton` does this by itself when a query the page waits on failed.
 - No inline styles, no custom CSS classes, no em dashes. The build fails on all three.
 
 ## Winston
@@ -42,7 +46,9 @@ transport), connecting through winstond to the voice channel.
   and the technical instructions folded), then one heading per topic, facts as plain lines as
   stored, the date muted at the end. Edit and forget on a line's hover; edit all, rename and delete
   on a heading's. A rounded field under each section adds, a pasted list adds each line. Search at
-  the top; a quiet size line at the bottom.
+  the top; a quiet size line at the bottom. Forget, remove and edit all on "How he behaves" offer Undo
+  in their toast. With memory off, one muted line under the search says he does not use these and
+  links to Tools.
 - Dashboard mode shows the logo large as the talk button, one line for his state, the last exchange
   in large type and announcements across the screen; a plain Close link at the top right is its only
   control besides the logo.
@@ -62,6 +68,11 @@ transport), connecting through winstond to the voice channel.
 - Icons for actions and state. A status is an icon plus a colour, never a sentence.
 - Basic first, Advanced behind a toggle on every page. The schema decides which is which.
 - Destructive or slow actions confirm once, say what they cost ("restarts the brain, about 3 minutes").
+- A cleared field saves what it shows where empty means something. A text field whose default is not
+  empty and whose description gives empty a meaning ("Empty for never quiet") saves `''` when cleared,
+  so the default does not quietly come back; any other cleared field falls back to its default.
+- An empty table shows one muted "None yet." row. A key already in a list (entity, sensor) keeps Done
+  off and says "Already in the list" under the field.
 
 ## Build
 

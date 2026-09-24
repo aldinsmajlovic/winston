@@ -17,7 +17,7 @@ from winston.channels.text import run  # noqa: E402
 from winston.config import load  # noqa: E402
 
 CFG = load()
-HA = CFG.providers.home_assistant.url.rstrip("/"); H = {"Authorization": f"Bearer {os.environ['HA_TOKEN']}"}
+HA = CFG.providers.ha.url.rstrip("/"); H = {"Authorization": f"Bearer {os.environ['HA_TOKEN']}"}
 LIGHT, PHONE, WOL = "light.living_room_all", "sensor.pixel_11_pro_battery_level", "button.wake_on_lan_04_7c_16_70_ca_bc"
 
 

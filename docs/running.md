@@ -26,7 +26,27 @@ guard corrections and time to first audio. Actions are stubbed, so the house and
 untouched. It judges nothing; read the transcripts.
 
 Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs
-winston-llm`; every tool call to `data/logs/tool_calls.jsonl`.
+winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
+one line per spoken turn to `data/logs/latency.jsonl` (`logging.latency`; empty turns it off): time
+from the end of your speech to the transcript (`stt_ms`), the first token (`first_token_ms`) and the
+first audio (`first_audio_ms`), and the tools the turn called.
+
+## Status and errors
+
+`winston status` and the Status page show each engine and channel as healthy, starting, unhealthy
+(running, health check failing), stopped or error. An error says why, and stays until you start or
+stop that engine again:
+
+- A channel whose variables are not set is not started: Discord without `DISCORD_BOT_TOKEN` shows
+  `DISCORD_BOT_TOKEN empty in data/.env` (or `missing from`), naming the variables, never their values.
+  The satellite channel checks each box's `key_env` the same way.
+- A process that exits on its own, during startup or later, shows its exit code and the last line of
+  its log, say `exited with code 1: discord.errors.LoginFailure: Improper token has been passed.`
+  The full log is `data/logs/<name>.log`.
+- A process with no health check (Discord) counts as up only after it has run for 2 seconds.
+- An engine that does not answer its health check within `startup_timeout` says so.
+
+`winston status` prints an error's reason on the line under it.
 
 ## Web UI
 
@@ -64,7 +84,8 @@ blocks a plain `http://` page inside it, so Winston needs HTTPS too.
   <img src="images/status-light.png" alt="The Status page: engines, their health and the GPU" width="720">
 </picture>
 
-Settings is the link at the top right. Status lists every engine with icon actions and the GPU.
+Settings is the link at the top right. Status lists every engine and channel with how it runs, icon
+actions and the GPU; hover a state icon for its detail (an error's reason).
 Brain picks the engine from presets (vLLM, llama.cpp, Ollama, hosted) and the model from the list the brain's
 server reports; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
 hearing, and for Chatterbox has Streaming: on or off and the chunk length, longer being smoother. Picking a preset rewrites the engine block and the settings that go with it. The other

@@ -6,6 +6,8 @@ started by the supervisor:
 
 Every model sits behind an adapter chosen in config (plan §6, rule 1)."""
 import asyncio
+import json
+import time
 import wave
 
 import numpy as np
@@ -14,8 +16,10 @@ from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import (ErrorFrame, LLMMessagesAppendFrame, OutputAudioRawFrame, TTSAudioRawFrame,
-                                   TTSSpeakFrame)
+from pipecat.frames.frames import (ErrorFrame, FunctionCallResultFrame, FunctionCallsStartedFrame,
+                                   LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame, OutputAudioRawFrame,
+                                   TranscriptionFrame, TTSAudioRawFrame, TTSSpeakFrame, VADUserStoppedSpeakingFrame)
+from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
@@ -105,6 +109,80 @@ def load_chime(cfg: WinstonConfig = CFG) -> bytes:
     return x.astype("<i2").tobytes()
 
 
+class LatencyLog(BaseObserver):
+    """One JSON line per turn in logging.latency: milliseconds from the end of speech to the transcript
+    (stt_ms), the first LLM token and the first audio out, and the tools the turn called. The end of
+    speech is the VAD's decision minus its stop_secs, the moment the user actually went quiet. A turn
+    is written once it has spoken and no tool call is left, or when the next one starts."""
+
+    def __init__(self, cfg: WinstonConfig, channel: str):
+        super().__init__()
+        self._path = resolve(cfg.logging.latency) if cfg.logging.latency else None
+        self._channel = channel
+        self._turn: dict | None = None
+        self._pending: set[str] = set()       # tool calls still running
+        self._calls: set[str] = set()         # every call this turn, so a later hop of the frame is not a new one
+        self._stt_frame: int | None = None
+        self._done = False
+
+    def begin(self, speech_end: float, stt_ms: float | None = None):
+        """A new turn whose speech ended at speech_end (time.time()); a channel without STT frames
+        passes its own transcript time."""
+        self.flush()
+        self._turn = {"ts": speech_end, "stt_ms": stt_ms, "first_token_ms": None, "first_audio_ms": None, "tools": []}
+        self._pending, self._calls, self._done = set(), set(), False
+
+    def _ms(self) -> int:
+        return round((time.time() - self._turn["ts"]) * 1000)
+
+    def flush(self):
+        t, self._turn = self._turn, None
+        if not self._path or not t or (t["stt_ms"] is None and t["first_token_ms"] is None):
+            return
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with self._path.open("a") as f:
+                f.write(json.dumps({"ts": round(t["ts"], 3), "channel": self._channel, **{k: v for k, v in t.items()
+                                                                                          if k != "ts"}}) + "\n")
+        except OSError as e:
+            logger.warning(f"latency log: {e}")
+
+    async def on_push_frame(self, data: FramePushed):
+        if not self._path:
+            return
+        f, t = data.frame, self._turn
+        if isinstance(f, VADUserStoppedSpeakingFrame):
+            # a pause inside one request stops the VAD too; it is a new turn only once the reply began
+            if t is None or t["first_token_ms"] is not None:
+                self.begin(f.timestamp - f.stop_secs)
+            else:
+                t["ts"] = f.timestamp - f.stop_secs
+        elif t is None:
+            return
+        elif isinstance(f, TranscriptionFrame) and t["first_token_ms"] is None and f.id != self._stt_frame:
+            self._stt_frame = f.id          # observers see a frame once per hop; the first sighting counts
+            t["stt_ms"] = self._ms()
+        elif isinstance(f, LLMTextFrame) and t["first_token_ms"] is None:
+            t["first_token_ms"] = self._ms()
+        elif isinstance(f, TTSAudioRawFrame) and t["first_audio_ms"] is None:
+            t["first_audio_ms"] = self._ms()
+            if self._done and not self._pending:
+                self.flush()
+        elif isinstance(f, FunctionCallsStartedFrame):
+            for c in f.function_calls:
+                if c.tool_call_id not in self._calls:
+                    self._calls.add(c.tool_call_id); self._pending.add(c.tool_call_id)
+                    t["tools"].append(c.function_name)
+                    self._done = False
+        elif isinstance(f, FunctionCallResultFrame):
+            self._pending.discard(f.tool_call_id)
+            self._done = False                  # a result starts another LLM hop, which may call more tools
+        elif isinstance(f, LLMFullResponseEndFrame):
+            self._done = True
+            if not self._pending and t["first_audio_ms"] is not None:
+                self.flush()
+
+
 CHIME = load_chime()
 FEED = FeedPoster(CFG)          # what this channel hears and says, for the Talk page
 
@@ -136,6 +214,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         user_turn_strategies=UserTurnStrategies(stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_end)]),
     ))
     guard = ClaimGuard(CFG, channel="voice")
+    latency = LatencyLog(CFG, "voice")
 
     @brain.llm.event_handler("on_function_calls_started")
     async def on_function_calls_started(service, function_calls):
@@ -161,7 +240,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
         observers=[guard.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
-                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True)],
+                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), latency],
         idle_timeout_secs=None,
     )
 
@@ -195,6 +274,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         if listener:
             listener.cancel()
         FEED.put(LiveEvent(channel="voice", type="state", state="idle"))
+        latency.flush()
         await worker.cancel()
         await brain.close()
 

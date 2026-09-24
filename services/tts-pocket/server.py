@@ -59,13 +59,21 @@ _OPENAI_VOICES = {"alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "
                   "sage", "shimmer", "verse", "default", "winston"}
 
 
+def _clip_path(name: str) -> Path:
+    """The clip a voice name means, refused (400) unless it stays under --voices-dir."""
+    parts = Path(name).parts
+    if "\\" in name or "\0" in name or Path(name).is_absolute() or ".." in parts or not parts:
+        raise HTTPException(400, f"voice {name!r} is not a clip name under the voices directory")
+    return (_voices_dir / name).with_suffix(".wav")
+
+
 def _load_voice(name: str) -> None:
     """A built-in voice by name, or a clip under --voices-dir (voice cloning)."""
     global _cloning
     if name in _catalog:
         source, clip = name, False
     else:
-        path = (_voices_dir / name).with_suffix(".wav")
+        path = _clip_path(name)
         if not path.is_file():
             raise HTTPException(400, f"unknown voice {name!r}: not a built-in voice and no file {path}")
         source, clip = str(path), True

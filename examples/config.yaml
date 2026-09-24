@@ -82,6 +82,7 @@ channels:
 
 providers:
   home_assistant:
+    enabled: true              # false keeps these settings without using Home Assistant
     url: http://homeassistant.local:8123
     token_env: HA_TOKEN
     mcp_path: /api/mcp

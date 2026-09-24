@@ -99,7 +99,20 @@ export function hasBasicFields(schema: JsonSchema, root: JsonSchema): boolean {
   return Object.keys(prune(schema, root, { advanced: false }).properties ?? {}).length > 0
 }
 
-/** Write a form's data back over the current value, touching only the fields the form showed. */
+/** A text field with a non-empty default whose description makes empty a choice of its own ("Empty for
+ * never quiet", no health path, full precision); cleared, it saves '' rather than falling back to the
+ * default. Other text fields (a name, a URL, a voice) still fall back, since '' would break them. */
+function emptyMeansOff(schema: JsonSchema): boolean {
+  return (
+    schema.type === 'string' &&
+    typeof schema.default === 'string' &&
+    schema.default !== '' &&
+    /\bempty\b/i.test(schema.description ?? '')
+  )
+}
+
+/** Write a form's data back over the current value, touching only the fields the form showed. A
+ * cleared field drops its key (the server's default applies), unless empty means off. */
 export function applyForm(current: unknown, formData: unknown, formSchema: JsonSchema): unknown {
   if (!formSchema.properties || !isRecord(current) || !isRecord(formData)) return formData
   const next: Record<string, unknown> = { ...current }
@@ -107,7 +120,8 @@ export function applyForm(current: unknown, formData: unknown, formSchema: JsonS
     if (child.properties && isRecord(current[key])) {
       next[key] = applyForm(current[key], formData[key] ?? {}, child)
     } else if (formData[key] === undefined) {
-      delete next[key]
+      if (emptyMeansOff(child)) next[key] = ''
+      else delete next[key]
     } else {
       next[key] = formData[key]
     }

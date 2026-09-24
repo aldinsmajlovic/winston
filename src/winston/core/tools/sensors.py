@@ -18,7 +18,7 @@ def _age(iso: str) -> str:
 
 
 def make_sensor_tool(cfg: WinstonConfig):
-    ha = cfg.providers.home_assistant
+    ha = cfg.providers.ha
     if ha is None or not cfg.tools.sensors:
         return None
     url, token = ha.url.rstrip("/"), os.environ.get(ha.token_env, "")

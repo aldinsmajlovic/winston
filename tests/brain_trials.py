@@ -42,7 +42,7 @@ if not cases_file.exists():
 SPEC = yaml.safe_load(cases_file.read_text())
 CASES = [c for c in SPEC["cases"] if not args.only or args.only in c["name"]]
 
-ha = CFG.providers.home_assistant
+ha = CFG.providers.ha
 HA, H = ha.url.rstrip("/"), {"Authorization": f"Bearer {os.environ[ha.token_env]}"}
 RESTORE = SPEC.get("restore", [])        # entities put back after every case
 

@@ -29,7 +29,7 @@ def _home_assistant(url: str, token_env: str) -> dict:
 
 def resolve(cfg: WinstonConfig) -> dict[str, str]:
     """Every region setting with "auto" replaced by what Home Assistant says."""
-    r, ha = cfg.region, cfg.providers.home_assistant
+    r, ha = cfg.region, cfg.providers.ha
     info = _home_assistant(ha.url, ha.token_env) if ha else {}
     units, country = info.get("unit_system") or {}, (info.get("country") or "").upper()
     auto = {

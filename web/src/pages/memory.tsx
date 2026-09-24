@@ -1,9 +1,11 @@
 import { useEffect, useState, type ClipboardEvent, type FormEvent, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import { ChevronRight, ListCollapse, Lock, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { $api, errorText, type MemoryFact, type MemoryTopic } from '@/api/client'
 import { presence, useLive } from '@/api/live'
 import { IconButton } from '@/components/icon-button'
+import { LoadError } from '@/components/page'
 import { WinstonHeader } from '@/components/winston-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +16,9 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { cn } from '@/lib/utils'
 
 const SAVED = 'Saved. He knows it from his next conversation.'
+const SAVED_OFF = 'Saved. He does not use it while memory is off.'
+// Every action here shows its own errors, in place or as a toast.
+const OWN_ERRORS = { meta: { showsErrors: true } }
 
 /** What a save returns: why it was refused, or null. */
 type Result = Promise<string | null>
@@ -293,28 +298,43 @@ type Persona = { title: string; behaviour: string[]; instructions: string[] }
  * from here, never by a conversation. */
 function Behaviour({ query }: { query: string }) {
   const persona = $api.useQuery('get', '/api/persona')
-  const put = $api.useMutation('put', '/api/persona')
+  const put = $api.useMutation('put', '/api/persona', OWN_ERRORS)
   const [editing, setEditing] = useState<'behaviour' | 'instructions' | null>(null)
   const [open, setOpen] = useState(false)
   const p = persona.data
   if (!p) return null
 
-  const save = (next: Partial<Persona>): Result =>
+  const write = (next: Partial<Persona>): Result =>
     attempt(async () => {
       await put.mutateAsync({
         body: { behaviour: next.behaviour ?? p.behaviour, instructions: next.instructions ?? p.instructions },
       })
       void persona.refetch()
-      toast.success(SAVED)
     })
+  const save = async (next: Partial<Persona>): Result => {
+    const why = await write(next)
+    if (!why) toast.success(SAVED)
+    return why
+  }
+  // Undo puts the text from before back; kept here, so it works until the page reloads.
+  const undo = (key: 'behaviour' | 'instructions', before: string[]) => ({
+    label: 'Undo',
+    onClick: () => void save({ [key]: before }).then((why) => why && toast.error(why)),
+  })
   const replace = (list: string[], at: number, text: string | null) =>
     text === null ? list.filter((_, i) => i !== at) : list.map((l, i) => (i === at ? text : l))
   const remove = (key: 'behaviour' | 'instructions', at: number) => {
     const before = p[key]
-    void save({ [key]: replace(before, at, null) }).then((why) => {
+    void write({ [key]: replace(before, at, null) }).then((why) => {
       if (why) return toast.error(why)
-      toast(`Removed: ${before[at]}`, { action: { label: 'Undo', onClick: () => void save({ [key]: before }) } })
+      toast(`Removed: ${before[at]}`, { action: undo(key, before) })
     })
+  }
+  const saveAll = async (key: 'behaviour' | 'instructions', lines: string[]): Result => {
+    const before = p[key]
+    const why = await write({ [key]: lines })
+    if (!why) toast(SAVED, { action: undo(key, before) })
+    return why
   }
 
   const rules = p.behaviour.map((r, i) => ({ r, i })).filter(({ r }) => has(r, query))
@@ -336,7 +356,7 @@ function Behaviour({ query }: { query: string }) {
         <EditAll
           lines={p.behaviour}
           label="How he behaves"
-          onSave={(l) => save({ behaviour: l })}
+          onSave={(l) => saveAll('behaviour', l)}
           onClose={() => setEditing(null)}
         />
       ) : (
@@ -385,7 +405,7 @@ function Behaviour({ query }: { query: string }) {
             <EditAll
               lines={p.instructions}
               label="Technical instructions"
-              onSave={(l) => save({ instructions: l })}
+              onSave={(l) => saveAll('instructions', l)}
               onClose={() => setEditing(null)}
             />
           ) : open || query ? (
@@ -517,14 +537,14 @@ export default function MemoryPage() {
   const ask = useConfirm()
   const status = $api.useQuery('get', '/api/status')
   const memory = $api.useQuery('get', '/api/memory')
-  const add = $api.useMutation('post', '/api/memory/{topic}')
-  const edit = $api.useMutation('put', '/api/memory/{topic}')
-  const forget = $api.useMutation('delete', '/api/memory/{topic}')
-  const all = $api.useMutation('put', '/api/memory/{topic}/all')
-  const addTopic = $api.useMutation('post', '/api/memory/topics')
-  const renameTopic = $api.useMutation('put', '/api/memory/topics/{topic}')
-  const deleteTopic = $api.useMutation('delete', '/api/memory/topics/{topic}')
-  const restoreTopic = $api.useMutation('post', '/api/memory/topics/{topic}/restore')
+  const add = $api.useMutation('post', '/api/memory/{topic}', OWN_ERRORS)
+  const edit = $api.useMutation('put', '/api/memory/{topic}', OWN_ERRORS)
+  const forget = $api.useMutation('delete', '/api/memory/{topic}', OWN_ERRORS)
+  const all = $api.useMutation('put', '/api/memory/{topic}/all', OWN_ERRORS)
+  const addTopic = $api.useMutation('post', '/api/memory/topics', OWN_ERRORS)
+  const renameTopic = $api.useMutation('put', '/api/memory/topics/{topic}', OWN_ERRORS)
+  const deleteTopic = $api.useMutation('delete', '/api/memory/topics/{topic}', OWN_ERRORS)
+  const restoreTopic = $api.useMutation('post', '/api/memory/topics/{topic}/restore', OWN_ERRORS)
   const [search, setSearch] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const query = search.trim().toLowerCase()
@@ -539,7 +559,7 @@ export default function MemoryPage() {
     attempt(async () => {
       await run()
       refresh()
-      toast.success(SAVED)
+      toast.success(memory.data?.enabled === false ? SAVED_OFF : SAVED)
     })
   const act: Actions = {
     add: (topic, fact) => saved(() => add.mutateAsync({ params: { path: { topic } }, body: { fact } })),
@@ -639,8 +659,19 @@ export default function MemoryPage() {
           </label>
           <NewTopic onCreate={createTopic} />
         </div>
+        {data?.enabled === false ? (
+          <span className="-mt-3 px-4 text-muted-foreground">
+            He does not use these while memory is off. Turn it on in{' '}
+            <Link to="/tools" className="underline underline-offset-4 hover:text-foreground">
+              Tools
+            </Link>
+            .
+          </span>
+        ) : null}
 
-        {!data ? (
+        {!data && memory.isError ? (
+          <LoadError error={memory.error} retrying={memory.isFetching} onRetry={refresh} />
+        ) : !data ? (
           <div className="flex flex-col gap-3">
             <Skeleton className="h-6 w-32" />
             <Skeleton className="h-5 w-full" />

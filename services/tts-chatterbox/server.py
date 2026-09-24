@@ -72,11 +72,19 @@ def _mtime(path: Path) -> float | None:
         return None
 
 
+def _clip_path(name: str) -> Path:
+    """The clip a voice name means, refused (400) unless it stays under --voices-dir."""
+    parts = Path(name).parts
+    if "\\" in name or "\0" in name or Path(name).is_absolute() or ".." in parts or not parts:
+        raise HTTPException(400, f"voice {name!r} is not a clip name under the voices directory")
+    return (_voices_dir / name).with_suffix(".wav")
+
+
 def _resolve_voice(name: str | None) -> str:
     # OpenAI clients validate voice names against OpenAI's list, so any of those means "the default clip"
     if not name or name in _OPENAI_VOICES:
         return _default_voice
-    path = (_voices_dir / name).with_suffix(".wav")
+    path = _clip_path(name)
     if name in _conds and (name == _default_voice or _mtimes.get(name) == _mtime(path)):
         _conds[name] = _conds.pop(name)      # most recently used goes last
         return name

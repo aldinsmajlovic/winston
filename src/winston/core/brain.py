@@ -114,7 +114,7 @@ class Brain:
         self._mcp: MCPClient | None = None
 
     async def start(self):
-        ha = self.cfg.providers.home_assistant
+        ha = self.cfg.providers.ha
         if ha is not None:
             token = os.environ.get(ha.token_env)
             if not token:

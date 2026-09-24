@@ -1,5 +1,7 @@
 import { Circle, CircleAlert, CircleCheck, CircleX, LoaderCircle, RefreshCw } from 'lucide-react'
 import type { EngineState } from '@/api/client'
+import { KindIcon } from '@/components/kind-icon'
+import type { DriverChoice } from '@/hooks/use-drivers'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 
@@ -36,5 +38,16 @@ export function ChangedIcon() {
       </TooltipTrigger>
       <TooltipContent>Saved config waits for a restart</TooltipContent>
     </Tooltip>
+  )
+}
+
+/** How an engine is run, with the icon and label the config schema gives it. */
+export function DriverLabel({ driver, drivers }: { driver: string; drivers: DriverChoice[] }) {
+  const d = drivers.find((x) => x.value === driver)
+  return (
+    <span className="flex items-center gap-2">
+      <KindIcon name={d?.icon} className="text-muted-foreground" />
+      {d?.label ?? driver}
+    </span>
   )
 }

@@ -4,7 +4,8 @@ engine a change restarts (json_schema_extra: level, restarts; engine fields also
 
 Restart metadata lives on the field when one field is special, else on the model: a section's
 `restarts` applies to every field in it, nested sections included, unless a field says otherwise.
-"{engine}" stands for the engine an EngineConfig belongs to."""
+"{engine}" stands for the engine an EngineConfig belongs to, "{brains}" for every channel that runs a brain
+(voice, discord, satellite); the web channel lives in winstond and is rebuilt on every save."""
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,7 +28,7 @@ class Model(BaseModel):
 
 
 class AssistantConfig(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     name: str = Field("Winston", description="What the assistant calls itself.")
     persona: str = Field("persona.md", title="Persona file",
                          description="Persona file, relative to the data directory.",
@@ -38,7 +39,7 @@ class AssistantConfig(Model):
 
 
 class RegionConfig(Model):
-    model_config = section("voice", "discord", "satellite")
+    model_config = section("{brains}")
     temperature: Literal["auto", "celsius", "fahrenheit"] = Field(
         "auto", description="Degrees he speaks in. Auto follows Home Assistant's unit system.",
         json_schema_extra=ui(labels={"auto": "Same as Home Assistant", "celsius": "Celsius", "fahrenheit": "Fahrenheit"}))
@@ -107,7 +108,7 @@ class EngineConfig(Model):
 
 
 class Sampling(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     temperature: float = Field(0.3, ge=0, le=2, description="Lower is more reliable at tool calls.",
                                json_schema_extra=ui("advanced"))
     top_p: float = Field(0.8, ge=0, le=1, title="Top-p",
@@ -124,7 +125,7 @@ class Sampling(Model):
 
 
 class Thinking(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     voice: bool = Field(False, description="Reasoning before answering on the voice channel. Costs seconds.")
     text: bool = Field(True, description="Reasoning on text channels. Much better at multi-part requests.")
     control: Literal["chat_template", "reasoning_effort", "none"] = Field(
@@ -135,7 +136,7 @@ class Thinking(Model):
 
 
 class LLMConfig(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     provider: Literal["openai_compatible"] = Field("openai_compatible",
                                                    description="Protocol the brain is spoken to with. Every "
                                                                "supported server speaks the OpenAI chat API.",
@@ -148,13 +149,17 @@ class LLMConfig(Model):
                                     description="Environment variable holding the API key. Unset for local servers.",
                                     json_schema_extra=ui("advanced", options="env"))
     model: str = Field(description="Model name as the server knows it.",
-                       json_schema_extra=ui(restarts=["llm", "voice", "discord"], options="llm_models"))
-    sampling: Sampling = Sampling()
-    thinking: Thinking = Thinking()
+                       json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models"))
+    sampling: Sampling = Field(Sampling(), title="Sampling",
+                               description="How the brain picks its words. The defaults suit tool calls; change "
+                                           "them only to fix a specific habit.")
+    thinking: Thinking = Field(Thinking(), title="Thinking",
+                               description="Whether the brain reasons before it answers, per kind of channel. "
+                                           "Better answers to hard requests, at the cost of time.")
 
 
 class STTConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "satellite")
     provider: str = Field("parakeet",
                           description="Speech-to-text adapter.", json_schema_extra=ui(options="stt_adapters"))
     model: str = Field("nemo-parakeet-tdt-0.6b-v3",
@@ -195,7 +200,7 @@ class TTSStreamingConfig(Model):
 
 
 class TTSConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", "satellite")
     provider: Literal["openai_speech"] = Field("openai_speech", description="Text-to-speech adapter.",
                                               json_schema_extra=ui("advanced", labels={"openai_speech": "OpenAI speech protocol"}))
     base_url: str = Field("http://127.0.0.1:8880/v1", title="Base URL",
@@ -210,7 +215,9 @@ class TTSConfig(Model):
                        json_schema_extra=ui(options="voices"))
     sample_rate: int = Field(24000, title="Sample rate", description="Audio rate the speech server returns, in Hz.",
                              json_schema_extra=ui("advanced"))
-    streaming: TTSStreamingConfig = Field(default_factory=TTSStreamingConfig, title="Streaming")
+    streaming: TTSStreamingConfig = Field(default_factory=TTSStreamingConfig, title="Streaming",
+                                          description="How speech is cut into chunks so he starts talking "
+                                                      "before a sentence is fully rendered.")
 
 
 class VADConfig(Model):
@@ -229,7 +236,8 @@ class VADConfig(Model):
 
 class VoiceChannel(Model):
     model_config = section("voice")
-    enabled: bool = Field(True, description="Talk to Winston by voice from the browser and, later, satellites.")
+    enabled: bool = Field(True, description="Talk to Winston by voice from the browser. Room satellites have "
+                                            "their own channel.")
     host: str = Field("127.0.0.1",
                       description="Address the voice channel listens on. 127.0.0.1 keeps it on this machine; "
                                   "winstond passes the browser's offer to it.",
@@ -251,7 +259,7 @@ class DiscordChannel(Model):
     session_idle_mins: int = Field(30, ge=1, title="Conversation resets after (min)",
                                    description="Idle minutes before a DM conversation starts fresh (and re-reads memory).",
                                    json_schema_extra=ui("advanced"))
-    contacts: dict[str, str] = Field(default_factory=dict, json_schema_extra=ui(restarts=["voice", "discord"]),
+    contacts: dict[str, str] = Field(default_factory=dict, json_schema_extra=ui(restarts=["{brains}"]),
                                      description="People Winston may message, name -> Discord user id. The bot can "
                                                  "only reach people who share a server with it.")
 
@@ -306,17 +314,23 @@ class Channels(Model):
 
 
 class ExposedEntity(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     name: str | None = Field(None, description="Friendly name to set in Home Assistant.")
     aliases: list[str] = Field(default_factory=list, description="Other names people say for it.")
 
 
 class HomeAssistantConfig(Model):
-    model_config = section("voice", "discord")
-    url: str = Field(title="URL", description="Home Assistant base URL on the LAN.")
+    model_config = section("{brains}")
+    # winstond listens for announcement events with these at start, so they also restart control
+    enabled: bool = Field(True, description="Connect Winston to Home Assistant: its devices as tools, sensors, "
+                                            "units and announcement events. Off keeps the settings without using "
+                                            "them.",
+                          json_schema_extra=ui(restarts=["{brains}", "control"]))
+    url: str = Field(title="URL", description="Home Assistant base URL on the LAN.",
+                     json_schema_extra=ui(restarts=["{brains}", "control"]))
     token_env: str = Field("HA_TOKEN", title="Token variable",
                            description="Environment variable holding the long-lived token.",
-                           json_schema_extra=ui("advanced", options="env"))
+                           json_schema_extra=ui("advanced", restarts=["{brains}", "control"], options="env"))
     mcp_path: str = Field("/api/mcp", title="MCP path", description="Path of Home Assistant's MCP server integration.",
                           json_schema_extra=ui("advanced"))
     expose: dict[str, ExposedEntity] = Field(default_factory=dict, title="Entities",
@@ -328,11 +342,19 @@ class HomeAssistantConfig(Model):
 
 
 class Providers(Model):
-    home_assistant: HomeAssistantConfig | None = Field(None, title="Home Assistant")
+    home_assistant: HomeAssistantConfig | None = Field(None, title="Home Assistant",
+                                                        description="The Home Assistant Winston sees and controls. "
+                                                                    "Unset: no smart home.")
+
+    @property
+    def ha(self) -> HomeAssistantConfig | None:
+        """Home Assistant when it is configured and switched on, else None. Every consumer reads this."""
+        ha = self.home_assistant
+        return ha if ha is not None and ha.enabled else None
 
 
 class SensorPair(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     level: str = Field(title="Value sensor", description="Entity id of the value sensor.",
                        json_schema_extra=ui(options="ha_entities", options_query={"domain": "sensor"}))
     state: str | None = Field(None, title="State sensor",
@@ -342,7 +364,7 @@ class SensorPair(Model):
 
 
 class WebSearchConfig(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     enabled: bool = Field(False, description="Let Winston look up current facts on the web. Only the search question "
                                              "leaves the house.")
     provider: Literal["gemini"] = Field("gemini", description="Search backend. gemini: Gemini with Google Search "
@@ -366,7 +388,7 @@ class WebSearchConfig(Model):
 
 
 class AskClaudeConfig(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     enabled: bool = Field(False,
                           description="Hand hard questions to Claude. Uses the Claude Code login on this machine, "
                                              "CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. "
@@ -386,15 +408,17 @@ class AskClaudeConfig(Model):
 
 
 class ToolsConfig(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     sensors: dict[str, SensorPair] = Field(default_factory=dict,
                                            description="Watched sensors by label; readings come with their age.")
-    web_search: WebSearchConfig = Field(WebSearchConfig(), title="Web search")
-    ask_claude: AskClaudeConfig = Field(AskClaudeConfig(), title="Ask Claude")
+    web_search: WebSearchConfig = Field(WebSearchConfig(), title="Web search",
+                                        description="A cloud search for current facts: news, opening hours, prices.")
+    ask_claude: AskClaudeConfig = Field(AskClaudeConfig(), title="Ask Claude",
+                                        description="Claude in the cloud for questions too hard for the local brain.")
 
 
 class MemoryConfig(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     enabled: bool = Field(True,
                           description="Load remembered facts into every new conversation and offer the remember tool.")
     dir: str = Field("memory", title="Directory",
@@ -428,7 +452,7 @@ class AnnounceConfig(Model):
 
 
 class LoggingConfig(Model):
-    model_config = section("voice", "discord")
+    model_config = section("{brains}")
     tool_calls: str = Field("logs/tool_calls.jsonl", title="Tool calls",
                             description="Every tool call with its arguments and result, one JSON line each, "
                                         "relative to the data directory.",
@@ -449,7 +473,8 @@ class ControlConfig(Model):
 
 
 class WinstonConfig(Model):
-    version: int = Field(1, json_schema_extra=ui("advanced"))
+    version: int = Field(1, description="Config file format version. Winston sets it.",
+                         json_schema_extra=ui("advanced"))
     assistant: AssistantConfig = AssistantConfig()
     region: RegionConfig = Field(default_factory=RegionConfig, title="Region")
     engines: dict[str, EngineConfig] = Field(default_factory=dict)

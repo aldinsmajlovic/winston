@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from winston.config import data_dir, repo_root
 from winston.config.registry import available
 from winston.config.schema import WinstonConfig
+from winston.core.voices import clones
 
 TIMEOUT = 4
 
@@ -114,22 +115,40 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
 
 async def _voices(cfg: WinstonConfig, params: dict) -> Options:
     url = (params.get("base_url") or cfg.tts.base_url).rstrip("/").removesuffix("/v1")
-    choices: list[Choice] = []
-    voices = data_dir() / "voices"
-    for wav in sorted(voices.rglob("*.wav")) if voices.is_dir() else []:
-        rel = str(wav.relative_to(voices).with_suffix(""))
-        choices.append(Choice(value=rel, label=rel, group="Your clips"))
-    if url.startswith(("http://127.", "http://localhost")):
-        # Local servers map OpenAI's voice names to their default clip.
-        choices.insert(0, Choice(value="onyx", label="Server default", hint="onyx"))
+    local = url.startswith(("http://127.", "http://localhost"))
+    health: dict = {}
     ok = True
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(url + "/health")
-        for v in r.json().get("builtin_voices", []) if r.status_code == 200 else []:
-            choices.append(Choice(value=v, label=v.capitalize(), group="Built in"))
+        health = r.json() if r.status_code == 200 else {}
     except Exception:                                                   # noqa: BLE001
         ok = False
+    default = health.get("default_voice") if local else None
+    voices = data_dir() / "voices"
+    # A clone is listed by the friend's name; its consent recording is a record, never a voice.
+    cloned = {c.voice: c for c in clones()}
+    consent = {f"friends/{c.slug}.consent" for c in cloned.values()}
+    choices: list[Choice] = []
+    for wav in sorted(voices.rglob("*.wav")) if voices.is_dir() else []:
+        rel = wav.relative_to(voices).with_suffix("").as_posix()
+        if rel in consent or rel in cloned or (rel.startswith("friends/") and rel.endswith(".consent")):
+            continue
+        choices.append(Choice(value=rel, label=rel, group="Your clips",
+                              hint="server default" if rel == default else None))
+    for v, c in cloned.items():
+        choices.append(Choice(value=v, label=c.name, group="Cloned voices",
+                              hint="cloned, server default" if v == default else "cloned"))
+    if local:
+        # Local servers map OpenAI's voice names to their default clip.
+        builtin = health.get("builtin_voices", [])
+        name = cloned[default].name if default in cloned else \
+            default.capitalize() if default in builtin else default
+        choices.insert(0, Choice(value="onyx", label=f"Server default: {name}" if name else "Server default",
+                                 hint="onyx"))
+    for v in health.get("builtin_voices", []):
+        choices.append(Choice(value=v, label=v.capitalize(), group="Built in",
+                              hint="server default" if v == default else None))
     return Options(name="voices", choices=choices, source=f"{voices} and {url}", ok=ok)
 
 
@@ -176,11 +195,21 @@ async def _claude_models(cfg: WinstonConfig, params: dict) -> Options:
         return fallback
 
 
+def _ha(cfg: WinstonConfig):
+    """The Home Assistant settings, or None when there are none or they are switched off."""
+    return cfg.providers.ha
+
+
+def _ha_off(cfg: WinstonConfig) -> bool:
+    return cfg.providers.home_assistant is not None and cfg.providers.ha is None
+
+
 async def _ha_states(cfg: WinstonConfig, params: dict) -> tuple[list[dict], str]:
+    # Switched off, the saved URL is not used; a URL the UI passes for a draft still is.
     ha = cfg.providers.home_assistant
-    url = (params.get("base_url") or (ha.url if ha else "")).rstrip("/")
+    url = (params.get("base_url") or (ha.url if _ha(cfg) else "")).rstrip("/")
     if not url:
-        raise RuntimeError("Home Assistant is not configured")
+        raise RuntimeError("Home Assistant is turned off" if _ha_off(cfg) else "Home Assistant is not configured")
     token = _secret(ha.token_env if ha else "HA_TOKEN")
     if not token:
         raise RuntimeError(f"{ha.token_env if ha else 'HA_TOKEN'} is not set")
@@ -246,10 +275,10 @@ async def options(name: str, cfg: WinstonConfig, params: dict) -> Options | None
 async def check_home_assistant(cfg: WinstonConfig, url: str | None) -> HomeAssistantCheck:
     """Can Winston reach Home Assistant with its token, and which one is it."""
     ha = cfg.providers.home_assistant
-    url = (url or (ha.url if ha else "")).rstrip("/")
+    url = (url or (ha.url if _ha(cfg) else "")).rstrip("/")
     env = ha.token_env if ha else "HA_TOKEN"
     if not url:
-        return HomeAssistantCheck(ok=False, detail="No URL")
+        return HomeAssistantCheck(ok=False, detail="Turned off" if _ha_off(cfg) else "No URL")
     if not (token := _secret(env)):
         return HomeAssistantCheck(ok=False, detail=f"{env} is not set")
     try:
