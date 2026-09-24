@@ -16,6 +16,14 @@ Besides Home Assistant's own tools (over its MCP server), Winston has these. All
 Only the question text leaves the house for `web_search` and `ask_claude`: no home state, no memory.
 Answers come back marked as information, never instructions.
 
+## Region
+
+`region` in config (the Assistant page) sets the units and formats he speaks in: temperature, metric
+or imperial, the clock, dates, and the home's currency. Each defaults to "same as Home Assistant",
+read from its unit system, country and currency. It goes into the system prompt when a conversation
+starts, and he converts what tools and web searches return. Prices in another currency are said as
+they are, never with a guessed exchange rate.
+
 ## Memory
 
 Facts are `- ` lines in `data/memory/preferences.md`, `people.md` and `projects.md` (any `.md` there is

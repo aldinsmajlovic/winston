@@ -1005,6 +1005,43 @@ export interface components {
             /** Home Assistant */
             home_assistant?: components["schemas"]["HomeAssistantConfig"] | null;
         };
+        /** RegionConfig */
+        RegionConfig: {
+            /**
+             * Temperature
+             * @description Degrees he speaks in. Auto follows Home Assistant's unit system.
+             * @default auto
+             * @enum {string}
+             */
+            temperature?: "auto" | "celsius" | "fahrenheit";
+            /**
+             * Units
+             * @description Kilometres, kilograms and litres, or miles, pounds and gallons.
+             * @default auto
+             * @enum {string}
+             */
+            distance?: "auto" | "metric" | "imperial";
+            /**
+             * Clock
+             * @description How he says the time. Auto follows the country set in Home Assistant.
+             * @default auto
+             * @enum {string}
+             */
+            time_format?: "auto" | "24h" | "12h";
+            /**
+             * Dates
+             * @description Day or month first. Auto follows the country set in Home Assistant.
+             * @default auto
+             * @enum {string}
+             */
+            date_format?: "auto" | "day_month" | "month_day";
+            /**
+             * Currency
+             * @description Currency for prices, like SEK or EUR. Empty follows Home Assistant.
+             * @default
+             */
+            currency?: string;
+        };
         /** STTConfig */
         STTConfig: {
             /**
@@ -1393,6 +1430,8 @@ export interface components {
              *     }
              */
             assistant?: components["schemas"]["AssistantConfig"];
+            /** Region */
+            region?: components["schemas"]["RegionConfig"];
             /** Engines */
             engines?: {
                 [key: string]: components["schemas"]["EngineConfig"];

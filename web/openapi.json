@@ -2092,6 +2092,92 @@
         "type": "object",
         "title": "Providers"
       },
+      "RegionConfig": {
+        "properties": {
+          "temperature": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "celsius",
+              "fahrenheit"
+            ],
+            "title": "Temperature",
+            "description": "Degrees he speaks in. Auto follows Home Assistant's unit system.",
+            "default": "auto",
+            "labels": {
+              "auto": "Same as Home Assistant",
+              "celsius": "Celsius",
+              "fahrenheit": "Fahrenheit"
+            },
+            "level": "basic"
+          },
+          "distance": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "metric",
+              "imperial"
+            ],
+            "title": "Units",
+            "description": "Kilometres, kilograms and litres, or miles, pounds and gallons.",
+            "default": "auto",
+            "labels": {
+              "auto": "Same as Home Assistant",
+              "imperial": "Imperial (miles, pounds, gallons)",
+              "metric": "Metric (km, kg, litres)"
+            },
+            "level": "basic"
+          },
+          "time_format": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "24h",
+              "12h"
+            ],
+            "title": "Clock",
+            "description": "How he says the time. Auto follows the country set in Home Assistant.",
+            "default": "auto",
+            "labels": {
+              "12h": "12-hour (half past five)",
+              "24h": "24-hour (seventeen thirty)",
+              "auto": "Same as the country"
+            },
+            "level": "basic"
+          },
+          "date_format": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "day_month",
+              "month_day"
+            ],
+            "title": "Dates",
+            "description": "Day or month first. Auto follows the country set in Home Assistant.",
+            "default": "auto",
+            "labels": {
+              "auto": "Same as the country",
+              "day_month": "24 September",
+              "month_day": "September 24"
+            },
+            "level": "basic"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "description": "Currency for prices, like SEK or EUR. Empty follows Home Assistant.",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "RegionConfig",
+        "restarts": [
+          "voice",
+          "discord",
+          "satellite"
+        ]
+      },
       "STTConfig": {
         "properties": {
           "provider": {
@@ -2787,6 +2873,10 @@
               "persona": "persona.md",
               "language": "English"
             }
+          },
+          "region": {
+            "$ref": "#/components/schemas/RegionConfig",
+            "title": "Region"
           },
           "engines": {
             "additionalProperties": {

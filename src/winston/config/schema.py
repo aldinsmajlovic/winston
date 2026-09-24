@@ -37,6 +37,26 @@ class AssistantConfig(Model):
                                       "Match it to the voice: Chatterbox-Turbo speaks only English.")
 
 
+class RegionConfig(Model):
+    model_config = section("voice", "discord", "satellite")
+    temperature: Literal["auto", "celsius", "fahrenheit"] = Field(
+        "auto", description="Degrees he speaks in. Auto follows Home Assistant's unit system.",
+        json_schema_extra=ui(labels={"auto": "Same as Home Assistant", "celsius": "Celsius", "fahrenheit": "Fahrenheit"}))
+    distance: Literal["auto", "metric", "imperial"] = Field(
+        "auto", title="Units", description="Kilometres, kilograms and litres, or miles, pounds and gallons.",
+        json_schema_extra=ui(labels={"auto": "Same as Home Assistant", "metric": "Metric (km, kg, litres)",
+                                     "imperial": "Imperial (miles, pounds, gallons)"}))
+    time_format: Literal["auto", "24h", "12h"] = Field(
+        "auto", title="Clock", description="How he says the time. Auto follows the country set in Home Assistant.",
+        json_schema_extra=ui(labels={"auto": "Same as the country", "24h": "24-hour (seventeen thirty)",
+                                     "12h": "12-hour (half past five)"}))
+    date_format: Literal["auto", "day_month", "month_day"] = Field(
+        "auto", title="Dates", description="Day or month first. Auto follows the country set in Home Assistant.",
+        json_schema_extra=ui(labels={"auto": "Same as the country", "day_month": "24 September",
+                                     "month_day": "September 24"}))
+    currency: str = Field("", description="Currency for prices, like SEK or EUR. Empty follows Home Assistant.")
+
+
 class EngineConfig(Model):
     """A heavy process Winston depends on: LLM server, TTS server, later STT. Managed by the supervisor."""
     model_config = section("{engine}")
@@ -431,6 +451,7 @@ class ControlConfig(Model):
 class WinstonConfig(Model):
     version: int = Field(1, json_schema_extra=ui("advanced"))
     assistant: AssistantConfig = AssistantConfig()
+    region: RegionConfig = Field(default_factory=RegionConfig, title="Region")
     engines: dict[str, EngineConfig] = Field(default_factory=dict)
     llm: LLMConfig = Field(title="Brain")
     stt: STTConfig = Field(STTConfig(), title="Speech to text")

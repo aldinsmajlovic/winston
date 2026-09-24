@@ -27,6 +27,8 @@ be swapped for a hosted service when that suits you better.
 - **Clones a friend's voice by asking.** "Clone my friend's voice": they agree out loud, talk for fifteen
   seconds, and Winston speaks as them until you ask for his own voice back.
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git.
+- **Speaks your region.** Celsius or Fahrenheit, metric or imperial, 24- or 12-hour clock, taken from Home
+  Assistant unless you pick otherwise; answers from the web are converted.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
   capped per day.
 - **Speaks on its own.** A Home Assistant automation says "the washing machine is done": a chime, the
