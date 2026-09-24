@@ -152,6 +152,59 @@ test('Save only leaves a Restart button for the running engine', async ({ page }
   await expect(header.getByRole('button', { name: 'Restart' })).toBeVisible()
 })
 
+test('the brain model lists running and downloaded models, and a model not on disk costs a download', async ({ page }) => {
+  // The brain as running, so a model change restarts it, and a cache with one quant it can load and one it cannot.
+  const running = { name: 'llm', kind: 'engine', driver: 'docker', state: 'healthy', detail: '', since: 0, port: 8000,
+    startup_timeout: 900, started_in: 12, config_changed: false }
+  await page.route('**/api/status/stream', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' }))
+  await page.route('**/api/status', async (route) => {
+    const status = (await (await route.fetch()).json()) as { engines: unknown[] }
+    await route.fulfill({ json: { ...status, engines: [...status.engines, running] } })
+  })
+  // The copy's brain is switched off, so winstond would not name it among the restarts.
+  await page.route('**/api/config?*dry_run=true*', async (route) => {
+    const result = (await (await route.fetch()).json()) as { restarts: string[] }
+    await route.fulfill({ json: { ...result, restarts: [...new Set([...result.restarts, 'llm'])] } })
+  })
+  await page.route('**/api/options/llm_models?*', (route) =>
+    route.fulfill({
+      json: {
+        name: 'llm_models', ok: true, source: 'fake', served_by: 'llamacpp',
+        choices: [
+          { value: 'smoke/Running-GGUF:Q4_K_M', label: 'smoke/Running-GGUF:Q4_K_M', hint: '5.1 GB', group: 'Running' },
+          { value: 'smoke/Other-GGUF:Q8_0', label: 'smoke/Other-GGUF:Q8_0', hint: '9.0 GB', group: 'Downloaded' },
+          { value: 'smoke/Safe-AWQ', label: 'smoke/Safe-AWQ', hint: '6.2 GB, vLLM only', group: 'Downloaded', disabled: true },
+        ],
+      },
+    }),
+  )
+  const errors = watchErrors(page)
+  await open(page, '/brain')
+  const header = page.locator('header')
+  const dialog = page.getByRole('alertdialog')
+
+  await page.locator('#cfg_llm_model').click()
+  await expect(page.getByRole('group', { name: 'Running' })).toContainText('smoke/Running-GGUF:Q4_K_M')
+  await expect(page.getByRole('group', { name: 'Downloaded' })).toContainText('9.0 GB')
+  await expect(page.getByRole('option', { name: /smoke\/Safe-AWQ/ })).toHaveAttribute('aria-disabled', 'true')
+
+  // On disk: the restart costs what it did last time.
+  await page.getByRole('option', { name: /smoke\/Other-GGUF:Q8_0/ }).click()
+  await header.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog).toContainText('Llm: about 12 s')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+
+  // Not on disk: the engine downloads it first, and the size is not known without asking the Hub.
+  await page.locator('#cfg_llm_model').click()
+  await page.getByPlaceholder('Search').fill('smoke/New-GGUF:Q4_K_M')
+  await page.getByRole('option', { name: 'Use smoke/New-GGUF:Q4_K_M' }).click()
+  await header.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog).toContainText('Llm: downloads the model first, size unknown, so it may take many minutes')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: 'Discard changes' }).click()
+  expect(errors).toEqual([])
+})
+
 test('the Voice page plays the unsaved voice and streaming, and not an unsaved engine', async ({ page }) => {
   const bodies: Record<string, unknown>[] = []
   await page.route('**/api/speak', async (route) => {

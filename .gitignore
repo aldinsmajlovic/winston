@@ -18,3 +18,6 @@ tests/latency/results/
 samples/
 web/node_modules/
 web/dist/
+
+# The voice benchmark's copied clips, audio, results and listening page (tests/tts_bench/README.md)
+tests/tts_bench/work/

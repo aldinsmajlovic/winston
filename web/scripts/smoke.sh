@@ -64,6 +64,14 @@ if fake_ha:
     ha["expose"] = {"light.taklampa": {"name": "Ceiling lamp", "aliases": ["ceiling light"]},
                     "sensor.phone_battery": {"aliases": ["battery"]}}
     ha["expose_domains"] = ["person", "weather", "todo"]
+# The brain's model list reads the Hugging Face cache behind the llm volume: point it at a scratch
+# one (WINSTON_SMOKE_HF, or an empty folder in the copy), never the real cache.
+hf = os.environ.get("WINSTON_SMOKE_HF") or os.path.join(copy, "huggingface")
+os.makedirs(os.path.join(hf, "hub"), exist_ok=True)
+llm = cfg.get("engines", {}).get("llm")
+if isinstance(llm, dict):
+    vols = {h: c for h, c in (llm.get("volumes") or {}).items() if not str(c).rstrip("/").endswith("huggingface")}
+    llm["volumes"] = {hf: "/root/.cache/huggingface", **vols}
 # One engine the supervisor sees as running without starting anything: an external one nothing serves.
 cfg["engines"]["smoke"] = {"driver": "external", "port": 9, "url": "http://127.0.0.1:9", "health": "/health"}
 yaml.safe_dump(cfg, open(path, "w"), sort_keys=False)

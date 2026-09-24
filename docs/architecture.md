@@ -49,8 +49,15 @@ flowchart TB
   "done", "noted", "I've forgotten") needs a tool call in that turn or the one before. Looser wording ("is
   now", "is still", "turning") counts only when the sentence names something he can act on: an exposed
   Home Assistant name, alias or entity id, or a light word. A passive memory change ("has been removed",
-  "has been updated") counts only when no tool ran that turn. An unbacked claim is retracted aloud and in
-  the context, and every retraction is logged with what he heard. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
+  "has been updated") counts only when no tool ran that turn. The guard passes the reply on a sentence at a time (dropping a
+  stray `</think>` the model sometimes writes with thinking off) and judges each one as it finishes; the model calls tools before it speaks, so a backed claim goes straight
+  through. An unbacked claim is held back and never said. When a reply drops a claim, or ends on a
+  promise to act that no call kept ("Let me turn them on."), the guard asks the model once more with a
+  user-role note marked "not said by the user" (at most once per user turn; such notes, like
+  announcements, do not start a turn). If the retry fails too, he says a soft line instead ("Sorry, that
+  didn't go through. Shall I do it now?"). Channels wait for a pending retry before closing a reply, the
+  Talk page shows only what the guard let through, and every guard event is logged with what he heard,
+  `retried` and `retry_backed`. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
   starts; the `remember` tool adds to them.
 - **Adapters** (`winston/plugins`): Pipecat services with a settings model, discovered through Python
   entry points (`winston.stt`, `winston.tts`, ...). A third-party package adds one without touching core.

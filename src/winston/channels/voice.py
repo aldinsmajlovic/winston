@@ -240,7 +240,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         stt,                    # utterance -> text
         aggregators.user(),     # VAD + turn taking; text -> context
         brain.llm,              # context -> streamed text, tool calls
-        guard,                  # retracts claims no tool call backs
+        guard,                  # holds back claims no tool call backs, retries once
         tts,                    # sentences -> pcm
         transport.output(),     # speaker audio to the browser
         aggregators.assistant(),

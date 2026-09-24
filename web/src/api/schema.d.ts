@@ -815,6 +815,11 @@ export interface components {
             icon?: string | null;
             /** Group */
             group?: string | null;
+            /**
+             * Disabled
+             * @default false
+             */
+            disabled?: boolean;
         };
         /** ClaudeAuth */
         ClaudeAuth: {
@@ -1454,7 +1459,7 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Model
-             * @description Model name as the server knows it.
+             * @description Model name as the server knows it. Downloaded lists what the engine can load from this machine; any other model is downloaded when the brain restarts, and the brain is offline until the download ends.
              */
             model: string;
             /**
@@ -1651,6 +1656,8 @@ export interface components {
              * @default true
              */
             ok?: boolean;
+            /** Served By */
+            served_by?: string | null;
         };
         /** Persona */
         Persona: {
@@ -3538,6 +3545,8 @@ export interface operations {
                 domain?: string | null;
                 /** @description discord_users: a user id to look up */
                 q?: string | null;
+                /** @description llm_models: the draft brain engine block as JSON, to list the downloads it can load */
+                engine?: string | null;
             };
             header?: never;
             path: {

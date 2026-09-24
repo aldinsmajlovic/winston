@@ -853,8 +853,10 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def get_options(name: str,
                           base_url: str | None = Query(None, description="Server to ask instead of the saved one, for an unsaved draft"),
                           domain: str | None = Query(None, description="ha_entities: comma-separated domains to keep"),
-                          q: str | None = Query(None, description="discord_users: a user id to look up")):
-        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q})
+                          q: str | None = Query(None, description="discord_users: a user id to look up"),
+                          engine: str | None = Query(None, description="llm_models: the draft brain engine block as JSON, "
+                                                                       "to list the downloads it can load")):
+        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q, "engine": engine})
         if out is None:
             raise HTTPException(404, f"no options named {name}")
         return out

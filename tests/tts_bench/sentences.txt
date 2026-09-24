@@ -1,0 +1,25 @@
+# Twenty lines Winston actually said (data/logs/voice.log, 2026-09-23 and 24), made generic: no names
+# but his, the phone model and the town dropped, dashes turned into commas or colons. Short
+# acknowledgements, device answers with numbers, questions, and long chatty answers, as he talks.
+# The last two carry Chatterbox-Turbo's paralinguistic tags; a model without them may read the tag
+# aloud, which the word error rate catches (the tag is not in the reference words).
+Winston online.
+How can I help?
+Let me check.
+All lights are off.
+The washing machine is done.
+Your phone is at fifty-eight percent, reported twenty-six minutes ago.
+Would you like me to set the living room lights to fifty percent brightness instead?
+Warmed them up a touch, about 4500 kelvin now.
+The only lights I can control are in the main room: the ceiling lamp, the shelf lamp and the floor lamp.
+It's mostly cloudy today, around 59 to 60 degrees Fahrenheit.
+Fifty-eight percent is still decent, but sure, plug it in when you get a chance.
+Classic combo: sharp cheddar and a little Gruyère, buttered bread, medium-low heat, and a lid on for a couple of minutes so the cheese melts before the bread burns.
+Archaeologists have found pots of honey in ancient Egyptian tombs that are over three thousand years old, and it's still perfectly edible.
+It's a mockumentary sitcom set in a struggling paper company in Scranton, Pennsylvania.
+I'm not sure which show you mean. Could you say the name again?
+All the lights are already on. Which one would you like me to turn off?
+Sounds like a solid grilled cheese strategy.
+Thanks. Now talk to me for about fifteen seconds, about anything at all. I'll tell you when I have enough.
+[chuckle] Glad that amused you.
+[sigh] I couldn't find lights by that name. Could you tell me the exact name?

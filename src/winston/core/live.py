@@ -21,7 +21,7 @@ import httpx
 from loguru import logger
 from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame, FunctionCallResultFrame,
                                    FunctionCallsStartedFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
-                                   LLMTextFrame, TranscriptionFrame, TTSSpeakFrame, UserStartedSpeakingFrame,
+                                   LLMTextFrame, TranscriptionFrame, UserStartedSpeakingFrame,
                                    UserStoppedSpeakingFrame)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pydantic import BaseModel
@@ -128,7 +128,8 @@ def tool_label(name: str, args: dict | None, status: str) -> str:
 
 class LiveObserver(BaseObserver):
     """Turns one pipeline's frames into feed events. `spoken` channels get their idle and speaking
-    states from the bot's audio; text channels are idle when the reply ends and no tool is running."""
+    states from the bot's audio; text channels are idle when the reply ends, no tool is running and
+    no guard retry is coming. The reply is what the pipeline's ClaimGuard lets through."""
 
     def __init__(self, channel: str, sink: Callable[[LiveEvent], object], spoken: bool = False):
         super().__init__()
@@ -152,6 +153,10 @@ class LiveObserver(BaseObserver):
 
     async def on_push_frame(self, data: FramePushed):
         f = data.frame
+        # Reply text and its end count only as the claim guard passes them on, not on their way in:
+        # what it holds back is never said, and it may add to a reply before ending it.
+        if isinstance(f, (LLMTextFrame, LLMFullResponseEndFrame)) and isinstance(data.destination, ClaimGuard):
+            return
         if f.id in self._seen:
             return
         self._seen.append(f.id)
@@ -171,14 +176,9 @@ class LiveObserver(BaseObserver):
             if text:
                 self._reply = self._reply or uuid.uuid4().hex[:12]
                 self._emit("reply", reply=self._reply, text=text)
-        elif isinstance(f, TTSSpeakFrame) and isinstance(data.source, ClaimGuard):
-            self._end_reply()
-            rid = uuid.uuid4().hex[:12]
-            self._emit("reply", reply=rid, text=f.text)
-            self._emit("reply_end", reply=rid)
         elif isinstance(f, LLMFullResponseEndFrame):
             self._end_reply()
-            if not self._spoken and not self._calls:
+            if not self._spoken and not self._calls and not getattr(data.source, "retrying", False):
                 self._state("idle")
         elif isinstance(f, FunctionCallsStartedFrame):
             self._end_reply()

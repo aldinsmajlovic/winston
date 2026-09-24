@@ -1,0 +1,31 @@
+[project]
+name = "winston-tts-gepard"
+version = "0.1.0"
+description = "Benchmark candidate: OpenAI-compatible /v1/audio/speech server for Gepard 1.1 (nineninesix)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # the reference inference package (Apache-2.0), pinned to a commit: it is not on PyPI
+    "gepard[inference] @ git+https://github.com/nineninesix-ai/gepard-inference@eb87bc49ed75a806613168ed7eddb44b5ef1f737",
+    "nemo-toolkit[tts]==2.4.0",  # the NanoCodec decoder; the version upstream's setup script installs
+    "torch>=2.8",                # listed directly so the CUDA index below applies
+    "torchaudio>=2.8",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "numpy",
+    "soundfile",
+]
+
+[tool.uv]
+package = false
+# NeMo 2.4 caps transformers below what Gepard's Qwen3.5 backbone needs; upstream re-pins it after
+# NeMo the same way (scripts/lib/env_common.sh)
+override-dependencies = ["transformers==5.3.0"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

@@ -6,7 +6,15 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-export type Choice = { value: string; label: string; hint?: string | null; icon?: string | null; group?: string | null }
+export type Choice = {
+  value: string
+  label: string
+  hint?: string | null
+  icon?: string | null
+  group?: string | null
+  /** Listed but not pickable (greyed); the hint says why. */
+  disabled?: boolean
+}
 
 type Props = {
   id?: string
@@ -113,6 +121,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
                     key={c.value}
                     value={`${c.label} ${c.value}`}
                     data-checked={c.value === value}
+                    disabled={c.disabled}
                     onSelect={() => pick(c.value)}
                   >
                     <KindIcon name={c.icon} />

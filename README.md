@@ -42,7 +42,8 @@ be swapped for a hosted service when that suits you better.
   words, and you can ask a follow-up. Quiet hours send it to Discord instead.
 - **Discord.** Talk to Winston in DMs from anywhere, get announcements there, have it message friends.
 - **Swappable parts.** Every model is an adapter picked from a dropdown, with presets for vLLM, llama.cpp,
-  Ollama, hosted APIs, a GPU voice and a CPU voice. `winston check brain` compares two brains on the same
+  Ollama, hosted APIs, a GPU voice and a CPU voice; the model list shows what is running and what is
+  already downloaded. `winston check brain` compares two brains on the same
   requests.
 - **Settings that fill themselves in.** Models, voices and Home Assistant entities are dropdowns read
   from the servers that know them, not text you type. Keys are pasted once and never shown again, fields
@@ -107,7 +108,7 @@ flowchart LR
 - [Architecture](docs/architecture.md): the parts and how they plug together
 - [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks, Winston's logo and how it moves
 - [Hardware](docs/hardware.md): profiles and measured budgets
-- [Voices](docs/voices.md) and the [Voice PE satellite](docs/voice-pe.md)
+- [Voices](docs/voices.md), the [voice benchmark](docs/voices.md#benchmark) and the [Voice PE satellite](docs/voice-pe.md)
 - [Decisions](docs/decisions.md): what changed and why
 - [Writing docs](docs/writing-docs.md): how these pages are kept
 

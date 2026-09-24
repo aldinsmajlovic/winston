@@ -40,7 +40,7 @@ from pipecat.processors.aggregators.llm_response_universal import LLMContextAggr
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.workers.runner import WorkerRunner
 
-from winston.channels.text import QUIET_SECS, TurnTracker
+from winston.channels.text import TurnTracker
 from winston.channels.voice import LatencyLog, build_tts
 from winston.config import load
 from winston.config.registry import get as get_adapter
@@ -124,9 +124,9 @@ class Conversation:
         cfg = self.cfg
         self.brain = Brain(cfg, channel="satellite"); await self.brain.start()
         agg = LLMContextAggregatorPair(self.brain.new_context())
-        self.tracker = TurnTracker()
-        self.speaker = Speaker(cfg.tts.sample_rate)
         guard = ClaimGuard(cfg, channel="satellite")
+        self.tracker = TurnTracker(guard)             # a reply is not over while the guard retries
+        self.speaker = Speaker(cfg.tts.sample_rate)
         self.latency = LatencyLog(cfg, "satellite")
         self.worker = PipelineWorker(
             Pipeline([agg.user(), self.brain.llm, guard, build_tts(cfg), self.speaker, agg.assistant()]),
@@ -141,7 +141,7 @@ class Conversation:
     async def correct(self, text: str):
         """A state check found a device that did not do what he said (core/verify.py). Spoken into the
         reply that is still open, after what he said, without a chime. Without a transport the spoken
-        text never reaches the context, so it goes in as his own words, as the claim guard's does."""
+        text never reaches the context, so it goes in as his own words."""
         rid = uuid.uuid4().hex[:12]
         self.feed.put(LiveEvent(channel="satellite", type="reply", reply=rid, text=text))
         self.feed.put(LiveEvent(channel="satellite", type="reply_end", reply=rid))
@@ -166,8 +166,7 @@ class Conversation:
         t0 = time.perf_counter()
         while time.perf_counter() - t0 < timeout:
             await asyncio.sleep(0.1)
-            t = self.tracker
-            if t.last_end and not t.pending and time.perf_counter() - t.last_end > QUIET_SECS:
+            if self.tracker.over:
                 break
         t1 = time.perf_counter()
         while self.speaker.busy and time.perf_counter() - t1 < 30:     # the last sentence is still being spoken

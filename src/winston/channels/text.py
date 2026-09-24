@@ -7,8 +7,7 @@ from typing import Awaitable, Callable
 
 from loguru import logger
 from pipecat.frames.frames import (Frame, FunctionCallResultFrame, FunctionCallsStartedFrame,
-                                   LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame,
-                                   TTSSpeakFrame)
+                                   LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -25,11 +24,16 @@ QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-
 
 
 class TurnTracker(BaseObserver):
-    """Knows when a reply is really over: no LLM response end for QUIET_SECS and no tool call
-    still running. Observers see every frame, including the function-call frames that never
-    travel downstream past the LLM."""
-    def __init__(self):
-        super().__init__(); self.last_end = None; self.pending: set[str] = set()
+    """Knows when a reply is really over: no LLM response end for QUIET_SECS, no tool call still
+    running and no claim guard retry on its way. Observers see every frame, including the
+    function-call frames that never travel downstream past the LLM."""
+    def __init__(self, guard: ClaimGuard | None = None):
+        super().__init__(); self.last_end = None; self.pending: set[str] = set(); self.guard = guard
+
+    @property
+    def over(self) -> bool:
+        return bool(self.last_end and not self.pending and not (self.guard and self.guard.retrying)
+                    and time.perf_counter() - self.last_end > QUIET_SECS)
 
     async def on_push_frame(self, data: FramePushed):
         f = data.frame
@@ -54,18 +58,13 @@ class Printer(FrameProcessor):
                 if self._echo:
                     print(text, end="", flush=True)
                 self.buf.append(text)
-        elif isinstance(frame, TTSSpeakFrame):        # the claim guard's correction
-            if self._echo:
-                print(f"\n{frame.text}", end="", flush=True)
-            self.buf.append(f" {frame.text}")
         await self.push_frame(frame, direction)
 
     async def wait_reply(self, timeout=90) -> str:
         t0 = time.perf_counter(); self.buf = []; self._t.last_end = None
         while time.perf_counter() - t0 < timeout:
             await asyncio.sleep(0.1)
-            t = self._t
-            if t.last_end and not t.pending and time.perf_counter() - t.last_end > QUIET_SECS:
+            if self._t.over:
                 break
         if self._echo:
             print()
@@ -93,8 +92,8 @@ class TextSession:
         self.brain = Brain(cfg, channel="text"); await self.brain.start()
         self.brain.verifier.channel = self.channel          # its log says web or discord, not text
         agg = LLMContextAggregatorPair(self.brain.new_context())
-        self._tracker = TurnTracker(); self.printer = Printer(self._tracker, self.echo)
-        guard = ClaimGuard(cfg, channel=self.channel)
+        guard = ClaimGuard(cfg, channel=self.channel, spoken=False)
+        self._tracker = TurnTracker(guard); self.printer = Printer(self._tracker, self.echo)
         self._worker = PipelineWorker(Pipeline([agg.user(), self.brain.llm, guard, self.printer, agg.assistant()]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[guard.observer, self.brain.verifier.observer,

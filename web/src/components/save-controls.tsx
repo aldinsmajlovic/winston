@@ -1,5 +1,6 @@
 import { RefreshCw, RotateCcw, Save, Undo2 } from 'lucide-react'
-import { useSchema } from '@/api/config'
+import { $api, type EngineStatus } from '@/api/client'
+import { useConfig, useSchema } from '@/api/config'
 import { engineLabel, pendingRestarts, restartCost, useEngineActions, useStatus } from '@/api/status'
 import { IconButton } from '@/components/icon-button'
 import { Button } from '@/components/ui/button'
@@ -7,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirm } from '@/hooks/use-confirm'
+import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
 import { type JsonSchema } from '@/lib/schema'
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
@@ -28,11 +30,20 @@ function PendingRestart() {
   const schema = useSchema()
   const actions = useEngineActions()
   const ask = useConfirm()
+  const config = useConfig()
   const { running, stopped, control } = pendingRestarts(status.data)
+  // The saved brain model, when its restart waits: does the restart download it first.
+  const brain = running.some((e) => e.name === 'llm') && config.data
+  const models = $api.useQuery('get', '/api/options/{name}', optionsParams('llm_models', config.data || undefined), {
+    staleTime: 30_000,
+    enabled: !!brain,
+  })
+  const cost = (e: EngineStatus) =>
+    e.name === 'llm' && brain && mustDownload(models.data, brain.llm.model) ? DOWNLOAD_COST : restartCost(e)
   if (!running.length && !stopped.length && !control.length) return null
 
   const lines = [
-    ...running.map((e) => `${capitalize(engineLabel(e))}: ${restartCost(e)}`),
+    ...running.map((e) => `${capitalize(engineLabel(e))}: ${cost(e)}`),
     ...stopped.map((e) => `${capitalize(engineLabel(e))}: when it starts`),
     ...(control.length
       ? ['Applies on the next winston up', control.map((c) => controlLabel(c, schema.data)).join(', ')]
@@ -43,7 +54,7 @@ function PendingRestart() {
     const one = running.length === 1
     const choice = await ask({
       title: `Restart ${joinNames(running.map(engineLabel))}?`,
-      lines: one ? [capitalize(restartCost(running[0]))] : running.map((e) => `${capitalize(engineLabel(e))}: ${restartCost(e)}`),
+      lines: one ? [capitalize(cost(running[0]))] : running.map((e) => `${capitalize(engineLabel(e))}: ${cost(e)}`),
       choices: [{ label: 'Restart', value: 'yes' }],
     })
     if (!choice) return

@@ -212,3 +212,44 @@ tooltip), yours with a Remove x, and a box to add more; the (i) on Hint words sa
 engine does with them. `tests/hints_cases.py` (in `winston check unit`) checks the list, the
 corrections and 200 ordinary English sentences that must come through unchanged. "I modeled in" for
 "I'm" and a name is out of reach: every word in it is a common one.
+
+## Benchmark
+
+A voice to replace or sit beside Chatterbox-Turbo has to sound more human, start talking as soon,
+and fit on the card next to the 27B brain: about 6.3 GB once Chatterbox (3.6 GB) is stopped, since
+the brain keeps 16.9 GB and 2.8 GB is free while both run. `tests/tts_bench/` measures the candidates
+on Winston's own lines in the same three voices and builds a blind A/B listening page against Turbo;
+[its README](../tests/tts_bench/README.md) is the run procedure.
+
+The candidates, checked on 2026-09-24:
+
+| Candidate | Licence | Weights | Clones from | Streams | Out |
+| --- | --- | --- | --- | --- | --- |
+| Qwen3-TTS 1.7B Base (`qwen-tts` 0.1.1) | Apache-2.0 | 4.3 GB | a clip and its words | frame by frame, hooked in the server | 24 kHz |
+| VoxCPM2 (`voxcpm` 2.0.3) | Apache-2.0 | 4.7 GB | a clip and its words | yes, the package's own | 48 kHz |
+| Gepard 1.1 and 1.0 (nineninesix) | Apache-2.0, codec under NVIDIA's Open Model License | 1.1 GB each, codec 0.4 GB | a clip alone | frame by frame, hooked in the server | 22.05 kHz |
+| Pocket TTS (`services/tts-pocket`) | MIT code, CC BY 4.0 weights | 0.4 GB | a clip, with Kyutai's gated weights | yes | 24 kHz, CPU |
+
+Each runs in its own venv under `services/tts-candidates/<name>/` behind the same protocol as the
+Chatterbox server (`speech_server.py` there): `/v1/audio/speech` with raw PCM streamed or WAV, a
+voice being a clip under `--voices-dir` prepared on first use and cached, a per-request `stream`,
+and `/health` with the default and built-in voices. So any of them can be tried in Winston by
+pointing `tts.base_url` at it, with `tts.sample_rate` set to its rate. The engines that clone from
+the words take them from a `.txt` beside the clip, or transcribe the clip once with Parakeet.
+
+- Qwen3-TTS's package returns audio only at the end; the server takes each 80 ms frame from the
+  model as it is made and decodes as it goes, with the clip's own frames as left context. It has no
+  tags; its 0.6B sibling was left out for quality. The package was last released in February.
+- VoxCPM2 is the largest; upstream lists about 8 GB of VRAM, so it may not fit, and the benchmark
+  measures it. It has no bracket tags either, but takes a style in parentheses.
+- Gepard leads its own naturalness table (NISQA 4.25 against Chatterbox 4.19 on Seed-TTS-eval) but
+  trails on speaker similarity (0.59 against 0.80), so it may sound natural and less like the clip.
+  1.1 drops and invents fewer words than 1.0 at the same quality. Upstream serves it with vLLM; the
+  server runs the plain transformers loop, so its speed here is a floor.
+- Chatterbox-Flash (on Hugging Face since May) was left out: by Resemble's own numbers it is faster
+  than Turbo, not more natural.
+
+On the CPU (a 5800X, while the live engines held the GPU) all three new servers loaded, cloned
+`vctk/p254_023` and spoke streamed and whole, and Parakeet heard the words back: Gepard at a
+real-time factor of about 1.1 with the first audio after 0.75 s, Qwen3-TTS at about 6 and VoxCPM2 at
+about 20. These prove the servers, not the GPU speed the benchmark is for.

@@ -20,11 +20,12 @@ uv run winston check clone     # clone a synthetic friend's voice headless and s
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
 localhost: wake, request, streamed reply, a follow-up without the wake word, silence.
 
-`.venv/bin/python tests/conversations.py [name ...]` talks to the voice pipeline headless in sixteen
+`.venv/bin/python tests/conversations.py [name ...]` talks to the voice pipeline headless in eighteen
 scripted conversations (vague requests, things he cannot do, Swedish, talking over him, prompt
-injection and more) and prints each transcript: what speech-to-text heard, tool calls, what he said,
-guard corrections and time to first audio. Actions are stubbed, so the house and `data/` are
-untouched. It judges nothing; read the transcripts.
+injection, the claim guard's retry and more) and prints each transcript: what speech-to-text heard,
+tool calls, what he said (a failed retry's soft line included) and time to first audio. Actions are
+stubbed and the guard's records go to the temp dir, so the house and `data/` are untouched. It judges
+nothing; read the transcripts.
 
 Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs
 winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
@@ -88,15 +89,16 @@ blocks a plain `http://` page inside it, so Winston needs HTTPS too.
 Settings is the link at the top right. Status lists every engine and channel with how it runs, icon
 actions and the GPU; hover a state icon for its detail (an error's reason). A changed icon in its
 header lists what only the next `winston up` applies.
-Brain picks the engine from presets (vLLM, llama.cpp, Ollama, hosted) and the model from the list the brain's
-server reports; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
+Brain picks the engine from presets (vLLM, llama.cpp, Ollama, hosted) and the model from two lists:
+Running, what the brain's server reports, and Downloaded, what the chosen engine can load from the
+Hugging Face cache on this machine; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
 hearing, and for Chatterbox has Streaming: on or off and the chunk length, longer being smoother. Picking a preset rewrites the engine block and the settings that go with it. The other
 pages are generated from the config schema: basic fields first, Advanced behind a toggle, and an (i)
 beside each label that explains the field (and, for an engine, what the chosen preset needs).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/brain-dark.png">
-  <img src="images/brain-light.png" alt="The Brain page: engine preset with its logo, the model picked from the server's list, thinking" width="720">
+  <img src="images/brain-light.png" alt="The Brain page: the model list open, with the running model and the downloaded ones, a vLLM-only repo greyed" width="720">
 </picture>
 
 Anything a machine already knows is a searchable dropdown filled from `/api/options/{name}`, and a
@@ -105,7 +107,7 @@ server down) leaves a plain text box with a warning icon; hover it for the reaso
 
 | Field | Filled from |
 | --- | --- |
-| Brain model | the brain's server (`/models`), following an unsaved base URL |
+| Brain model | Running: the brain's server (`/models`), following an unsaved base URL. Downloaded: the Hugging Face cache the engine reads, with each model's size on disk |
 | Voice | clips in `data/voices/` and the TTS server's built-in voices |
 | Speech-to-text model | the models onnx-asr knows, downloaded ones marked |
 | Web search and Claude models | the Gemini API; the Anthropic API when `ANTHROPIC_API_KEY` is set, else a built-in list |
@@ -135,6 +137,15 @@ saved one of the same fields meanwhile (a voice switched by asking), nothing is 
 reloads, keeps your edits on top, names the field in a message, and you save again. A field the
 server refuses is marked where it is. Discard asks when edits reach past the current page, offering
 that page alone.
+
+Downloaded is read from the disk, never the Hub: the host side of the engine's huggingface volume,
+else `HF_HOME`, else `~/.cache/huggingface`. llama.cpp and Ollama list each GGUF quant as
+`repo:quant` (a split file is one quant, listed once every part is there); Ollama's entries are `hf.co/repo:quant`, as Ollama pulls its
+own copy. vLLM lists safetensors repos with a language model config. A model the engine cannot load
+is greyed with the reason ("vLLM only"); speech models (Chatterbox, Parakeet, Pocket TTS, a model card
+tagged text-to-speech) are left out. When Save changes the brain's model to one that is neither
+running nor downloaded, the confirm says the restart downloads it first, size unknown, and may take
+many minutes; the brain is offline until the download ends.
 
 While a saved change waits for a restart, every settings page shows the changed icon beside Save
 (hover it for each engine or channel and its cost) and a Restart button that restarts only those.

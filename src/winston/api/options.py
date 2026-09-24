@@ -4,7 +4,9 @@ truth lives (the brain's server, Home Assistant, the data directory, a provider'
 nothing is typed by hand that a machine already knows. Secrets never leave: the env list names
 variables and says whether they hold a value, nothing more. Every provider answers with a reason in
 `source` rather than an error, so a dropdown still takes a typed value when its source is down."""
+import json
 import os
+import re
 from pathlib import Path
 from typing import get_args
 
@@ -29,6 +31,7 @@ class Choice(BaseModel):
     hint: str | None = None
     icon: str | None = None     # a brand or kind the UI draws: an HA domain, "set" or "missing" for env
     group: str | None = None
+    disabled: bool = False      # listed for the record but not pickable, the hint says why
 
 
 class Options(BaseModel):
@@ -36,6 +39,7 @@ class Options(BaseModel):
     choices: list[Choice]
     source: str = ""            # where the list came from, or why it is empty
     ok: bool = True             # False when the source could not be reached
+    served_by: str | None = None  # llm_models: the engine the Downloaded group was read for, if known
 
 
 class HomeAssistantCheck(BaseModel):
@@ -128,17 +132,184 @@ def _hint_words(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="hint_words", choices=choices, source=note)
 
 
+# The brain's engines by what they load: llama.cpp and Ollama serve GGUF files, vLLM safetensors repos.
+GGUF_ENGINES = {"llamacpp", "ollama"}
+ENGINE_NAMES = {"llamacpp": "llama.cpp", "ollama": "Ollama", "vllm": "vLLM"}
+# A GGUF file's quant: the last part of its name, after the model's name (Qwen3.8-27B-UD-Q4_K_S, x.Q4_K_M).
+QUANT = re.compile(r"[-._]((?:UD-)?(?:[IT]?Q\d+(?:_[A-Z0-9]+)*|B?F16|F32|MXFP4(?:_MOE)?))$", re.IGNORECASE)
+SPLIT = re.compile(r"-\d{5}-of-(\d{5})$")                 # model-Q4_K_M-00001-of-00003.gguf is one quant
+LLM_ARCH = ("ForCausalLM", "ForConditionalGeneration", "LMHeadModel")
+# Speech models built on an LLM (a TTS on Qwen) have an LLM config; their model card says what they are.
+PIPELINE = re.compile(r"^pipeline_tag:\s*[\"']?([\w-]+)", re.MULTILINE)
+SPEECH = {"text-to-speech", "text-to-audio", "automatic-speech-recognition", "audio-to-audio", "audio-classification",
+          "voice-activity-detection"}
+
+
+def llm_engine(engine: dict | None) -> str | None:
+    """Which server the brain's engine block runs, from its image, command or URL: "llamacpp", "vllm",
+    "ollama", or None for a hosted API or a server this does not know."""
+    if not engine:
+        return None
+    text = " ".join([str(engine.get("image") or ""), *map(str, engine.get("args") or []),
+                     *map(str, engine.get("cmd") or []), str(engine.get("url") or "")]).lower()
+    if any(k in text for k in ("llama.cpp", "llama-server", "llama_cpp")):
+        return "llamacpp"
+    if "vllm" in text:
+        return "vllm"
+    if "ollama" in text or ":11434" in text:
+        return "ollama"
+    return None
+
+
+def hf_cache(engine: dict | None) -> Path:
+    """The Hugging Face hub cache the engine reads: the host side of a container's huggingface volume,
+    else HF_HOME, else the default."""
+    for host, inside in ((engine or {}).get("volumes") or {}).items():
+        if str(inside).rstrip("/").endswith("huggingface"):
+            return Path(host).expanduser() / "hub"
+    return Path(os.environ.get("HF_HOME") or Path.home() / ".cache/huggingface").expanduser() / "hub"
+
+
+def _size(n: int) -> str:
+    return f"{n / 1e9:.1f} GB" if n >= 1e9 else f"{max(1, round(n / 1e6))} MB"
+
+
+def _snapshot(repo: Path) -> Path | None:
+    """The snapshot refs/main names, else the newest one."""
+    ref = repo / "refs" / "main"
+    if ref.is_file() and (snap := repo / "snapshots" / ref.read_text().strip()).is_dir():
+        return snap
+    snaps = sorted((repo / "snapshots").glob("*"), key=lambda p: p.stat().st_mtime) if (repo / "snapshots").is_dir() else []
+    return snaps[-1] if snaps else None
+
+
+def _bytes(files: list[Path]) -> int:
+    """Size on disk of files that are really there (a snapshot links to blobs; a broken link is not)."""
+    seen: set[Path] = set()
+    total = 0
+    for f in files:
+        try:
+            real = f.resolve(strict=True)
+        except OSError:
+            continue
+        if real not in seen:
+            seen.add(real)
+            total += real.stat().st_size
+    return total
+
+
+def _is_llm(snap: Path) -> bool:
+    try:
+        arch = json.loads((snap / "config.json").read_text()).get("architectures") or []
+    except Exception:                                                   # noqa: BLE001
+        return False
+    return any(str(a).endswith(LLM_ARCH) for a in arch)
+
+
+def _speech(snap: Path) -> bool:
+    try:
+        with open(snap / "README.md", encoding="utf-8", errors="replace") as f:
+            m = PIPELINE.search(f.read(4096))
+    except OSError:
+        return False
+    return bool(m) and m.group(1) in SPEECH
+
+
+def _complete(snap: Path) -> bool:
+    """Every weight file is there: the shards the index names, and no link to a missing blob."""
+    try:
+        shards = set(json.loads((snap / "model.safetensors.index.json").read_text())["weight_map"].values())
+    except Exception:                                                   # noqa: BLE001
+        shards = set()
+    return (all((snap / s).exists() for s in shards)
+            and all(f.exists() for f in snap.rglob("*.safetensors")))
+
+
+def downloaded(cache: Path) -> list[tuple[str, str, int]]:
+    """Language models in the Hugging Face cache, no network: ("gguf", "repo:quant", bytes) for each
+    quant present (split files as one), ("safetensors", "repo", bytes) for a repo with an LLM config.
+    Speech models (no LLM config and no GGUF, or a model card that says speech) are left out."""
+    out: list[tuple[str, str, int]] = []
+    for repo in sorted(cache.glob("models--*")) if cache.is_dir() else []:
+        name = repo.name.removeprefix("models--").replace("--", "/")
+        if not (snap := _snapshot(repo)) or _speech(snap):
+            continue
+        quants: dict[str, list[Path]] = {}
+        parts: dict[str, int] = {}             # how many files a split quant has; one when it is not split
+        for f in snap.rglob("*.gguf"):
+            split = SPLIT.search(f.name[:-5])
+            stem = SPLIT.sub("", f.name[:-5])
+            if "mmproj" in stem.lower():
+                continue                       # a vision projector, not a model
+            m = QUANT.search(stem)
+            quant = m.group(1) if m else stem
+            quants.setdefault(quant, []).append(f)
+            parts[quant] = max(parts.get(quant, 1), int(split.group(1)) if split else 1)
+        for quant, files in sorted(quants.items()):
+            # A quant half downloaded (a split part missing, a link to no blob) is not on disk yet.
+            if len(files) >= parts[quant] and all(f.exists() for f in files) and (size := _bytes(files)):
+                out.append(("gguf", f"{name}:{quant}", size))
+        if (not quants and any(snap.rglob("*.safetensors")) and _is_llm(snap) and _complete(snap)
+                and (size := _bytes([f for f in snap.rglob("*") if f.is_file()]))):
+            out.append(("safetensors", name, size))
+    return out
+
+
+def _downloaded_choices(kind: str, cache: Path) -> list[Choice]:
+    ok, greyed = [], []
+    for fmt, value, size in downloaded(cache):
+        serves = (fmt == "gguf") == (kind in GGUF_ENGINES)
+        if not serves:
+            only = "vLLM only" if fmt == "safetensors" else "llama.cpp or Ollama"
+            greyed.append(Choice(value=value, label=value, hint=f"{_size(size)}, {only}", group="Downloaded",
+                                 disabled=True))
+        elif kind == "ollama":
+            # Ollama keeps its own store: it pulls the same file again from the Hub under hf.co/.
+            ok.append(Choice(value=f"hf.co/{value}", label=value, hint=f"{_size(size)}, Ollama pulls its own copy",
+                             group="Downloaded"))
+        else:
+            ok.append(Choice(value=value, label=value, hint=_size(size), group="Downloaded"))
+    return ok + greyed
+
+
 async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
+    """What the brain's server serves now (Running) and what the engine could load from the Hugging
+    Face cache without a download (Downloaded). `engine` is the draft engine block as JSON, else the
+    saved one. `served_by` names the engine the downloads were read for; None when the engine is
+    hosted or unknown, so nothing can be said about downloads."""
     url = (params.get("base_url") or cfg.llm.base_url).rstrip("/")
+    try:
+        engine = json.loads(params["engine"]) if params.get("engine") else None
+    except ValueError:
+        engine = None
+    if not isinstance(engine, dict):
+        engine = None
+    elif not isinstance(engine.get("volumes") or {}, dict):
+        engine = {**engine, "volumes": {}}
+    saved = cfg.engines["llm"].model_dump() if "llm" in cfg.engines else None
+    if engine is None:
+        engine = saved
+    kind = llm_engine(engine)
+    # The folder read is the saved engine's, never one a request names: a GET must not list host paths.
+    cache = hf_cache(saved)
+    local = _downloaded_choices(kind, cache) if kind else []
+    sizes = {c.value: c.hint for c in local if not c.disabled}
     headers = {"Authorization": f"Bearer {key}"} if (key := _secret(cfg.llm.api_key_env)) else {}
+    running: list[Choice] = []
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(url + "/models", headers=headers)
         r.raise_for_status()
         ids = sorted(m.get("id", "") for m in r.json().get("data", []) if m.get("id"))
-        return Options(name="llm_models", source=url, choices=[Choice(value=i, label=i) for i in ids])
+        running = [Choice(value=i, label=i, hint=sizes.get(i), group="Running") for i in ids]
+        source, ok = url, True
     except Exception as e:                                              # noqa: BLE001
-        return Options(name="llm_models", source=f"{url}: {type(e).__name__}", choices=[], ok=False)
+        source, ok = f"{url}: {type(e).__name__}", False
+    here = {c.value for c in running}
+    choices = running + [c for c in local if c.value not in here]
+    if kind:
+        source += f"; {ENGINE_NAMES[kind]} models in {cache}"
+    return Options(name="llm_models", source=source, choices=choices, ok=ok, served_by=kind)
 
 
 async def _voices(cfg: WinstonConfig, params: dict) -> Options:

@@ -21,7 +21,7 @@ import time
 import httpx
 import yaml
 from loguru import logger
-from pipecat.frames.frames import LLMTextFrame, TTSSpeakFrame
+from pipecat.frames.frames import LLMTextFrame
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 
 from winston.channels.text import TextSession
@@ -63,9 +63,9 @@ def restore(before: dict):
 
 
 class Watch(BaseObserver):
-    """First and last reply text after a request, and whether the claim guard spoke."""
+    """First and last reply text after a request. The claim guard is read from its log records."""
     def __init__(self):
-        super().__init__(); self.t0 = None; self.first = self.last = None; self.guard = False
+        super().__init__(); self.t0 = None; self.first = self.last = None
 
     def arm(self):
         self.t0 = time.perf_counter(); self.first = self.last = None
@@ -76,8 +76,6 @@ class Watch(BaseObserver):
             self.first = time.perf_counter() - self.t0
         if isinstance(f, LLMTextFrame) and self.t0:
             self.last = time.perf_counter() - self.t0
-        elif isinstance(f, TTSSpeakFrame):
-            self.guard = True
 
 
 def tool_log_since(ts: float) -> list[dict]:
@@ -109,7 +107,7 @@ async def run_case(case: dict) -> dict:
     await asyncio.sleep(0.5)
     log = tool_log_since(ts)
     called = [d["tool"] for d in log if d["event"] == "call"]
-    guard = watch.guard or any(d["event"] == "guard" for d in log)
+    guard = any(d["event"] == "guard" for d in log)
     missing = [e for e in case.get("expect", []) if not matches(e, called)]
     forbidden = [e for e in case.get("forbid", []) if matches(e, called)]
     restore(before)

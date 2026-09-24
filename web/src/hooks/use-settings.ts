@@ -2,12 +2,13 @@ import { createContext, useCallback, useContext, useState, type Dispatch, type S
 import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 import { toast } from 'sonner'
-import { $api, errorText, type Config, type PersonaRename, type SecretStatus } from '@/api/client'
+import { $api, errorText, fetchClient, type Config, type EngineStatus, type PersonaRename, type SecretStatus } from '@/api/client'
 import { clearFieldErrors, showFieldErrors } from '@/api/field-errors'
 import { configKey, patchConfig, useConfig, useSchema, type ConfigChange, type PatchOutcome } from '@/api/config'
 import { engineLabel, restartCost, statusKey, useEngineActions } from '@/api/status'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useDraft } from '@/hooks/use-draft'
+import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
 import { refreshHomeAssistant, toastSaved, type HAApply } from '@/hooks/use-home-assistant'
 import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
 import { deepEqual, deref, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
@@ -210,6 +211,13 @@ export type SettingsState = {
 type Loading = { loading: true; page: null }
 type Ready = { loading: false; page: SettingsState }
 
+/** Whether this save's brain restart downloads the new model first. Asks winstond, never the Hub. */
+async function needsDownload(changes: ConfigChange[], config: Config, restartable: EngineStatus[]): Promise<boolean> {
+  if (!restartable.some((e) => e.name === 'llm') || !changes.some((c) => c.path.join('.') === 'llm.model')) return false
+  const { data } = await fetchClient.GET('/api/options/{name}', optionsParams('llm_models', config))
+  return mustDownload(data, config.llm.model)
+}
+
 /** A page's view of the shared draft plus the save flow: a dry-run patch of only the changed paths,
  * confirm what changes and restarts, save with the version the edits started from, write pending
  * keys, restart. `paths` are the sections the page shows; a page with no basic field opens Advanced. */
@@ -313,8 +321,13 @@ export function useSettings(paths: string[][]): Loading | Ready {
     const engines = status.data?.engines ?? []
     const restartable = engines.filter((e) => restarts.includes(e.name) && e.state !== 'stopped' && e.state !== 'error')
     const later = restarts.some((name) => !engines.some((e) => e.name === name))
+    const download = await needsDownload(changes, value, restartable)
     const costs = [
-      ...restartable.map((e) => `${capitalize(engineLabel(e))}: ${restartCost(e)}`),
+      ...restartable.map((e) =>
+        e.name === 'llm' && download
+          ? `${capitalize(engineLabel(e))}: ${DOWNLOAD_COST}`
+          : `${capitalize(engineLabel(e))}: ${restartCost(e)}`,
+      ),
       ...(later ? ['Some changes apply on the next winston up'] : []),
     ]
 

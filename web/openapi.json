@@ -1446,6 +1446,24 @@
               "title": "Q"
             },
             "description": "discord_users: a user id to look up"
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "llm_models: the draft brain engine block as JSON, to list the downloads it can load",
+              "title": "Engine"
+            },
+            "description": "llm_models: the draft brain engine block as JSON, to list the downloads it can load"
           }
         ],
         "responses": {
@@ -1895,6 +1913,11 @@
               }
             ],
             "title": "Group"
+          },
+          "disabled": {
+            "type": "boolean",
+            "title": "Disabled",
+            "default": false
           }
         },
         "type": "object",
@@ -3433,7 +3456,7 @@
           "model": {
             "type": "string",
             "title": "Model",
-            "description": "Model name as the server knows it.",
+            "description": "Model name as the server knows it. Downloaded lists what the engine can load from this machine; any other model is downloaded when the brain restarts, and the brain is offline until the download ends.",
             "level": "basic",
             "options": "llm_models",
             "restarts": [
@@ -3892,6 +3915,17 @@
             "type": "boolean",
             "title": "Ok",
             "default": true
+          },
+          "served_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Served By"
           }
         },
         "type": "object",

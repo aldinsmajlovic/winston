@@ -180,7 +180,9 @@ class LLMConfig(Model):
                                                 "servers.",
                                     json_schema_extra=ui("advanced", when=HOSTED,
                                                          secret=secret("LLM_API_KEY", "API key")))
-    model: str = Field(description="Model name as the server knows it.",
+    model: str = Field(description="Model name as the server knows it. Downloaded lists what the engine can load "
+                                   "from this machine; any other model is downloaded when the brain restarts, and "
+                                   "the brain is offline until the download ends.",
                        json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models"))
     sampling: Sampling = Field(Sampling(), title="Sampling",
                                description="How the brain picks its words. The defaults suit tool calls; change "
