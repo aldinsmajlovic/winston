@@ -9,7 +9,8 @@
     "check": "node scripts/check.mjs && eslint .",
     "lint": "eslint .",
     "api": "uv run --project .. winston api schema > openapi.json && openapi-typescript openapi.json -o src/api/schema.d.ts --default-non-nullable=false",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke": "bash scripts/smoke.sh"
   },
   "dependencies": {
     "@fontsource-variable/hanken-grotesk": "^5.3.0",
@@ -40,6 +41,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

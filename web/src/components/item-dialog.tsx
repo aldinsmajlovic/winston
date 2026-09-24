@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { SchemaForm } from '@/components/schema-form'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { InfoTip } from '@/components/info-tip'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { JsonSchema } from '@/lib/schema'
@@ -11,6 +12,8 @@ type Props = {
   onOpenChange: (open: boolean) => void
   title: string
   keyLabel: string
+  /** The key's explanation, behind an (i) beside its label. */
+  keyInfo?: string
   keyValue: string
   onKeyChange?: (key: string) => void
   /** Replaces the key's text field, e.g. with a picker. */
@@ -41,7 +44,10 @@ export function ItemDialog(props: Props) {
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="item-key">{keyLabel}</Label>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="item-key">{keyLabel}</Label>
+              <InfoTip text={props.keyInfo} />
+            </div>
             {props.keyInput ?? (
               <Input
                 id="item-key"

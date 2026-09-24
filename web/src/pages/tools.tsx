@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react'
-import { Trash2 } from 'lucide-react'
-import type { SensorPair } from '@/api/client'
+import { CircleCheck, CircleX, Trash2 } from 'lucide-react'
+import { $api, type ClaudeAuth, type SensorPair } from '@/api/client'
 import type { Choice } from '@/components/combobox'
 import { IconButton } from '@/components/icon-button'
 import { ItemDialog } from '@/components/item-dialog'
 import { PageSkeleton } from '@/components/page'
-import { SectionForm } from '@/components/section-form'
+import { SecretField } from '@/components/secret-field'
+import { SectionForm, type ExtraRow } from '@/components/section-form'
 import { ListPage, type Column } from '@/components/templates/list-page'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useOptions } from '@/hooks/use-options'
 import { useSettings } from '@/hooks/use-settings'
@@ -41,6 +43,70 @@ function Sensor({ id, known }: { id?: string | null; known: Map<string, Choice> 
     </div>
   )
 }
+
+const CLAUDE_NAMES = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']
+
+/** A pasted Claude key goes under the variable its prefix names; anything else is refused on save. */
+const claudeName = (value: string) =>
+  value.startsWith('sk-ant-oat') ? 'CLAUDE_CODE_OAUTH_TOKEN' : value.startsWith('sk-ant-api') ? 'ANTHROPIC_API_KEY' : undefined
+
+const SOURCES: Record<ClaudeAuth['source'], string> = {
+  api_key: 'ANTHROPIC_API_KEY is set',
+  oauth_token: 'CLAUDE_CODE_OAUTH_TOKEN is set',
+  login: 'Found a Claude Code login in ~/.claude',
+  none: 'No key, token or Claude Code login found',
+}
+
+/** What the Claude CLI will sign in with, read-only: its label and an icon, the source on hover. */
+function SignsInWith({ id }: { id: string }) {
+  const auth = $api.useQuery('get', '/api/tools/ask_claude/auth')
+  if (!auth.data) return <span id={id} className="text-sm text-muted-foreground">Checking</span>
+  const found = auth.data.source !== 'none'
+  const Icon = found ? CircleCheck : CircleX
+  return (
+    <div id={id} className="flex items-center gap-2 py-1 text-sm">
+      <span>{auth.data.label}</span>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Icon className={found ? 'size-4 text-success' : 'size-4 text-destructive'} aria-label={SOURCES[auth.data.source]} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>{SOURCES[auth.data.source]}</TooltipContent>
+      </Tooltip>
+    </div>
+  )
+}
+
+const CLAUDE_EXTRAS: ExtraRow[] = [
+  {
+    key: 'signs_in_with',
+    title: 'Signs in with',
+    description:
+      'What the Claude CLI uses, first found wins: an API key (ANTHROPIC_API_KEY), a token from claude setup-token ' +
+      '(CLAUDE_CODE_OAUTH_TOKEN), then the Claude Code login on this machine.',
+    after: 'enabled',
+    render: (id) => <SignsInWith id={id} />,
+  },
+  {
+    key: 'key',
+    title: 'Key',
+    description:
+      "A token from claude setup-token (sk-ant-oat...) uses your Claude plan's credit; an API key (sk-ant-api...) " +
+      'is billed per question. Kept in data/.env on this machine and never shown again.',
+    after: 'signs_in_with',
+    render: (id) => (
+      <SecretField
+        id={id}
+        names={CLAUDE_NAMES}
+        resolve={claudeName}
+        label="Key"
+        placeholder="Paste a token from claude setup-token, or an API key"
+        optional
+      />
+    ),
+  },
+]
 
 export default function ToolsPage() {
   const s = useSettings([WEB, CLAUDE, MEMORY])
@@ -98,7 +164,7 @@ export default function ToolsPage() {
       )}
     >
       <SectionForm page={page} path={WEB} title="Web search" />
-      <SectionForm page={page} path={CLAUDE} title="Ask Claude" />
+      <SectionForm page={page} path={CLAUDE} title="Ask Claude" icon="anthropic" extras={CLAUDE_EXTRAS} />
       <SectionForm page={page} path={MEMORY} title="Memory" />
       <ItemDialog
         open={editing !== null}

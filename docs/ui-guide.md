@@ -68,9 +68,35 @@ transport), connecting through winstond to the voice channel.
 - Icons for actions and state. A status is an icon plus a colour, never a sentence.
 - Basic first, Advanced behind a toggle on every page. The schema decides which is which.
 - Destructive or slow actions confirm once, say what they cost ("restarts the brain, about 3 minutes").
-- A cleared field saves what it shows where empty means something. A text field whose default is not
-  empty and whose description gives empty a meaning ("Empty for never quiet") saves `''` when cleared,
-  so the default does not quietly come back; any other cleared field falls back to its default.
+- A cleared field saves what it shows where empty means something. A field marked `empty_means_off`
+  (quiet hours, chime, health path, quantization) saves `''` when cleared, so the default does not
+  quietly come back; any other cleared field falls back to its default.
+- A field that does not apply is not there. The schema says when a field applies (`when`: the engine's
+  driver, the engine command, another field), and the form leaves it out otherwise. A field under a
+  feature switch that is off (`enabled_by`) stays visible and editable but greyed.
+- Keys are pasted, never shown. A field holding a variable name (`secret`) gets a basic value field
+  beside it: "Paste a key", a check or warning icon with Set or Not set in its tooltip, and a Remove
+  icon once set. A pasted key waits with the draft and Save writes it to `data/.env`; the name field
+  stays under Advanced.
+- A map in a form (contacts, engine environment, volumes) is a table with an Add icon and a dialog,
+  column titles from the schema (`key_title`, `value_title`), trash with Undo in its toast. A page keeps
+  its own table only where it adds what the generic one cannot: Home Assistant's entities (domain
+  icon, name and state from Home Assistant, only unexposed entities offered) and Tools' sensors (label
+  and state sensor filled in from the picked value sensor).
+- A list that cannot be fetched (no token yet, the server down) leaves a plain text box with a warning
+  icon whose tooltip gives the reason; a value the list does not hold is looked up by itself when the
+  list works, and shown with a warning icon when it is not found.
+- Something a section needs that is not a config field (what Ask Claude signs in with, its key) is a
+  row in that section's form (`SectionForm` `extras`), with the same label and (i) as the fields.
+- A channel's card title carries its state icon from `/api/status`, the detail in the tooltip.
+- A dot in the sidebar marks each page with unsaved edits. A saved change that waits for a restart is
+  the changed icon beside Save, its tooltip naming each process and its cost, plus a Restart text
+  button while one of them runs; what only the next `winston up` applies has the icon and no button.
+- A refused save puts each error beside its field (a section's own beside its title), turns Advanced on
+  when the field is advanced and scrolls to it.
+- A plain list in a form (engine arguments, Home Assistant domains) is one box per entry under the
+  list's label, an Add icon beside the label, move icons on hover and a Remove icon per entry. Every
+  text box is the app's own `Input`, never the form library's.
 - An empty table shows one muted "None yet." row. A key already in a list (entity, sensor) keeps Done
   off and says "Already in the list" under the field.
 
@@ -81,13 +107,20 @@ transport), connecting through winstond to the voice channel.
 dashes in code), the type check and Vite. shadcn's generated `src/components/ui` is the library and
 is exempt. `pnpm api` regenerates the client from `winston api schema`.
 
+`pnpm smoke` then drives the built settings pages in Playwright against a throwaway winstond (see
+[running](running.md)).
+
 ## Templates
 
 - Talk page: `pages/talk.tsx`, fed by `useLive` (the `/api/live` stream) with `Presence` in the
   header.
 - Memory page: `pages/memory.tsx`, from `/api/memory`, under the same `WinstonHeader`.
-- Settings page: `SettingsPage` with one `SectionForm` per config section, a form from the pruned
-  schema. `useSettings` holds the draft shared across pages and the save flow: dry run, confirm the
-  restarts with their cost, save, restart.
+- Settings page: `SettingsPage` with one `SectionForm` per config section, a form from the schema
+  pruned against the whole draft (`when`, `hidden`, `drivers`, `enabled_by`, `secret`), so pages do
+  not filter fields themselves. `useSettings` holds the draft, changed paths over the saved config
+  shared across pages, and the save flow: a dry-run patch, confirm the changes by page and the
+  restarts with their cost, `PATCH /api/config` with If-Match, write pasted keys (`useSecretsDraft`),
+  restart. A conflict reloads and keeps the edits on top.
 - Status page: `pages/status.tsx`. `StateIcon` for state, icon actions, one gauge.
 - List page: `ListPage` or `DataTable` plus `ItemDialog` for keyed maps (entities, sensors, engines).
+  Maps inside a form are drawn by `KeyedMapField` from the schema, not by the page.

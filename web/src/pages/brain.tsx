@@ -20,7 +20,7 @@ export default function BrainPage() {
       <SlotCard page={page} kind="llm" title="Model" presets={presets.data.llm}>
         <SectionForm page={page} path={LLM} />
       </SlotCard>
-      {page.advanced && engine ? <SectionForm page={page} path={ENGINE} title="Engine" driver={engine.driver} /> : null}
+      {page.advanced && engine ? <SectionForm page={page} path={ENGINE} title="Engine" /> : null}
     </SettingsPage>
   )
 }

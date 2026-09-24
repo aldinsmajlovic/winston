@@ -12,13 +12,20 @@ back to metric and a 24-hour clock.
 | `get_sensor_readings` | Watched sensors with the age of each reading | `tools.sensors` | Read only |
 | `remember` | Stores one fact in `data/memory/*.md`, committed to git there | Nothing | 300 characters; secrets refused |
 | `web_search` | Current facts via Gemini with Google Search grounding | `GEMINI_API_KEY`, billing on the key | `tools.web_search.max_per_day` (100) |
-| `ask_claude` | Hard questions to Claude through the Agent SDK | A Claude Code login, `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` | `tools.ask_claude.max_usd_per_day` (3 USD) |
+| `ask_claude` | Hard questions to Claude through the Agent SDK | `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or a Claude Code login | `tools.ask_claude.max_usd_per_day` (3 USD) |
 | `send_message` | A Discord DM to a listed contact or you | `DISCORD_BOT_TOKEN`, `channels.discord.contacts` | Listed names only |
 | `clone_voice` | Records a friend who agrees out loud and speaks in their voice ([voices](voices.md#cloned-voices)) | The voice channel | Spoken consent, checked; typed channels only say to ask by voice |
 | `use_voice` | Switches to a cloned voice or back to his own, optionally kept in config | The voice channel | Cloned voices only |
 
 Only the question text leaves the house for `web_search` and `ask_claude`: no home state, no memory.
 Answers come back marked as information, never instructions.
+
+Keys are pasted into the settings page that uses them (the Gemini key under Tools, Web search, the
+Claude key under Ask Claude, the Home Assistant token on its page, a hosted brain's or voice's API key
+on Brain or Voice, the Discord bot token under Channels) and
+stored in `data/.env` through `PUT /api/secrets/{name}`; the page only ever learns whether a key is
+set, never its value. The variable a key is stored under is an Advanced setting. Saving a key marks
+the channels that read it for a restart, as a settings change does.
 
 ## Region
 
@@ -65,6 +72,13 @@ up." while it runs.
 ## ask_claude
 
 Runs the bundled Claude Code CLI with no tools, no settings and an empty working directory, one turn.
+It signs in with the first of: `ANTHROPIC_API_KEY` (billed per question), `CLAUDE_CODE_OAUTH_TOKEN`
+(from `claude setup-token`, uses your plan), then this machine's Claude Code login
+(`~/.claude/.credentials.json`). An empty variable counts as unset. On the Tools page, the Ask Claude
+card's "Signs in with" row names the one it will use (`GET /api/tools/ask_claude/auth`), with a check
+or, for nothing, an error icon; hover it for the source. Its Key field takes either kind: a key
+starting `sk-ant-oat` is stored as `CLAUDE_CODE_OAUTH_TOKEN`, `sk-ant-api` as `ANTHROPIC_API_KEY`, on
+Save. The icon beside it says whether either is set, and its x removes the stored one.
 On a Claude Pro or Max plan it draws on the plan's monthly Agent SDK credit (opt in once in your Claude
 account); `claude setup-token` makes a token for a machine without a browser login. Claude Opus 5 at
 low effort: about 6 s and 0.05 USD a question. Over voice Winston says "Let me think about that."

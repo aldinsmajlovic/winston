@@ -1,0 +1,115 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { expect, test, type Page } from '@playwright/test'
+
+// Runs against the throwaway winstond `pnpm smoke` starts: WINSTON_DATA is its copy of data/, with the
+// engines and channels switched off and one external engine, `smoke`, that nothing runs.
+const data = process.env.WINSTON_DATA ?? ''
+const pages = ['/status', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/tools', '/engines', '/system']
+
+test.describe.configure({ mode: 'serial' })
+
+test.beforeAll(() => {
+  if (!process.env.WINSTON_URL || !data) throw new Error('Run with `pnpm smoke`: it starts the throwaway winstond')
+})
+
+/** Fails the test on any uncaught error in the page. */
+function watchErrors(page: Page): string[] {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  return errors
+}
+
+async function open(page: Page, path: string) {
+  await page.goto(path)
+  await expect(page.locator('h1')).toBeVisible()
+  await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0)
+}
+
+/** Turn Advanced on, on a page that has it. */
+async function advanced(page: Page) {
+  const toggle = page.getByRole('switch', { name: 'Advanced' })
+  if ((await toggle.count()) && (await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click()
+}
+
+/** Save from the header; `choice` answers the confirmation a restart or a key asks for. */
+async function save(page: Page, choice?: string) {
+  const button = page.locator('header').getByRole('button', { name: 'Save', exact: true })
+  await button.click()
+  const dialog = page.getByRole('alertdialog')
+  if (choice) await dialog.getByRole('button', { name: choice, exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(button).toBeDisabled()
+}
+
+test('every settings page loads', async ({ page }) => {
+  const errors = watchErrors(page)
+  for (const path of pages) {
+    await open(page, path)
+    await advanced(page)
+    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0)
+  }
+  expect(errors).toEqual([])
+})
+
+test('an edited field is saved and still there after a reload', async ({ page }) => {
+  await open(page, '/assistant')
+  const name = page.locator('#cfg_assistant_name')
+  await name.fill('Smokey')
+  await save(page)
+  await page.reload()
+  await expect(page.locator('#cfg_assistant_name')).toHaveValue('Smokey')
+  expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('name: Smokey')
+})
+
+test('a pasted key shows as Set and never comes back from the server', async ({ page }) => {
+  const secret = `smoke-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const leaks: string[] = []
+  let seen = 0
+  page.on('response', async (r) => {
+    if (!r.url().includes('/api/') || (r.headers()['content-type'] ?? '').includes('event-stream')) return
+    const text = await r.text().catch(() => '')
+    seen += 1
+    if (text.includes(secret) || JSON.stringify(r.headers()).includes(secret)) leaks.push(r.url())
+  })
+
+  await open(page, '/channels')
+  const field = page.getByLabel('Bot token')
+  await expect(field.locator('..').getByLabel('Not set', { exact: true })).toBeVisible()
+  await field.fill(secret)
+  await save(page)
+  await page.reload()
+  await open(page, '/channels')
+  const row = page.getByLabel('Bot token').locator('..')
+  await expect(row.getByLabel('Set', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Bot token')).toHaveValue('')
+
+  for (const url of ['/api/config', '/api/secrets', '/api/status', '/api/config/schema']) {
+    const body = await (await page.request.get(url)).text()
+    expect(body, url).not.toContain(secret)
+  }
+  expect(seen).toBeGreaterThan(0)
+  expect(leaks).toEqual([])
+  expect(readFileSync(join(data, '.env'), 'utf8')).toContain(secret)
+  expect(readFileSync(join(data, 'config.yaml'), 'utf8')).not.toContain(secret)
+})
+
+test('a field for hosted engines is left out for a local one', async ({ page }) => {
+  await open(page, '/brain')
+  await advanced(page)
+  await expect(page.locator('#cfg_llm_base_url')).toBeVisible()
+  await expect(page.locator('#cfg_llm_api_key_env')).toHaveCount(0)
+  await expect(page.getByText('Key variable', { exact: true })).toHaveCount(0)
+})
+
+test('Save only leaves a Restart button for the running engine', async ({ page }) => {
+  await open(page, '/engines/smoke')
+  await advanced(page)
+  const header = page.locator('header')
+  await expect(header.getByRole('button', { name: 'Restart' })).toHaveCount(0)
+  await page.locator('#cfg_engines_smoke_startup_timeout').fill('61')
+  await save(page, 'Save only')
+  await expect(header.getByLabel('Saved changes wait for a restart')).toBeVisible()
+  await expect(header.getByRole('button', { name: 'Restart' })).toBeVisible()
+})

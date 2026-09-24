@@ -28,15 +28,15 @@ export function StateIcon({ state, detail }: { state: EngineState; detail?: stri
   )
 }
 
-export function ChangedIcon() {
+export function ChangedIcon({ text = 'Saved config waits for a restart' }: { text?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <RefreshCw className="size-4 text-warning" aria-label="restart to apply" />
+        <span className="inline-flex" tabIndex={0}>
+          <RefreshCw className="size-4 text-warning" aria-label={text} />
         </span>
       </TooltipTrigger>
-      <TooltipContent>Saved config waits for a restart</TooltipContent>
+      <TooltipContent>{text}</TooltipContent>
     </Tooltip>
   )
 }

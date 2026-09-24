@@ -32,6 +32,8 @@ class Managed:
     owned: bool = False                 # this supervisor started it, so it may stop it on exit
     pending: Managed | None = None      # built from a newer config; swapped in on the next stop
     retired: bool = False               # gone from config; dropped on the next stop
+    stale: bool = False                 # runs with settings or secrets saved since it started; a restart applies them
+    stale_base: dict | None = None      # the saved config it runs with, while stale from a setting (None: a secret)
     needs_env: list[str] = field(default_factory=list)  # variables it cannot start without (data/.env)
     expected: bool = False              # started and not stopped on purpose: an exit is a crash
     log_start: int = 0                  # size of its log when last started: older lines are another run's
@@ -137,7 +139,8 @@ class Supervisor:
             dcfg = EngineConfig(driver="subprocess", port=0, health="", startup_timeout=60)
             d = cfg.channels.discord            # the checks discord.py makes on start
             items["discord"] = Managed("discord", dcfg, SubprocessDriver("discord", dcfg, discord_channel_cmd()),
-                                       kind="channel", needs_env=[d.token_env, d.allowed_user_env])
+                                       kind="channel",
+                                       needs_env=[d.token_env] + ([] if d.allowed_user else [d.allowed_user_env]))
         s = cfg.channels.satellite
         if s.enabled and s.devices:
             scfg = EngineConfig(driver="subprocess", port=s.http_port, health="/health", startup_timeout=60)
@@ -174,6 +177,31 @@ class Supervisor:
                     waiting.append(name)
         return waiting
 
+    def mark_stale(self, names, base: dict | None = None) -> list[str]:
+        """Processes that run and now miss a saved change (a setting they read at start, a secret);
+        returns their names. A stopped one reads the new config when it starts. `base` is the saved
+        config (dumped) before a settings change, so undoing the change can clear the mark again
+        (settle); a secret passes none, and only a restart clears it."""
+        out = []
+        for name in names:
+            m = self.items.get(name)
+            if m and m.state in ("starting", "healthy", "unhealthy"):
+                m.stale_base = base if not m.stale else (m.stale_base if base is not None else None)
+                m.stale = True
+                if not (m.pending or m.retired):
+                    m.detail = "config changed, restart to apply"
+                out.append(name)
+        return out
+
+    def settle(self, restarts) -> None:
+        """Clear the stale mark of processes whose settings are back to what they run with: `restarts`
+        maps an older saved config to the processes that would restart to go from it to the new one."""
+        for m in self.items.values():
+            if m.stale and m.stale_base is not None and m.name not in restarts(m.stale_base):
+                m.stale, m.stale_base = False, None
+                if not (m.pending or m.retired):
+                    m.detail = ""
+
     def _set(self, m: Managed, state: str, detail: str = ""):
         if state != m.state:
             m.since = time.time()
@@ -192,7 +220,7 @@ class Supervisor:
         for m in self.items.values():
             if m.state == "starting":
                 continue
-            keep = m.detail if m.pending or m.retired else ""
+            keep = m.detail if m.pending or m.retired or m.stale else ""
             if await self.healthy(m):
                 self._set(m, "healthy", keep)
             elif await m.driver.running():
@@ -200,10 +228,11 @@ class Supervisor:
             elif m.state == "error":            # kept until it is started or stopped again
                 continue
             elif m.expected and _exit_code(m.driver) is not None:
-                m.expected = False
+                m.expected, m.stale = False, False       # gone: the next start reads the new config
                 self._set(m, "error", _exited(m)); logger.error(f"{m.name}: {m.detail}")
             else:
-                self._set(m, "stopped", keep)
+                m.stale = False
+                self._set(m, "stopped", keep if m.pending or m.retired else "")
         return list(self.items.values())
 
     async def start(self, name: str, wait: bool = True) -> Managed:
@@ -213,6 +242,7 @@ class Supervisor:
             logger.warning(f"{name}: running from a different config, replacing it")
         elif await self.healthy(m):
             self._set(m, "healthy"); return m
+        m.stale = False                         # a fresh start reads the saved config and data/.env
         if missing := _missing_env(m.needs_env):
             m.expected = False
             self._set(m, "error", missing); logger.error(f"{name}: not started, {missing}"); return m
@@ -244,7 +274,7 @@ class Supervisor:
 
     async def stop(self, name: str) -> Managed:
         m = self.items[name]
-        m.expected = False
+        m.expected, m.stale = False, False
         await m.driver.stop()
         self._set(m, "stopped")
         if m.retired:

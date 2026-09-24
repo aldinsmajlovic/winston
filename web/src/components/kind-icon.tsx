@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Mic,
   Palette,
+  RadioTower,
   ScrollText,
   Speaker,
   Sun,
@@ -81,6 +82,8 @@ const kinds: Record<string, LucideIcon> = {
   pocket: Cpu,
   process: Terminal,
   external: Globe,
+  // channels
+  satellite: RadioTower,
   // Home Assistant domains
   light: Lightbulb,
   switch: ToggleRight,

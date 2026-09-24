@@ -1,13 +1,196 @@
-import { useCallback, useState } from 'react'
+import { createContext, useCallback, useContext, useState, type Dispatch, type SetStateAction } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useLocation } from 'react-router'
 import { toast } from 'sonner'
-import { errorText, type Config } from '@/api/client'
-import { useConfig, useSaveConfig, useSchema } from '@/api/config'
-import { $api } from '@/api/client'
-import { useEngineActions } from '@/api/status'
+import { $api, errorText, type Config, type SecretStatus } from '@/api/client'
+import { clearFieldErrors, showFieldErrors } from '@/api/field-errors'
+import { configKey, patchConfig, useConfig, useSchema, type ConfigChange, type PatchOutcome } from '@/api/config'
+import { engineLabel, restartCost, statusKey, useEngineActions } from '@/api/status'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useDraft } from '@/hooks/use-draft'
-import { duration } from '@/lib/format'
-import { deepEqual, hasBasicFields, section, type JsonSchema } from '@/lib/schema'
+import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
+import { deepEqual, deref, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
+
+type Edits = { changes: ConfigChange[]; version: string | undefined }
+
+/** The unsaved config behind every settings page, as changed paths over the saved config, and the
+ * version they started from. Pasted keys wait in the secrets draft (use-secrets), field errors from
+ * a refused save in field-errors. */
+export type DraftStore = {
+  /** Edits that still differ from the saved config. */
+  edits: ConfigChange[]
+  version: string | undefined
+  setEdits: Dispatch<SetStateAction<Edits>>
+  saving: boolean
+  setSaving: (saving: boolean) => void
+}
+
+export const DraftStoreContext = createContext<DraftStore | null>(null)
+
+function useDraftStore(): DraftStore {
+  const store = useContext(DraftStoreContext)
+  if (!store) throw new Error('useDraftStore outside DraftProvider')
+  return store
+}
+
+// Paths over the config. A null value removes the key, as PATCH does.
+
+const same = (a: unknown, b: unknown) => (a == null && b == null) || deepEqual(a, b)
+
+export function getPath(value: unknown, path: Path): unknown {
+  let current = value
+  for (const step of path) {
+    if (Array.isArray(current) && typeof step === 'number') current = current[step]
+    else if (isRecord(current)) current = current[String(step)]
+    else return undefined
+  }
+  return current
+}
+
+function setPath(value: unknown, path: Path, next: unknown): unknown {
+  if (path.length === 0) return next
+  const [head, ...rest] = path
+  if (Array.isArray(value) && typeof head === 'number') {
+    const copy = [...value]
+    copy[head] = setPath(copy[head], rest, next)
+    return copy
+  }
+  const base: Record<string, unknown> = isRecord(value) ? { ...value } : {}
+  const key = String(head)
+  if (rest.length === 0 && next == null) delete base[key]
+  else base[key] = setPath(base[key], rest, next)
+  return base
+}
+
+/** The leaf paths where `b` differs from `a`; lists count as one value. */
+export function diffConfig(a: unknown, b: unknown, path: Path = []): ConfigChange[] {
+  if (isRecord(a) && isRecord(b)) {
+    const keys = new Set([...Object.keys(a), ...Object.keys(b)])
+    return [...keys].flatMap((k) => diffConfig(a[k], b[k], [...path, k]))
+  }
+  if (path.length === 0 || same(a, b)) return []
+  return [{ path, value: b === undefined ? null : b }]
+}
+
+export function applyChanges<T>(value: T, changes: ConfigChange[]): T {
+  return changes.reduce<unknown>((v, c) => setPath(v, c.path, c.value), value) as T
+}
+
+export function effectiveChanges(saved: unknown, changes: ConfigChange[]): ConfigChange[] {
+  return changes.filter((c) => !same(getPath(saved, c.path), c.value))
+}
+
+const startsWith = (path: Path, prefix: Path) => prefix.every((step, i) => path[i] === step)
+
+// Which page shows which part of the config (pages/*.tsx), for the sidebar's dots and the confirms.
+
+export type SettingsPageInfo = { to: string; label: string; sections: string[][] }
+
+export const settingsPages: SettingsPageInfo[] = [
+  { to: '/assistant', label: 'Assistant', sections: [['assistant'], ['region']] },
+  { to: '/brain', label: 'Brain', sections: [['llm'], ['engines', 'llm']] },
+  { to: '/voice', label: 'Voice', sections: [['tts'], ['stt'], ['vad'], ['engines', 'tts']] },
+  { to: '/channels', label: 'Channels', sections: [['channels'], ['announce']] },
+  { to: '/home-assistant', label: 'Home Assistant', sections: [['providers']] },
+  { to: '/tools', label: 'Tools', sections: [['tools'], ['memory']] },
+  { to: '/engines', label: 'Engines', sections: [['engines']] },
+  { to: '/system', label: 'System', sections: [['logging'], ['control'], ['version']] },
+]
+
+/** Every page that shows a path, most specific first (engines.llm is on Brain and on Engines). */
+export function pagesOf(path: Path): SettingsPageInfo[] {
+  return settingsPages.filter((p) => p.sections.some((s) => startsWith(path, s) || startsWith(s, path)))
+}
+
+const pageAt = (pathname: string) => settingsPages.find((p) => pathname.startsWith(p.to))
+
+const humanize = (key: string) => {
+  const words = key.replace(/_/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** A field's name for a person, from the schema titles: "Voice", "Contacts: Mom", "llm: Args". */
+export function fieldLabel(root: JsonSchema, path: Path): string {
+  let current: JsonSchema | undefined = deref(root, root)
+  const parts: string[] = []
+  let keyAt = -1
+  let switchAt = -1
+  for (const step of path) {
+    if (!current) {
+      parts.push(String(step))
+      continue
+    }
+    if (typeof step === 'number') {
+      current = current.items ? deref(current.items, root) : undefined
+      continue
+    }
+    const property: JsonSchema | undefined = current.properties?.[step]
+    if (property) {
+      // A section switch ("Enabled") is named with its section, "Announce: Enabled".
+      switchAt = current.enabled_by === step ? parts.length : -1
+      current = deref(property, root)
+      // A section's own title is its model's class name ("AnnounceConfig"); its key reads better.
+      parts.push(property.title ?? (property.$ref ? humanize(step) : (current.title ?? humanize(step))))
+    } else if (isRecord(current.additionalProperties)) {
+      current = deref(current.additionalProperties as JsonSchema, root)
+      keyAt = parts.length
+      parts.push(step)
+    } else {
+      current = undefined
+      parts.push(humanize(step))
+    }
+  }
+  const last = parts.length - 1
+  if (last < 0) return 'Config'
+  if (keyAt === last && last > 0) return `${parts[last - 1]}: ${parts[last]}`
+  if (keyAt >= 0 && keyAt < last) return `${parts[keyAt]}: ${parts[last]}`
+  if (switchAt === last && last > 0) return `${parts[last - 1]}: ${parts[last]}`
+  return parts[last]
+}
+
+/** The config paths that name a key, so it counts on their page; none for a name nothing uses yet. */
+const secretPaths = (name: string, byName: Map<string, SecretStatus>): Path[] => byName.get(name)?.used_by ?? []
+
+/** A pasted key by its field's label ("Bot token"), else its variable name. */
+function keyLabel(root: JsonSchema, path: Path, name: string): string {
+  let current: JsonSchema | undefined = deref(root, root)
+  for (const step of path) {
+    const next: JsonSchema | undefined =
+      typeof step === 'number'
+        ? current?.items
+        : (current?.properties?.[step] ??
+          (isRecord(current?.additionalProperties) ? (current.additionalProperties as JsonSchema) : undefined))
+    current = next ? deref(next, root) : undefined
+  }
+  const label = isRecord(current?.secret) ? current.secret.label : undefined
+  return typeof label === 'string' ? label : name
+}
+
+/** "Voice: Voice, Speed" per page, for the confirms. */
+function summary(root: JsonSchema, edits: ConfigChange[], keys: string[], byName: Map<string, SecretStatus>): string[] {
+  const groups = new Map<string, Set<string>>()
+  const add = (page: string, label: string) => groups.set(page, (groups.get(page) ?? new Set()).add(label))
+  for (const c of edits) add(pagesOf(c.path)[0]?.label ?? 'Other', fieldLabel(root, c.path))
+  for (const name of keys) {
+    const path = secretPaths(name, byName)[0]
+    add(pagesOf(path ?? [])[0]?.label ?? 'Keys', path ? keyLabel(root, path, name) : name)
+  }
+  return [...groups].map(([page, labels]) => `${page}: ${[...labels].join(', ')}`)
+}
+
+const joinNames = (names: string[]) =>
+  names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+
+const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
+
+/** The pages with unsaved edits or pasted keys, for the sidebar's dots. */
+export function useDirtyPages(): Set<string> {
+  const { edits } = useDraftStore()
+  const secrets = useSecretsDraft()
+  const { byName } = useSecretStatus()
+  const paths = [...edits.map((c) => c.path), ...Object.keys(secrets.pending).flatMap((n) => secretPaths(n, byName))]
+  return new Set(paths.flatMap((p) => pagesOf(p).map((page) => page.to)))
+}
 
 export type SettingsState = {
   schema: JsonSchema
@@ -24,83 +207,162 @@ export type SettingsState = {
 type Loading = { loading: true; page: null }
 type Ready = { loading: false; page: SettingsState }
 
-/** A page's draft of the config plus the save flow: validate, confirm what restarts, save,
- * restart. `paths` are the sections the page shows; a page with no basic field opens Advanced. */
+/** A page's view of the shared draft plus the save flow: a dry-run patch of only the changed paths,
+ * confirm what changes and restarts, save with the version the edits started from, write pending
+ * keys, restart. `paths` are the sections the page shows; a page with no basic field opens Advanced. */
 export function useSettings(paths: string[][]): Loading | Ready {
+  const client = useQueryClient()
   const config = useConfig()
   const schema = useSchema()
-  const saveConfig = useSaveConfig()
   const actions = useEngineActions()
   const status = $api.useQuery('get', '/api/status')
+  const secrets = useSecretsDraft()
+  const { byName } = useSecretStatus()
   const ask = useConfirm()
+  const { pathname } = useLocation()
   const { draft, setDraft } = useDraft()
+  const store = useDraftStore()
   const [advancedChoice, setAdvancedChoice] = useState<boolean | null>(null)
 
-  const base = config.data
-  const update = useCallback(
-    (fn: (current: Config) => Config) => setDraft((d) => (d ?? base ? fn((d ?? base) as Config) : d)),
-    [base, setDraft],
-  )
-  const reset = useCallback(() => setDraft(null), [setDraft])
+  const update = useCallback((fn: (current: Config) => Config) => setDraft((d) => (d ? fn(d) : d)), [setDraft])
 
+  const base = config.data
   if (!base || !schema.data) return { loading: true, page: null }
   const root = schema.data
   const value = draft ?? base
-  const dirty = draft !== null && !deepEqual(draft, base)
+  const { edits } = store
+  const keys = Object.keys(secrets.pending)
+  const dirty = edits.length > 0 || keys.length > 0
   const anyBasic = paths.some((p) => hasBasicFields(section(root, p), root))
   const advanced = advancedChoice ?? !anyBasic
+  const current = pageAt(pathname)
+  const onCurrent = (path: Path) => !!current && pagesOf(path).includes(current)
+  const keyHere = (name: string) => secretPaths(name, byName).some(onCurrent)
+  const elsewhere = edits.some((c) => !onCurrent(c.path)) || keys.some((n) => !keyHere(n))
 
-  const costLine = (name: string): string => {
-    const engine = status.data?.engines.find((e) => e.name === name)
-    if (!engine) return `${name}: applies on the next winston up`
-    return engine.started_in
-      ? `${name}: about ${duration(engine.started_in)}`
-      : `${name}: up to ${duration(engine.startup_timeout)}`
+  const discardAll = () => {
+    store.setEdits({ changes: [], version: undefined })
+    secrets.discard()
+    clearFieldErrors()
   }
 
-  const save = async () => {
-    if (!dirty) return
-    let restarts: string[]
-    try {
-      restarts = (await saveConfig.mutateAsync({ body: value, params: { query: { dry_run: true } } })).restarts
-    } catch (error) {
-      toast.error(errorText(error))
+  /** Discard asks once when the edits reach past this page, offering this page alone. */
+  const reset = async () => {
+    if (!elsewhere) return discardAll()
+    const here = !!current && (edits.some((c) => onCurrent(c.path)) || keys.some(keyHere))
+    const choice = await ask({
+      title: 'Discard unsaved changes?',
+      lines: summary(root, edits, keys, byName),
+      choices: [
+        ...(here && current ? [{ label: `Only ${current.label}`, value: 'page' }] : []),
+        { label: 'Discard all', value: 'all', destructive: true },
+      ],
+    })
+    if (choice === 'all') discardAll()
+    if (choice !== 'page') return
+    store.setEdits((e) => ({ ...e, changes: e.changes.filter((c) => !onCurrent(c.path)) }))
+    secrets.discard(keys.filter(keyHere))
+    clearFieldErrors()
+  }
+
+  /** A save the server refused: a conflict rebases the draft on the new config, a 422 marks fields. */
+  const refused = async (outcome: Exclude<PatchOutcome, { ok: true }>) => {
+    if ('conflict' in outcome) {
+      const { conflict } = outcome
+      // A 409 without a version is not a conflict of fields: config.yaml on disk does not load.
+      if (!conflict?.version || !Array.isArray(conflict.paths)) {
+        toast.error(errorText(conflict))
+        return
+      }
+      await client.refetchQueries({ queryKey: configKey })
+      store.setEdits((e) => ({ ...e, version: conflict.version }))
+      const what = conflict.paths.length ? conflict.paths.map((p) => p.join('.')).join(', ') : 'the config'
+      toast.warning(`Winston changed ${what} meanwhile; your edits are kept on top`, {
+        description: 'Check them and save again.',
+      })
       return
     }
+    const errors = outcome.status === 422 ? showFieldErrors(outcome.error, { schema: root, setAdvanced: setAdvancedChoice }) : []
+    if (errors.length) {
+      const lines = errors.map((e) =>
+        e.loc.length ? `${pagesOf(e.loc)[0]?.label ?? 'Config'}, ${fieldLabel(root, e.loc)}: ${e.msg}` : e.msg,
+      )
+      toast.error('Not saved', { description: lines.join('; ') })
+      return
+    }
+    toast.error(errorText(outcome.error))
+  }
+
+  const runSave = async () => {
+    const changes = edits
+    const version = store.version
+    clearFieldErrors()
+    let restarts: string[] = []
+    if (changes.length) {
+      const dry = await patchConfig(changes, { version, dryRun: true })
+      if (!dry.ok) return refused(dry)
+      restarts = dry.result.restarts
+    }
+    restarts = [...new Set([...restarts, ...secretRestarts(keys, byName)])]
+
+    const engines = status.data?.engines ?? []
+    const restartable = engines.filter((e) => restarts.includes(e.name) && e.state !== 'stopped' && e.state !== 'error')
+    const later = restarts.some((name) => !engines.some((e) => e.name === name))
+    const costs = [
+      ...restartable.map((e) => `${capitalize(engineLabel(e))}: ${restartCost(e)}`),
+      ...(later ? ['Some changes apply on the next winston up'] : []),
+    ]
+
     let restart = false
-    if (restarts.length) {
+    if (costs.length || elsewhere) {
       const choice = await ask({
-        title: `Save and restart ${restarts.join(', ')}?`,
-        lines: restarts.map(costLine),
-        choices: [
-          { label: 'Save only', value: 'save' },
-          { label: 'Save and restart', value: 'restart' },
-        ],
+        title: restartable.length ? `Save and restart ${joinNames(restartable.map(engineLabel))}?` : 'Save these changes?',
+        lines: [...summary(root, changes, keys, byName), ...costs],
+        choices: restartable.length
+          ? [
+              { label: 'Save only', value: 'save' },
+              { label: 'Save and restart', value: 'restart' },
+            ]
+          : [{ label: 'Save', value: 'save' }],
       })
       if (!choice) return
       restart = choice === 'restart'
     }
-    try {
-      await saveConfig.mutateAsync({ body: value })
-    } catch (error) {
-      toast.error(errorText(error))
-      return
+
+    // The config first, so a variable name a key is pasted under is saved before the key.
+    if (changes.length) {
+      const saved = await patchConfig(changes, { version, client })
+      if (!saved.ok) return refused(saved)
     }
-    toast.success('Saved')
-    setDraft(null)
+    const written = await secrets.save()
+    for (const line of written.errors) toast.error(`Key not saved: ${line}`)
+    // The saved config replaces the draft before it is cleared, so the page never shows the old one.
+    await client.refetchQueries({ queryKey: configKey })
+    store.setEdits({ changes: [], version: undefined })
+    void client.invalidateQueries({ queryKey: statusKey })
+    // A renamed key variable changes which variables are Set, and a new token which lists work.
+    void client.invalidateQueries({ queryKey: secretsKey })
+    if (changes.length || written.saved.length) toast.success('Saved')
     if (restart) {
-      const managed = new Set(status.data?.engines.map((e) => e.name))
-      for (const name of restarts) {
-        if (managed.has(name)) actions.restart.mutate({ params: { path: { name } } })
-      }
+      for (const e of restartable) actions.restart.mutate({ params: { path: { name: e.name } } })
+    }
+  }
+
+  const save = async () => {
+    if (!dirty || store.saving) return
+    store.setSaving(true)
+    try {
+      await runSave()
+    } finally {
+      store.setSaving(false)
     }
   }
 
   return {
     loading: false,
     page: {
-      schema: root, value, dirty, saving: saveConfig.isPending, advanced, setAdvanced: setAdvancedChoice,
-      update, reset, save,
+      schema: root, value, dirty, saving: store.saving || secrets.saving, advanced, setAdvanced: setAdvancedChoice,
+      update, reset: () => void reset(), save,
     },
   }
 }

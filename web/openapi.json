@@ -982,12 +982,20 @@
                   "$ref": "#/components/schemas/WinstonConfig"
                 }
               }
+            },
+            "headers": {
+              "ETag": {
+                "description": "The saved file's version; send it back as If-Match",
+                "schema": {
+                  "type": "string"
+                }
+              }
             }
           }
         }
       },
       "put": {
-        "summary": "Validate and save the config; dry_run only reports which engines a change restarts",
+        "summary": "Validate and save a whole config; dry_run only reports which engines a change restarts. With If-Match, refused while the saved file is another version",
         "operationId": "put_config_api_config_put",
         "parameters": [
           {
@@ -1022,12 +1030,113 @@
               }
             }
           },
+          "409": {
+            "description": "Changed on disk since the If-Match version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigConflict"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Change some fields of the saved config: each change sets one path (null removes it). Applied to the config on disk, so saves from elsewhere are kept. With If-Match, a path that was also changed since that version is a conflict (409); without it the changes win",
+        "operationId": "patch_config_api_config_patch",
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Dry Run"
+            }
+          },
+          {
+            "name": "applied",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Processes that already run this change (a live voice switch): not marked for restart",
+              "default": [],
+              "title": "Applied"
+            },
+            "description": "Processes that already run this change (a live voice switch): not marked for restart"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResult"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Changed on disk since the If-Match version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigConflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/config/version": {
+      "get": {
+        "summary": "The saved config's version, the same as GET /api/config's ETag",
+        "operationId": "get_config_version_api_config_version_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigVersion"
                 }
               }
             }
@@ -1055,6 +1164,132 @@
         }
       }
     },
+    "/api/secrets": {
+      "get": {
+        "summary": "Variables in data/.env the config names, and the two Claude ones: set or not, never values",
+        "operationId": "list_secrets_api_secrets_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SecretStatus"
+                  },
+                  "type": "array",
+                  "title": "Response List Secrets Api Secrets Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/secrets/{name}": {
+      "put": {
+        "summary": "Store a secret in data/.env (localhost only); what reads it is marked for restart",
+        "operationId": "put_secret_api_secrets__name__put",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretValue"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove a secret from data/.env (localhost only)",
+        "operationId": "delete_secret_api_secrets__name__delete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tools/ask_claude/auth": {
+      "get": {
+        "summary": "What ask_claude signs in with, in the Claude CLI's order: API key, token, this machine's login",
+        "operationId": "ask_claude_auth_api_tools_ask_claude_auth_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaudeAuth"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/presets": {
       "get": {
         "summary": "Engine and model presets the UI offers per slot, and the hardware profiles",
@@ -1075,7 +1310,7 @@
     },
     "/api/options/{name}": {
       "get": {
-        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains",
+        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users",
         "operationId": "get_options_api_options__name__get",
         "parameters": [
           {
@@ -1122,6 +1357,24 @@
               "title": "Domain"
             },
             "description": "ha_entities: comma-separated domains to keep"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "discord_users: a user id to look up",
+              "title": "Q"
+            },
+            "description": "discord_users: a user id to look up"
           }
         ],
         "responses": {
@@ -1229,6 +1482,7 @@
             "title": "Chime",
             "description": "Sound played before an announcement, so it is clearly a notification. Empty for none.",
             "default": "{repo}/assets/sounds/chime.wav",
+            "empty_means_off": true,
             "level": "advanced",
             "options": "sounds",
             "restarts": [
@@ -1247,6 +1501,7 @@
             "title": "Quiet hours",
             "description": "HH:MM-HH:MM when announcements are not spoken, only sent to Discord. Empty for never quiet.",
             "default": "22:00-07:00",
+            "empty_means_off": true,
             "level": "basic",
             "widget": "time_range"
           },
@@ -1278,6 +1533,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "AnnounceConfig",
+        "enabled_by": "enabled",
         "restarts": [
           "control"
         ]
@@ -1357,6 +1613,8 @@
         "additionalProperties": false,
         "type": "object",
         "title": "AskClaudeConfig",
+        "enabled_by": "enabled",
+        "icon": "claude",
         "restarts": [
           "{brains}"
         ]
@@ -1406,6 +1664,7 @@
             "default": {
               "enabled": false,
               "token_env": "DISCORD_BOT_TOKEN",
+              "allowed_user": "",
               "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
               "session_idle_mins": 30,
               "contacts": {}
@@ -1498,6 +1757,42 @@
         ],
         "title": "Choice"
       },
+      "ClaudeAuth": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "api_key",
+              "oauth_token",
+              "login",
+              "none"
+            ],
+            "title": "Source"
+          },
+          "variable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variable"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "variable",
+          "label"
+        ],
+        "title": "ClaudeAuth"
+      },
       "ClonedVoice": {
         "properties": {
           "slug": {
@@ -1536,6 +1831,89 @@
         ],
         "title": "ClonedVoice"
       },
+      "ConfigChange": {
+        "properties": {
+          "path": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Path",
+            "description": "Keys from the config root, e.g. [\"tts\", \"voice\"]"
+          },
+          "value": {
+            "title": "Value",
+            "description": "Any JSON value; null removes the key, so the default applies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "title": "ConfigChange"
+      },
+      "ConfigConflict": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "paths": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Paths"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail",
+          "paths",
+          "version"
+        ],
+        "title": "ConfigConflict"
+      },
+      "ConfigPatch": {
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigChange"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Changes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "changes"
+        ],
+        "title": "ConfigPatch"
+      },
       "ConfigResult": {
         "properties": {
           "saved": {
@@ -1548,14 +1926,32 @@
             },
             "type": "array",
             "title": "Restarts"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
           }
         },
         "type": "object",
         "required": [
           "saved",
-          "restarts"
+          "restarts",
+          "version"
         ],
         "title": "ConfigResult"
+      },
+      "ConfigVersion": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "ConfigVersion"
       },
       "ControlConfig": {
         "properties": {
@@ -1633,18 +2029,45 @@
           "token_env": {
             "type": "string",
             "title": "Token variable",
-            "description": "Environment variable holding the Discord bot token.",
+            "description": "The variable in data/.env that holds the Discord bot token.",
             "default": "DISCORD_BOT_TOKEN",
             "level": "advanced",
-            "options": "env"
+            "restarts": [
+              "{brains}"
+            ],
+            "secret": {
+              "default": "DISCORD_BOT_TOKEN",
+              "label": "Bot token"
+            }
+          },
+          "allowed_user": {
+            "type": "string",
+            "pattern": "^(\\d{17,20})?$",
+            "title": "Your Discord user id",
+            "description": "The one Discord user Winston answers and calls \"me\". In Discord: Settings, Advanced, Developer Mode on, then right-click yourself, Copy User ID. Empty reads the variable under Advanced.",
+            "default": "",
+            "level": "basic",
+            "options": "discord_users",
+            "restarts": [
+              "{brains}"
+            ]
           },
           "allowed_user_env": {
             "type": "string",
-            "title": "Allowed user variable",
-            "description": "Environment variable with the one Discord user id Winston answers.",
+            "title": "User id variable",
+            "description": "The variable in data/.env read for your user id while the field above is empty; older configs kept it there.",
             "default": "DISCORD_ALLOWED_USER_ID",
             "level": "advanced",
-            "options": "env"
+            "options": "env",
+            "restarts": [
+              "{brains}"
+            ],
+            "when": {
+              "channels.discord.allowed_user": [
+                "",
+                null
+              ]
+            }
           },
           "session_idle_mins": {
             "type": "integer",
@@ -1656,20 +2079,28 @@
           },
           "contacts": {
             "additionalProperties": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^\\d{17,20}$",
+              "level": "basic",
+              "options": "discord_users"
             },
             "type": "object",
             "title": "Contacts",
-            "description": "People Winston may message, name -> Discord user id. The bot can only reach people who share a server with it.",
+            "description": "People Winston may message, by the name you say and their Discord user. The bot can only reach people who share a server with it.",
+            "icon": "discord",
+            "key_title": "Name",
             "level": "basic",
             "restarts": [
               "{brains}"
-            ]
+            ],
+            "value_title": "Discord user"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "DiscordChannel",
+        "enabled_by": "enabled",
+        "icon": "discord",
         "restarts": [
           "discord"
         ]
@@ -1706,13 +2137,19 @@
           "port": {
             "type": "integer",
             "title": "Port",
-            "description": "Local port the engine listens on."
+            "description": "Local port the engine listens on.",
+            "drivers": [
+              "docker",
+              "subprocess"
+            ],
+            "level": "basic"
           },
           "health": {
             "type": "string",
             "title": "Health path",
             "description": "HTTP path that returns 200 when ready. Empty: no check, the engine counts as up whenever its process is (hosted APIs).",
             "default": "/health",
+            "empty_means_off": true,
             "level": "advanced"
           },
           "startup_timeout": {
@@ -1761,7 +2198,9 @@
               "docker",
               "subprocess"
             ],
-            "level": "advanced"
+            "key_title": "Variable",
+            "level": "advanced",
+            "value_title": "Value"
           },
           "volumes": {
             "additionalProperties": {
@@ -1769,11 +2208,13 @@
             },
             "type": "object",
             "title": "Volumes",
-            "description": "host path -> container path",
+            "description": "Folders the container sees: a path on this machine and where it appears inside the container.",
             "drivers": [
               "docker"
             ],
-            "level": "advanced"
+            "key_title": "Host path",
+            "level": "advanced",
+            "value_title": "Container path"
           },
           "gpu": {
             "type": "boolean",
@@ -2108,14 +2549,17 @@
           "token_env": {
             "type": "string",
             "title": "Token variable",
-            "description": "Environment variable holding the long-lived token.",
+            "description": "The variable in data/.env that holds the long-lived access token.",
             "default": "HA_TOKEN",
             "level": "advanced",
-            "options": "env",
             "restarts": [
               "{brains}",
               "control"
-            ]
+            ],
+            "secret": {
+              "default": "HA_TOKEN",
+              "label": "Access token"
+            }
           },
           "mcp_path": {
             "type": "string",
@@ -2130,7 +2574,10 @@
             },
             "type": "object",
             "title": "Entities",
-            "description": "Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him; winston ha expose applies the list."
+            "description": "Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him; winston ha expose applies the list.",
+            "key_options": "ha_entities",
+            "key_title": "Entity",
+            "level": "basic"
           },
           "expose_domains": {
             "items": {
@@ -2149,6 +2596,8 @@
           "url"
         ],
         "title": "HomeAssistantConfig",
+        "enabled_by": "enabled",
+        "icon": "homeassistant",
         "restarts": [
           "{brains}"
         ]
@@ -2161,6 +2610,7 @@
             "title": "Provider",
             "description": "Protocol the brain is spoken to with. Every supported server speaks the OpenAI chat API.",
             "default": "openai_compatible",
+            "hidden": true,
             "labels": {
               "openai_compatible": "OpenAI-compatible"
             },
@@ -2182,10 +2632,19 @@
                 "type": "null"
               }
             ],
-            "title": "API key variable",
-            "description": "Environment variable holding the API key. Unset for local servers.",
+            "title": "Key variable",
+            "description": "The variable in data/.env that holds the API key. Unset for local servers.",
             "level": "advanced",
-            "options": "env"
+            "secret": {
+              "default": "LLM_API_KEY",
+              "label": "API key"
+            },
+            "when": {
+              "engines.{slot}.driver": [
+                "external",
+                null
+              ]
+            }
           },
           "model": {
             "type": "string",
@@ -2226,7 +2685,8 @@
         "title": "LLMConfig",
         "restarts": [
           "{brains}"
-        ]
+        ],
+        "slot": "llm"
       },
       "LiveEvent": {
         "properties": {
@@ -2415,6 +2875,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "MemoryConfig",
+        "enabled_by": "enabled",
         "restarts": [
           "{brains}"
         ]
@@ -2928,6 +3389,7 @@
             "title": "Quantization",
             "description": "Weight precision. int8 is faster on the CPU at no audible accuracy cost; empty for full precision.",
             "default": "int8",
+            "empty_means_off": true,
             "level": "advanced"
           }
         },
@@ -2937,7 +3399,8 @@
         "restarts": [
           "voice",
           "satellite"
-        ]
+        ],
+        "slot": "stt"
       },
       "Sampling": {
         "properties": {
@@ -2998,7 +3461,10 @@
             },
             "type": "object",
             "title": "Devices",
-            "description": "Satellites by room or name, e.g. \"living room\"."
+            "description": "Satellites by room or name, e.g. \"living room\".",
+            "icon": "satellite",
+            "key_title": "Room",
+            "level": "basic"
           },
           "http_port": {
             "type": "integer",
@@ -3043,6 +3509,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "SatelliteChannel",
+        "enabled_by": "enabled",
         "restarts": [
           "satellite"
         ]
@@ -3072,10 +3539,13 @@
                 "type": "null"
               }
             ],
-            "title": "Encryption key variable",
-            "description": "Environment variable holding the box's API encryption key (the one Home Assistant shows for it). Unset for a box without encryption.",
-            "level": "basic",
-            "options": "env"
+            "title": "Key variable",
+            "description": "The variable in data/.env that holds the box's API encryption key (the one Home Assistant shows for it). Unset for a box without encryption.",
+            "level": "advanced",
+            "secret": {
+              "default": "VOICE_PE_KEY",
+              "label": "Encryption key"
+            }
           },
           "wake_word": {
             "anyOf": [
@@ -3099,6 +3569,84 @@
         "restarts": [
           "satellite"
         ]
+      },
+      "SecretResult": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "set": {
+            "type": "boolean",
+            "title": "Set"
+          },
+          "restarts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Restarts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "set",
+          "restarts"
+        ],
+        "title": "SecretResult"
+      },
+      "SecretStatus": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "set": {
+            "type": "boolean",
+            "title": "Set"
+          },
+          "used_by": {
+            "items": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Used By"
+          },
+          "restarts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Restarts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "set",
+          "used_by",
+          "restarts"
+        ],
+        "title": "SecretStatus"
+      },
+      "SecretValue": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "title": "SecretValue"
       },
       "SensorPair": {
         "properties": {
@@ -3181,6 +3729,14 @@
                 "type": "null"
               }
             ]
+          },
+          "pending_control": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pending Control",
+            "default": []
           }
         },
         "type": "object",
@@ -3199,6 +3755,7 @@
             "title": "Provider",
             "description": "Text-to-speech adapter.",
             "default": "openai_speech",
+            "hidden": true,
             "labels": {
               "openai_speech": "OpenAI speech protocol"
             },
@@ -3220,10 +3777,19 @@
                 "type": "null"
               }
             ],
-            "title": "API key variable",
-            "description": "Environment variable holding the API key. Unset for local servers.",
+            "title": "Key variable",
+            "description": "The variable in data/.env that holds the API key. Unset for local servers.",
             "level": "advanced",
-            "options": "env"
+            "secret": {
+              "default": "TTS_API_KEY",
+              "label": "API key"
+            },
+            "when": {
+              "engines.{slot}.driver": [
+                "external",
+                null
+              ]
+            }
           },
           "voice": {
             "type": "string",
@@ -3243,7 +3809,11 @@
           "streaming": {
             "$ref": "#/components/schemas/TTSStreamingConfig",
             "title": "Streaming",
-            "description": "How speech is cut into chunks so he starts talking before a sentence is fully rendered."
+            "description": "How speech is cut into chunks so he starts talking before a sentence is fully rendered.",
+            "level": "basic",
+            "when": {
+              "cmd_uses": "tts.streaming."
+            }
           }
         },
         "additionalProperties": false,
@@ -3252,7 +3822,8 @@
         "restarts": [
           "voice",
           "satellite"
-        ]
+        ],
+        "slot": "tts"
       },
       "TTSStreamingConfig": {
         "properties": {
@@ -3344,7 +3915,9 @@
             },
             "type": "object",
             "title": "Sensors",
-            "description": "Watched sensors by label; readings come with their age."
+            "description": "Watched sensors by label; readings come with their age.",
+            "key_title": "Label",
+            "level": "basic"
           },
           "web_search": {
             "$ref": "#/components/schemas/WebSearchConfig",
@@ -3417,6 +3990,7 @@
             "title": "Provider",
             "description": "Voice activity detector that decides when you are speaking.",
             "default": "silero",
+            "hidden": true,
             "labels": {
               "silero": "Silero"
             },
@@ -3514,6 +4088,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "VoiceChannel",
+        "enabled_by": "enabled",
         "restarts": [
           "voice"
         ]
@@ -3547,6 +4122,7 @@
             "title": "Provider",
             "description": "Search backend. gemini: Gemini with Google Search grounding (needs billing enabled on the key).",
             "default": "gemini",
+            "hidden": true,
             "icons": {
               "gemini": "gemini"
             },
@@ -3578,11 +4154,14 @@
           },
           "api_key_env": {
             "type": "string",
-            "title": "API key variable",
-            "description": "Environment variable holding the Gemini API key.",
+            "title": "Key variable",
+            "description": "The variable in data/.env that holds the Gemini API key.",
             "default": "GEMINI_API_KEY",
             "level": "advanced",
-            "options": "env"
+            "secret": {
+              "default": "GEMINI_API_KEY",
+              "label": "API key"
+            }
           },
           "max_per_day": {
             "type": "integer",
@@ -3603,6 +4182,8 @@
         "additionalProperties": false,
         "type": "object",
         "title": "WebSearchConfig",
+        "enabled_by": "enabled",
+        "icon": "gemini",
         "restarts": [
           "{brains}"
         ]
@@ -3633,7 +4214,10 @@
               "$ref": "#/components/schemas/EngineConfig"
             },
             "type": "object",
-            "title": "Engines"
+            "title": "Engines",
+            "description": "Heavy processes Winston runs or checks, by name: llm for the brain's server, tts for the speech server.",
+            "key_title": "Name",
+            "level": "basic"
           },
           "llm": {
             "$ref": "#/components/schemas/LLMConfig",
@@ -3682,6 +4266,7 @@
                 "port": 7860
               },
               "discord": {
+                "allowed_user": "",
                 "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
                 "contacts": {},
                 "enabled": false,

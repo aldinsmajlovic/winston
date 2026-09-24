@@ -1,7 +1,8 @@
 """ask_claude: hand a hard question to Claude (reasoning, explanations, writing, planning) when the
 local model is out of its depth. Runs through the Claude Agent SDK, which authenticates with a
-Claude subscription (the plan's monthly Agent SDK credit) or an API key, whichever the CLI finds:
-CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`, ANTHROPIC_API_KEY, or the machine's Claude Code login.
+Claude subscription (the plan's monthly Agent SDK credit) or an API key, whichever the CLI finds first:
+ANTHROPIC_API_KEY, then CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`, then the machine's Claude Code
+login (auth_source says which, for the Tools page).
 
 Plan §6 rule 2: only the question the local model writes leaves the house. Claude gets no tools,
 no settings and no files (an empty scratch directory), just the question. Spend is capped per day
@@ -11,6 +12,8 @@ import os
 import tempfile
 import time
 from datetime import date
+from pathlib import Path
+from typing import Literal
 
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
@@ -22,6 +25,25 @@ from winston.config.schema import WinstonConfig
 SYSTEM = ("You answer questions passed on by a home voice assistant. Reply in plain spoken English, at most four "
           "short sentences unless the question asks for more; no markdown, lists, code blocks or URLs. If the "
           "question depends on current events you cannot know, say so.")
+
+
+AuthSource = Literal["api_key", "oauth_token", "login", "none"]
+
+
+def auth_source(env: dict[str, str] | None = None) -> tuple[AuthSource, str | None]:
+    """What the bundled Claude CLI will sign in with, in its own order, and the variable it reads.
+    The SDK hands the CLI this process's environment; an empty ANTHROPIC_API_KEY is removed first
+    (make_ask_claude_tool), so empty counts as unset. The login is the credentials file Claude Code
+    writes on Linux; it is looked for, never read."""
+    env = os.environ if env is None else env
+    if env.get("ANTHROPIC_API_KEY", "").strip():
+        return "api_key", "ANTHROPIC_API_KEY"
+    if env.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+        return "oauth_token", "CLAUDE_CODE_OAUTH_TOKEN"
+    config_dir = Path(env.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude").expanduser()
+    if (config_dir / ".credentials.json").is_file():
+        return "login", None
+    return "none", None
 
 
 class DailySpend:

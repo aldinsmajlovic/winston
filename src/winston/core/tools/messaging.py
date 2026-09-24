@@ -20,7 +20,7 @@ def recipients(cfg: WinstonConfig) -> dict[str, str]:
     """Lower-cased name -> Discord user id."""
     c = cfg.channels.discord
     out = {name.strip().lower(): uid.strip() for name, uid in c.contacts.items() if uid.strip()}
-    if me := os.environ.get(c.allowed_user_env, "").strip():
+    if me := c.allowed_id():
         out.setdefault("me", me)
     return out
 

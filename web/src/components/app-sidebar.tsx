@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
 import { KindIcon } from '@/components/kind-icon'
+import { useDirtyPages } from '@/hooks/use-settings'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +20,7 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
@@ -72,6 +74,7 @@ export function AppSidebar() {
   const { pathname } = useLocation()
   const status = $api.useQuery('get', '/api/status')
   const active = (to: string) => pathname.startsWith(to)
+  const dirty = useDirtyPages()
   return (
     <Sidebar>
       <SidebarHeader className="px-2 py-3">
@@ -98,6 +101,11 @@ export function AppSidebar() {
                       <span>{label}</span>
                     </NavLink>
                   </SidebarMenuButton>
+                  {dirty.has(to) ? (
+                    <SidebarMenuBadge>
+                      <span role="img" aria-label="Unsaved changes" className="size-2 rounded-full bg-primary" />
+                    </SidebarMenuBadge>
+                  ) : null}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>

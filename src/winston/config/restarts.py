@@ -48,3 +48,10 @@ def restarts_for(old: Any, new: Any, schema: dict, root: dict | None = None,
     if BRAINS in out:
         out = (out - {BRAINS}) | set(BRAIN_CHANNELS)
     return out
+
+
+def control_sections(old: dict, new: dict, schema: dict) -> list[str]:
+    """Top-level sections changed from `old` to `new` in a way only winstond's own restart applies
+    (the next `winston up`): the "control" entries of their restart lists."""
+    return sorted(k for k in set(old) | set(new)
+                  if old.get(k) != new.get(k) and "control" in restarts_for({k: old.get(k)}, {k: new.get(k)}, schema))

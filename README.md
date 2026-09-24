@@ -38,8 +38,9 @@ be swapped for a hosted service when that suits you better.
 - **Swappable parts.** Every model is an adapter picked from a dropdown, with presets for vLLM, llama.cpp,
   Ollama, hosted APIs, a GPU voice and a CPU voice. `winston check brain` compares two brains on the same
   requests.
-- **Settings that fill themselves in.** Models, voices, Home Assistant entities and key names are
-  dropdowns read from the servers that know them, not text you type.
+- **Settings that fill themselves in.** Models, voices and Home Assistant entities are dropdowns read
+  from the servers that know them, not text you type. Keys are pasted once and never shown again, fields
+  that do not apply to your engines stay hidden, and a Restart button appears when a saved change waits.
 - **Room satellites.** Home Assistant's Voice Preview Edition as Winston's microphone and speaker in a
   room ([setup](docs/voice-pe.md)); built and tested against a fake box, the real one is next.
 - **"Hey Winston".** A custom wake word model for room satellites (for now the Voice PE uses its own
@@ -63,8 +64,9 @@ uv sync
 uv run winston init                       # creates ./data; --list shows the profiles
 ```
 
-Set your Home Assistant URL and entities in `data/config.yaml` and tokens in `data/.env` (optional
-ones for web search, Claude and Discord are listed in [tools](docs/tools.md)), then:
+Set your Home Assistant URL and entities in `data/config.yaml` and tokens in `data/.env`, or paste
+them on the settings pages later (optional ones for web search, Claude and Discord are listed in
+[tools](docs/tools.md)), then:
 
 ```sh
 uv run winston up      # everything; Ctrl-C stops it

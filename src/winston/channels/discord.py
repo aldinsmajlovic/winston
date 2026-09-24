@@ -3,7 +3,8 @@ its own process, started by the supervisor:
 
     python -m winston.channels.discord
 
-Only the one user named by channels.discord.allowed_user_env is answered; every other message
+Only the one user in channels.discord.allowed_user (or, left empty, the variable allowed_user_env
+names) is answered; every other message
 is ignored (plan §6: single user, and a message from anyone else is never an instruction). The
 bot connects out to Discord, nothing listens on the LAN. A conversation starts fresh after
 session_idle_mins, which also re-reads memory."""
@@ -38,9 +39,12 @@ class DiscordChannel:
         c = cfg.channels.discord
         self.cfg = cfg
         self.token = os.environ.get(c.token_env, "")
-        self.allowed = int(os.environ.get(c.allowed_user_env, "0") or 0)
-        if not self.token or not self.allowed:
-            raise SystemExit(f"{c.token_env} and {c.allowed_user_env} must be set in data/.env")
+        self.allowed = int(c.allowed_id() or 0)
+        if not self.token:
+            raise SystemExit(f"{c.token_env} must be set in data/.env")
+        if not self.allowed:
+            raise SystemExit(f"set your Discord user id (channels.discord.allowed_user) or {c.allowed_user_env} "
+                             "in data/.env")
         intents = discord.Intents.default()
         intents.message_content = True          # also enable "Message Content Intent" in the developer portal
         self.client = discord.Client(intents=intents)

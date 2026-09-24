@@ -69,6 +69,38 @@ flowchart TB
 - **Providers** (`winston/providers`): platform helpers, currently Home Assistant's exposure allowlist.
 - **Control** (`winston/api`, `winston/cli`): `winstond` and the `winston` command.
 
+## Config API
+
+- **Safe saves.** `GET /api/config` returns the config with its version in `ETag` (a hash of
+  `config.yaml`; also `GET /api/config/version`). `PATCH /api/config` takes
+  `{"changes": [{"path": ["tts", "voice"], "value": "onyx"}]}` (null removes a key, so its default
+  applies) and applies it to the file as it is now, so two savers keep each other's fields. With
+  `If-Match: "<version>"`, a changed path that also changed on disk since that version is refused with
+  409 and `{detail, paths, version}`; other changes merge. `?dry_run=true` only reports the restarts;
+  `?applied=voice` names a process that already runs the change (the voice channel after a live voice
+  switch), so it is not marked for a restart. `PUT /api/config` still takes a whole config for the CLI.
+  Both answer `{saved, restarts, version}`; a 422 lists `{loc, msg, type}` with `loc` counted from the
+  config root (`["vad", "stop_secs"]`).
+- **Pending restarts.** A save or a new secret marks each running process in its restart list; the
+  status shows `config_changed` until it is restarted, or until a later save puts the settings it reads
+  back to what it runs with (a secret's mark stays until the restart). What only winstond reads at start (`control`
+  sections, the Home Assistant token) is listed in the status as `pending_control` and applies at the
+  next `winston up`.
+- **Secrets.** Config names variables, `data/.env` holds them. `GET /api/secrets` lists every variable
+  the config names, plus `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`, with set or not, the paths
+  that name it and what restarts; never a value. `PUT /api/secrets/{name}` `{value}` and `DELETE` write
+  the file (mode 600) and winstond's environment, only for a name a secret field holds or defaults to,
+  only on a loopback winstond, from a loopback client with a localhost Host header and a JSON body.
+  Each write is logged by name.
+
+The schema tells the form what to draw (`config/schema.py` has the full list): `level`, `restarts`,
+`options` (a live list), `labels`, `drivers` on engine fields, `empty_means_off` (a cleared field saves
+`""`), `when` (leave the field out unless `{"engines.{slot}.driver": ["external", null]}`, any other
+dotted path, or `{"cmd_uses": "tts.streaming."}` holds; `{slot}` is the section's `slot`), `enabled_by`
+on a section (grey its fields while that switch is off), `hidden`, `secret` (`{default, label}`: draw a
+field for the value beside the variable name), `key_title`, `value_title` and `key_options` for keyed
+maps, and `icon` for a section's title.
+
 ## Repository
 
 ```

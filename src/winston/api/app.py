@@ -3,28 +3,34 @@ and the CLI use, and serves the built UI from web/dist. Bound to localhost by de
 behind auth before exposing it."""
 import asyncio
 import json
+from collections import OrderedDict
 from datetime import date
 import subprocess
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from winston import __version__
+from winston.api import secrets
 from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
 from winston.config import load, repo_root, save
+from winston.config.loader import apply_changes, get_in, version as file_version
 from winston.config.presets import LLM, PROFILES, TTS, stt_presets
-from winston.config.restarts import restarts_for
+from winston.config.restarts import BRAIN_CHANNELS, control_sections, restarts_for
 from winston.config.schema import LLMConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
 from winston.core.brain import api_key
 from winston.core import memory, persona, region, voices
 from winston.core.live import Feed, LiveEvent
+from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
 
@@ -39,7 +45,7 @@ class EngineStatus(BaseModel):
     port: int
     startup_timeout: int
     started_in: float | None = None     # seconds the last start took, for "about N minutes"
-    config_changed: bool = False        # a newer config waits for a restart
+    config_changed: bool = False        # saved settings or secrets wait for a restart (pending, retired or stale)
 
 
 class GpuStatus(BaseModel):
@@ -53,6 +59,9 @@ class Status(BaseModel):
     assistant: str
     engines: list[EngineStatus]
     gpu: GpuStatus | None = None
+    # Saved since winstond started and read only when it starts: config sections ("announce") and
+    # secrets ("HA_TOKEN"). They apply at the next `winston up`; nothing here restarts winstond.
+    pending_control: list[str] = []
 
 
 class Ok(BaseModel):
@@ -144,7 +153,50 @@ class Forgotten(BaseModel):
 
 class ConfigResult(BaseModel):
     saved: bool
-    restarts: list[str]     # engines that must restart before the change is live
+    restarts: list[str]     # engines that must restart before the change is live; "control" is winstond itself
+    version: str            # the saved file's version after this call (unchanged by a dry run), as in ETag
+
+
+class ConfigVersion(BaseModel):
+    version: str
+
+
+class ConfigChange(BaseModel):
+    path: list[str | int] = Field(min_length=1, description="Keys from the config root, e.g. [\"tts\", \"voice\"]")
+    value: Any = Field(None, description="Any JSON value; null removes the key, so the default applies")
+
+
+class ConfigPatch(BaseModel):
+    changes: list[ConfigChange] = Field(min_length=1, max_length=500)
+
+
+class ConfigConflict(BaseModel):
+    detail: str
+    paths: list[list[str | int]]    # the changed paths someone else changed since the If-Match version
+    version: str                    # the version on disk now
+
+
+class SecretStatus(BaseModel):
+    name: str
+    set: bool                       # holds a non-empty value; the value itself never leaves winstond
+    used_by: list[list[str]]        # config paths that name it
+    restarts: list[str]             # what reads it: restarting these applies a new value
+
+
+class SecretValue(BaseModel):
+    value: str = Field(min_length=1, max_length=secrets.MAX_LEN)
+
+
+class SecretResult(BaseModel):
+    name: str
+    set: bool
+    restarts: list[str]             # marked as waiting for a restart (config_changed in status)
+
+
+class ClaudeAuth(BaseModel):
+    source: Literal["api_key", "oauth_token", "login", "none"]
+    variable: str | None            # the variable it reads, for api_key and oauth_token
+    label: str
 
 
 class Preset(BaseModel):
@@ -184,6 +236,22 @@ def _dump(cfg: WinstonConfig) -> dict:
     return cfg.model_dump(mode="json", exclude_none=True)
 
 
+def _etag(version: str) -> str:
+    return f'"{version}"'
+
+
+def _if_match(header: str | None) -> str | None:
+    """The version an If-Match header names ("abc", W/"abc" or abc); None when absent or *."""
+    if not header or header.strip() == "*":
+        return None
+    return header.strip().removeprefix("W/").strip('"') or None
+
+
+CLAUDE_LABELS = {"api_key": "API key (ANTHROPIC_API_KEY)", "oauth_token": "Token from claude setup-token",
+                 "login": "Claude Code login on this machine", "none": "Nothing"}
+MISSING = object()
+
+
 def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> FastAPI:
     cfg = cfg or load()
     sup = Supervisor(cfg)
@@ -215,6 +283,55 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     app = FastAPI(title="winstond", version=__version__, lifespan=lifespan)
     app.state.supervisor, app.state.cfg, app.state.hub, app.state.feed = sup, cfg, hub, feed
+    schema = WinstonConfig.model_json_schema()
+    # Config versions this winstond has seen, so a patch made against an older one can be merged:
+    # only a path that also changed since then is a conflict.
+    history: OrderedDict[str, dict] = OrderedDict()
+    started = _dump(cfg)            # what winstond itself runs with until the next `winston up`
+    control_secrets: set[str] = set()
+    config_lock = asyncio.Lock()
+
+    def remember(version: str, c: WinstonConfig):
+        history[version] = _dump(c)
+        history.move_to_end(version)
+        while len(history) > 64:
+            history.popitem(last=False)
+
+    app.state.version = file_version()
+    remember(app.state.version, cfg)
+
+    def current() -> tuple[WinstonConfig, str]:
+        """The saved config and its version. A file edited by hand since winstond saw it is read afresh."""
+        v = file_version()
+        if v == app.state.version:
+            return app.state.cfg, v
+        try:
+            c = load()
+        except Exception as e:                                          # noqa: BLE001
+            raise HTTPException(409, f"config.yaml was changed on disk and does not load: {e}")
+        remember(v, c)
+        return c, v
+
+    @app.middleware("http")
+    async def same_site_writes(request: Request, call_next):
+        """Every write (config, engines, memory, secrets) must come from a page on this server: a changed
+        engine command runs at its next start, so a foreign page must not reach it through DNS rebinding."""
+        if request.method not in ("GET", "HEAD", "OPTIONS") and (why := secrets.cross_site(request)):
+            return JSONResponse({"detail": why}, status_code=403)
+        return await call_next(request)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid(request: Request, exc: RequestValidationError):
+        """FastAPI's 422, except that a whole config sent to PUT /api/config gets locations from the config root."""
+        errors = jsonable_encoder(exc.errors())
+        if request.url.path.startswith("/api/secrets"):
+            # never echo a pasted key back (FastAPI puts the refused body in `input`)
+            errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in errors]
+        if request.url.path == "/api/config" and request.method == "PUT":
+            for e in errors:
+                if e.get("loc", [])[:1] == ["body"]:
+                    e["loc"] = e["loc"][1:]
+        return JSONResponse({"detail": errors}, status_code=422)
 
     def status_payload() -> Status:
         return Status(
@@ -222,8 +339,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             engines=[EngineStatus(name=m.name, kind=m.kind, driver=m.cfg.driver, state=m.state, detail=m.detail,
                                   since=m.since, port=m.cfg.port, startup_timeout=m.cfg.startup_timeout,
                                   started_in=m.started_in,
-                                  config_changed=bool(m.pending or m.retired)) for m in sup.items.values()],
+                                  config_changed=bool(m.pending or m.retired or m.stale)) for m in sup.items.values()],
             gpu=gpu_status(),
+            pending_control=control_sections(started, _dump(app.state.cfg), schema) + sorted(control_secrets),
         )
 
     def managed(name: str):
@@ -460,26 +578,140 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         await sup.stop_all()
         return Ok()
 
-    @app.get("/api/config", response_model=WinstonConfig, response_model_exclude_none=True)
-    async def get_config():
+    etag_header = {"ETag": {"description": "The saved file's version; send it back as If-Match",
+                            "schema": {"type": "string"}}}
+
+    @app.get("/api/config", response_model=WinstonConfig, response_model_exclude_none=True,
+             responses={200: {"headers": etag_header}})
+    async def get_config(response: Response):
+        response.headers["ETag"] = _etag(app.state.version)
         return app.state.cfg      # no secrets live in config, only the names of env variables
 
-    @app.put("/api/config", response_model=ConfigResult,
-             summary="Validate and save the config; dry_run only reports which engines a change restarts")
-    async def put_config(new: WinstonConfig, dry_run: bool = Query(False)):
-        restarts = sorted(r for r in restarts_for(_dump(app.state.cfg), _dump(new), WinstonConfig.model_json_schema())
-                          if r in sup.items or r == "control")      # only what runs here
+    @app.get("/api/config/version", response_model=ConfigVersion,
+             summary="The saved config's version, the same as GET /api/config's ETag")
+    async def get_config_version():
+        return ConfigVersion(version=app.state.version)
+
+    def running_restarts(old: dict, new: dict) -> list[str]:
+        return sorted(r for r in restarts_for(old, new, schema) if r in sup.items or r == "control")
+
+    async def commit(cur: WinstonConfig, v: str, new: WinstonConfig, dry_run: bool, applied: list[str],
+                     response: Response) -> ConfigResult:
+        restarts = [r for r in running_restarts(_dump(cur), _dump(new)) if r not in applied]
         if dry_run:
-            return ConfigResult(saved=False, restarts=restarts)
+            response.headers["ETag"] = _etag(v)
+            return ConfigResult(saved=False, restarts=restarts, version=v)
         save(new)
-        app.state.cfg = new
+        app.state.cfg, app.state.version = new, file_version()
+        remember(app.state.version, new)
         await sup.reload(new)
+        new_d = _dump(new)
+        sup.mark_stale((r for r in restarts if r != "control"), base=_dump(cur))
+        sup.settle(lambda base: restarts_for(base, new_d, schema))     # a change undone needs no restart
         await web.reset(new)
-        return ConfigResult(saved=True, restarts=restarts)
+        response.headers["ETag"] = _etag(app.state.version)
+        return ConfigResult(saved=True, restarts=restarts, version=app.state.version)
+
+    conflict = {409: {"model": ConfigConflict, "description": "Changed on disk since the If-Match version"}}
+
+    @app.put("/api/config", response_model=ConfigResult, responses=conflict,
+             summary="Validate and save a whole config; dry_run only reports which engines a change restarts. "
+                     "With If-Match, refused while the saved file is another version")
+    async def put_config(new: WinstonConfig, request: Request, response: Response, dry_run: bool = Query(False)):
+        async with config_lock:
+            cur, v = current()
+            if (base := _if_match(request.headers.get("if-match"))) and base != v:
+                return JSONResponse(ConfigConflict(detail="The config was saved elsewhere since it was loaded",
+                                                   paths=[], version=v).model_dump(), status_code=409)
+            return await commit(cur, v, new, dry_run, [], response)
+
+    @app.patch("/api/config", response_model=ConfigResult, responses=conflict,
+               summary="Change some fields of the saved config: each change sets one path (null removes it). "
+                       "Applied to the config on disk, so saves from elsewhere are kept. With If-Match, a path "
+                       "that was also changed since that version is a conflict (409); without it the changes win")
+    async def patch_config(p: ConfigPatch, request: Request, response: Response, dry_run: bool = Query(False),
+                           applied: list[str] = Query([], description="Processes that already run this change "
+                                                                      "(a live voice switch): not marked for restart")):
+        async with config_lock:
+            cur, v = current()
+            cur_d = _dump(cur)
+            if (base_v := _if_match(request.headers.get("if-match"))) and base_v != v:
+                base = history.get(base_v)
+                clash = [c.path for c in p.changes
+                         if base is None or get_in(base, c.path, MISSING) != get_in(cur_d, c.path, MISSING)]
+                if clash:
+                    detail = ("Changed elsewhere since it was loaded" if base is not None else
+                              "The config it was loaded from is not known here any more; reload")
+                    return JSONResponse(ConfigConflict(detail=detail, paths=clash, version=v).model_dump(),
+                                        status_code=409)
+            try:
+                merged = apply_changes(cur_d, [(c.path, c.value) for c in p.changes])
+            except ValueError as e:
+                return JSONResponse({"detail": [{"loc": [], "msg": str(e), "type": "value_error"}]}, status_code=422)
+            try:
+                new = WinstonConfig.model_validate(merged)
+            except ValidationError as e:
+                return JSONResponse({"detail": jsonable_encoder(e.errors(include_url=False, include_context=False,
+                                                                         include_input=False))}, status_code=422)
+            return await commit(cur, v, new, dry_run, applied, response)
 
     @app.get("/api/config/schema", summary="JSON Schema of the config, with level and restarts per field")
     async def get_schema() -> dict:
         return WinstonConfig.model_json_schema()
+
+    def secret_status(name: str, dump: dict) -> SecretStatus:
+        refs = secrets.references(dump, schema)
+        claude = name in secrets.CLAUDE_NAMES
+        used = refs.get(name, []) + ([secrets.CLAUDE_PATH] if claude else [])
+        # a feature switched off reads nothing: no restart for it (ask_claude, Home Assistant, a channel)
+        live = [u for u in used if not any(get_in(dump, u[:i] + ["enabled"]) is False for i in range(1, len(u) + 1))]
+        affects = secrets.restarts(dump, schema, live)
+        return SecretStatus(name=name, set=secrets.is_set(name), used_by=used,
+                            restarts=sorted(r for r in affects if r in sup.items or r == "control"))
+
+    @app.get("/api/secrets", response_model=list[SecretStatus],
+             summary="Variables in data/.env the config names, and the two Claude ones: set or not, never values")
+    async def list_secrets():
+        dump = _dump(app.state.cfg)
+        names = sorted(secrets.references(dump, schema)) + [n for n in secrets.CLAUDE_NAMES]
+        return [secret_status(n, dump) for n in dict.fromkeys(names)]
+
+    async def secret_changed(name: str) -> SecretResult:
+        dump = _dump(app.state.cfg)
+        st = secret_status(name, dump)
+        sup.mark_stale(r for r in st.restarts if r != "control")
+        if "control" in st.restarts:
+            control_secrets.add(name)
+        if set(st.restarts) & set(BRAIN_CHANNELS) or name in secrets.CLAUDE_NAMES:
+            await web.reset(app.state.cfg)          # the Talk page's brain reads keys when it is built
+        return SecretResult(name=name, set=st.set, restarts=st.restarts)
+
+    def writable(request: Request, name: str):
+        """Checked before the body is read, so a refused request says why rather than how its body was wrong."""
+        secrets.guard(request, [started["control"]["host"], app.state.cfg.control.host], request.method == "PUT")
+        if secrets.denied(name):
+            raise HTTPException(403, f"{name} is not a variable Winston sets")
+        if not secrets.allowed(name, _dump(app.state.cfg), schema):
+            raise HTTPException(403, f"no setting names {name}; save the setting first")
+
+    @app.put("/api/secrets/{name}", response_model=SecretResult, dependencies=[Depends(writable)],
+             summary="Store a secret in data/.env (localhost only); what reads it is marked for restart")
+    async def put_secret(name: str, s: SecretValue):
+        secrets.check_value(name, s.value)
+        secrets.write(name, s.value)
+        return await secret_changed(name)
+
+    @app.delete("/api/secrets/{name}", response_model=SecretResult, dependencies=[Depends(writable)],
+                summary="Remove a secret from data/.env (localhost only)")
+    async def delete_secret(name: str):
+        secrets.remove(name)
+        return await secret_changed(name)
+
+    @app.get("/api/tools/ask_claude/auth", response_model=ClaudeAuth,
+             summary="What ask_claude signs in with, in the Claude CLI's order: API key, token, this machine's login")
+    async def ask_claude_auth():
+        source, variable = auth_source()
+        return ClaudeAuth(source=source, variable=variable, label=CLAUDE_LABELS[source])
 
     @app.get("/api/presets", response_model=Presets,
              summary="Engine and model presets the UI offers per slot, and the hardware profiles")
@@ -490,8 +722,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
              summary="Live choices for a dropdown: " + ", ".join(OPTION_NAMES))
     async def get_options(name: str,
                           base_url: str | None = Query(None, description="Server to ask instead of the saved one, for an unsaved draft"),
-                          domain: str | None = Query(None, description="ha_entities: comma-separated domains to keep")):
-        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain})
+                          domain: str | None = Query(None, description="ha_entities: comma-separated domains to keep"),
+                          q: str | None = Query(None, description="discord_users: a user id to look up")):
+        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q})
         if out is None:
             raise HTTPException(404, f"no options named {name}")
         return out

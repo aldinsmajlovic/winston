@@ -24,7 +24,7 @@ export default function EnginePage() {
         </IconButton>
       }
     >
-      <SectionForm page={s.page} path={path} driver={engine.driver} />
+      <SectionForm page={s.page} path={path} />
     </SettingsPage>
   )
 }

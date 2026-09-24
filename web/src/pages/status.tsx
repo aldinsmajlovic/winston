@@ -33,7 +33,7 @@ export default function StatusPage() {
   const ask = useConfirm()
   const drivers = useDrivers()
   if (!status.data) return <PageSkeleton title="Status" />
-  const { engines, gpu } = status.data
+  const { engines, gpu, pending_control: control = [] } = status.data
   const byName = (name: string) => ({ params: { path: { name } } })
 
   const confirmed = async (title: string, lines: string[], label: string, destructive: boolean, run: () => void) => {
@@ -45,6 +45,7 @@ export default function StatusPage() {
       title="Status"
       actions={
         <>
+          {control.length ? <ChangedIcon text={`Applies on the next winston up: ${control.join(', ')}`} /> : null}
           <IconButton label="Start all" variant="outline" size="icon" onClick={() => actions.startAll.mutate({})}>
             <Play />
           </IconButton>

@@ -139,13 +139,15 @@ def own_voice(cfg: WinstonConfig) -> str:
 
 
 async def keep_voice(cfg: WinstonConfig, voice: str) -> str | None:
-    """Save the voice as tts.voice through winstond, so the UI and the next session agree. Error or None."""
-    base = f"http://{cfg.control.host}:{cfg.control.port}/api/config"
+    """Save the voice as tts.voice through winstond, so the UI and the next session agree. Error or None.
+    A patch of that one field, so a settings page saved meanwhile is not overwritten; this channel already
+    speaks in it, so it is not marked for a restart (the satellite still is)."""
+    url = f"http://{cfg.control.host}:{cfg.control.port}/api/config"
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(base); r.raise_for_status()
-            new = r.json(); new["tts"]["voice"] = voice
-            r = await c.put(base, json=new); r.raise_for_status()
+            r = await c.patch(url, params={"applied": "voice"},
+                              json={"changes": [{"path": ["tts", "voice"], "value": voice}]})
+            r.raise_for_status()
     except httpx.HTTPError as e:
         return f"could not save it to the config: {type(e).__name__}"
     return None

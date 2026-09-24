@@ -12,6 +12,7 @@ Self-hosted, full-duplex voice assistant for Home Assistant. Read `docs/architec
   put anything from it in the repo. `examples/` holds the generic templates.
 - `web/`: the UI (to be built: Vite + React + shadcn/ui; see `docs/ui-guide.md`).
 - `tests/`: acceptance checks on real hardware, run by `winston check`.
+- `web/tests/`: the settings smoke test (Playwright), run by `pnpm smoke` or `winston check ui`.
 
 ## Daily use
 

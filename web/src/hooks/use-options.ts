@@ -14,16 +14,17 @@ function baseUrl(name: string, config: Config | undefined): string | undefined {
   return undefined
 }
 
-/** Live choices for a dropdown from `/api/options/{name}`. */
-export function useOptions(name: string, query?: { domain?: string }) {
+/** Live choices for a dropdown from `/api/options/{name}`. `q` asks for one value only (a pasted
+ * Discord user id); `enabled: false` fetches nothing. */
+export function useOptions(name: string, query?: { domain?: string; q?: string }, enabled = true) {
   const config = useConfig()
   const { draft } = useDraft()
   const base_url = baseUrl(name, draft ?? config.data)
   const result = $api.useQuery(
     'get',
     '/api/options/{name}',
-    { params: { path: { name }, query: { base_url, domain: query?.domain } } },
-    { staleTime: 30_000 },
+    { params: { path: { name }, query: { base_url, domain: query?.domain, q: query?.q } } },
+    { staleTime: 30_000, enabled: enabled && name !== '' },
   )
   const data = result.data
   return {

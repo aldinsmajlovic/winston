@@ -155,11 +155,13 @@ def memory():
 
 
 @app.command()
-def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | brain | clone | all")):
-    """Run the checks: unit needs nothing, the milestones need the engines up."""
+def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | brain | clone | all")):
+    """Run the checks: unit needs nothing, ui a built web UI (a throwaway winstond on a copy of data/),
+    the milestones need the engines up."""
     tests = repo_root() / "tests"
     unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py", "profiles_load.py"]
     plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {tests / t}" for t in unit)],
+            "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],
             "m2": [sys.executable, str(tests / "m2_components.py")],

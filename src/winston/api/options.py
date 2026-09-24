@@ -2,7 +2,8 @@
 (`options: "<name>"`) and the UI asks `/api/options/<name>`; every list is fetched from where the
 truth lives (the brain's server, Home Assistant, the data directory, a provider's model list), so
 nothing is typed by hand that a machine already knows. Secrets never leave: the env list names
-variables and says whether they hold a value, nothing more."""
+variables and says whether they hold a value, nothing more. Every provider answers with a reason in
+`source` rather than an error, so a dropdown still takes a typed value when its source is down."""
 import os
 from datetime import datetime
 from pathlib import Path
@@ -257,10 +258,73 @@ async def _ha_domains(cfg: WinstonConfig, params: dict) -> Options:
                             for d, n in sorted(counts.items())])
 
 
+DISCORD_API = "https://discord.com/api/v10"
+DISCORD_TIMEOUT = 3
+
+
+def _discord_user_choice(u: dict, nick: str | None = None, group: str | None = None) -> Choice:
+    username = u.get("username") or u.get("id", "")
+    return Choice(value=str(u.get("id", "")), label=nick or u.get("global_name") or username, hint=username,
+                  icon="discord", group=group)
+
+
+async def _discord_users(cfg: WinstonConfig, params: dict) -> Options:
+    """People the bot shares a server with (needs Server Members Intent), or with q a user id looked up alone.
+    Every failure is a reason in `source`, never an error: the field still takes a pasted id."""
+    name = "discord_users"
+    env = cfg.channels.discord.token_env
+    if not (token := _secret(env).strip()):
+        return Options(name=name, choices=[], ok=False, source=f"{env} is not set, so Discord cannot be asked")
+    headers = {"Authorization": f"Bot {token}"}
+    q = (params.get("q") or "").strip()
+    try:
+        async with httpx.AsyncClient(base_url=DISCORD_API, timeout=DISCORD_TIMEOUT, headers=headers) as c:
+            if q:
+                if not (q.isascii() and q.isdigit()):
+                    return Options(name=name, choices=[], ok=False, source="A Discord user id is a number")
+                r = await c.get(f"/users/{q}")
+                if r.status_code == 404:
+                    return Options(name=name, choices=[], ok=False, source=f"Discord knows no user {q}")
+                if r.status_code == 401:
+                    return Options(name=name, choices=[], ok=False, source=f"Discord refused the bot token ({env})")
+                r.raise_for_status()
+                return Options(name=name, choices=[_discord_user_choice(r.json())], source="Discord")
+            r = await c.get("/users/@me/guilds")
+            if r.status_code == 401:
+                return Options(name=name, choices=[], ok=False, source=f"Discord refused the bot token ({env})")
+            r.raise_for_status()
+            guilds = r.json()
+            choices: dict[str, Choice] = {}
+            closed: list[str] = []
+            for g in guilds:
+                m = await c.get(f"/guilds/{g['id']}/members", params={"limit": 1000})
+                if m.status_code == 403:
+                    closed.append(g.get("name", g["id"]))
+                    continue
+                m.raise_for_status()
+                for member in m.json():
+                    u = member.get("user") or {}
+                    if u.get("bot") or not u.get("id"):
+                        continue
+                    choices.setdefault(str(u["id"]), _discord_user_choice(u, member.get("nick"), g.get("name")))
+    except httpx.TimeoutException:
+        return Options(name=name, choices=[], ok=False, source="Discord did not answer in time")
+    except Exception as e:                                              # noqa: BLE001
+        return Options(name=name, choices=[], ok=False, source=f"Discord: {type(e).__name__}")
+    if not guilds:
+        return Options(name=name, choices=[], ok=False, source="The bot is in no server yet; invite it to one")
+    source = "Discord servers: " + ", ".join(g.get("name", g["id"]) for g in guilds)
+    if closed:
+        source = (f"Turn on Server Members Intent for the bot to list people in {', '.join(closed)}"
+                  if not choices else source + f" (no member list from {', '.join(closed)}: Server Members Intent)")
+    return Options(name=name, choices=sorted(choices.values(), key=lambda c: (c.group or "", c.label.lower())),
+                   source=source, ok=not closed or bool(choices))
+
+
 PROVIDERS = {
     "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
     "llm_models": _llm_models, "voices": _voices, "gemini_models": _gemini_models, "claude_models": _claude_models,
-    "ha_entities": _ha_entities, "ha_domains": _ha_domains,
+    "ha_entities": _ha_entities, "ha_domains": _ha_domains, "discord_users": _discord_users,
 }
 
 

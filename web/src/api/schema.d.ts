@@ -409,8 +409,26 @@ export interface paths {
         };
         /** Get Config */
         get: operations["get_config_api_config_get"];
-        /** Validate and save the config; dry_run only reports which engines a change restarts */
+        /** Validate and save a whole config; dry_run only reports which engines a change restarts. With If-Match, refused while the saved file is another version */
         put: operations["put_config_api_config_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change some fields of the saved config: each change sets one path (null removes it). Applied to the config on disk, so saves from elsewhere are kept. With If-Match, a path that was also changed since that version is a conflict (409); without it the changes win */
+        patch: operations["patch_config_api_config_patch"];
+        trace?: never;
+    };
+    "/api/config/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The saved config's version, the same as GET /api/config's ETag */
+        get: operations["get_config_version_api_config_version_get"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -427,6 +445,58 @@ export interface paths {
         };
         /** JSON Schema of the config, with level and restarts per field */
         get: operations["get_schema_api_config_schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Variables in data/.env the config names, and the two Claude ones: set or not, never values */
+        get: operations["list_secrets_api_secrets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Store a secret in data/.env (localhost only); what reads it is marked for restart */
+        put: operations["put_secret_api_secrets__name__put"];
+        post?: never;
+        /** Remove a secret from data/.env (localhost only) */
+        delete: operations["delete_secret_api_secrets__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tools/ask_claude/auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What ask_claude signs in with, in the Claude CLI's order: API key, token, this machine's login */
+        get: operations["ask_claude_auth_api_tools_ask_claude_auth_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -459,7 +529,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -619,6 +689,7 @@ export interface components {
              * @default {
              *       "enabled": false,
              *       "token_env": "DISCORD_BOT_TOKEN",
+             *       "allowed_user": "",
              *       "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
              *       "session_idle_mins": 30,
              *       "contacts": {}
@@ -660,6 +731,18 @@ export interface components {
             /** Group */
             group?: string | null;
         };
+        /** ClaudeAuth */
+        ClaudeAuth: {
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "api_key" | "oauth_token" | "login" | "none";
+            /** Variable */
+            variable: string | null;
+            /** Label */
+            label: string;
+        };
         /** ClonedVoice */
         ClonedVoice: {
             /** Slug */
@@ -675,12 +758,46 @@ export interface components {
             /** Consent Text */
             consent_text: string;
         };
+        /** ConfigChange */
+        ConfigChange: {
+            /**
+             * Path
+             * @description Keys from the config root, e.g. ["tts", "voice"]
+             */
+            path: (string | number)[];
+            /**
+             * Value
+             * @description Any JSON value; null removes the key, so the default applies
+             */
+            value?: unknown;
+        };
+        /** ConfigConflict */
+        ConfigConflict: {
+            /** Detail */
+            detail: string;
+            /** Paths */
+            paths: (string | number)[][];
+            /** Version */
+            version: string;
+        };
+        /** ConfigPatch */
+        ConfigPatch: {
+            /** Changes */
+            changes: components["schemas"]["ConfigChange"][];
+        };
         /** ConfigResult */
         ConfigResult: {
             /** Saved */
             saved: boolean;
             /** Restarts */
             restarts: string[];
+            /** Version */
+            version: string;
+        };
+        /** ConfigVersion */
+        ConfigVersion: {
+            /** Version */
+            version: string;
         };
         /** ControlConfig */
         ControlConfig: {
@@ -723,13 +840,19 @@ export interface components {
             enabled?: boolean;
             /**
              * Token variable
-             * @description Environment variable holding the Discord bot token.
+             * @description The variable in data/.env that holds the Discord bot token.
              * @default DISCORD_BOT_TOKEN
              */
             token_env?: string;
             /**
-             * Allowed user variable
-             * @description Environment variable with the one Discord user id Winston answers.
+             * Your Discord user id
+             * @description The one Discord user Winston answers and calls "me". In Discord: Settings, Advanced, Developer Mode on, then right-click yourself, Copy User ID. Empty reads the variable under Advanced.
+             * @default
+             */
+            allowed_user?: string;
+            /**
+             * User id variable
+             * @description The variable in data/.env read for your user id while the field above is empty; older configs kept it there.
              * @default DISCORD_ALLOWED_USER_ID
              */
             allowed_user_env?: string;
@@ -741,7 +864,7 @@ export interface components {
             session_idle_mins?: number;
             /**
              * Contacts
-             * @description People Winston may message, name -> Discord user id. The bot can only reach people who share a server with it.
+             * @description People Winston may message, by the name you say and their Discord user. The bot can only reach people who share a server with it.
              */
             contacts?: {
                 [key: string]: string;
@@ -800,7 +923,7 @@ export interface components {
             };
             /**
              * Volumes
-             * @description host path -> container path
+             * @description Folders the container sees: a path on this machine and where it appears inside the container.
              */
             volumes?: {
                 [key: string]: string;
@@ -938,7 +1061,7 @@ export interface components {
             url: string;
             /**
              * Token variable
-             * @description Environment variable holding the long-lived token.
+             * @description The variable in data/.env that holds the long-lived access token.
              * @default HA_TOKEN
              */
             token_env?: string;
@@ -977,8 +1100,8 @@ export interface components {
              */
             base_url?: string;
             /**
-             * API key variable
-             * @description Environment variable holding the API key. Unset for local servers.
+             * Key variable
+             * @description The variable in data/.env that holds the API key. Unset for local servers.
              */
             api_key_env?: string | null;
             /**
@@ -1366,8 +1489,8 @@ export interface components {
              */
             port?: number;
             /**
-             * Encryption key variable
-             * @description Environment variable holding the box's API encryption key (the one Home Assistant shows for it). Unset for a box without encryption.
+             * Key variable
+             * @description The variable in data/.env that holds the box's API encryption key (the one Home Assistant shows for it). Unset for a box without encryption.
              */
             key_env?: string | null;
             /**
@@ -1375,6 +1498,31 @@ export interface components {
              * @description On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE). Unset keeps the box's choice.
              */
             wake_word?: string | null;
+        };
+        /** SecretResult */
+        SecretResult: {
+            /** Name */
+            name: string;
+            /** Set */
+            set: boolean;
+            /** Restarts */
+            restarts: string[];
+        };
+        /** SecretStatus */
+        SecretStatus: {
+            /** Name */
+            name: string;
+            /** Set */
+            set: boolean;
+            /** Used By */
+            used_by: string[][];
+            /** Restarts */
+            restarts: string[];
+        };
+        /** SecretValue */
+        SecretValue: {
+            /** Value */
+            value: string;
         };
         /** SensorPair */
         SensorPair: {
@@ -1403,6 +1551,11 @@ export interface components {
             /** Engines */
             engines: components["schemas"]["EngineStatus"][];
             gpu?: components["schemas"]["GpuStatus"] | null;
+            /**
+             * Pending Control
+             * @default []
+             */
+            pending_control?: string[];
         };
         /** TTSConfig */
         TTSConfig: {
@@ -1420,8 +1573,8 @@ export interface components {
              */
             base_url?: string;
             /**
-             * API key variable
-             * @description Environment variable holding the API key. Unset for local servers.
+             * Key variable
+             * @description The variable in data/.env that holds the API key. Unset for local servers.
              */
             api_key_env?: string | null;
             /**
@@ -1635,8 +1788,8 @@ export interface components {
              */
             thinking?: "minimal" | "low" | "medium" | "high";
             /**
-             * API key variable
-             * @description Environment variable holding the Gemini API key.
+             * Key variable
+             * @description The variable in data/.env that holds the Gemini API key.
              * @default GEMINI_API_KEY
              */
             api_key_env?: string;
@@ -1671,7 +1824,10 @@ export interface components {
             assistant?: components["schemas"]["AssistantConfig"];
             /** Region */
             region?: components["schemas"]["RegionConfig"];
-            /** Engines */
+            /**
+             * Engines
+             * @description Heavy processes Winston runs or checks, by name: llm for the brain's server, tts for the speech server.
+             */
             engines?: {
                 [key: string]: components["schemas"]["EngineConfig"];
             };
@@ -1719,6 +1875,7 @@ export interface components {
              *         "port": 7860
              *       },
              *       "discord": {
+             *         "allowed_user": "",
              *         "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
              *         "contacts": {},
              *         "enabled": false,
@@ -2622,6 +2779,8 @@ export interface operations {
             /** @description Successful Response */
             200: {
                 headers: {
+                    /** @description The saved file's version; send it back as If-Match */
+                    ETag?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2654,6 +2813,15 @@ export interface operations {
                     "application/json": components["schemas"]["ConfigResult"];
                 };
             };
+            /** @description Changed on disk since the If-Match version */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigConflict"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -2661,6 +2829,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_config_api_config_patch: {
+        parameters: {
+            query?: {
+                dry_run?: boolean;
+                /** @description Processes that already run this change (a live voice switch): not marked for restart */
+                applied?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigResult"];
+                };
+            };
+            /** @description Changed on disk since the If-Match version */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigConflict"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_version_api_config_version_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigVersion"];
                 };
             };
         };
@@ -2683,6 +2917,112 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_secrets_api_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretStatus"][];
+                };
+            };
+        };
+    };
+    put_secret_api_secrets__name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretValue"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_secret_api_secrets__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_claude_auth_api_tools_ask_claude_auth_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaudeAuth"];
                 };
             };
         };
@@ -2714,6 +3054,8 @@ export interface operations {
                 base_url?: string | null;
                 /** @description ha_entities: comma-separated domains to keep */
                 domain?: string | null;
+                /** @description discord_users: a user id to look up */
+                q?: string | null;
             };
             header?: never;
             path: {

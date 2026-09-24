@@ -11,7 +11,8 @@ uv run winston restart tts     # one engine or the voice channel
 uv run winston down            # stop engines and channel; winstond keeps serving
 uv run winston talk            # text chat, same brain and tools
 uv run winston ha expose       # make Home Assistant's exposure match config
-uv run winston check           # unit (no hardware), then the m0, m1, m2 acceptance checks on real hardware
+uv run winston check           # unit (no hardware), ui, then the m0, m1, m2 acceptance checks on real hardware
+uv run winston check ui        # the settings smoke test in Chromium on a throwaway winstond (needs pnpm build)
 uv run winston check brain     # the configured brain on the trial requests: tool calls and speed
 uv run winston check clone     # clone a synthetic friend's voice headless and switch back (about 90 s)
 ```
@@ -85,7 +86,8 @@ blocks a plain `http://` page inside it, so Winston needs HTTPS too.
 </picture>
 
 Settings is the link at the top right. Status lists every engine and channel with how it runs, icon
-actions and the GPU; hover a state icon for its detail (an error's reason).
+actions and the GPU; hover a state icon for its detail (an error's reason). A changed icon in its
+header lists what only the next `winston up` applies.
 Brain picks the engine from presets (vLLM, llama.cpp, Ollama, hosted) and the model from the list the brain's
 server reports; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
 hearing, and for Chatterbox has Streaming: on or off and the chunk length, longer being smoother. Picking a preset rewrites the engine block and the settings that go with it. The other
@@ -98,7 +100,8 @@ beside each label that explains the field (and, for an engine, what the chosen p
 </picture>
 
 Anything a machine already knows is a searchable dropdown filled from `/api/options/{name}`, and a
-typed value still works when the list is empty:
+typed value still works when the list is empty. A list that cannot be fetched (no token yet, the
+server down) leaves a plain text box with a warning icon; hover it for the reason.
 
 | Field | Filled from |
 | --- | --- |
@@ -107,13 +110,36 @@ typed value still works when the list is empty:
 | Speech-to-text model | the models onnx-asr knows, downloaded ones marked |
 | Web search and Claude models | the Gemini API; the Anthropic API when `ANTHROPIC_API_KEY` is set, else a built-in list |
 | Home Assistant entities, sensors, domains | Home Assistant's states, with each entity's name, state and an icon for its type |
-| Key and token variables | the names in `data/.env`, with an icon for set or empty; values never leave winstond |
+| Your Discord user id, contacts | the members of the bot's servers, a pasted id looked up ([Discord](discord.md)) |
+| Discord user id variable (older configs) | the names in `data/.env`, with an icon for set or empty; values never leave winstond |
 | Persona, chime | `*.md` in the data directory, sounds in `assets/sounds/` and `data/sounds/` |
 
+A field that does not apply is not shown: an API key only for a hosted brain or voice, the Streaming
+settings only when the speech engine's command uses them, engine fields only for their driver. A
+feature that is switched off (a channel, a tool, memory, announcements) keeps its fields visible and
+editable but greyed. Keys are never shown: a key field says Set or Not set with an icon, takes a
+pasted key that Save writes to `data/.env`, and its x removes the stored one; the variable name it is
+stored under is Advanced. Maps (Discord contacts, an engine's environment and volumes) are tables with
+an Add icon, a dialog per entry and trash with Undo. Channel cards show the channel's state icon from
+the Status page.
+
 Home Assistant shows whether it answers at the URL with the token. Adding a sensor on the Tools
-page fills its label from Home Assistant and finds its state sensor (`_level` to `_state`). Saving
-validates on the server, says which engines the change restarts and roughly how long each takes,
-and offers to restart them.
+page fills its label from Home Assistant and finds its state sensor (`_level` to `_state`).
+
+Edits are one draft across all pages until saved or discarded; a dot in the sidebar marks each page
+with unsaved edits, and closing the tab asks first. Save sends only the changed fields
+(`PATCH /api/config` with the version the edits started from). When it confirms, it lists the changes
+by page and what they restart with roughly how long each takes; it asks when something restarts or
+the edits reach past the current page. Pasted keys are written after the config. If something else
+saved one of the same fields meanwhile (a voice switched by asking), nothing is overwritten: the page
+reloads, keeps your edits on top, names the field in a message, and you save again. A field the
+server refuses is marked where it is. Discard asks when edits reach past the current page, offering
+that page alone.
+
+While a saved change waits for a restart, every settings page shows the changed icon beside Save
+(hover it for each engine or channel and its cost) and a Restart button that restarts only those.
+What only winstond reads (Control, announcements, Home Assistant) shows the icon with "Applies on the
+next winston up" and no button.
 
 Build it once (Node 22 or newer, pnpm):
 
@@ -123,6 +149,13 @@ cd web && pnpm install && pnpm build   # guardrails, lint, type check, bundle in
 
 `pnpm dev` runs Vite on :5173 with `/api` proxied to :8700. `pnpm api` regenerates the typed client
 from `winston api schema` after the API changes.
+
+`pnpm smoke` (or `winston check ui`) tests the built settings pages with Playwright in the system
+Chromium (`/usr/bin/chromium`, or set `CHROMIUM`). It copies `config.yaml` and `persona.md` to a temp
+directory with fake keys, every engine and channel off and Home Assistant pointed nowhere, starts a
+throwaway `winston up --no-start` on a free port, and deletes it all afterwards. It checks that every
+settings page loads, an edit survives a reload, a pasted key shows as Set and never comes back from the
+server, a hosted-only field is left out for a local engine, and Save only leaves a Restart button.
 
 ## Engines
 

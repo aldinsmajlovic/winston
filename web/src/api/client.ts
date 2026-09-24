@@ -21,11 +21,22 @@ export type Options = components['schemas']['Options']
 export type LiveEvent = components['schemas']['LiveEvent']
 export type MemoryFact = components['schemas']['MemoryFact']
 export type MemoryTopic = components['schemas']['MemoryTopic']
+export type ConfigResult = components['schemas']['ConfigResult']
+export type ConfigConflict = components['schemas']['ConfigConflict']
+export type SecretStatus = components['schemas']['SecretStatus']
+export type SecretResult = components['schemas']['SecretResult']
+export type ClaudeAuth = components['schemas']['ClaudeAuth']
+
+/** A 422 `loc` without FastAPI's leading 'body', 'query' or 'path'; the config routes already start
+ * at the config root. */
+export function locPath(loc: (string | number)[]): (string | number)[] {
+  return typeof loc[0] === 'string' && ['body', 'query', 'path'].includes(loc[0]) ? loc.slice(1) : loc
+}
 
 export function errorText(error: unknown): string {
   const detail = (error as ValidationError | undefined)?.detail
   if (Array.isArray(detail)) {
-    return detail.map((d) => `${d.loc.slice(1).join('.')}: ${d.msg}`).join('\n')
+    return detail.map((d) => (locPath(d.loc).length ? `${locPath(d.loc).join('.')}: ${d.msg}` : d.msg)).join('\n')
   }
   if (typeof detail === 'string') return detail
   if (error instanceof Error) return error.message
