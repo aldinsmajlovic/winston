@@ -430,6 +430,248 @@
         }
       }
     },
+    "/api/memory/topics/{topic}": {
+      "put": {
+        "summary": "Rename a topic (and its file)",
+        "operationId": "rename_topic_api_memory_topics__topic__put",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Topic"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicRename"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryTopic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a topic and its facts",
+        "operationId": "delete_topic_api_memory_topics__topic__delete",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Topic"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedTopic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/topics/{topic}/restore": {
+      "post": {
+        "summary": "Put a deleted topic back (Undo)",
+        "operationId": "restore_topic_api_memory_topics__topic__restore_post",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Topic"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TopicRestore"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/{topic}/all": {
+      "put": {
+        "summary": "Edit all: the topic's facts become these lines, each checked like remember",
+        "operationId": "replace_facts_api_memory__topic__all_put",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Topic"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllFacts"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryFact"
+                  },
+                  "title": "Response Replace Facts Api Memory  Topic  All Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/persona": {
+      "get": {
+        "summary": "His instructions: how he behaves, and the technical ones",
+        "operationId": "get_persona_api_persona_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Persona"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Rewrite his instructions; only from here, never by a conversation",
+        "operationId": "put_persona_api_persona_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PersonaEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Persona"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/memory/{topic}": {
       "post": {
         "summary": "Add a fact, with the remember tool's checks (no secrets, one line, dates made absolute)",
@@ -957,6 +1199,23 @@
   },
   "components": {
     "schemas": {
+      "AllFacts": {
+        "properties": {
+          "facts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 2000,
+            "title": "Facts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "facts"
+        ],
+        "title": "AllFacts"
+      },
       "AnnounceConfig": {
         "properties": {
           "enabled": {
@@ -1323,6 +1582,19 @@
         "restarts": [
           "control"
         ]
+      },
+      "DeletedTopic": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "DeletedTopic"
       },
       "Delivery": {
         "properties": {
@@ -2324,6 +2596,61 @@
         ],
         "title": "Options"
       },
+      "Persona": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "behaviour": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Behaviour"
+          },
+          "instructions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Instructions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "behaviour",
+          "instructions"
+        ],
+        "title": "Persona"
+      },
+      "PersonaEdit": {
+        "properties": {
+          "behaviour": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Behaviour"
+          },
+          "instructions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Instructions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "behaviour",
+          "instructions"
+        ],
+        "title": "PersonaEdit"
+      },
       "Preset": {
         "properties": {
           "id": {
@@ -3039,6 +3366,35 @@
           "voice",
           "discord"
         ]
+      },
+      "TopicRename": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "TopicRename"
+      },
+      "TopicRestore": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 200000,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "TopicRestore"
       },
       "VADConfig": {
         "properties": {

@@ -23,7 +23,7 @@ from winston.config.schema import LLMConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
 from winston.core.brain import api_key
-from winston.core import memory, region, voices
+from winston.core import memory, persona, region, voices
 from winston.core.live import Feed, LiveEvent
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
@@ -109,6 +109,33 @@ class FactEdit(BaseModel):
 
 class NewTopic(BaseModel):
     title: str = Field(min_length=1, max_length=60)
+
+
+class TopicRename(BaseModel):
+    title: str = Field(min_length=1, max_length=60)
+
+
+class DeletedTopic(BaseModel):
+    text: str               # the whole file, for Undo
+
+
+class TopicRestore(BaseModel):
+    text: str = Field(max_length=200_000)
+
+
+class AllFacts(BaseModel):
+    facts: list[str] = Field(max_length=2000)
+
+
+class Persona(BaseModel):
+    title: str
+    behaviour: list[str]    # "How you behave": his manner, one rule per line
+    instructions: list[str]  # the technical ones
+
+
+class PersonaEdit(BaseModel):
+    behaviour: list[str] = Field(max_length=500)
+    instructions: list[str] = Field(max_length=500)
 
 
 class Forgotten(BaseModel):
@@ -345,6 +372,36 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def add_topic(t: NewTopic):
         name = memory_call(memory.new_topic, t.title)
         return MemoryTopic(name=name, title=memory.title(app.state.cfg, name), facts=[])
+
+    @app.put("/api/memory/topics/{topic}", response_model=MemoryTopic, summary="Rename a topic (and its file)")
+    async def rename_topic(topic: str, r: TopicRename):
+        name = memory_call(memory.rename_topic, topic, r.title)
+        return next(MemoryTopic(**t) for t in memory.view(app.state.cfg) if t["name"] == name)
+
+    @app.delete("/api/memory/topics/{topic}", response_model=DeletedTopic, summary="Delete a topic and its facts")
+    async def delete_topic(topic: str):
+        return DeletedTopic(text=memory_call(memory.delete_topic, topic))
+
+    @app.post("/api/memory/topics/{topic}/restore", response_model=Ok, summary="Put a deleted topic back (Undo)")
+    async def restore_topic(topic: str, r: TopicRestore):
+        memory_call(memory.restore_topic, topic, r.text)
+        return Ok()
+
+    @app.put("/api/memory/{topic}/all", response_model=list[MemoryFact],
+             summary="Edit all: the topic's facts become these lines, each checked like remember")
+    async def replace_facts(topic: str, a: AllFacts):
+        return memory_call(memory.replace_all, topic, a.facts)
+
+    @app.get("/api/persona", response_model=Persona, summary="His instructions: how he behaves, and the technical ones")
+    async def get_persona():
+        return persona.read(app.state.cfg)
+
+    @app.put("/api/persona", response_model=Persona, summary="Rewrite his instructions; only from here, never by a conversation")
+    async def put_persona(p: PersonaEdit):
+        try:
+            return persona.write(app.state.cfg, p.behaviour, p.instructions)
+        except persona.PersonaError as e:
+            raise HTTPException(400, str(e))
 
     @app.post("/api/memory/{topic}", response_model=MemoryFact,
               summary="Add a fact, with the remember tool's checks (no secrets, one line, dates made absolute)")

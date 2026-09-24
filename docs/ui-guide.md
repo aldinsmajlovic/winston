@@ -38,9 +38,11 @@ transport), connecting through winstond to the voice channel.
 - Links to Talk, Memory, Dashboard and Settings are plain text at the top right, not a sidebar, the
   current one in the text colour. On Talk they follow one speaker icon button that reads typed
   replies aloud. `WinstonHeader` draws this for every page on Winston's side.
-- Memory reads like his notes: one heading per topic, facts as plain lines as stored, the date
-  muted at the end, edit and forget on hover, a rounded field under each topic to add. Search at the
-  top; a quiet size line at the bottom.
+- Memory reads like his notes: "How he behaves" first (his rules, with "Only you can change these"
+  and the technical instructions folded), then one heading per topic, facts as plain lines as
+  stored, the date muted at the end. Edit and forget on a line's hover; edit all, rename and delete
+  on a heading's. A rounded field under each section adds, a pasted list adds each line. Search at
+  the top; a quiet size line at the bottom.
 - Dashboard mode shows the logo large as the talk button, one line for his state, the last exchange
   in large type and announcements across the screen; a plain Close link at the top right is its only
   control besides the logo.

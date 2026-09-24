@@ -33,10 +33,18 @@ Thursday 24 September 2026 evening") and each fact carries the date it was noted
 prints what the model sees.
 
 The Memory page (`/memory`, next to Talk) shows every topic and fact as stored, with search, and adds,
-edits and forgets them in place, with Undo. It uses the same checks as `remember` (no secrets, one
+edits and forgets them in place, with Undo. Topics can be renamed and deleted (Undo brings a deleted
+one back), and Edit all opens a topic as one box, one fact per line, for pasting or rewriting many;
+pasting several lines into an add field adds each. It uses the same checks as `remember` (no secrets, one
 line, dates made absolute) and commits each change to the vault's git. Changes reach him in his next
 conversation. New topic makes a new `.md` file. The line at the bottom counts what memory adds to
 every prompt; past 6,000 characters it starts to cost time on every turn.
+
+At the top, "How he behaves" shows his persona (`data/persona.md`): a few short rules for his manner,
+edited like facts, and the technical instructions folded under them. The file has two sections,
+`## How you behave` and `## Instructions`; the model reads them as one flat list. Only you write it,
+from the page or an editor: the remember tool never can, which is why rules for him belong here and
+facts about you in memory. The previous version is kept as `persona.md.bak`.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/memory-dark.png">

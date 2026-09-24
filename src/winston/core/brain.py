@@ -10,6 +10,7 @@ tool-call loop itself, streaming. Local tools sit next to the MCP ones.
 import json
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 from loguru import logger
@@ -24,6 +25,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 from winston.config import resolve
 from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import)
 from winston.config.schema import WinstonConfig
+from winston.core import persona as persona_file
 from winston.core import region
 from winston.core.memory import make_memory_tool, prompt_block
 from winston.core.tools.ask_claude import make_ask_claude_tool
@@ -33,13 +35,23 @@ from winston.core.tools.sensors import make_sensor_tool
 from winston.core.tools.web_search import make_web_search_tool
 
 
+def today() -> str:
+    """The date, read when the conversation starts. Asked "what day is it?", the model skipped
+    GetDateTime 4 of 6 times and guessed ("Wednesday, 24 June" on a Thursday in September), even
+    told it never knows the date; with the date here it has no reason to guess. The clock still
+    comes from GetDateTime."""
+    now = datetime.now()
+    return (f"# Today\n\nThis conversation started on {now.strftime('%A')} {now.day} {now.strftime('%B %Y')}. "
+            f"For the time, call GetDateTime.")
+
+
 def persona(cfg: WinstonConfig) -> str:
     """The persona file, the remembered facts, the region and the reply language, read when a session's
     LLM is built.
     The language comes last: a line in the persona lost to the user's language every time (asked in
     Swedish, he answered in Swedish 8 of 8); at the end of the prompt it holds."""
-    text = resolve(cfg.assistant.persona).read_text().strip()
-    parts = [text, prompt_block(cfg), region.prompt_block(cfg),
+    text = persona_file.prompt_text(cfg).strip()
+    parts = [text, prompt_block(cfg), region.prompt_block(cfg), today(),
              f"The user may speak another language, like Swedish: understand it and do what they ask, as you "
              f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
              f"only {cfg.assistant.language}."]

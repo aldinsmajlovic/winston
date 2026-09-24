@@ -154,7 +154,7 @@ def memory():
 def check(which: str = typer.Argument("all", help="unit | m0 | m1 | m2 | brain | clone | all")):
     """Run the checks: unit needs nothing, the milestones need the engines up."""
     tests = repo_root() / "tests"
-    unit = ["guard_cases.py", "memory_cases.py", "announce_cases.py", "live_cases.py", "profiles_load.py"]
+    unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py", "profiles_load.py"]
     plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {tests / t}" for t in unit)],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],

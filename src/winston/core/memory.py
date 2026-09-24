@@ -134,7 +134,9 @@ def _commit(dir: Path, topic: str, action: str = "remember"):
         return subprocess.run(["git", "-C", str(dir), *args], capture_output=True, text=True, check=True)
     if not (dir / ".git").exists():
         git("init", "-q")
-    git("add", "-A", f"{topic}.md")
+    if not (dir / ".gitignore").exists():
+        (dir / ".gitignore").write_text(".lock\n")
+    git("add", "-A", ".")
     git("-c", "user.name=Winston", "-c", "user.email=winston@localhost", "commit", "-q", "-m", f"{action}: {topic}")
 
 
@@ -308,3 +310,83 @@ def make_memory_tool(cfg: WinstonConfig):
                     "fact": {"type": "string", "description": "The distilled fact, one sentence."}},
         required=["topic", "fact"])
     return schema, handler
+
+
+def replace_all(cfg: WinstonConfig, topic: str, lines: list[str]) -> list[dict]:
+    """Edit all: the topic's facts become these lines, in this order. A line that was there keeps the
+    date it was noted; a new or changed one is noted today. Every line gets remember's checks, and
+    a refusal names its line so nothing is half saved."""
+    prepared, errors = [], []
+    for n, line in enumerate(lines, 1):
+        if not line.strip():
+            continue
+        try:
+            prepared.append(_prepared(line))
+        except MemoryEditError as e:
+            errors.append(f"Line {n}: {e}")
+    if errors:
+        raise MemoryEditError(" ".join(errors))
+
+    def change(lines_, positions):
+        known = {unstamped(lines_[i][2:].strip()).lower(): lines_[i][2:].strip() for i in positions}
+        seen, out = set(), []
+        for fact in prepared:
+            if fact.lower() in seen:
+                continue
+            seen.add(fact.lower())
+            out.append(known.get(fact.lower()) or f"{fact} (noted {date.today().isoformat()})")
+        at = positions[0] if positions else len(lines_)
+        for i in reversed(positions):
+            del lines_[i]
+        lines_[at:at] = [f"- {f}" for f in out]
+    with _locked(cfg):
+        _rewrite(cfg, topic, change)
+        _save(cfg, topic, "edit all")
+    return next(t for t in view(cfg) if t["name"] == topic)["facts"]
+
+
+def rename_topic(cfg: WinstonConfig, topic: str, heading: str) -> str:
+    """A new title, and the file renamed to match; returns the new name."""
+    heading = " ".join(heading.split()).strip()
+    stem = re.sub(r"[^a-z0-9]+", "-", heading.lower()).strip("-")
+    if topic not in topics(cfg):
+        raise MemoryEditError(f"No topic {topic!r}.")
+    if not stem:
+        raise MemoryEditError("Give the topic a name.")
+    old, new = vault(cfg) / f"{topic}.md", vault(cfg) / f"{stem}.md"
+    with _locked(cfg):
+        if stem != topic and new.exists():
+            raise MemoryEditError(f"There is already a topic called {heading}.")
+        lines = old.read_text().splitlines()
+        title_at = next((i for i, line in enumerate(lines) if line.startswith("# ")), None)
+        if title_at is None:
+            lines[0:0] = [f"# {heading[0].upper() + heading[1:]}", ""]
+        else:
+            lines[title_at] = f"# {heading[0].upper() + heading[1:]}"
+        old.unlink()
+        new.write_text("\n".join(lines) + "\n")
+        _save(cfg, stem, "rename")
+    return stem
+
+
+def delete_topic(cfg: WinstonConfig, topic: str) -> str:
+    """Remove a topic and its facts; returns the file's text so Undo can put it back."""
+    if topic not in topics(cfg):
+        raise MemoryEditError(f"No topic {topic!r}.")
+    path = vault(cfg) / f"{topic}.md"
+    with _locked(cfg):
+        text = path.read_text()
+        path.unlink()
+        _save(cfg, topic, "delete topic")
+    return text
+
+
+def restore_topic(cfg: WinstonConfig, topic: str, text: str) -> None:
+    path = vault(cfg) / f"{topic}.md"
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", topic):
+        raise MemoryEditError("Not a topic name.")
+    with _locked(cfg):
+        if path.exists():
+            raise MemoryEditError(f"There is already a topic called {topic}.")
+        path.write_text(text)
+        _save(cfg, topic, "restore topic")

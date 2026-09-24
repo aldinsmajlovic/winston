@@ -226,6 +226,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/memory/topics/{topic}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rename a topic (and its file) */
+        put: operations["rename_topic_api_memory_topics__topic__put"];
+        post?: never;
+        /** Delete a topic and its facts */
+        delete: operations["delete_topic_api_memory_topics__topic__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory/topics/{topic}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put a deleted topic back (Undo) */
+        post: operations["restore_topic_api_memory_topics__topic__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory/{topic}/all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit all: the topic's facts become these lines, each checked like remember */
+        put: operations["replace_facts_api_memory__topic__all_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/persona": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** His instructions: how he behaves, and the technical ones */
+        get: operations["get_persona_api_persona_get"];
+        /** Rewrite his instructions; only from here, never by a conversation */
+        put: operations["put_persona_api_persona_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/{topic}": {
         parameters: {
             query?: never;
@@ -420,6 +490,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AllFacts */
+        AllFacts: {
+            /** Facts */
+            facts: string[];
+        };
         /** AnnounceConfig */
         AnnounceConfig: {
             /**
@@ -621,6 +696,11 @@ export interface components {
              * @default 8700
              */
             port?: number;
+        };
+        /** DeletedTopic */
+        DeletedTopic: {
+            /** Text */
+            text: string;
         };
         /** Delivery */
         Delivery: {
@@ -1071,6 +1151,22 @@ export interface components {
              */
             ok?: boolean;
         };
+        /** Persona */
+        Persona: {
+            /** Title */
+            title: string;
+            /** Behaviour */
+            behaviour: string[];
+            /** Instructions */
+            instructions: string[];
+        };
+        /** PersonaEdit */
+        PersonaEdit: {
+            /** Behaviour */
+            behaviour: string[];
+            /** Instructions */
+            instructions: string[];
+        };
         /** Preset */
         Preset: {
             /** Id */
@@ -1418,6 +1514,16 @@ export interface components {
              *     }
              */
             ask_claude?: components["schemas"]["AskClaudeConfig"];
+        };
+        /** TopicRename */
+        TopicRename: {
+            /** Title */
+            title: string;
+        };
+        /** TopicRestore */
+        TopicRestore: {
+            /** Text */
+            text: string;
         };
         /** VADConfig */
         VADConfig: {
@@ -2048,6 +2154,195 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryTopic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rename_topic_api_memory_topics__topic__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicRename"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryTopic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_topic_api_memory_topics__topic__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedTopic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_topic_api_memory_topics__topic__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopicRestore"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replace_facts_api_memory__topic__all_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllFacts"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFact"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_persona_api_persona_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Persona"];
+                };
+            };
+        };
+    };
+    put_persona_api_persona_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonaEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Persona"];
                 };
             };
             /** @description Validation Error */
