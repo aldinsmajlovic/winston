@@ -192,6 +192,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everything he remembers, by topic, as stored */
+        get: operations["get_memory_api_memory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A new topic (a new file in the vault) */
+        post: operations["add_topic_api_memory_topics_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory/{topic}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a fact */
+        put: operations["edit_fact_api_memory__topic__put"];
+        /** Add a fact, with the remember tool's checks (no secrets, one line, dates made absolute) */
+        post: operations["add_fact_api_memory__topic__post"];
+        /** Forget a fact */
+        delete: operations["forget_fact_api_memory__topic__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines/{name}/start": {
         parameters: {
             query?: never;
@@ -750,6 +803,18 @@ export interface components {
              */
             aliases?: string[];
         };
+        /** FactEdit */
+        FactEdit: {
+            /** Id */
+            id: string;
+            /** Fact */
+            fact: string;
+        };
+        /** Forgotten */
+        Forgotten: {
+            /** Index */
+            index: number;
+        };
         /** GpuStatus */
         GpuStatus: {
             /** Name */
@@ -929,6 +994,57 @@ export interface components {
              * @default true
              */
             commit_on_write?: boolean;
+        };
+        /** MemoryFact */
+        MemoryFact: {
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            /** Noted */
+            noted: string | null;
+        };
+        /** MemoryTopic */
+        MemoryTopic: {
+            /** Name */
+            name: string;
+            /** Title */
+            title: string;
+            /** Facts */
+            facts: components["schemas"]["MemoryFact"][];
+        };
+        /** MemoryView */
+        MemoryView: {
+            /** Enabled */
+            enabled: boolean;
+            /** Topics */
+            topics: components["schemas"]["MemoryTopic"][];
+            /** Chars */
+            chars: number;
+            /** Limit */
+            limit: number;
+            /** Day First */
+            day_first: boolean;
+        };
+        /** NewFact */
+        NewFact: {
+            /** Fact */
+            fact: string;
+            /**
+             * Index
+             * @description Position among the topic's facts; the end when unset
+             */
+            index?: number | null;
+            /**
+             * Noted
+             * @description When it was first noted, for Undo; today when unset
+             */
+            noted?: string | null;
+        };
+        /** NewTopic */
+        NewTopic: {
+            /** Title */
+            title: string;
         };
         /** Ok */
         Ok: {
@@ -1879,6 +1995,163 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_api_memory_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryView"];
+                };
+            };
+        };
+    };
+    add_topic_api_memory_topics_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewTopic"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryTopic"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_fact_api_memory__topic__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FactEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFact"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_fact_api_memory__topic__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                topic: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewFact"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryFact"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_fact_api_memory__topic__delete: {
+        parameters: {
+            query: {
+                /** @description The fact's id from GET /api/memory */
+                id: string;
+            };
+            header?: never;
+            path: {
+                topic: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Forgotten"];
                 };
             };
             /** @description Validation Error */

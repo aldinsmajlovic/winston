@@ -30,7 +30,18 @@ Facts are `- ` lines in `data/memory/preferences.md`, `people.md` and `projects.
 a topic). They load into the system prompt when a conversation starts, so a new session knows them
 without a restart. Relative dates are made absolute when stored ("tomorrow evening" becomes "on
 Thursday 24 September 2026 evening") and each fact carries the date it was noted. `winston memory`
-prints what the model sees; edit the files to change it.
+prints what the model sees.
+
+The Memory page (`/memory`, next to Talk) shows every topic and fact as stored, with search, and adds,
+edits and forgets them in place, with Undo. It uses the same checks as `remember` (no secrets, one
+line, dates made absolute) and commits each change to the vault's git. Changes reach him in his next
+conversation. New topic makes a new `.md` file. The line at the bottom counts what memory adds to
+every prompt; past 6,000 characters it starts to cost time on every turn.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/memory-dark.png">
+  <img src="images/memory-light.png" alt="The Memory page with three topics and a search field" width="720">
+</picture>
 
 ## Web search
 

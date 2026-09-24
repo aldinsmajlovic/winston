@@ -18,12 +18,11 @@ import {
   Wrench,
   type LucideIcon,
 } from 'lucide-react'
-import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { $api, errorText } from '@/api/client'
-import { STATE_LABEL, clock, presence, useChat, useLive, type Item } from '@/api/live'
-import { Presence } from '@/components/presence'
+import { clock, presence, useChat, useLive, type Item } from '@/api/live'
 import { Button } from '@/components/ui/button'
+import { WinstonHeader } from '@/components/winston-header'
 import { Input } from '@/components/ui/input'
 import { useSpeech } from '@/hooks/use-speech'
 import { useVoice } from '@/hooks/use-voice'
@@ -141,13 +140,10 @@ export default function TalkPage() {
   const talking = voiceStatus !== 'off'
   return (
     <div className="flex h-svh flex-col items-center">
-      <header className="flex w-full max-w-3xl items-center gap-4 px-4 pt-8 pb-6">
-        <Presence state={state} className="size-13" />
-        <div className="flex flex-col">
-          <h1 className="text-xl font-bold">{status.data?.assistant ?? 'Winston'}</h1>
-          <span className="text-muted-foreground">{STATE_LABEL[state]}</span>
-        </div>
-        <nav className="ml-auto flex items-center gap-6">
+      <WinstonHeader
+        name={status.data?.assistant ?? 'Winston'}
+        state={state}
+        actions={
           <Button
             type="button"
             variant="ghost"
@@ -160,14 +156,8 @@ export default function TalkPage() {
           >
             {readAloud ? <Volume2 className="size-5" /> : <VolumeOff className="size-5" />}
           </Button>
-          <Link to="/dashboard" className="text-muted-foreground hover:text-foreground">
-            Dashboard
-          </Link>
-          <Link to="/status" className="text-muted-foreground hover:text-foreground">
-            Settings
-          </Link>
-        </nav>
-      </header>
+        }
+      />
 
       <main className="w-full flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 pb-4">

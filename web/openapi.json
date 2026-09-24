@@ -374,6 +374,206 @@
         }
       }
     },
+    "/api/memory": {
+      "get": {
+        "summary": "Everything he remembers, by topic, as stored",
+        "operationId": "get_memory_api_memory_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/topics": {
+      "post": {
+        "summary": "A new topic (a new file in the vault)",
+        "operationId": "add_topic_api_memory_topics_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewTopic"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryTopic"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/{topic}": {
+      "post": {
+        "summary": "Add a fact, with the remember tool's checks (no secrets, one line, dates made absolute)",
+        "operationId": "add_fact_api_memory__topic__post",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Topic"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewFact"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFact"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Change a fact",
+        "operationId": "edit_fact_api_memory__topic__put",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Topic"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactEdit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryFact"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Forget a fact",
+        "operationId": "forget_fact_api_memory__topic__delete",
+        "parameters": [
+          {
+            "name": "topic",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Topic"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The fact's id from GET /api/memory",
+              "title": "Id"
+            },
+            "description": "The fact's id from GET /api/memory"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forgotten"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/engines/{name}/start": {
       "post": {
         "summary": "Start",
@@ -1505,6 +1705,39 @@
           "discord"
         ]
       },
+      "FactEdit": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "fact": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Fact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "fact"
+        ],
+        "title": "FactEdit"
+      },
+      "Forgotten": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index"
+        ],
+        "title": "Forgotten"
+      },
       "GpuStatus": {
         "properties": {
           "name": {
@@ -1900,6 +2133,154 @@
           "voice",
           "discord"
         ]
+      },
+      "MemoryFact": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "noted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "noted"
+        ],
+        "title": "MemoryFact"
+      },
+      "MemoryTopic": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryFact"
+            },
+            "type": "array",
+            "title": "Facts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "title",
+          "facts"
+        ],
+        "title": "MemoryTopic"
+      },
+      "MemoryView": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryTopic"
+            },
+            "type": "array",
+            "title": "Topics"
+          },
+          "chars": {
+            "type": "integer",
+            "title": "Chars"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "day_first": {
+            "type": "boolean",
+            "title": "Day First"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "topics",
+          "chars",
+          "limit",
+          "day_first"
+        ],
+        "title": "MemoryView"
+      },
+      "NewFact": {
+        "properties": {
+          "fact": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Fact"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index",
+            "description": "Position among the topic's facts; the end when unset"
+          },
+          "noted": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noted",
+            "description": "When it was first noted, for Undo; today when unset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fact"
+        ],
+        "title": "NewFact"
+      },
+      "NewTopic": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "NewTopic"
       },
       "Ok": {
         "properties": {

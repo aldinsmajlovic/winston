@@ -3,6 +3,7 @@ and the CLI use, and serves the built UI from web/dist. Bound to localhost by de
 behind auth before exposing it."""
 import asyncio
 import json
+from datetime import date
 import subprocess
 from contextlib import asynccontextmanager
 from typing import Any, Literal
@@ -22,7 +23,7 @@ from winston.config.schema import LLMConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
 from winston.core.brain import api_key
-from winston.core import voices
+from winston.core import memory, region, voices
 from winston.core.live import Feed, LiveEvent
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
@@ -73,6 +74,45 @@ class ClonedVoice(BaseModel):
     created: float
     seconds: float
     consent_text: str       # what the consent recording was heard to say
+
+
+class MemoryFact(BaseModel):
+    id: str                 # the stored line, text and stamp; edits and deletes name the fact by it
+    text: str
+    noted: str | None       # YYYY-MM-DD
+
+
+class MemoryTopic(BaseModel):
+    name: str               # the file's stem
+    title: str
+    facts: list[MemoryFact]
+
+
+class MemoryView(BaseModel):
+    enabled: bool
+    topics: list[MemoryTopic]
+    chars: int              # of facts in every conversation's prompt
+    limit: int              # past this, memory costs latency on every turn
+    day_first: bool         # dates as the region setting says ("24 Sep" or "Sep 24")
+
+
+class NewFact(BaseModel):
+    fact: str = Field(min_length=1, max_length=1000)
+    index: int | None = Field(None, ge=0, description="Position among the topic's facts; the end when unset")
+    noted: date | None = Field(None, description="When it was first noted, for Undo; today when unset")
+
+
+class FactEdit(BaseModel):
+    id: str
+    fact: str = Field(min_length=1, max_length=1000)
+
+
+class NewTopic(BaseModel):
+    title: str = Field(min_length=1, max_length=60)
+
+
+class Forgotten(BaseModel):
+    index: int              # where it was, for Undo
 
 
 class ConfigResult(BaseModel):
@@ -288,6 +328,36 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             raise HTTPException(409, f"{c.name}'s voice is Winston's voice now; pick another voice first")
         voices.delete(c.slug)
         return Ok()
+
+    def memory_call(fn, *args):
+        try:
+            return fn(app.state.cfg, *args)
+        except memory.MemoryEditError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/memory", response_model=MemoryView, summary="Everything he remembers, by topic, as stored")
+    async def get_memory():
+        cfg = app.state.cfg
+        return MemoryView(enabled=cfg.memory.enabled, topics=memory.view(cfg), chars=memory.size(cfg),
+                          limit=memory.PROMPT_WARN, day_first=region.resolve(cfg)["date_format"] == "day_month")
+
+    @app.post("/api/memory/topics", response_model=MemoryTopic, summary="A new topic (a new file in the vault)")
+    async def add_topic(t: NewTopic):
+        name = memory_call(memory.new_topic, t.title)
+        return MemoryTopic(name=name, title=memory.title(app.state.cfg, name), facts=[])
+
+    @app.post("/api/memory/{topic}", response_model=MemoryFact,
+              summary="Add a fact, with the remember tool's checks (no secrets, one line, dates made absolute)")
+    async def add_fact(topic: str, f: NewFact):
+        return memory_call(memory.add, topic, f.fact, f.index, f.noted)
+
+    @app.put("/api/memory/{topic}", response_model=MemoryFact, summary="Change a fact")
+    async def edit_fact(topic: str, f: FactEdit):
+        return memory_call(memory.replace, topic, f.id, f.fact)
+
+    @app.delete("/api/memory/{topic}", response_model=Forgotten, summary="Forget a fact")
+    async def forget_fact(topic: str, id: str = Query(..., description="The fact's id from GET /api/memory")):
+        return Forgotten(index=memory_call(memory.forget, topic, id))
 
     @app.api_route("/api/voice/offer", methods=["POST", "PATCH"], include_in_schema=False)
     async def voice_offer(request: Request):

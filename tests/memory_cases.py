@@ -65,5 +65,36 @@ log = subprocess.run(["git", "-C", str(scratch / "memory"), "log", "--oneline"],
 expect("one commit per stored fact", len(log.splitlines()) == 3, repr(log))
 expect("off means no prompt", prompt_block(cfg.model_copy(update={"memory": cfg.memory.model_copy(update={"enabled": False})})) == "")
 
+# The Memory page's edits: same checks as remember, facts addressed by their stored line, Undo in place.
+from datetime import date  # noqa: E402
+
+from winston.core import memory  # noqa: E402
+
+people = lambda: [f["text"] for f in next(t for t in memory.view(cfg) if t["name"] == "people")["facts"]]  # noqa: E731
+a = memory.add(cfg, "people", "Omar is a friend who likes animals.")
+expect("page add appends", people()[-1] == "Omar is a friend who likes animals.", repr(people()))
+for bad, why in (("The alarm code is 4411.", "secret"), ("Omar is a friend who likes animals.", "Already known")):
+    try:
+        memory.add(cfg, "people", bad); expect(f"page add refuses {why}", False)
+    except memory.MemoryEditError as e:
+        expect(f"page add refuses {why}", why.lower() in str(e).lower(), str(e))
+b = memory.replace(cfg, "people", a["id"], "Omar is a friend who likes octopuses.")
+expect("page edit replaces in place", people()[-1] == "Omar is a friend who likes octopuses.", repr(people()))
+try:
+    memory.replace(cfg, "people", a["id"], "anything"); expect("page edit of a stale id refused", False)
+except memory.MemoryEditError:
+    expect("page edit of a stale id refused", True)
+first = next(t for t in memory.view(cfg) if t["name"] == "people")["facts"][0]
+at = memory.forget(cfg, "people", first["id"])
+expect("page forget removes", first["text"] not in people() and at == 0)
+memory.add(cfg, "people", first["text"], index=at, noted=date.fromisoformat(first["noted"]))
+expect("undo puts it back first with its date", people()[0] == first["text"] and
+       next(t for t in memory.view(cfg) if t["name"] == "people")["facts"][0]["id"] == first["id"])
+stem = memory.new_topic(cfg, "home life")
+expect("new topic is a file with a title", stem == "home-life" and memory.title(cfg, stem) == "Home life")
+memory.add(cfg, stem, "The user waters the plants on Sundays.")
+expect("a new topic's facts reach the prompt", "Home life:\n- The user waters the plants" in prompt_block(cfg))
+expect("size counts the facts", 0 < memory.size(cfg) < memory.PROMPT_WARN)
+
 print(f"\n{'all passed' if not failed else f'{failed} failed'}")
 sys.exit(1 if failed else 0)

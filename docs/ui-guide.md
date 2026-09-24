@@ -35,8 +35,12 @@ transport), connecting through winstond to the voice channel.
 - His presence is his logo, one component, `Presence`, driven by his state (idle, listening,
   thinking, speaking); see [identity](identity.md). Pages never draw their own version of it.
 - Voice and typing sit side by side at the bottom: a text field and one round talk button.
-- Links to Dashboard and Settings are plain text at the top right, not a sidebar, after one speaker
-  icon button that reads typed replies aloud.
+- Links to Talk, Memory, Dashboard and Settings are plain text at the top right, not a sidebar, the
+  current one in the text colour. On Talk they follow one speaker icon button that reads typed
+  replies aloud. `WinstonHeader` draws this for every page on Winston's side.
+- Memory reads like his notes: one heading per topic, facts as plain lines as stored, the date
+  muted at the end, edit and forget on hover, a rounded field under each topic to add. Search at the
+  top; a quiet size line at the bottom.
 - Dashboard mode shows the logo large as the talk button, one line for his state, the last exchange
   in large type and announcements across the screen; a plain Close link at the top right is its only
   control besides the logo.
@@ -68,6 +72,7 @@ is exempt. `pnpm api` regenerates the client from `winston api schema`.
 
 - Talk page: `pages/talk.tsx`, fed by `useLive` (the `/api/live` stream) with `Presence` in the
   header.
+- Memory page: `pages/memory.tsx`, from `/api/memory`, under the same `WinstonHeader`.
 - Settings page: `SettingsPage` with one `SectionForm` per config section, a form from the pruned
   schema. `useSettings` holds the draft shared across pages and the save flow: dry run, confirm the
   restarts with their cost, save, restart.

@@ -8,6 +8,7 @@ import DashboardPage from '@/pages/dashboard'
 import EnginePage from '@/pages/engine'
 import EnginesPage from '@/pages/engines'
 import HomeAssistantPage from '@/pages/home-assistant'
+import MemoryPage from '@/pages/memory'
 import StatusPage from '@/pages/status'
 import SystemPage from '@/pages/system'
 import TalkPage from '@/pages/talk'
@@ -30,6 +31,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<TalkPage />} />
+      <Route path="/memory" element={<MemoryPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route element={<SettingsLayout />}>
         <Route path="/status" element={<StatusPage />} />

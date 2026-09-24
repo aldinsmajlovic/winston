@@ -26,7 +26,8 @@ be swapped for a hosted service when that suits you better.
   announcements across the screen.
 - **Clones a friend's voice by asking.** "Clone my friend's voice": they agree out loud, talk for fifteen
   seconds, and Winston speaks as them until you ask for his own voice back.
-- **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git.
+- **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git, and
+  shown on a Memory page where you can search, add, edit and forget.
 - **Speaks your region.** Celsius or Fahrenheit, metric or imperial, 24- or 12-hour clock, taken from Home
   Assistant unless you pick otherwise; answers from the web are converted.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
