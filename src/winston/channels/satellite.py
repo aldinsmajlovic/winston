@@ -200,6 +200,9 @@ class Satellite:
                     logger.warning(f"{self.room}: no wake word {self.dev.wake_word!r} on the box; it has {ids}")
             except Exception as e:                                          # noqa: BLE001
                 logger.warning(f"{self.room}: could not set the wake word: {e}")
+        if self.conversation is None:            # ready before the first wake word, prompt already read
+            self.conversation = await Conversation(self.cfg, self.room, self.feed).start()
+            await self.conversation.brain.warm()
         self._unsub = self.client.subscribe_voice_assistant(
             handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio,
             handle_announcement_finished=self._handle_announcement_finished)

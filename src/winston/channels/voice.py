@@ -178,12 +178,14 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             await worker.queue_frames(frames)
 
     listener: asyncio.Task | None = None
+    warming: set[asyncio.Task] = set()          # held so the warm-up task is not collected mid-way
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         nonlocal listener
         logger.info("client connected")
         await worker.queue_frames([TTSSpeakFrame(f"{CFG.assistant.name} online.")])
+        warming.add(t := asyncio.create_task(brain.warm())); t.add_done_callback(warming.discard)
         if CFG.announce.enabled:
             listener = asyncio.create_task(announcements())
 

@@ -131,6 +131,17 @@ class Brain:
         if self._mcp:
             await self._mcp.close()
 
+    async def warm(self):
+        """Have the LLM server read the instructions and tools now, so the first real turn does not.
+        After a restart or a persona change that took 2.8 s (3,270 tokens) on top of a spoken
+        "Hello"; the server keeps the prompt cached afterwards (llama.cpp --cache-ram)."""
+        t0 = time.perf_counter()
+        try:
+            await self.llm.run_inference(self.new_context(), max_tokens=1)
+            logger.info(f"brain warmed in {(time.perf_counter() - t0) * 1000:.0f} ms")
+        except Exception as e:                                          # noqa: BLE001
+            logger.warning(f"brain warm-up failed: {e}")
+
     def new_context(self) -> LLMContext:
         return LLMContext([], tools=self.tools if self.tools.standard_tools else None)
 
