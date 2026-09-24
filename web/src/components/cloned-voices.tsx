@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable, type Column } from '@/components/templates/list-page'
 import { useConfirm } from '@/hooks/use-confirm'
+import { takePlayback } from '@/hooks/use-preview'
 
 type Props = { current?: string }
 type Clone = NonNullable<ReturnType<typeof useClones>['data']>[number]
@@ -37,6 +38,7 @@ export function ClonedVoices({ current }: Props) {
     const was = playing
     stop()
     if (was === key) return
+    takePlayback(stop)
     const a = new Audio(`/api/voices/clones/${encodeURIComponent(slug)}/audio?kind=${kind}`)
     a.onended = stop
     audio.current = a

@@ -7,7 +7,9 @@ from collections import OrderedDict
 from datetime import date
 import subprocess
 from contextlib import asynccontextmanager
-from typing import Any, Literal
+from pathlib import PurePosixPath
+from typing import Annotated, Any, Literal
+from urllib.parse import quote
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
@@ -15,7 +17,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from winston import __version__
 from winston.api import secrets
@@ -24,7 +26,7 @@ from winston.config import load, repo_root, save
 from winston.config.loader import apply_changes, get_in, version as file_version
 from winston.config.presets import LLM, PROFILES, TTS, stt_presets
 from winston.config.restarts import BRAIN_CHANNELS, control_sections, restarts_for
-from winston.config.schema import LLMConfig, WinstonConfig
+from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
 from winston.core.brain import api_key
@@ -72,8 +74,34 @@ class ChatMessage(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
+def _partial(model: type[BaseModel], name: str, doc: str) -> type[BaseModel]:
+    """model's fields, same names and bounds, each optional and unset unless sent. Its own validators do not
+    run here: the caller merges what was sent onto a saved value and validates the whole with model."""
+    fields = {n: (Annotated[(f.annotation, *f.metadata)] if f.metadata else f.annotation,
+                  Field(None, title=f.title, description=f.description)) for n, f in model.model_fields.items()}
+    return create_model(name, __config__=ConfigDict(extra="forbid"), __doc__=doc, **fields)
+
+
+SpeakStreaming = _partial(TTSStreamingConfig, "SpeakStreaming",
+                          "tts.streaming for this request only; unset fields keep the saved values.")
+
+
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    voice: str | None = Field(None, min_length=1, max_length=200,
+                              description="Speak in this voice instead of tts.voice (a clip name under the "
+                                          "server's voices directory, or a voice the server knows)")
+    streaming: SpeakStreaming | None = Field(  # type: ignore[valid-type]
+        None, description="Try these streaming settings instead of the saved ones. Reaches the speech server "
+                          "only when its engine command uses {tts.streaming.*}; otherwise ignored (X-Streaming).")
+
+    @field_validator("voice")
+    @classmethod
+    def _voice_stays_inside(cls, v: str | None) -> str | None:
+        # the same refusal as the speech servers' own (a name must stay under their voices directory)
+        if v is not None and ("\\" in v or "\0" in v or v.startswith("/") or ".." in PurePosixPath(v).parts):
+            raise ValueError("a voice is a name under the voices directory: no '..', absolute path, backslash or NUL")
+        return v
 
 
 class ClonedVoice(BaseModel):
@@ -422,15 +450,47 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return Ok()
 
     @app.post("/api/speak", response_class=StreamingResponse,
-              responses={200: {"content": {"audio/pcm": {}}, "description": "16-bit mono PCM, rate in X-Sample-Rate"}},
-              summary="Text in Winston's voice as streamed 16-bit mono PCM, for the Talk page's read aloud")
+              responses={200: {"content": {"audio/pcm": {}}, "description": "16-bit mono PCM, rate in X-Sample-Rate",
+                               "headers": {
+                                   "X-Sample-Rate": {"schema": {"type": "string"}, "description": "PCM rate in Hz"},
+                                   "X-Voice": {"schema": {"type": "string"},
+                                               "description": "The voice sent to the speech server, percent-encoded"},
+                                   "X-Streaming": {"schema": {"type": "string", "enum": ["on", "off", "ignored"]},
+                                                   "description": "on or off: the streaming this request used, when "
+                                                                  "the engine takes streaming settings. ignored: "
+                                                                  "streaming was sent but the engine does not take "
+                                                                  "it (or its server predates per-request "
+                                                                  "streaming). Absent otherwise."}}}},
+              summary="Text in Winston's voice as streamed 16-bit mono PCM, for read aloud and the Voice page's "
+                      "previews; voice and streaming may be tried before they are saved")
     async def speak(s: SpeakRequest):
-        t = app.state.cfg.tts
+        cfg = app.state.cfg
+        t = cfg.tts
+        voice = s.voice or t.voice
+        body: dict[str, Any] = {"model": "winston-tts", "input": s.text.strip(), "voice": voice,
+                                "response_format": "pcm"}
+        headers = {"X-Sample-Rate": str(t.sample_rate), "X-Voice": quote(voice, safe="/._-")}
+        eng = cfg.engines.get("tts")
+        # the streaming settings reach a server whose command takes them (decisions, 09-23); a hosted
+        # OpenAI server could refuse fields it does not know
+        takes = eng is not None and any("{tts.streaming." in w for w in [*eng.cmd, *eng.args])
+        st, sent = t.streaming, False
+        if s.streaming is not None:
+            try:
+                st = TTSStreamingConfig.model_validate({**t.streaming.model_dump(),
+                                                        **s.streaming.model_dump(exclude_unset=True)})
+            except ValidationError as e:
+                raise RequestValidationError([{**err, "loc": ("body", "streaming", *err["loc"])} for err in
+                                              e.errors(include_url=False, include_context=False)])
+            if takes:
+                body.update(stream=st.enabled, first_secs=st.first_secs, chunk_secs=st.chunk_secs,
+                            lookahead_secs=st.lookahead_secs)
+                sent = True
+            else:
+                headers["X-Streaming"] = "ignored"
         c = httpx.AsyncClient(timeout=httpx.Timeout(10, read=60))
         req = c.build_request("POST", f"{t.base_url.rstrip('/')}/audio/speech",
-                              headers={"Authorization": f"Bearer {api_key(t.api_key_env)}"},
-                              json={"model": "winston-tts", "input": s.text.strip(), "voice": t.voice,
-                                    "response_format": "pcm"})
+                              headers={"Authorization": f"Bearer {api_key(t.api_key_env)}"}, json=body)
         try:
             r = await c.send(req, stream=True)
         except httpx.HTTPError as e:
@@ -441,13 +501,19 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             await r.aclose(); await c.aclose()
             raise HTTPException(502, f"speech server answered {r.status_code}: {detail}")
 
+        if takes:
+            # the Chatterbox server says what it did; one started before it took streaming per request
+            # does not, and then sent settings went unused, while unsent ones are the saved ones
+            headers["X-Streaming"] = r.headers.get("x-streaming") or (
+                "ignored" if sent else "on" if st.enabled else "off")
+
         async def gen():
             try:
                 async for chunk in r.aiter_bytes():
                     yield chunk
             finally:
                 await r.aclose(); await c.aclose()
-        return StreamingResponse(gen(), media_type="audio/pcm", headers={"X-Sample-Rate": str(t.sample_rate)})
+        return StreamingResponse(gen(), media_type="audio/pcm", headers=headers)
 
     def clone(slug: str) -> voices.Clone:
         if not (c := next((c for c in voices.clones() if c.slug == slug), None)):

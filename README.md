@@ -41,6 +41,7 @@ be swapped for a hosted service when that suits you better.
 - **Settings that fill themselves in.** Models, voices and Home Assistant entities are dropdowns read
   from the servers that know them, not text you type. Keys are pasted once and never shown again, fields
   that do not apply to your engines stay hidden, and a Restart button appears when a saved change waits.
+  Voices and streaming can be heard before you save them.
 - **Room satellites.** Home Assistant's Voice Preview Edition as Winston's microphone and speaker in a
   room ([setup](docs/voice-pe.md)); built and tested against a fake box, the real one is next.
 - **"Hey Winston".** A custom wake word model for room satellites (for now the Voice PE uses its own

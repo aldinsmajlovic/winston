@@ -133,7 +133,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Text in Winston's voice as streamed 16-bit mono PCM, for the Talk page's read aloud */
+        /** Text in Winston's voice as streamed 16-bit mono PCM, for read aloud and the Voice page's previews; voice and streaming may be tried before they are saved */
         post: operations["speak_api_speak_post"];
         delete?: never;
         options?: never;
@@ -1541,6 +1541,39 @@ export interface components {
         SpeakRequest: {
             /** Text */
             text: string;
+            /**
+             * Voice
+             * @description Speak in this voice instead of tts.voice (a clip name under the server's voices directory, or a voice the server knows)
+             */
+            voice?: string | null;
+            /** @description Try these streaming settings instead of the saved ones. Reaches the speech server only when its engine command uses {tts.streaming.*}; otherwise ignored (X-Streaming). */
+            streaming?: components["schemas"]["SpeakStreaming"] | null;
+        };
+        /**
+         * SpeakStreaming
+         * @description tts.streaming for this request only; unset fields keep the saved values.
+         */
+        SpeakStreaming: {
+            /**
+             * Stream speech
+             * @description Start speaking before a sentence is fully rendered: first audio in about 0.3 s instead of up to 2 s for a long sentence, with a join between chunks that can sound a little choppy. Off renders whole sentences. For the Chatterbox server.
+             */
+            enabled?: boolean;
+            /**
+             * Chunk length (s)
+             * @description Audio per chunk after the first. Longer means fewer joins and smoother speech; how soon he starts talking depends only on the first chunk.
+             */
+            chunk_secs?: number;
+            /**
+             * First chunk (s)
+             * @description Audio rendered before anything is sent. Shorter starts sooner; below about 0.9 s the second chunk can arrive late and leave a short gap.
+             */
+            first_secs?: number;
+            /**
+             * Look-ahead (s)
+             * @description Audio held back at the end of each chunk until the sounds after it are known. More smooths the joins but makes the first chunk shorter.
+             */
+            lookahead_secs?: number;
         };
         /** Status */
         Status: {
@@ -2187,6 +2220,12 @@ export interface operations {
             /** @description 16-bit mono PCM, rate in X-Sample-Rate */
             200: {
                 headers: {
+                    /** @description PCM rate in Hz */
+                    "X-Sample-Rate"?: string;
+                    /** @description The voice sent to the speech server, percent-encoded */
+                    "X-Voice"?: string;
+                    /** @description on or off: the streaming this request used, when the engine takes streaming settings. ignored: streaming was sent but the engine does not take it (or its server predates per-request streaming). Absent otherwise. */
+                    "X-Streaming"?: "on" | "off" | "ignored";
                     [name: string]: unknown;
                 };
                 content: {

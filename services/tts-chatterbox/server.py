@@ -16,6 +16,8 @@ the speech tokens are generated one by one and the prefix so far is vocoded afte
 audio, then in chunks that double up to --chunk-secs, so the next chunk is always ready before
 playback catches up. Only the new samples go out, minus the last --lookahead-secs whose right
 context is still missing, cross-faded into the next chunk. Winston passes these from tts.streaming.
+A request may carry its own stream, first_secs, chunk_secs and lookahead_secs (the Voice page's
+sample, before the settings are saved); what it leaves out keeps the startup values.
 The vocoder is non-causal, so each prefix is a fresh render of the whole; the words come out the
 same (Parakeet transcribes both identically).
 """
@@ -27,6 +29,7 @@ import re
 import threading
 import time
 import wave
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -34,22 +37,38 @@ import torch
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 log = logging.getLogger("winston.tts")
 app = FastAPI(title="Winston TTS (Chatterbox-Turbo)")
 
 _model = None
 _lock = threading.Lock()          # one generate at a time on the GPU
+_conds_lock = threading.Lock()    # _conds and _mtimes, read and written from request threads
 _conds: dict[str, object] = {}    # voice name -> prepared Conditionals
 _default_voice = ""
 _voices_dir = Path(".")
 _mtimes: dict[str, float] = {}    # voice name -> its clip's mtime when prepared; a re-recorded clone is prepared again
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
-_stream = {"on": True, "first": 24, "step": 40, "hold": 8}
 SAMPLES_PER_TOKEN = 960           # speech tokens run at 25 Hz, audio at 24 kHz
 FADE = 480                        # 20 ms cross-fade at each seam
 MAX_VOICES = 8                    # prepared clips kept besides the default, least recently used dropped
+
+
+@dataclass(frozen=True)
+class Stream:
+    """How a sentence is cut into chunks, in speech tokens (25 per second of audio)."""
+    on: bool = True
+    first: int = 24               # rendered before the first chunk
+    step: int = 40                # later chunks double up to this
+    hold: int = 8                 # held back at a chunk's end until its right context is known
+
+
+_stream = Stream()                # from the command line; a request with its own values gets a copy
+
+
+def _tokens(secs: float) -> int:
+    return max(1, round(secs * 25))   # speech tokens run at 25 Hz
 
 
 class SpeechRequest(BaseModel):
@@ -59,6 +78,20 @@ class SpeechRequest(BaseModel):
     response_format: str = "pcm"      # pcm (24 kHz s16le mono) or wav
     speed: float | None = None        # accepted, ignored
     instructions: str | None = None   # accepted, ignored
+    # streaming for this request only, as --stream and the --*-secs flags; unset keeps the startup value
+    stream: bool | None = None
+    first_secs: float | None = Field(None, gt=0, le=20)
+    chunk_secs: float | None = Field(None, gt=0, le=20)
+    lookahead_secs: float | None = Field(None, gt=0, le=20)
+
+
+def _request_stream(req: SpeechRequest) -> Stream:
+    """The startup streaming values with the request's own on top, refused (422) as the flags are at start."""
+    given = {"on": req.stream, "first": req.first_secs, "step": req.chunk_secs, "hold": req.lookahead_secs}
+    p = replace(_stream, **{k: v if k == "on" else _tokens(v) for k, v in given.items() if v is not None})
+    if p.hold >= p.first:
+        raise HTTPException(422, "lookahead_secs must be shorter than first_secs")
+    return p
 
 
 _OPENAI_VOICES = {"alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "marin", "nova", "onyx",
@@ -80,37 +113,55 @@ def _clip_path(name: str) -> Path:
     return (_voices_dir / name).with_suffix(".wav")
 
 
-def _resolve_voice(name: str | None) -> str:
+def _cached(name: str, mtime: float | None):
+    """The voice's prepared conditionals if they are cached and its clip is unchanged, else None."""
+    with _conds_lock:
+        if name in _conds and (name == _default_voice or _mtimes.get(name) == mtime):
+            _conds[name] = _conds.pop(name)      # most recently used goes last
+            return _conds[name]
+    return None
+
+
+def _resolve_voice(name: str | None) -> tuple[str, object]:
+    """The voice's name and prepared conditionals, preparing its clip first if needed. Blocks on the GPU
+    lock while it prepares, so the async handler runs it in a thread. The conditionals themselves go to
+    the synth, so a voice dropped from the cache meanwhile still speaks."""
     # OpenAI clients validate voice names against OpenAI's list, so any of those means "the default clip"
     if not name or name in _OPENAI_VOICES:
-        return _default_voice
+        return _default_voice, _conds[_default_voice]
     path = _clip_path(name)
-    if name in _conds and (name == _default_voice or _mtimes.get(name) == _mtime(path)):
-        _conds[name] = _conds.pop(name)      # most recently used goes last
-        return name
+    mtime = _mtime(path)
+    if (conds := _cached(name, mtime)) is not None:
+        return name, conds
     if not path.is_file():
-        _conds.pop(name, None)
+        with _conds_lock:
+            _conds.pop(name, None)
         raise HTTPException(400, f"unknown voice {name!r}; no file {path}")
     t0 = time.perf_counter()
     # under the GPU lock, so a sentence being rendered keeps its voice, and without autograd, whose
     # saved tensors otherwise stay on the GPU with every cached voice (11 clips ran a 3090 out of memory)
     with _lock, torch.inference_mode():
+        # two requests for a new clip both wait here; the second finds what the first prepared
+        if (conds := _cached(name, mtime)) is not None:
+            return name, conds
         before = _model.conds
         _model.prepare_conditionals(str(path))
-        _conds.pop(name, None)
-        _conds[name], _model.conds = _model.conds, before
-        _mtimes[name] = _mtime(path)
-        for old in [v for v in _conds if v != _default_voice][:-MAX_VOICES]:
-            del _conds[old]
+        conds, _model.conds = _model.conds, before
+        with _conds_lock:
+            _conds.pop(name, None)
+            _conds[name] = conds
+            _mtimes[name] = mtime
+            for old in [v for v in _conds if v != _default_voice][:-MAX_VOICES]:
+                del _conds[old]
         torch.cuda.empty_cache()
     log.info("prepared voice %s in %.0f ms", name, (time.perf_counter() - t0) * 1000)
-    return name
+    return name, conds
 
 
-def _synth(text: str, voice: str) -> np.ndarray:
+def _synth(text: str, conds) -> np.ndarray:
     """Synthesize one sentence; returns int16 mono at _model.sr."""
     with _lock:
-        _model.conds = _conds[voice]
+        _model.conds = conds
         with torch.inference_mode():
             wav = _model.generate(text)
     if isinstance(wav, torch.Tensor):
@@ -166,15 +217,15 @@ def _vocode(tokens: list[int], noise: torch.Tensor, final: bool) -> np.ndarray:
     return wav.squeeze(0).float().cpu().numpy()
 
 
-def _synth_stream(text: str, voice: str, emit):
+def _synth_stream(text: str, conds, p: Stream, emit):
     """Stream one sentence: emit(int16 chunk) as audio becomes safe to send."""
     with _lock, torch.inference_mode():
-        _model.conds = _conds[voice]
+        _model.conds = conds
         g = _model.s3gen
         noise = torch.randn(1, 80, 2 * 1010, dtype=g.dtype, device=_model.device)
-        tokens, emitted, tail, due = [], 0, None, _stream["first"]
-        inc = min(_stream["step"], _stream["first"])   # chunks double up to --chunk-secs, so the next one
-                                                        # is always ready before the audio sent so far runs out
+        tokens, emitted, tail, due = [], 0, None, p.first
+        inc = min(p.step, p.first)   # chunks double up to the chunk length, so the next one is
+                                     # always ready before the audio sent so far runs out
         gen = _speech_tokens(text)
         while True:
             done = False
@@ -187,13 +238,13 @@ def _synth_stream(text: str, voice: str, emit):
             if not tokens:
                 return
             wav = _vocode(tokens, noise, done)
-            end = len(wav) if done else max(emitted, len(wav) - _stream["hold"] * SAMPLES_PER_TOKEN)
+            end = len(wav) if done else max(emitted, len(wav) - p.hold * SAMPLES_PER_TOKEN)
             seg = wav[emitted:end].copy()
             if tail is not None and len(seg) >= FADE:
                 r = np.linspace(0, 1, FADE, dtype=np.float32)
                 seg[:FADE] = tail[:FADE] * (1 - r) + seg[:FADE] * r
             tail, emitted, due = wav[end:end + FADE], end, due + inc
-            inc = min(_stream["step"], inc * 2)
+            inc = min(p.step, inc * 2)
             if len(seg):
                 emit(_pcm(seg))
             if done:
@@ -215,18 +266,22 @@ async def health():
 async def speech(req: SpeechRequest):
     if not req.input.strip():
         raise HTTPException(400, "empty input")
-    voice = _resolve_voice(req.voice)
+    if req.response_format not in ("pcm", "wav"):
+        raise HTTPException(400, "response_format must be pcm or wav")
+    p = _request_stream(req)
+    # preparing a new clip holds the GPU lock for a while; off the event loop, which is delivering live audio
+    voice, conds = await asyncio.to_thread(_resolve_voice, req.voice)
     sentences = _sentences(req.input)
 
     async def pcm_chunks():
         t_req = time.perf_counter()
-        if _stream["on"]:
+        if p.on:
             loop, q = asyncio.get_running_loop(), asyncio.Queue()
 
             def work():
                 try:
                     for s in sentences:
-                        _synth_stream(s, voice, lambda a: loop.call_soon_threadsafe(q.put_nowait, a))
+                        _synth_stream(s, conds, p, lambda a: loop.call_soon_threadsafe(q.put_nowait, a))
                 finally:
                     loop.call_soon_threadsafe(q.put_nowait, None)
             task = asyncio.create_task(asyncio.to_thread(work))
@@ -243,7 +298,7 @@ async def speech(req: SpeechRequest):
             return
         for i, s in enumerate(sentences):
             t0 = time.perf_counter()
-            audio = await asyncio.to_thread(_synth, s, voice)
+            audio = await asyncio.to_thread(_synth, s, conds)
             dt = time.perf_counter() - t0
             secs = len(audio) / _model.sr
             log.info("tts %s chunk %d/%d %d chars -> %.2fs audio in %.0f ms (rtf %.2f)%s",
@@ -257,15 +312,13 @@ async def speech(req: SpeechRequest):
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(_model.sr)
             async for chunk in pcm_chunks():
                 w.writeframes(chunk)
-        return Response(buf.getvalue(), media_type="audio/wav")
-    if req.response_format != "pcm":
-        raise HTTPException(400, "response_format must be pcm or wav")
+        return Response(buf.getvalue(), media_type="audio/wav", headers={"X-Streaming": "on" if p.on else "off"})
     return StreamingResponse(pcm_chunks(), media_type="audio/pcm",
-                             headers={"X-Sample-Rate": str(_model.sr)})
+                             headers={"X-Sample-Rate": str(_model.sr), "X-Streaming": "on" if p.on else "off"})
 
 
 def main():
-    global _model, _default_voice, _voices_dir
+    global _model, _default_voice, _voices_dir, _stream
     ap = argparse.ArgumentParser()
     ap.add_argument("--voice", required=True, help="reference clip (wav) for the default voice")
     ap.add_argument("--voices-dir", default=None, help="dir that request 'voice' names resolve under")
@@ -279,10 +332,9 @@ def main():
     ap.add_argument("--lookahead-secs", type=float, default=0.32,
                     help="audio held back at a chunk's end until what follows is known")
     args = ap.parse_args()
-    tokens = lambda secs: max(1, round(secs * 25))   # speech tokens run at 25 Hz
-    _stream.update(on=args.stream, first=tokens(args.first_secs), step=tokens(args.chunk_secs),
-                   hold=tokens(args.lookahead_secs))
-    if _stream["hold"] >= _stream["first"]:
+    _stream = Stream(on=args.stream, first=_tokens(args.first_secs), step=_tokens(args.chunk_secs),
+                     hold=_tokens(args.lookahead_secs))
+    if _stream.hold >= _stream.first:
         ap.error("--lookahead-secs must be shorter than --first-secs")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -301,11 +353,12 @@ def main():
     log.info("default voice %s prepared in %.0f ms", _default_voice, (time.perf_counter() - t0) * 1000)
 
     for s in ("Hello.", "Hello, I'm Winston. How can I help?"):   # warm up kernels
-        t0 = time.perf_counter(); a = _synth(s, _default_voice)
+        t0 = time.perf_counter(); a = _synth(s, _conds[_default_voice])
         log.info("warmup %r: %.2fs audio in %.0f ms", s, len(a) / _model.sr, (time.perf_counter() - t0) * 1000)
-    if _stream["on"]:
-        t0 = time.perf_counter(); _synth_stream("Hello, I'm Winston. How can I help?", _default_voice, lambda a: None)
-        log.info("warmup streamed in %.0f ms", (time.perf_counter() - t0) * 1000)
+    # the streaming path too, even with --stream false: a request may ask for streaming (the Voice page's sample)
+    t0 = time.perf_counter()
+    _synth_stream("Hello, I'm Winston. How can I help?", _conds[_default_voice], _stream, lambda a: None)
+    log.info("warmup streamed in %.0f ms", (time.perf_counter() - t0) * 1000)
     if args.device == "cuda":
         log.info("gpu memory: %.2f GB allocated, %.2f GB reserved",
                  torch.cuda.memory_allocated() / 1e9, torch.cuda.memory_reserved() / 1e9)

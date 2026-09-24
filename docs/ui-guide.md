@@ -88,6 +88,17 @@ transport), connecting through winstond to the voice channel.
   list works, and shown with a warning icon when it is not found.
 - Something a section needs that is not a config field (what Ask Claude signs in with, its key) is a
   row in that section's form (`SectionForm` `extras`), with the same label and (i) as the fields.
+- A control that acts on a field without being one (a play button beside Voice, "Play a sample" on the
+  Streaming heading) is an adornment: the page passes `SectionForm` `adornments`, keyed by the dotted
+  path from the section (`voice`, `streaming`). A field's sits right of its control, a nested
+  section's at the right end of its heading, and it shows only while the form shows that field, so
+  `when` and Advanced decide for it too. Adornments reach the form through a React context
+  (`lib/adornments.ts`), not rjsf's `formContext`, so they follow the page's state.
+- A preview of unsaved settings plays through `usePreview` (the same streamed PCM playback as Talk's
+  read aloud): Play turns into Stop while it plays, and one preview plays at a time on a page
+  (`takePlayback`, which the cloned voices' play buttons use too). A preview the running server
+  cannot give (another engine in the draft, a restart pending) is disabled with the reason in its
+  tooltip.
 - A channel's card title carries its state icon from `/api/status`, the detail in the tooltip.
 - A dot in the sidebar marks each page with unsaved edits. A saved change that waits for a restart is
   the changed icon beside Save, its tooltip naming each process and its cost, plus a Restart text

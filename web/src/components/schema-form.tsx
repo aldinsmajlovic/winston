@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
 import { getDefaultRegistry } from '@rjsf/core'
 import Form, { Widgets } from '@rjsf/shadcn'
 import validator from '@rjsf/validator-ajv8'
@@ -29,6 +29,7 @@ import { KeyedMapField } from '@/components/keyed-map-field'
 import { SecretField } from '@/components/secret-field'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Adornments } from '@/lib/adornments'
 import { cn } from '@/lib/utils'
 import { useOptions } from '@/hooks/use-options'
 import { isKeyedMap, type JsonSchema, type Path, type SecretField as SecretMeta } from '@/lib/schema'
@@ -84,6 +85,8 @@ function SwitchWidget({ id, value, label, disabled, readonly, onChange, schema }
  * a feature switch that is off (`dimmed` from prune) is greyed but still editable. */
 function FieldTemplate(props: FieldTemplateProps) {
   const { id, children, displayLabel, rawErrors = [], errors, help, rawDescription, label, hidden, required, schema, uiSchema } = props
+  // A section's adornment goes on its heading (TitleField), a field's beside its control.
+  const adornment = useContext(Adornments)[id]
   if (hidden) return <div className="hidden">{children}</div>
   // An entry of a plain list (arguments, domains) is its value alone; the list carries the label.
   const inList = typeof props.fieldPathId?.path.at(-1) === 'number'
@@ -99,23 +102,38 @@ function FieldTemplate(props: FieldTemplateProps) {
           <InfoTip text={rawDescription} />
         </div>
       ) : null}
-      {children}
+      {adornment !== undefined && !schema.properties ? (
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">{children}</div>
+          {adornment}
+        </div>
+      ) : (
+        children
+      )}
       {errors}
       {help}
     </div>
   )
 }
 
-/** A section heading inside a form, with its explanation behind an (i) and, after a refused save, what
- * is wrong with the section as a whole. */
+/** A section heading inside a form, with its explanation behind an (i), the page's adornment at the
+ * right and, after a refused save, what is wrong with the section as a whole. */
 function TitleField({ id, title, schema, registry }: TitleFieldProps) {
   const context = registry.formContext as FormContext | undefined
-  const problems = context?.titleErrors?.[id.replace(/__title$/, '')] ?? []
+  const section = id.replace(/__title$/, '')
+  const problems = context?.titleErrors?.[section] ?? []
+  const adornment = useContext(Adornments)[section]
   return (
     <div id={id} className="my-1 flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <h5 className={cn(problems.length > 0 && 'text-destructive')}>{title}</h5>
         <InfoTip text={schema.description} />
+        {adornment !== undefined ? (
+          <>
+            <span className="flex-1" />
+            {adornment}
+          </>
+        ) : null}
       </div>
       {problems.map((p) => (
         <span key={p} className="text-sm text-destructive">

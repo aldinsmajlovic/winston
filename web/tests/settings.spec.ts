@@ -113,3 +113,45 @@ test('Save only leaves a Restart button for the running engine', async ({ page }
   await expect(header.getByLabel('Saved changes wait for a restart')).toBeVisible()
   await expect(header.getByRole('button', { name: 'Restart' })).toBeVisible()
 })
+
+test('the Voice page plays the unsaved voice and streaming, and not an unsaved engine', async ({ page }) => {
+  const bodies: Record<string, unknown>[] = []
+  await page.route('**/api/speak', async (route) => {
+    bodies.push(route.request().postDataJSON() as Record<string, unknown>)
+    // A tenth of a second of silence, as the speech server would stream it.
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'audio/pcm', 'x-sample-rate': '24000', 'x-streaming': 'on' },
+      body: Buffer.alloc(4800),
+    })
+  })
+  const errors = watchErrors(page)
+  await open(page, '/voice')
+  const play = page.getByRole('button', { name: 'Hear this voice' })
+  await expect(play).toBeEnabled()
+
+  // An unsaved voice, typed in, is the one spoken.
+  await page.locator('#cfg_tts_voice').click()
+  await page.getByPlaceholder('Search').fill('smoke/unsaved_voice')
+  await page.getByRole('option', { name: 'Use smoke/unsaved_voice' }).click()
+  await play.click()
+  await expect.poll(() => bodies.length).toBe(1)
+  expect(bodies[0].voice).toBe('smoke/unsaved_voice')
+  expect(String(bodies[0].text)).toMatch(/^Hello, I'm .+\. This is how I sound\.$/)
+
+  // The sample carries the draft's streaming and shows its time to first sound.
+  const sample = page.getByRole('button', { name: 'Play a sample' })
+  await expect(sample).toBeEnabled()
+  await sample.click()
+  await expect.poll(() => bodies.length).toBe(2)
+  expect(bodies[1].voice).toBe('smoke/unsaved_voice')
+  expect(bodies[1].streaming).toMatchObject({ chunk_secs: expect.any(Number) as unknown })
+  await expect(page.getByText(/^\d+\.\d\d s to first sound$/)).toBeVisible()
+
+  // Another engine in the draft is not the one running: both wait for a save and restart.
+  await page.locator('#tts-engine').click()
+  await page.getByRole('option', { selected: false }).filter({ hasNotText: 'Custom' }).first().click()
+  await expect(play).toBeDisabled()
+  expect(bodies).toHaveLength(2)
+  expect(errors).toEqual([])
+})

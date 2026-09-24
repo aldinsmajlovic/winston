@@ -1,10 +1,11 @@
-import { $api } from '@/api/client'
+import { $api, type Presets } from '@/api/client'
 import { ClonedVoices } from '@/components/cloned-voices'
 import { PageSkeleton } from '@/components/page'
 import { SectionForm } from '@/components/section-form'
 import { SlotCard } from '@/components/slot-card'
 import { SettingsPage } from '@/components/templates/settings-page'
-import { useSettings } from '@/hooks/use-settings'
+import { useSettings, type SettingsState } from '@/hooks/use-settings'
+import { useVoicePreviews } from '@/hooks/use-voice-previews'
 
 const TTS = ['tts']
 const STT = ['stt']
@@ -18,15 +19,19 @@ export default function VoicePage() {
   const s = useSettings([TTS, STT, VAD, ENGINE])
   const presets = $api.useQuery('get', '/api/presets')
   if (s.loading || !presets.data) return <PageSkeleton title="Voice" />
-  const { page } = s
+  return <Voice page={s.page} presets={presets.data} />
+}
+
+function Voice({ page, presets }: { page: SettingsState; presets: Presets }) {
+  const previews = useVoicePreviews(page)
   const engine = page.value.engines?.tts
   return (
     <SettingsPage title="Voice" page={page}>
-      <SlotCard page={page} kind="tts" title="Speaking" presets={presets.data.tts}>
-        <SectionForm page={page} path={TTS} />
+      <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts}>
+        <SectionForm page={page} path={TTS} adornments={previews} />
       </SlotCard>
       <ClonedVoices current={page.value.tts?.voice} />
-      <SlotCard page={page} kind="stt" title="Hearing" presets={presets.data.stt}>
+      <SlotCard page={page} kind="stt" title="Hearing" presets={presets.stt}>
         <SectionForm page={page} path={STT} omit={PROVIDER} />
       </SlotCard>
       {page.advanced ? <SectionForm page={page} path={VAD} title="Turn taking" /> : null}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { playPcm, silence, timeline } from '@/lib/pcm'
 
 const KEY = 'winston.readAloud'
 
@@ -20,8 +21,7 @@ export function useSpeech(onError: (message: string) => void) {
   const queue = useRef<string[]>([])
   const busy = useRef(false)
   const abort = useRef<AbortController | null>(null)
-  const sources = useRef(new Set<AudioBufferSourceNode>())
-  const until = useRef(0) // when the audio scheduled so far ends, in AudioContext time
+  const line = useRef(timeline()) // the audio scheduled so far
 
   /** Browsers only start audio from a click or a key, so the page calls this from one. */
   const prime = useCallback(() => {
@@ -32,9 +32,7 @@ export function useSpeech(onError: (message: string) => void) {
   const stop = useCallback(() => {
     queue.current = []
     abort.current?.abort()
-    for (const source of sources.current) source.stop()
-    sources.current.clear()
-    until.current = 0
+    silence(line.current)
   }, [])
 
   const play = useCallback(async (text: string, signal: AbortSignal) => {
@@ -47,31 +45,7 @@ export function useSpeech(onError: (message: string) => void) {
       signal,
     })
     if (!response.ok || !response.body) throw new Error(`Could not read the reply aloud (${response.status})`)
-    const rate = Number(response.headers.get('x-sample-rate')) || 24000
-    const reader = response.body.getReader()
-    let carry: Uint8Array = new Uint8Array(0) // an odd byte left over from a chunk, half a sample
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      const bytes = new Uint8Array(carry.length + value.length)
-      bytes.set(carry)
-      bytes.set(value, carry.length)
-      const whole = bytes.length - (bytes.length % 2)
-      carry = bytes.slice(whole)
-      if (!whole) continue
-      const pcm = new Int16Array(bytes.buffer, 0, whole / 2)
-      const buffer = audio.createBuffer(1, pcm.length, rate)
-      const samples = buffer.getChannelData(0)
-      for (let i = 0; i < pcm.length; i++) samples[i] = pcm[i] / 32768
-      const source = audio.createBufferSource()
-      source.buffer = buffer
-      source.connect(audio.destination)
-      const at = Math.max(until.current, audio.currentTime + 0.05) // right after the previous text: no gap
-      source.start(at)
-      until.current = at + buffer.duration
-      sources.current.add(source)
-      source.onended = () => sources.current.delete(source)
-    }
+    await playPcm(response, audio, line.current)
   }, [])
 
   const drain = useCallback(async () => {
@@ -89,7 +63,7 @@ export function useSpeech(onError: (message: string) => void) {
           if (!controller.signal.aborted) onError(error instanceof Error ? error.message : 'Could not read the reply aloud')
         }
         // the next text is fetched while this one still plays; when none is queued, wait out the audio
-        while (!queue.current.length && ctx.current && ctx.current.currentTime < until.current) {
+        while (!queue.current.length && ctx.current && ctx.current.currentTime < line.current.until) {
           await new Promise((resolve) => setTimeout(resolve, 100))
         }
       }

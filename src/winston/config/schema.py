@@ -224,7 +224,8 @@ class TTSStreamingConfig(Model):
 
     @model_validator(mode="after")
     def _lookahead_inside_first(self):
-        if self.lookahead_secs >= self.first_secs:
+        # Compared in the Chatterbox server's own units, 25 speech tokens a second, rounded as it rounds.
+        if max(1, round(self.lookahead_secs * 25)) >= max(1, round(self.first_secs * 25)):
             raise ValueError("look-ahead must be shorter than the first chunk")
         return self
 

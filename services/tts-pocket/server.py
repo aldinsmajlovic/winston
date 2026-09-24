@@ -53,6 +53,8 @@ class SpeechRequest(BaseModel):
     response_format: str = "pcm"      # pcm (24 kHz s16le mono) or wav
     speed: float | None = None        # accepted, ignored
     instructions: str | None = None   # accepted, ignored
+    # Chatterbox's per-request streaming (stream, first_secs, chunk_secs, lookahead_secs) and any other
+    # field this server does not know are dropped by pydantic's default, so the same request works here
 
 
 _OPENAI_VOICES = {"alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "marin", "nova", "onyx",

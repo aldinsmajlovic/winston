@@ -4,6 +4,7 @@ import { KindIcon } from '@/components/kind-icon'
 import { SchemaForm, type FormContext } from '@/components/schema-form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { SettingsState } from '@/hooks/use-settings'
+import { Adornments } from '@/lib/adornments'
 import { applyForm, EXTRA_SUFFIX, getIn, prune, section, setIn, type JsonSchema, type Path } from '@/lib/schema'
 
 /** A row a page adds to a section's form that is not a config field (what Ask Claude signs in with,
@@ -27,6 +28,9 @@ type Props = {
   /** Beside the card title, e.g. the channel's state icon. */
   status?: ReactNode
   extras?: ExtraRow[]
+  /** Controls beside a field or on a nested section's heading (a play button), by the dotted path
+   * from this section: `{ voice: <Play/> }`. Shown only while the form shows that field. */
+  adornments?: Record<string, ReactNode>
 }
 
 /** Put the page's extra rows into the pruned schema as virtual fields (see ExtraWidget). */
@@ -70,7 +74,7 @@ function withExtras(schema: JsonSchema, extras: Omit<ExtraRow, 'render'>[]): Jso
 /** One section of the config as a form, at the page's current level (basic or advanced). What the form
  * shows follows the draft: fields whose `when` fails are left out, a switched-off feature greys the
  * rest of its section, and errors from a refused save sit beside their fields. */
-export function SectionForm({ page, path, title, omit, driver, icon: iconName, status, extras }: Props) {
+export function SectionForm({ page, path, title, omit, driver, icon: iconName, status, extras, adornments }: Props) {
   const { schema, advanced, value } = page
   // Pruned on every change of the draft, but handed to rjsf as the same object while it reads the same.
   const extraSpecs = (extras ?? []).map(({ key, title, description, after }) => ({ key, title, description, after }))
@@ -98,20 +102,23 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
     }),
     [page, errors.byTitle, extras],
   )
+  const byId = Object.fromEntries(Object.entries(adornments ?? {}).map(([key, node]) => [fieldId([...path, ...key.split('.')]), node]))
   const own = errors.own.map((msg) => (
     <span key={msg} className="text-sm font-normal text-destructive">
       {msg}
     </span>
   ))
   const form = (
-    <SchemaForm
-      schema={formSchema}
-      value={getIn(value, path)}
-      idPrefix={fieldId(path)}
-      extraErrors={errors.extraErrors}
-      formContext={context}
-      onChange={(next) => page.update((c) => setIn(c, path, applyForm(getIn(c, path), next, formSchema)))}
-    />
+    <Adornments.Provider value={byId}>
+      <SchemaForm
+        schema={formSchema}
+        value={getIn(value, path)}
+        idPrefix={fieldId(path)}
+        extraErrors={errors.extraErrors}
+        formContext={context}
+        onChange={(next) => page.update((c) => setIn(c, path, applyForm(getIn(c, path), next, formSchema)))}
+      />
+    </Adornments.Provider>
   )
   const icon = iconName ?? (typeof formSchema.icon === 'string' ? formSchema.icon : undefined)
   if (!title) {

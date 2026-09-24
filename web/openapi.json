@@ -232,7 +232,7 @@
     },
     "/api/speak": {
       "post": {
-        "summary": "Text in Winston's voice as streamed 16-bit mono PCM, for the Talk page's read aloud",
+        "summary": "Text in Winston's voice as streamed 16-bit mono PCM, for read aloud and the Voice page's previews; voice and streaming may be tried before they are saved",
         "operationId": "speak_api_speak_post",
         "requestBody": {
           "content": {
@@ -247,6 +247,31 @@
         "responses": {
           "200": {
             "description": "16-bit mono PCM, rate in X-Sample-Rate",
+            "headers": {
+              "X-Sample-Rate": {
+                "description": "PCM rate in Hz",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Voice": {
+                "description": "The voice sent to the speech server, percent-encoded",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "X-Streaming": {
+                "description": "on or off: the streaming this request used, when the engine takes streaming settings. ignored: streaming was sent but the engine does not take it (or its server predates per-request streaming). Absent otherwise.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "on",
+                    "off",
+                    "ignored"
+                  ]
+                }
+              }
+            },
             "content": {
               "audio/pcm": {}
             }
@@ -3695,6 +3720,31 @@
             "maxLength": 4000,
             "minLength": 1,
             "title": "Text"
+          },
+          "voice": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice",
+            "description": "Speak in this voice instead of tts.voice (a clip name under the server's voices directory, or a voice the server knows)"
+          },
+          "streaming": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpeakStreaming"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Try these streaming settings instead of the saved ones. Reaches the speech server only when its engine command uses {tts.streaming.*}; otherwise ignored (X-Streaming)."
           }
         },
         "type": "object",
@@ -3702,6 +3752,40 @@
           "text"
         ],
         "title": "SpeakRequest"
+      },
+      "SpeakStreaming": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Stream speech",
+            "description": "Start speaking before a sentence is fully rendered: first audio in about 0.3 s instead of up to 2 s for a long sentence, with a join between chunks that can sound a little choppy. Off renders whole sentences. For the Chatterbox server."
+          },
+          "chunk_secs": {
+            "type": "number",
+            "maximum": 6.0,
+            "minimum": 0.8,
+            "title": "Chunk length (s)",
+            "description": "Audio per chunk after the first. Longer means fewer joins and smoother speech; how soon he starts talking depends only on the first chunk."
+          },
+          "first_secs": {
+            "type": "number",
+            "maximum": 3.0,
+            "minimum": 0.4,
+            "title": "First chunk (s)",
+            "description": "Audio rendered before anything is sent. Shorter starts sooner; below about 0.9 s the second chunk can arrive late and leave a short gap."
+          },
+          "lookahead_secs": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.08,
+            "title": "Look-ahead (s)",
+            "description": "Audio held back at the end of each chunk until the sounds after it are known. More smooths the joins but makes the first chunk shorter."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SpeakStreaming",
+        "description": "tts.streaming for this request only; unset fields keep the saved values."
       },
       "Status": {
         "properties": {
