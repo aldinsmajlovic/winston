@@ -16,6 +16,12 @@ uv run winston check brain     # the configured brain on the trial requests: too
 uv run winston check clone     # clone a synthetic friend's voice headless and switch back (about 90 s)
 ```
 
+`.venv/bin/python tests/conversations.py [name ...]` talks to the voice pipeline headless in sixteen
+scripted conversations (vague requests, things he cannot do, Swedish, talking over him, prompt
+injection and more) and prints each transcript: what speech-to-text heard, tool calls, what he said,
+guard corrections and time to first audio. Actions are stubbed, so the house and `data/` are
+untouched. It judges nothing; read the transcripts.
+
 Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs
 winston-llm`; every tool call to `data/logs/tool_calls.jsonl`.
 

@@ -54,9 +54,12 @@ def build_stt(cfg: WinstonConfig = CFG):
 
 class SpeechTTS(OpenAITTSService):
     """OpenAI's speech protocol with any voice name. Pipecat only lets OpenAI's own names through,
-    but a local server names its clips by path ("vctk/p226_023", "friends/erik")."""
+    but a local server names its clips by path ("vctk/p226_023", "friends/erik"). Text with nothing
+    to say is skipped."""
 
     async def run_tts(self, text: str, context_id: str):
+        if not any(c.isalnum() for c in text):      # the LLM sometimes streams a lone "." before a tool call
+            return
         if self._settings.voice in VALID_VOICES:
             async for f in super().run_tts(text, context_id):
                 yield f

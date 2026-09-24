@@ -918,6 +918,12 @@
             "default": "persona.md",
             "level": "advanced",
             "options": "personas"
+          },
+          "language": {
+            "type": "string",
+            "title": "Reply language",
+            "description": "The language he always answers in, whatever language he is spoken to in. Match it to the voice: Chatterbox-Turbo speaks only English.",
+            "default": "English"
           }
         },
         "additionalProperties": false,
@@ -2652,7 +2658,8 @@
             "$ref": "#/components/schemas/AssistantConfig",
             "default": {
               "name": "Winston",
-              "persona": "persona.md"
+              "persona": "persona.md",
+              "language": "English"
             }
           },
           "engines": {

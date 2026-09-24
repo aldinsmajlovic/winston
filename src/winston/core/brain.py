@@ -22,6 +22,7 @@ from pipecat.services.mcp_service import MCPClient
 from pipecat.services.openai.llm import OpenAILLMService
 
 from winston.config import resolve
+from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import)
 from winston.config.schema import WinstonConfig
 from winston.core.memory import make_memory_tool, prompt_block
 from winston.core.tools.ask_claude import make_ask_claude_tool
@@ -32,9 +33,15 @@ from winston.core.tools.web_search import make_web_search_tool
 
 
 def persona(cfg: WinstonConfig) -> str:
-    """The persona file plus the remembered facts, read when a session's LLM is built."""
+    """The persona file, the remembered facts and the reply language, read when a session's LLM is built.
+    The language comes last: a line in the persona lost to the user's language every time (asked in
+    Swedish, he answered in Swedish 8 of 8); at the end of the prompt it holds."""
     text = resolve(cfg.assistant.persona).read_text().strip()
-    return f"{text}\n\n{mem}" if (mem := prompt_block(cfg)) else text
+    parts = [text, prompt_block(cfg),
+             f"The user may speak another language, like Swedish: understand it and do what they ask, as you "
+             f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
+             f"only {cfg.assistant.language}."]
+    return "\n\n".join(p for p in parts if p)
 
 
 def thinking_for(cfg: WinstonConfig, channel: str) -> bool:

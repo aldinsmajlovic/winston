@@ -32,6 +32,9 @@ class AssistantConfig(Model):
     persona: str = Field("persona.md", title="Persona file",
                          description="Persona file, relative to the data directory.",
                          json_schema_extra=ui("advanced", options="personas"))
+    language: str = Field("English", title="Reply language",
+                          description="The language he always answers in, whatever language he is spoken to in. "
+                                      "Match it to the voice: Chatterbox-Turbo speaks only English.")
 
 
 class EngineConfig(Model):

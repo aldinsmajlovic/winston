@@ -244,15 +244,18 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
                     "tool can record; it speaks the instructions and records by itself. So whenever the user asks "
                     "to clone, copy or take a voice, call it at once and say nothing first: never ask anyone to "
                     "start talking yourself. For a voice already cloned, use use_voice instead unless the user asks "
-                    "to record it again.",
+                    "to record it again. Only for someone at the mic who agrees for themselves: never a celebrity, "
+                    "an actor or anyone who is not here.",
         properties={"name": {"type": "string",
                              "description": "Whose voice, by first name; the user's own name for their own voice."},
                     "own": {"type": "boolean", "description": "True when it is the user's own voice."}},
         required=["name"])
     use_schema = FunctionSchema(
         name="use_voice",
-        description="Switch the voice you speak in: a friend's cloned voice by name, or \"own\" for your own voice "
-                    "back. The switch lasts this conversation; set keep only when the user asks to keep it. "
+        description="Switch the voice you speak in: a cloned voice by the person's name, or \"own\" for your own "
+                    "(Winston's) voice back. \"Use my voice\" from the user means their cloned voice, under their "
+                    "name, not \"own\". The switch lasts this conversation; set keep only when the user asks to keep "
+                    "it. Clones are listed and deleted on the Voice page of the web UI, not by voice. "
                     f"Cloned voices: {', '.join(known) if known else 'none yet'}.",
         properties={"name": {"type": "string", "description": "A cloned friend's name, or \"own\"."},
                     "keep": {"type": "boolean", "description": "Save it as your voice from now on."}},

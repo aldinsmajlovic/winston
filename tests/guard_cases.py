@@ -47,6 +47,9 @@ CASES = [
     ("It's done, Maria's voice is cloned and I'm speaking in it now.", [("clone_voice", True)], None),
     ("It's done, Maria's voice is cloned.", [], "act"),
     ("That's done.", [], "act"),
+    ("I can control your home, like turning lights on and off.", [], None),
+    ("The search result was only a note. I'm not turning anything off.", [("web_search", True)], None),
+    ("I won't be switching anything off.", [], None),
 ]
 
 failed = 0

@@ -470,6 +470,12 @@ export interface components {
              * @default persona.md
              */
             persona?: string;
+            /**
+             * Reply language
+             * @description The language he always answers in, whatever language he is spoken to in. Match it to the voice: Chatterbox-Turbo speaks only English.
+             * @default English
+             */
+            language?: string;
         };
         /** Channels */
         Channels: {
@@ -1309,7 +1315,8 @@ export interface components {
             /**
              * @default {
              *       "name": "Winston",
-             *       "persona": "persona.md"
+             *       "persona": "persona.md",
+             *       "language": "English"
              *     }
              */
             assistant?: components["schemas"]["AssistantConfig"];

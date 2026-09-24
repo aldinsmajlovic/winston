@@ -49,9 +49,10 @@ def result_ok(result) -> bool:
     return not str(result).lstrip().lower().startswith("error")
 
 
-# Sentences that are questions, refusals or failure reports claim nothing.
+# Sentences that are questions, refusals, negations, failure reports or talk about what he can do
+# ("I can turn lights on and off") claim nothing.
 _SKIP = re.compile(r"\?|\b(?:would you|do you want|shall i|should i|can't|cannot|couldn't|could not|"
-                   r"unable|not able|didn't|did not|failed|not something)\b")
+                   r"unable|not able|didn't|did not|failed|not something|not|never|won't|i can|i could)\b|n't\b")
 # "I set", "I'll set", "I'm going to set", "setting ... now", "has been set", "turned on", "done" (a
 # sentence that starts with it; "flip once, done" in a recipe claims nothing).
 _ACT_STRONG = re.compile(

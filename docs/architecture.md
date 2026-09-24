@@ -43,7 +43,7 @@ flowchart TB
 - **Brain** (`winston/core`): one Pipecat LLM service plus its tools, shared by every channel. Tools come
   from MCP servers and local plugins. The persona is the system instruction. A claim guard sits after
   the LLM in every channel: a reply that claims an action or a state no tool call in that turn or the one
-  before backs is retracted aloud and in the context. Remembered facts (`data/memory/`) are appended to the persona when a session
+  before backs is retracted aloud and in the context. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
   starts; the `remember` tool adds to them.
 - **Adapters** (`winston/plugins`): Pipecat services with a settings model, discovered through Python
   entry points (`winston.stt`, `winston.tts`, ...). A third-party package adds one without touching core.
