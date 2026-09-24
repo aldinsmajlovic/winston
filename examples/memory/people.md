@@ -1,4 +1,4 @@
 # People
 
-Distilled facts about people Winston should know about. One fact per line. No conversation logs.
+Others in his life, who they are and how they relate to him.
 

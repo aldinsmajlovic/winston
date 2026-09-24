@@ -43,11 +43,14 @@ transport), connecting through winstond to the voice channel.
   current one in the text colour. On Talk they follow one speaker icon button that reads typed
   replies aloud. `WinstonHeader` draws this for every page on Winston's side.
 - Memory reads like his notes: "How he behaves" first (his rules, with "Only you can change these"
-  and the technical instructions folded), then one heading per topic, facts as plain lines as
-  stored, the date muted at the end. Edit and forget on a line's hover; edit all, rename and delete
-  on a heading's. A rounded field under each section adds, a pasted list adds each line. Search at
-  the top; a quiet size line at the bottom. Forget, remove and edit all on "How he behaves" offer Undo
-  in their toast. With memory off, one muted line under the search says he does not use these and
+  and the technical instructions folded), then one heading per topic with an (i) for its
+  description, facts as plain lines as stored, the date muted at the end and a muted outline "Until
+  29 Sep" badge before it on a fact that ends. Edit and forget on a line's hover (a fact's edit row
+  has an Until date field); edit all, rename (name and description) and delete on a heading's. A
+  rounded field under each section adds, a pasted list adds each line. Facts past their day fold,
+  greyed, under "Expired (n)" after the topics, with "Clear expired" (confirm once, Undo). Search at
+  the top; a quiet size line at the bottom that counts only what is in his prompt. Forget, remove
+  and edit all on "How he behaves" offer Undo in their toast. With memory off, one muted line under the search says he does not use these and
   links to Tools.
 - Dashboard mode shows the logo large as the talk button, one line for his state, the last exchange
   in large type and announcements across the screen; a plain Close link at the top right is its only

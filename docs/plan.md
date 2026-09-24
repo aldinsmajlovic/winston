@@ -35,7 +35,7 @@ A voice assistant Aldin talks to at home, in English, that feels close to the mo
 | Voice | Natural tone and cadence. British voice or, better, a cloned/custom voice. English only. |
 | Text channel | Some way to send/receive text (Telegram or similar). |
 | Integrations | Home Assistant is the priority. PC control is nice-to-have, not a focus. Camera/vision is a later goal. |
-| Memory | Distilled facts only (preferences, people, projects). No conversation-log memory. |
+| Memory | Distilled facts only (about you, home, plans, people). No conversation-log memory. |
 | Users | Single user, no voice verification. Personal use only. |
 | Budget | GPU: already owned. API spend: max ~500 SEK/month. |
 | Timeline | Something working first, then grow long term. |
@@ -177,7 +177,7 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 
 ### M4, Cloud handoff, memory, text channel
 - `ask_claude` tool with a tight system prompt and per-day spend cap.
-- Memory vault: `memory/preferences.md`, `memory/people.md`, `memory/projects.md`, loaded into the system prompt at start; a `remember` tool that appends distilled facts and commits to git.
+- Memory vault: `memory/preferences.md`, `memory/people.md`, `memory/projects.md` (since 2026-09-24 `about-you.md`, `home.md`, `plans.md`, `people.md`), loaded into the system prompt at start; a `remember` tool that appends distilled facts and commits to git.
 - Telegram bot wired to the same agent loop. (Changed 2026-09-23: Discord, see `decisions.md`.)
 - **Accept:** "Tell my friend a fun fact" works locally; a hard question routes to Claude; a fact told to Winston is recalled in a fresh session; Telegram works.
 - **Status: started 2026-09-23, ahead of M2/M3 acceptance (see `decisions.md`).** Memory vault done: `remember` stores, refuses secrets, commits; a fresh session recalls (typed test with the 9B, `tests/memory_cases.py` in `winston check unit`). Web search measured working (1.4 s at the search model). `ask_claude` works through the Claude Agent SDK on the Max plan's credit (about 6 s, 0.05 USD a question, 3 USD a day cap). Discord channel (replacing Telegram) and announcements (moved up from M5) built: an announcement from Home Assistant plays chime and speech in a connected browser and a spoken follow-up is answered from its context (`tests/announce_voice.py`); Discord waits for a bot token.
@@ -253,9 +253,10 @@ winston/
   channels/
     telegram.py
   memory/
-    preferences.md
+    about-you.md
+    home.md
+    plans.md
     people.md
-    projects.md
   ops/
     docker-compose.yml # vllm, tts server, backend
     systemd/           # unit files if not using compose

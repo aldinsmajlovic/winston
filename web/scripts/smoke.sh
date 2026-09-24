@@ -41,9 +41,11 @@ if [ -z "$fake_ha" ]; then
   kill "$ha_pid" 2>/dev/null || true; ha_pid=""
 fi
 
-# The config and persona only: no logs, voices, memory or real keys.
+# The config and persona only: no logs, voices, real memory or real keys. Memory is the example
+# topics from the repo, never data/memory.
 cp "$src/config.yaml" "$copy/"
 [ -f "$src/persona.md" ] && cp "$src/persona.md" "$copy/"
+cp -r "$repo/examples/memory" "$copy/memory"
 port="$(uv run --project "$repo" python - "$copy" "$src" "$fake_ha" <<'EOF'
 import os, re, socket, sys, yaml
 copy, fake_ha = sys.argv[1], sys.argv[3]

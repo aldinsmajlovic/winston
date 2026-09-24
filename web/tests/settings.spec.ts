@@ -295,3 +295,47 @@ test('the Home Assistant page shows the list by room and saves aliases only', as
   expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('light.kok')
   expect(errors).toEqual([])
 })
+
+test('Memory shows the example topics, dated facts, and folds and clears the expired', async ({ page }) => {
+  // The copy's memory is examples/memory (smoke.sh); two facts go in by hand: one far off, one past.
+  const plans = join(data, 'memory', 'plans.md')
+  writeFileSync(
+    plans,
+    readFileSync(plans, 'utf8') +
+      '- The user sees the dentist on Monday 31 December 2099. (noted 2026-09-24, until 2099-12-31)\n' +
+      '- The user had a haircut booked. (noted 2026-01-01, until 2026-01-02)\n',
+  )
+  const errors = watchErrors(page)
+  await open(page, '/memory')
+  for (const title of ['About you', 'Home', 'Plans', 'People']) {
+    await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
+  }
+  // A topic's description behind its (i).
+  await page.getByRole('region', { name: 'About you' }).getByRole('button', { name: 'More information' }).hover()
+  await expect(page.getByText('The user himself: his likes, dislikes, habits')).toBeVisible()
+
+  // The dated fact carries its day; the expired one is folded and out of the size line.
+  const dentist = page.getByRole('region', { name: 'Plans' }).locator('div.group', { hasText: 'dentist' })
+  await expect(dentist.getByText(/^Until (31 Dec|Dec 31)$/)).toBeVisible()
+  await expect(page.getByText('The user had a haircut booked.')).toHaveCount(0)
+  await expect(page.getByText(/^1 fact, /)).toBeVisible()
+  await page.getByRole('button', { name: 'Expired (1)' }).click()
+  await expect(page.getByText('The user had a haircut booked.')).toBeVisible()
+
+  // Editing clears the date; the file keeps the fact without an until.
+  await dentist.hover()
+  await dentist.getByRole('button', { name: 'Edit' }).click()
+  await page.getByLabel('Until', { exact: true }).fill('')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect.poll(() => readFileSync(plans, 'utf8')).toMatch(/dentist on Monday 31 December 2099\. \(noted \d{4}-\d{2}-\d{2}\)\n/)
+
+  // Clear expired asks once, and Undo brings the fact back with its dates.
+  await page.getByRole('button', { name: 'Clear expired' }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Clear expired' }).click()
+  await expect(page.getByRole('button', { name: /^Expired/ })).toHaveCount(0)
+  expect(readFileSync(plans, 'utf8')).not.toContain('haircut')
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(page.getByRole('button', { name: 'Expired (1)' })).toBeVisible()
+  expect(readFileSync(plans, 'utf8')).toContain('The user had a haircut booked. (noted 2026-01-01, until 2026-01-02)')
+  expect(errors).toEqual([])
+})

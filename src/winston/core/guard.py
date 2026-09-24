@@ -61,12 +61,18 @@ _ACT_STRONG = re.compile(
     r"sen[dt]|messag(?:e|ed))\b"
     r"|\b(?:has|have) been (?:set|turned|switched|dimmed|changed|adjusted|booted|sent)\b"
     r"|\b(?:turned|switched) (?:on|off)\b|^(?:(?:it'?s|it is|that'?s|that is|all) )?done\b")
-# "I'll remember that", "noted", "I've forgotten that", "I've updated it": a memory claim, which needs
-# the memory tools (act tools). Bare "I remember" is recall from the prompt, not a claim.
-_REMEMBER = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? (?:remember|noted?|saved?|stored?|made a note)\b"
+# "I'll remember that", "noted", "I've forgotten that": a memory claim, backed only by the memory tools
+# (remember, forget). Bare "I remember" is recall from the prompt, not a claim.
+MEMORY_TOOLS = {"remember", "forget"}
+_REMEMBER = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? (?:remember|noted?|made a note)\b"
                        r"|\bi'll keep (?:that|it|this) in mind\b|^(?:got it, )?noted\b"
-                       r"|\bi(?:'ve| have)(?: just)? forgotten\b"
-                       r"|\bi(?:'ve| have)?(?: just)? (?:removed|deleted|updated)\b")
+                       r"|\bi(?:'ve| have)(?: just)? forgotten\b")
+# "I've updated it", "I removed milk from the list", "I've saved that": a change claim that may be about
+# memory or about the home (a to-do list, a voice); any act tool backs it, only a memory tool when the
+# sentence says it is about memory ("I removed the note about the dentist").
+_CHANGED = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? (?:saved?|stored?)\b"
+                      r"|\bi(?:'ve| have)?(?: just)? (?:removed|deleted|updated)\b")
+_ABOUT_MEMORY = re.compile(r"\b(?:memory|memories|notes?|facts?)\b")
 # "it has been removed", "your order has been updated": the same claim without the "I", but chat says
 # it too ("the forecast has been updated"), so like the loose patterns it counts only when no tool ran.
 _REMEMBER_PASSIVE = re.compile(r"\b(?:has|have) been (?:forgotten|removed|deleted|updated)\b")
@@ -100,15 +106,20 @@ _GENERIC = targets()
 
 def judge(text: str, tools: list[tuple[str, bool]], names: re.Pattern = _GENERIC) -> str | None:
     """Verdict for a reply given the (tool name, succeeded) calls of the same user turn:
-    "act" for a change claim no successful act tool backs, "state" for a state claim no
-    successful tool backs, None when the reply is fine. names is targets(cfg)."""
+    "act" for a change claim no successful act tool backs (a memory claim: no remember or forget),
+    "state" for a state claim no successful tool backs, None when the reply is fine. names is
+    targets(cfg)."""
     ok = {tool_tier(name) for name, succeeded in tools if succeeded}
+    memory_ok = any(succeeded and name.split("__")[-1].lower() in MEMORY_TOOLS for name, succeeded in tools)
     for s in re.split(r"(?<=[.!])\s+", text.lower()):
         if _SKIP.search(s):
             continue
         named = bool(names.search(s))
+        changed = _CHANGED.search(s)
+        if not memory_ok and (_REMEMBER.search(s) or (changed and _ABOUT_MEMORY.search(s))):
+            return ACT
         loose = _REMEMBER_PASSIVE.search(s) or (named and _ACT_WEAK.search(s))
-        if ACT not in ok and (_ACT_STRONG.search(s) or _REMEMBER.search(s) or (named and _ACT_ING.search(s))
+        if ACT not in ok and (_ACT_STRONG.search(s) or changed or (named and _ACT_ING.search(s))
                               or (not ok and loose)):
             return ACT
         if named and not ok and _STATE.search(s):

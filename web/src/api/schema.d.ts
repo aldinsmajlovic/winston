@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/memory/expired/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Forget every fact whose until has passed, in one commit; returns them for Undo */
+        post: operations["clear_expired_api_memory_expired_clear_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/topics/{topic}": {
         parameters: {
             query?: never;
@@ -234,7 +251,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Rename a topic (and its file) */
+        /** Rename a topic (and its file), and change its description */
         put: operations["rename_topic_api_memory_topics__topic__put"];
         post?: never;
         /** Delete a topic and its facts */
@@ -811,6 +828,26 @@ export interface components {
             /** Label */
             label: string;
         };
+        /** ClearedFact */
+        ClearedFact: {
+            /** Id */
+            id: string;
+            /** Text */
+            text: string;
+            /** Noted */
+            noted: string | null;
+            /** Until */
+            until?: string | null;
+            /**
+             * Expired
+             * @default false
+             */
+            expired?: boolean;
+            /** Topic */
+            topic: string;
+            /** Index */
+            index: number;
+        };
         /** ClonedVoice */
         ClonedVoice: {
             /** Slug */
@@ -1140,6 +1177,11 @@ export interface components {
             id: string;
             /** Fact */
             fact: string;
+            /**
+             * Until
+             * @description Its last day; null clears it. Left out, the fact keeps its until unless the new text has a date still to come
+             */
+            until?: string | null;
         };
         /** Forgotten */
         Forgotten: {
@@ -1520,6 +1562,13 @@ export interface components {
             text: string;
             /** Noted */
             noted: string | null;
+            /** Until */
+            until?: string | null;
+            /**
+             * Expired
+             * @default false
+             */
+            expired?: boolean;
         };
         /** MemoryTopic */
         MemoryTopic: {
@@ -1527,6 +1576,11 @@ export interface components {
             name: string;
             /** Title */
             title: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
             /** Facts */
             facts: components["schemas"]["MemoryFact"][];
         };
@@ -1557,11 +1611,21 @@ export interface components {
              * @description When it was first noted, for Undo; today when unset
              */
             noted?: string | null;
+            /**
+             * Until
+             * @description Its last day, for Undo; from a date still to come in the fact when unset
+             */
+            until?: string | null;
         };
         /** NewTopic */
         NewTopic: {
             /** Title */
             title: string;
+            /**
+             * Description
+             * @description What belongs here; a plain default when unset
+             */
+            description?: string | null;
         };
         /** Ok */
         Ok: {
@@ -2054,6 +2118,11 @@ export interface components {
         TopicRename: {
             /** Title */
             title: string;
+            /**
+             * Description
+             * @description What belongs here; kept when unset, removed when empty
+             */
+            description?: string | null;
         };
         /** TopicRestore */
         TopicRestore: {
@@ -2726,6 +2795,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_expired_api_memory_expired_clear_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClearedFact"][];
                 };
             };
         };

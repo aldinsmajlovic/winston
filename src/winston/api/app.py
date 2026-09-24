@@ -123,11 +123,19 @@ class MemoryFact(BaseModel):
     id: str                 # the stored line, text and stamp; edits and deletes name the fact by it
     text: str
     noted: str | None       # YYYY-MM-DD
+    until: str | None = None    # YYYY-MM-DD: the last day it is in his prompt
+    expired: bool = False       # until has passed: kept here, left out of his prompt
+
+
+class ClearedFact(MemoryFact):
+    topic: str
+    index: int              # where it was among the topic's facts, for Undo
 
 
 class MemoryTopic(BaseModel):
     name: str               # the file's stem
     title: str
+    description: str = ""   # what belongs here; the memory tools show it to the model
     facts: list[MemoryFact]
 
 
@@ -143,19 +151,26 @@ class NewFact(BaseModel):
     fact: str = Field(min_length=1, max_length=1000)
     index: int | None = Field(None, ge=0, description="Position among the topic's facts; the end when unset")
     noted: date | None = Field(None, description="When it was first noted, for Undo; today when unset")
+    until: date | None = Field(None, description="Its last day, for Undo; from a date still to come in the fact "
+                                                 "when unset")
 
 
 class FactEdit(BaseModel):
     id: str
     fact: str = Field(min_length=1, max_length=1000)
+    until: date | None = Field(None, description="Its last day; null clears it. Left out, the fact keeps its "
+                                                 "until unless the new text has a date still to come")
 
 
 class NewTopic(BaseModel):
     title: str = Field(min_length=1, max_length=60)
+    description: str | None = Field(None, max_length=200, description="What belongs here; a plain default when unset")
 
 
 class TopicRename(BaseModel):
     title: str = Field(min_length=1, max_length=60)
+    description: str | None = Field(None, max_length=200, description="What belongs here; kept when unset, "
+                                                                        "removed when empty")
 
 
 class DeletedTopic(BaseModel):
@@ -576,12 +591,19 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     @app.post("/api/memory/topics", response_model=MemoryTopic, summary="A new topic (a new file in the vault)")
     async def add_topic(t: NewTopic):
-        name = memory_call(memory.new_topic, t.title)
-        return MemoryTopic(name=name, title=memory.title(app.state.cfg, name), facts=[])
+        name = memory_call(memory.new_topic, t.title, t.description)
+        return MemoryTopic(name=name, title=memory.title(app.state.cfg, name),
+                           description=memory.description(app.state.cfg, name), facts=[])
 
-    @app.put("/api/memory/topics/{topic}", response_model=MemoryTopic, summary="Rename a topic (and its file)")
+    @app.post("/api/memory/expired/clear", response_model=list[ClearedFact],
+              summary="Forget every fact whose until has passed, in one commit; returns them for Undo")
+    async def clear_expired():
+        return memory_call(memory.clear_expired)
+
+    @app.put("/api/memory/topics/{topic}", response_model=MemoryTopic,
+             summary="Rename a topic (and its file), and change its description")
     async def rename_topic(topic: str, r: TopicRename):
-        name = memory_call(memory.rename_topic, topic, r.title)
+        name = memory_call(memory.rename_topic, topic, r.title, r.description)
         return next(MemoryTopic(**t) for t in memory.view(app.state.cfg) if t["name"] == name)
 
     @app.delete("/api/memory/topics/{topic}", response_model=DeletedTopic, summary="Delete a topic and its facts")
@@ -612,10 +634,12 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     @app.post("/api/memory/{topic}", response_model=MemoryFact,
               summary="Add a fact, with the remember tool's checks (no secrets, one line, dates made absolute)")
     async def add_fact(topic: str, f: NewFact):
-        return memory_call(memory.add, topic, f.fact, f.index, f.noted)
+        return memory_call(memory.add, topic, f.fact, f.index, f.noted, f.until)
 
     @app.put("/api/memory/{topic}", response_model=MemoryFact, summary="Change a fact")
     async def edit_fact(topic: str, f: FactEdit):
+        if "until" in f.model_fields_set:
+            return memory_call(memory.replace, topic, f.id, f.fact, f.until)
         return memory_call(memory.replace, topic, f.id, f.fact)
 
     @app.delete("/api/memory/{topic}", response_model=Forgotten, summary="Forget a fact")

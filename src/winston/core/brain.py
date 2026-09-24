@@ -27,7 +27,7 @@ from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import
 from winston.config.schema import WinstonConfig
 from winston.core import persona as persona_file
 from winston.core import region
-from winston.core.memory import make_memory_tool, prompt_block
+from winston.core.memory import make_memory_tools, prompt_block
 from winston.core.tools.ask_claude import make_ask_claude_tool
 from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.messaging import make_send_message_tool
@@ -132,7 +132,7 @@ class Brain:
                 logger.info(f"state check after {checked}, up to {self.verifier.wait_secs:g} s")
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
-        for local in (make_sensor_tool(self.cfg), make_memory_tool(self.cfg), make_web_search_tool(self.cfg),
+        for local in (make_sensor_tool(self.cfg), *make_memory_tools(self.cfg), make_web_search_tool(self.cfg),
                       make_ask_claude_tool(self.cfg), make_send_message_tool(self.cfg)):
             if local:
                 schema, handler = local

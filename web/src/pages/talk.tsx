@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowUp,
   Bell,
+  BookmarkMinus,
   BookmarkPlus,
   CircleAlert,
   Clock,
@@ -35,6 +36,7 @@ const TOOL_ICONS: [(base: string) => boolean, LucideIcon][] = [
   [(b) => b === 'web_search', Search],
   [(b) => b === 'ask_claude', MessageCircleQuestion],
   [(b) => b === 'remember', BookmarkPlus],
+  [(b) => b === 'forget', BookmarkMinus],
   [(b) => b === 'send_message', Send],
 ]
 

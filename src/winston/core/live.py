@@ -108,6 +108,7 @@ _VERBS = {
     "web_search": ("Searching the web for {q}", "Searched the web for {q}", "Web search failed"),
     "ask_claude": ("Asking Claude", "Asked Claude", "Could not reach Claude"),
     "remember": ("Remembering {q}", "Remembered {q}", "Could not remember that"),
+    "forget": ("Forgetting {q}", "Forgot {q}", "Could not forget that"),
     "send_message": ("Messaging {t}", "Messaged {t}", "Could not message {t}"),
 }
 

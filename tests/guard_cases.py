@@ -71,9 +71,17 @@ CASES = [
     ("Your message is now in the queue.", [], None),                 # message, door, timer: not targets
     ("The front door is currently locked.", [], None),
     ("I've set a reminder.", [], "act"),                             # firm claims need no target
-    # memory changes, backed by forget and update tools later; unbacked until then
+    # memory changes: only remember or forget back them, in this turn or the one before
     ("I've forgotten that.", [], "act"),
+    ("I've forgotten that.", [("forget", True)], None),
+    ("I've forgotten that.", [("forget", False)], "act"),            # no such fact: nothing went
+    ("I've forgotten that.", ACT_OK, "act"),                         # a light call is not a forget
+    ("Noted.", ACT_OK, "act"),
+    ("Got it, I'll remember that the dentist moved to Friday.", [("remember", True)], None),
     ("I removed the note about the dentist.", [], "act"),
+    ("I removed the note about the dentist.", ACT_OK, "act"),
+    ("I've updated the fact about your sister.", [("remember", True)], None),
+    ("I removed milk from the shopping list.", [("todo__HassListRemoveItem", True)], None),
     ("Your coffee order has been updated.", [], "act"),
     ("I've deleted it.", [("forget", True)], None),
     ("The forecast has been updated for tomorrow.", [("web_search", True)], None),  # chat after a read

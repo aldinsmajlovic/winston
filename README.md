@@ -31,8 +31,9 @@ be swapped for a hosted service when that suits you better.
   one agreeing is the one recorded.
 - **Hears your names.** His name, your friends' and your rooms' are hint words, and close mishearings
   ("Winson") are corrected. Rename him in settings and everything he says about himself follows.
-- **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git, and
-  shown on a Memory page where you can search, add, edit and forget, next to his own rules.
+- **Remembers.** Tell it a fact and a fresh conversation still knows it; correct or forget it by voice,
+  and a dated plan drops out after its day. Stored as Markdown in git, and shown on a Memory page where
+  you can search, add, edit and forget, next to his own rules.
 - **Speaks your region.** Celsius or Fahrenheit, metric or imperial, 24- or 12-hour clock, taken from Home
   Assistant unless you pick otherwise; answers from the web are converted.
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both

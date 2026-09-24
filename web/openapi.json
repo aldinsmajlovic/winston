@@ -455,9 +455,31 @@
         }
       }
     },
+    "/api/memory/expired/clear": {
+      "post": {
+        "summary": "Forget every fact whose until has passed, in one commit; returns them for Undo",
+        "operationId": "clear_expired_api_memory_expired_clear_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClearedFact"
+                  },
+                  "type": "array",
+                  "title": "Response Clear Expired Api Memory Expired Clear Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/memory/topics/{topic}": {
       "put": {
-        "summary": "Rename a topic (and its file)",
+        "summary": "Rename a topic (and its file), and change its description",
         "operationId": "rename_topic_api_memory_topics__topic__put",
         "parameters": [
           {
@@ -1918,6 +1940,62 @@
         ],
         "title": "ClaudeAuth"
       },
+      "ClearedFact": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "noted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Noted"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          },
+          "expired": {
+            "type": "boolean",
+            "title": "Expired",
+            "default": false
+          },
+          "topic": {
+            "type": "string",
+            "title": "Topic"
+          },
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "text",
+          "noted",
+          "topic",
+          "index"
+        ],
+        "title": "ClearedFact"
+      },
       "ClonedVoice": {
         "properties": {
           "slug": {
@@ -2681,6 +2759,19 @@
             "maxLength": 1000,
             "minLength": 1,
             "title": "Fact"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "Its last day; null clears it. Left out, the fact keeps its until unless the new text has a date still to come"
           }
         },
         "type": "object",
@@ -3593,6 +3684,22 @@
               }
             ],
             "title": "Noted"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          },
+          "expired": {
+            "type": "boolean",
+            "title": "Expired",
+            "default": false
           }
         },
         "type": "object",
@@ -3612,6 +3719,11 @@
           "title": {
             "type": "string",
             "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
           },
           "facts": {
             "items": {
@@ -3698,6 +3810,19 @@
             ],
             "title": "Noted",
             "description": "When it was first noted, for Undo; today when unset"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until",
+            "description": "Its last day, for Undo; from a date still to come in the fact when unset"
           }
         },
         "type": "object",
@@ -3713,6 +3838,19 @@
             "maxLength": 60,
             "minLength": 1,
             "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "What belongs here; a plain default when unset"
           }
         },
         "type": "object",
@@ -4764,6 +4902,19 @@
             "maxLength": 60,
             "minLength": 1,
             "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "What belongs here; kept when unset, removed when empty"
           }
         },
         "type": "object",

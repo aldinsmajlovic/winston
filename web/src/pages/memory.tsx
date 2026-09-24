@@ -5,8 +5,10 @@ import { toast } from 'sonner'
 import { $api, errorText, type MemoryFact, type MemoryTopic } from '@/api/client'
 import { presence, useLive } from '@/api/live'
 import { IconButton } from '@/components/icon-button'
+import { InfoTip } from '@/components/info-tip'
 import { LoadError } from '@/components/page'
 import { WinstonHeader } from '@/components/winston-header'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
@@ -19,6 +21,8 @@ const SAVED = 'Saved. He knows it from his next conversation.'
 const SAVED_OFF = 'Saved. He does not use it while memory is off.'
 // Every action here shows its own errors, in place or as a toast.
 const OWN_ERRORS = { meta: { showsErrors: true } }
+/** A fold's toggle: its text lines up with the column, and an open fold does not look pressed. */
+const FOLD = '-ml-3 text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground'
 
 /** What a save returns: why it was refused, or null. */
 type Result = Promise<string | null>
@@ -67,23 +71,35 @@ type RowProps = {
   query: string
   removeLabel: string
   muted?: boolean
-  onEdit: (text: string) => Result
+  /** A fact's last day (YYYY-MM-DD): a muted "Until" badge, and a date field when editing. Facts pass
+   * it even when unset (null), rules leave it out. */
+  until?: string | null
+  dayFirst?: boolean
+  /** until is undefined when the date field was left as it was. */
+  onEdit: (text: string, until?: string | null) => Result
   onRemove: () => void
 }
 
 /** One fact or rule: plain text, edit and remove on hover, edited in place. */
-function LineRow({ text, date, query, removeLabel, muted, onEdit, onRemove }: RowProps) {
+function LineRow({ text, date, query, removeLabel, muted, until, dayFirst = true, onEdit, onRemove }: RowProps) {
   const [draft, setDraft] = useState<string | null>(null)
+  const [day, setDay] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const dated = until !== undefined
   const close = () => {
     setDraft(null)
     setError(null)
   }
+  const open = () => {
+    setDraft(text)
+    setDay(until ?? '')
+  }
   const save = async (event: FormEvent) => {
     event.preventDefault()
     const next = draft?.trim()
-    if (!next || next === text) return close()
-    const why = await onEdit(next)
+    const moved = dated && day !== (until ?? '')
+    if (!next || (next === text && !moved)) return close()
+    const why = await onEdit(next, moved ? day || null : undefined)
     if (why) setError(why)
     else close()
   }
@@ -102,7 +118,22 @@ function LineRow({ text, date, query, removeLabel, muted, onEdit, onRemove }: Ro
           onKeyDown={(e) => e.key === 'Escape' && close()}
         />
         {error ? <span className="text-sm text-destructive">{error}</span> : null}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {dated ? (
+            <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
+              Until
+              <Input
+                type="date"
+                aria-label="Until"
+                value={day}
+                onChange={(e) => {
+                  setDay(e.target.value)
+                  setError(null)
+                }}
+                className="h-8 w-40"
+              />
+            </label>
+          ) : null}
           <Button type="button" variant="ghost" onClick={close}>
             Cancel
           </Button>
@@ -117,13 +148,18 @@ function LineRow({ text, date, query, removeLabel, muted, onEdit, onRemove }: Ro
         <Marked text={text} query={query} />
       </span>
       <span className="flex opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-        <IconButton label="Edit" onClick={() => setDraft(text)}>
+        <IconButton label="Edit" onClick={open}>
           <Pencil />
         </IconButton>
         <IconButton label={removeLabel} onClick={onRemove}>
           <Trash2 />
         </IconButton>
       </span>
+      {until ? (
+        <Badge variant="outline" className="font-normal text-muted-foreground">
+          {`Until ${noted(until, dayFirst)}`}
+        </Badge>
+      ) : null}
       {date ? <span className="shrink-0 text-muted-foreground">{date}</span> : null}
     </div>
   )
@@ -234,50 +270,72 @@ function EditAll({
 
 type HeadingProps = {
   title: string
+  /** What belongs in a topic: behind the (i), and edited with the name. */
+  description?: string
   onEditAll: () => void
-  onRename?: (title: string) => Result
+  onRename?: (title: string, description: string) => Result
   onDelete?: () => void
   aside?: ReactNode
 }
 
-/** A section's title with its actions on hover: edit all, rename and delete. */
-function Heading({ title, onEditAll, onRename, onDelete, aside }: HeadingProps) {
+/** A section's title with its (i) and its actions on hover: edit all, rename and delete. */
+function Heading({ title, description, onEditAll, onRename, onDelete, aside }: HeadingProps) {
   const [name, setName] = useState<string | null>(null)
+  const [about, setAbout] = useState('')
+  const close = () => setName(null)
   const rename = async (event: FormEvent) => {
     event.preventDefault()
     const next = name?.trim()
-    if (!next || next === title || !onRename) return setName(null)
-    const why = await onRename(next)
+    if (!next || !onRename || (next === title && about.trim() === (description ?? ''))) return close()
+    const why = await onRename(next, about.trim())
     if (why) toast.error(why)
-    else setName(null)
+    else close()
   }
   if (name !== null) {
     return (
-      <form onSubmit={rename} className="mb-1.5 flex items-center gap-2">
+      <form onSubmit={rename} className="-mx-3 mb-1.5 flex flex-col gap-2 rounded-lg bg-card px-3 py-2.5">
         <Input
           autoFocus
           aria-label="Topic name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Escape' && setName(null)}
+          onKeyDown={(e) => e.key === 'Escape' && close()}
           className="h-9 w-64 text-lg font-semibold md:text-lg"
         />
-        <Button type="button" variant="ghost" onClick={() => setName(null)}>
-          Cancel
-        </Button>
-        <Button type="submit">Save</Button>
+        <Input
+          aria-label="What belongs here"
+          placeholder="What belongs here"
+          value={about}
+          onChange={(e) => setAbout(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && close()}
+        />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit">Save</Button>
+        </div>
       </form>
     )
   }
   return (
     <div className="group mb-1.5 flex items-center gap-1">
-      <h2 className="mr-1 text-lg font-semibold">{title}</h2>
+      <h2 className="text-lg font-semibold">{title}</h2>
+      <span className="mr-1 ml-1 flex">
+        <InfoTip text={description} />
+      </span>
       <span className="flex opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
         <IconButton label="Edit all" onClick={onEditAll}>
           <ListCollapse />
         </IconButton>
         {onRename ? (
-          <IconButton label={`Rename ${title}`} onClick={() => setName(title)}>
+          <IconButton
+            label={`Rename ${title}`}
+            onClick={() => {
+              setName(title)
+              setAbout(description ?? '')
+            }}
+          >
             <Pencil />
           </IconButton>
         ) : null}
@@ -388,7 +446,7 @@ function Behaviour({ query }: { query: string }) {
             <Button
               type="button"
               variant="ghost"
-              className="-ml-3 text-muted-foreground"
+              className={FOLD}
               aria-expanded={open || Boolean(query)}
               onClick={() => setOpen(!open)}
             >
@@ -429,10 +487,10 @@ function Behaviour({ query }: { query: string }) {
 
 type Actions = {
   add: (topic: string, fact: string) => Result
-  edit: (topic: string, id: string, fact: string) => Result
+  edit: (topic: string, id: string, fact: string, until?: string | null) => Result
   forget: (topic: string, fact: MemoryFact) => void
   replaceAll: (topic: string, facts: string[]) => Result
-  rename: (topic: string, title: string) => Result
+  rename: (topic: string, title: string, description: string) => Result
   remove: (topic: MemoryTopic) => void
 }
 
@@ -448,14 +506,15 @@ function Topic({
   act: Actions
 }) {
   const [editing, setEditing] = useState(false)
-  const facts = topic.facts.filter((f) => has(f.text, query) || has(topic.title, query))
+  const facts = topic.facts.filter((f) => !f.expired && (has(f.text, query) || has(topic.title, query)))
   if (query && facts.length === 0) return null
   return (
     <section aria-label={topic.title} className="flex flex-col gap-0.5">
       <Heading
         title={topic.title}
+        description={topic.description}
         onEditAll={() => setEditing(true)}
-        onRename={(t) => act.rename(topic.name, t)}
+        onRename={(t, d) => act.rename(topic.name, t, d)}
         onDelete={() => act.remove(topic)}
       />
       {editing ? (
@@ -472,9 +531,11 @@ function Topic({
               key={f.id}
               text={f.text}
               date={noted(f.noted, dayFirst)}
+              until={f.until ?? null}
+              dayFirst={dayFirst}
               query={query}
               removeLabel="Forget"
-              onEdit={(t) => act.edit(topic.name, f.id, t)}
+              onEdit={(t, u) => act.edit(topic.name, f.id, t, u)}
               onRemove={() => act.forget(topic.name, f)}
             />
           ))}
@@ -495,6 +556,67 @@ function Topic({
           )}
         </>
       )}
+    </section>
+  )
+}
+
+/** Facts whose day has passed, from every topic: folded and greyed at the bottom, out of his prompt
+ * but kept until cleared. Editing one's date brings it back. */
+function Expired({
+  topics,
+  query,
+  dayFirst,
+  act,
+  onClear,
+}: {
+  topics: MemoryTopic[]
+  query: string
+  dayFirst: boolean
+  act: Actions
+  onClear: (count: number) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const rows = topics.flatMap((t) =>
+    t.facts.filter((f) => f.expired && (has(f.text, query) || has(t.title, query))).map((f) => ({ t, f })),
+  )
+  if (rows.length === 0) return null
+  const shown = open || Boolean(query)
+  return (
+    <section aria-label="Expired" className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          className={FOLD}
+          aria-expanded={shown}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronRight className={cn('transition-transform', shown && 'rotate-90')} />
+          {`Expired (${rows.length})`}
+        </Button>
+        <InfoTip text="Their day has passed, so he no longer has them in mind. Give one a later date to bring it back." />
+        {query ? null : (
+          <Button type="button" variant="ghost" className="-mr-3 ml-auto text-muted-foreground" onClick={() => onClear(rows.length)}>
+            Clear expired
+          </Button>
+        )}
+      </div>
+      {shown
+        ? rows.map(({ t, f }) => (
+            <LineRow
+              key={f.id}
+              text={f.text}
+              date={noted(f.noted, dayFirst)}
+              until={f.until ?? null}
+              dayFirst={dayFirst}
+              query={query}
+              muted
+              removeLabel="Forget"
+              onEdit={(text, until) => act.edit(t.name, f.id, text, until)}
+              onRemove={() => act.forget(t.name, f)}
+            />
+          ))
+        : null}
     </section>
   )
 }
@@ -530,8 +652,9 @@ function NewTopic({ onCreate }: { onCreate: (title: string) => Promise<boolean> 
 }
 
 /** Template: Winston's page. How he behaves (his persona's manner, only the owner writes it), then what
- * he remembers: one section per topic file in data/memory, facts as stored. Search across all of it;
- * add, edit, forget, edit all, rename and delete in place. */
+ * he remembers: one section per topic file in data/memory, facts as stored, with the topic's
+ * description behind its (i). Facts past their until fold under Expired at the bottom. Search across
+ * all of it; add, edit, forget, edit all, rename and delete in place. */
 export default function MemoryPage() {
   const feed = useLive()
   const ask = useConfirm()
@@ -545,6 +668,7 @@ export default function MemoryPage() {
   const renameTopic = $api.useMutation('put', '/api/memory/topics/{topic}', OWN_ERRORS)
   const deleteTopic = $api.useMutation('delete', '/api/memory/topics/{topic}', OWN_ERRORS)
   const restoreTopic = $api.useMutation('post', '/api/memory/topics/{topic}/restore', OWN_ERRORS)
+  const clearExpired = $api.useMutation('post', '/api/memory/expired/clear', OWN_ERRORS)
   const [search, setSearch] = useState('')
   const [now, setNow] = useState(() => Date.now())
   const query = search.trim().toLowerCase()
@@ -563,9 +687,16 @@ export default function MemoryPage() {
     })
   const act: Actions = {
     add: (topic, fact) => saved(() => add.mutateAsync({ params: { path: { topic } }, body: { fact } })),
-    edit: (topic, id, fact) => saved(() => edit.mutateAsync({ params: { path: { topic } }, body: { id, fact } })),
+    edit: (topic, id, fact, until) =>
+      saved(() =>
+        edit.mutateAsync({
+          params: { path: { topic } },
+          body: until === undefined ? { id, fact } : { id, fact, until },
+        }),
+      ),
     replaceAll: (topic, facts) => saved(() => all.mutateAsync({ params: { path: { topic } }, body: { facts } })),
-    rename: (topic, title) => saved(() => renameTopic.mutateAsync({ params: { path: { topic } }, body: { title } })),
+    rename: (topic, title, description) =>
+      saved(() => renameTopic.mutateAsync({ params: { path: { topic } }, body: { title, description } })),
     forget: (topic, fact) =>
       forget.mutate(
         { params: { path: { topic }, query: { id: fact.id } } },
@@ -578,7 +709,10 @@ export default function MemoryPage() {
                 label: 'Undo',
                 onClick: () =>
                   add.mutate(
-                    { params: { path: { topic } }, body: { fact: fact.text, index, noted: fact.noted } },
+                    {
+                      params: { path: { topic } },
+                      body: { fact: fact.text, index, noted: fact.noted, until: fact.until },
+                    },
                     { onSuccess: refresh, onError: (error) => toast.error(errorText(error)) },
                   ),
               },
@@ -619,6 +753,40 @@ export default function MemoryPage() {
       )
     },
   }
+  const clear = async (count: number) => {
+    const choice = await ask({
+      title: count === 1 ? 'Clear the expired fact?' : `Clear ${count} expired facts?`,
+      lines: [`${count === 1 ? 'It leaves' : 'They leave'} his memory files too. Undo brings ${count === 1 ? 'it' : 'them'} back.`],
+      choices: [{ label: 'Clear expired', value: 'yes', destructive: true }],
+    })
+    if (!choice) return
+    clearExpired.mutate(
+      {},
+      {
+        onError: (error) => toast.error(errorText(error)),
+        onSuccess: (gone) => {
+          refresh()
+          toast(gone.length === 1 ? 'Cleared 1 expired fact' : `Cleared ${gone.length} expired facts`, {
+            action: {
+              label: 'Undo',
+              onClick: () =>
+                void (async () => {
+                  // One at a time, in order, so each goes back to its place.
+                  for (const g of gone) {
+                    await add.mutateAsync({
+                      params: { path: { topic: g.topic } },
+                      body: { fact: g.text, index: g.index, noted: g.noted, until: g.until },
+                    })
+                  }
+                })()
+                  .catch((error) => toast.error(errorText(error)))
+                  .finally(refresh),
+            },
+          })
+        },
+      },
+    )
+  }
   const createTopic = async (title: string) => {
     const why = await attempt(() => addTopic.mutateAsync({ body: { title } }))
     if (why) toast.error(why)
@@ -628,6 +796,8 @@ export default function MemoryPage() {
 
   const data = memory.data
   const total = data?.topics.reduce((n, t) => n + t.facts.length, 0) ?? 0
+  // The size line counts what is in his prompt: expired facts are not.
+  const live = data?.topics.reduce((n, t) => n + t.facts.filter((f) => !f.expired).length, 0) ?? 0
   const shown =
     data?.topics.reduce((n, t) => n + t.facts.filter((f) => has(f.text, query) || has(t.title, query)).length, 0) ?? 0
 
@@ -684,6 +854,7 @@ export default function MemoryPage() {
             {data.topics.map((t) => (
               <Topic key={t.name} topic={t} query={query} dayFirst={data.day_first} act={act} />
             ))}
+            <Expired topics={data.topics} query={query} dayFirst={data.day_first} act={act} onClear={clear} />
             {data.chars > 0 && !query ? (
               <div className="mt-auto flex items-center gap-3 pt-4 text-sm text-muted-foreground">
                 <Progress
@@ -691,7 +862,7 @@ export default function MemoryPage() {
                   value={Math.min(100, (data.chars / data.limit) * 100)}
                   className="w-30"
                 />
-                <span>{`${total} facts, ${data.chars.toLocaleString()} of ${data.limit.toLocaleString()} characters`}</span>
+                <span>{`${live} ${live === 1 ? 'fact' : 'facts'}, ${data.chars.toLocaleString()} of ${data.limit.toLocaleString()} characters`}</span>
               </div>
             ) : null}
           </>

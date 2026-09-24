@@ -10,7 +10,8 @@ back to metric and a 24-hour clock.
 | Tool | What it does | Needs | Limits |
 | --- | --- | --- | --- |
 | `get_sensor_readings` | Watched sensors with the age of each reading | `tools.sensors` | Read only |
-| `remember` | Stores one fact in `data/memory/*.md`, committed to git there | Nothing | 300 characters; secrets refused |
+| `remember` | Stores one fact in `data/memory/*.md`, or corrects one (`replaces`), optionally until a day; committed to git there | Nothing | 300 characters; secrets refused; `replaces` must match a stored fact exactly |
+| `forget` | Removes one fact and says which ("Forgotten: ..."); committed to git there | Nothing | Exact match only |
 | `web_search` | Current facts via Gemini with Google Search grounding | `GEMINI_API_KEY`, billing on the key | `tools.web_search.max_per_day` (100) |
 | `ask_claude` | Hard questions to Claude through the Agent SDK | `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or a Claude Code login | `tools.ask_claude.max_usd_per_day` (3 USD) |
 | `send_message` | A Discord DM to a listed contact or you | `DISCORD_BOT_TOKEN`, `channels.discord.contacts` | Listed names only |
@@ -37,14 +38,47 @@ they are, never with a guessed exchange rate.
 
 ## Memory
 
-Facts are `- ` lines in `data/memory/preferences.md`, `people.md` and `projects.md` (any `.md` there is
-a topic). They load into the system prompt when a conversation starts, so a new session knows them
+Each topic is a file in `data/memory/`: `about-you.md`, `home.md`, `plans.md` and `people.md` to start
+with (from `examples/memory/`), and any other `.md` there is a topic too. A file is a `# Title`
+heading, one plain line saying what belongs there (the description; a leading `> ` is allowed), then
+the facts as `- ` lines:
+
+```markdown
+# Plans
+
+Appointments, visits and other dated plans; each leaves memory after its day.
+
+- The user has the dentist on Tuesday 29 September 2026 at ten. (noted 2026-09-24, until 2026-09-29)
+- The user renews the car insurance in October. (noted 2026-09-20)
+```
+
+The facts load into the system prompt when a conversation starts, so a new session knows them
 without a restart. Relative dates are made absolute when stored ("tomorrow evening" becomes "on
 Thursday 24 September 2026 evening") and each fact carries the date it was noted. `winston memory`
 prints what the model sees.
 
+A fact can end on a day: the stamp then reads `(noted ..., until YYYY-MM-DD)`. A relative date still
+to come sets it ("the dentist on Tuesday" lasts until that Tuesday; "yesterday", "today" and "tonight"
+set nothing), and `remember` takes `until` for the rest ("until Friday", "this week", a date; for a
+fact he already knows it sets the day on that fact). After that day the fact stays in its file and
+on the Memory page, but leaves the prompt and the size count. Nothing deletes it by itself.
+
+He changes and forgets facts by voice. "The dentist moved to Friday" is `remember` with `replaces` set
+to the old fact as he sees it in his prompt; "forget that Omar visits" is `forget`, which answers
+"Forgotten: ..." so he says what went, with no question first (every change is a commit, and the
+page has Undo). Both match the stored fact exactly (case, a trailing full stop and a quoted stamp
+aside), never the closest one: on no match the tool answers with the topic's facts and he calls again
+with one of them. The claim guard counts "I've forgotten that" or "noted" as a memory claim, backed
+only by `remember` or `forget` in that turn or the one before.
+
+The tools list the topics with their descriptions, read when a conversation starts, so a topic added
+or described on the page is offered from the next conversation without a restart.
+
 The Memory page (`/memory`, next to Talk) shows every topic and fact as stored, with search, and adds,
-edits and forgets them in place, with Undo. Topics can be renamed and deleted (Undo brings a deleted
+edits and forgets them in place, with Undo. A topic's (i) shows its description; Rename edits the name
+and the description. A fact with an until shows it ("Until 29 Sep"), and editing a fact has a date
+field to set or clear it. Facts past their day fold, greyed, under Expired at the bottom, with Clear
+expired (asked once, with Undo). Topics can be renamed and deleted (Undo brings a deleted
 one back), and Edit all opens a topic as one box, one fact per line, for pasting or rewriting many;
 pasting several lines into an add field adds each. It uses the same checks as `remember` (no secrets, one
 line, dates made absolute) and commits each change to the vault's git. Changes reach him in his next
@@ -60,7 +94,7 @@ from this file: the prompt opens with `assistant.name` (see [Identity](identity.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/memory-dark.png">
-  <img src="images/memory-light.png" alt="The Memory page with three topics and a search field" width="720">
+  <img src="images/memory-light.png" alt="The Memory page with four topics, a plan with its Until date, and one expired fact folded at the bottom" width="720">
 </picture>
 
 ## Web search
