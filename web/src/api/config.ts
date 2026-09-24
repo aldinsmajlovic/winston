@@ -45,14 +45,15 @@ export type PatchOutcome =
   | { ok: false; status: number; error: unknown }
 
 /** PATCH only the changed paths. With a version (If-Match) a path that also changed on disk since
- * then comes back as a 409 conflict instead of being overwritten; a dry run only reports restarts. */
+ * then comes back as a 409 conflict instead of being overwritten; a dry run only reports restarts and
+ * what a rename would change in his persona. renamePersona rewrites the old name there on a rename. */
 export async function patchConfig(
   changes: ConfigChange[],
-  options: { version?: string; dryRun?: boolean; client?: QueryClient },
+  options: { version?: string; dryRun?: boolean; renamePersona?: boolean; client?: QueryClient },
 ): Promise<PatchOutcome> {
   const { data, error, response } = await fetchClient.PATCH('/api/config', {
     body: { changes },
-    params: { query: { dry_run: options.dryRun ?? false } },
+    params: { query: { dry_run: options.dryRun ?? false, rename_persona: options.renamePersona ?? false } },
     headers: options.version ? { 'If-Match': `"${options.version}"` } : undefined,
   })
   if (data) {

@@ -31,5 +31,7 @@ export function useOptions(name: string, query?: { domain?: string; q?: string }
     choices: data?.choices ?? [],
     loading: result.isLoading,
     problem: data && !data.ok ? data.source : undefined,
+    /** Where the list came from; for some lists a note to show (hint_words: what the engine does with them). */
+    source: data?.ok ? data.source : undefined,
   }
 }

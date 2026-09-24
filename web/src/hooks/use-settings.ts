@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useState, type Dispatch, type S
 import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 import { toast } from 'sonner'
-import { $api, errorText, type Config, type SecretStatus } from '@/api/client'
+import { $api, errorText, type Config, type PersonaRename, type SecretStatus } from '@/api/client'
 import { clearFieldErrors, showFieldErrors } from '@/api/field-errors'
 import { configKey, patchConfig, useConfig, useSchema, type ConfigChange, type PatchOutcome } from '@/api/config'
 import { engineLabel, restartCost, statusKey, useEngineActions } from '@/api/status'
@@ -13,6 +13,8 @@ import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/
 import { deepEqual, deref, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
 
 type Edits = { changes: ConfigChange[]; version: string | undefined }
+
+const personaKey = $api.queryOptions('get', '/api/persona').queryKey
 
 /** The unsaved config behind every settings page, as changed paths over the saved config, and the
  * version they started from. Pasted keys wait in the secrets draft (use-secrets), field errors from
@@ -299,10 +301,12 @@ export function useSettings(paths: string[][]): Loading | Ready {
     const version = store.version
     clearFieldErrors()
     let restarts: string[] = []
+    let rename: PersonaRename | null | undefined
     if (changes.length) {
       const dry = await patchConfig(changes, { version, dryRun: true })
       if (!dry.ok) return refused(dry)
       restarts = dry.result.restarts
+      rename = dry.result.persona_rename
     }
     restarts = [...new Set([...restarts, ...secretRestarts(keys, byName)])]
 
@@ -314,11 +318,27 @@ export function useSettings(paths: string[][]): Loading | Ready {
       ...(later ? ['Some changes apply on the next winston up'] : []),
     ]
 
+    // A rename whose old name his persona says: the same confirm offers to change it there too.
+    let renamePersona = false
+    const check = rename
+      ? {
+          label: `His persona says ${rename.old} in ${rename.places} ${rename.places === 1 ? 'place' : 'places'}. Change ${rename.places === 1 ? 'it' : 'them'} to ${rename.new}?`,
+          detail: rename.lines.map((line) => (line.length > 72 ? `${line.slice(0, 71)}…` : line)),
+          checked: true,
+          answer: (on: boolean) => { renamePersona = on },
+        }
+      : undefined
     let restart = false
-    if (costs.length || elsewhere) {
+    if (costs.length || elsewhere || check) {
       const choice = await ask({
-        title: restartable.length ? `Save and restart ${joinNames(restartable.map(engineLabel))}?` : 'Save these changes?',
+        // A rename leads (its restarts are in the lines and the choices), as Save and restart would bury it.
+        title: rename
+          ? `Rename him to ${rename.new}?`
+          : restartable.length
+            ? `Save and restart ${joinNames(restartable.map(engineLabel))}?`
+            : 'Save these changes?',
         lines: [...summary(root, changes, keys, byName), ...costs],
+        check,
         choices: restartable.length
           ? [
               { label: 'Save only', value: 'save' },
@@ -333,9 +353,10 @@ export function useSettings(paths: string[][]): Loading | Ready {
     // The config first, so a variable name a key is pasted under is saved before the key.
     let haApply: HAApply | null | undefined
     if (changes.length) {
-      const saved = await patchConfig(changes, { version, client })
+      const saved = await patchConfig(changes, { version, client, renamePersona })
       if (!saved.ok) return refused(saved)
       haApply = saved.result.ha_apply
+      if (saved.result.persona_rename?.renamed) void client.invalidateQueries({ queryKey: personaKey })
     }
     const written = await secrets.save()
     for (const line of written.errors) toast.error(`Key not saved: ${line}`)

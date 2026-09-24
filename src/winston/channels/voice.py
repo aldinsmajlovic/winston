@@ -42,19 +42,31 @@ from winston.core.brain import Brain, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
 from winston.core.announce import note, subscribe
 from winston.core.guard import ClaimGuard
+from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 
 CFG: WinstonConfig = load()
-_STT_MODEL = None
+_HEARING: Hearing | None = None
+
+
+def hearing(cfg: WinstonConfig = CFG) -> Hearing:
+    """The process's one STT model with the hint words; the model loads once (about 10 s)."""
+    global _HEARING
+    if _HEARING is None:
+        cls = get_adapter("stt", cfg.stt.provider)
+        _HEARING = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+    return _HEARING
 
 
 def build_stt(cfg: WinstonConfig = CFG):
-    """STT adapter from the registry; the model loads once per process (about 10 s)."""
-    global _STT_MODEL
-    cls = get_adapter("stt", cfg.stt.provider)
-    if _STT_MODEL is None:
-        _STT_MODEL = cls.load_model(cfg.stt.model, cfg.stt.quantization)
-    return cls(model=_STT_MODEL, model_name=cfg.stt.model)
+    """The pipeline's STT service from the registry, on the shared model and hint words."""
+    h = hearing(cfg)
+    return h.adapter(model=h.model, model_name=cfg.stt.model, hearing=h)
+
+
+async def transcribe(pcm: np.ndarray, extra: list[str]) -> str:
+    """16 kHz int16 to corrected text outside the pipeline (clone consent), with extra hint words."""
+    return await hearing().transcribe(pcm, 16000, label="clone: STT", extra=extra)
 
 
 class SpeechTTS(OpenAITTSService):
@@ -197,11 +209,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     brain = Brain(CFG, channel="voice"); await brain.start()
     stt, tts = build_stt(), build_tts()
     tap = MicTap()                  # lets clone_voice record a friend without it becoming a turn
-
-    async def transcribe(pcm):
-        async for f in stt.run_stt(pcm.tobytes()):
-            if f is not None and getattr(f, "text", None):
-                yield f.text
     for schema, handler in make_voice_tools(CFG, tap, transcribe):
         brain.add_tool(schema, handler)
     # Pipecat 1.11 runs the VAD in the user aggregator, not the transport; TransportParams has no

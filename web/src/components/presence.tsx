@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { $api } from '@/api/client'
 import { MARK, REST, ease, paths, target, type Frame, type MarkState } from '@/lib/mark'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +19,7 @@ export function Presence({ state, className }: { state: MarkState; className?: s
   const glint = useRef<SVGPathElement>(null)
   const glow = useRef<SVGRectElement>(null)
   const live = useRef({ state, since: 0, frame: REST, raf: 0 })
+  const name = $api.useQuery('get', '/api/status').data?.assistant ?? 'Winston'
 
   useEffect(() => {
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -44,7 +46,7 @@ export function Presence({ state, className }: { state: MarkState; className?: s
   }, [state])
 
   return (
-    <svg viewBox="0 0 100 100" role="img" aria-label={`Winston is ${state}`} className={cn('shrink-0', className)}>
+    <svg viewBox="0 0 100 100" role="img" aria-label={`${name} is ${state}`} className={cn('shrink-0', className)}>
       <defs>
         <clipPath id={`${id}-disc`}>
           <circle cx="50" cy="50" r={MARK.radius} />

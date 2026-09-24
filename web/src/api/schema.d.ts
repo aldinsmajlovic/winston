@@ -96,7 +96,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** What Winston hears, says and does: recent events, then new ones, as server-sent events (LiveEvent objects) */
+        /** What he hears, says and does: recent events, then new ones, as server-sent events (LiveEvent objects) */
         get: operations["live_api_live_get"];
         put?: never;
         /** Events from a channel process into the live feed */
@@ -116,7 +116,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Say something to Winston in the web conversation; the reply arrives on /api/live */
+        /** Say something to him in the web conversation; the reply arrives on /api/live */
         post: operations["chat_api_chat_post"];
         delete?: never;
         options?: never;
@@ -133,7 +133,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Text in Winston's voice as streamed 16-bit mono PCM, for read aloud and the Voice page's previews; voice and streaming may be tried before they are saved */
+        /** Text in his voice as streamed 16-bit mono PCM, for read aloud and the Voice page's previews; voice and streaming may be tried before they are saved */
         post: operations["speak_api_speak_post"];
         delete?: never;
         options?: never;
@@ -529,7 +529,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -563,7 +563,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Winston's list as Home Assistant has it: exposed or not, aliases, area, device and state per entity, what else is exposed (drift), the MCP server and whether a save would change anything */
+        /** His list as Home Assistant has it: exposed or not, aliases, area, device and state per entity, what else is exposed (drift), the MCP server and whether a save would change anything */
         get: operations["ha_exposure_api_providers_home_assistant_exposure_get"];
         put?: never;
         post?: never;
@@ -637,7 +637,7 @@ export interface components {
         AnnounceConfig: {
             /**
              * Enabled
-             * @description Let Winston speak on its own: Home Assistant automations, the API and `winston announce` send it something to say.
+             * @description Let him speak on his own: Home Assistant automations, the API and `winston announce` send him something to say.
              * @default true
              */
             enabled?: boolean;
@@ -676,7 +676,7 @@ export interface components {
             text: string;
             /**
              * Context
-             * @description Details Winston keeps for follow-up questions but does not read out.
+             * @description Details he keeps for follow-up questions but does not read out.
              */
             context?: {
                 [key: string]: unknown;
@@ -726,7 +726,7 @@ export interface components {
         AssistantConfig: {
             /**
              * Name
-             * @description What the assistant calls itself.
+             * @description What he is called: his name in the prompt, the consent line and the hint words. Renaming offers to change it in his persona too.
              * @default Winston
              */
             name?: string;
@@ -825,6 +825,17 @@ export interface components {
             seconds: number;
             /** Consent Text */
             consent_text: string;
+            /** Consent Score */
+            consent_score?: number | null;
+            /** Consent Checked At */
+            consent_checked_at?: number | null;
+            /** Consent Model */
+            consent_model?: string | null;
+            /**
+             * Same Voice At
+             * @default 0.55
+             */
+            same_voice_at?: number;
         };
         /** ConfigChange */
         ConfigChange: {
@@ -862,6 +873,7 @@ export interface components {
             /** Version */
             version: string;
             ha_apply?: components["schemas"]["HAApply"] | null;
+            persona_rename?: components["schemas"]["PersonaRename"] | null;
         };
         /** ConfigVersion */
         ConfigVersion: {
@@ -903,7 +915,7 @@ export interface components {
         DiscordChannel: {
             /**
              * Enabled
-             * @description Talk to Winston in Discord DMs and get announcements there.
+             * @description Talk to him in Discord DMs and get announcements there.
              * @default false
              */
             enabled?: boolean;
@@ -915,7 +927,7 @@ export interface components {
             token_env?: string;
             /**
              * Your Discord user id
-             * @description The one Discord user Winston answers and calls "me". In Discord: Settings, Advanced, Developer Mode on, then right-click yourself, Copy User ID. Empty reads the variable under Advanced.
+             * @description The one Discord user he answers and calls "me". In Discord: Settings, Advanced, Developer Mode on, then right-click yourself, Copy User ID. Empty reads the variable under Advanced.
              * @default
              */
             allowed_user?: string;
@@ -933,7 +945,7 @@ export interface components {
             session_idle_mins?: number;
             /**
              * Contacts
-             * @description People Winston may message, by the name you say and their Discord user. The bot can only reach people who share a server with it.
+             * @description People he may message, by the name you say and their Discord user. The bot can only reach people who share a server with it.
              */
             contacts?: {
                 [key: string]: string;
@@ -1358,7 +1370,7 @@ export interface components {
             mcp_path?: string;
             /**
              * Entities
-             * @description Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: exposes it, un-exposes the rest and adds the aliases.
+             * @description Entities he may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: exposes it, un-exposes the rest and adds the aliases.
              */
             expose?: {
                 [key: string]: components["schemas"]["ExposedEntity"];
@@ -1592,6 +1604,22 @@ export interface components {
             /** Instructions */
             instructions: string[];
         };
+        /** PersonaRename */
+        PersonaRename: {
+            /** Old */
+            old: string;
+            /** New */
+            new: string;
+            /** Lines */
+            lines: string[];
+            /** Places */
+            places: number;
+            /**
+             * Renamed
+             * @default false
+             */
+            renamed?: boolean;
+        };
         /** Preset */
         Preset: {
             /** Id */
@@ -1641,7 +1669,7 @@ export interface components {
         Providers: {
             /**
              * Home Assistant
-             * @description The Home Assistant Winston sees and controls. Unset: no smart home.
+             * @description The Home Assistant he sees and controls. Unset: no smart home.
              */
             home_assistant?: components["schemas"]["HomeAssistantConfig"] | null;
         };
@@ -1702,6 +1730,17 @@ export interface components {
              * @default int8
              */
             quantization?: string | null;
+            /**
+             * Hint words
+             * @description Names and words he should hear right. His name, cloned voices, Discord contacts and names from the Home Assistant list are added by themselves; add the rest here, one word each, such as room names in another language.
+             */
+            hint_words?: string[];
+            /**
+             * Fix close misspellings
+             * @description After speech to text, a word that sounds like a hint word and is spelled close to it becomes that word, so a misheard name comes out right. Common English words are never changed, and every change is logged as before and after.
+             * @default true
+             */
+            fix_misspellings?: boolean;
         };
         /** Sampling */
         Sampling: {
@@ -1734,7 +1773,7 @@ export interface components {
         SatelliteChannel: {
             /**
              * Enabled
-             * @description Talk to Winston through room satellites such as Home Assistant's Voice Preview Edition. The box must not also be in Home Assistant's voice pipeline: only one client can have its microphone.
+             * @description Talk to him through room satellites such as Home Assistant's Voice Preview Edition. The box must not also be in Home Assistant's voice pipeline: only one client can have its microphone.
              * @default false
              */
             enabled?: boolean;
@@ -1747,7 +1786,7 @@ export interface components {
             };
             /**
              * Audio port
-             * @description Port the boxes fetch Winston's spoken replies from, on every interface.
+             * @description Port the boxes fetch his spoken replies from, on every interface.
              * @default 8702
              */
             http_port?: number;
@@ -2075,7 +2114,7 @@ export interface components {
         VoiceChannel: {
             /**
              * Enabled
-             * @description Talk to Winston by voice from the browser. Room satellites have their own channel.
+             * @description Talk to him by voice from the browser. Room satellites have their own channel.
              * @default true
              */
             enabled?: boolean;
@@ -2105,7 +2144,7 @@ export interface components {
         WebSearchConfig: {
             /**
              * Enabled
-             * @description Let Winston look up current facts on the web. Only the search question leaves the house.
+             * @description Let him look up current facts on the web. Only the search question leaves the house.
              * @default false
              */
             enabled?: boolean;
@@ -2143,7 +2182,7 @@ export interface components {
             max_per_day?: number;
             /**
              * Timeout (s)
-             * @description Seconds before a search gives up and Winston says it could not look it up.
+             * @description Seconds before a search gives up and he says it could not look it up.
              * @default 15
              */
             timeout?: number;
@@ -2180,7 +2219,9 @@ export interface components {
              * @default {
              *       "provider": "parakeet",
              *       "model": "nemo-parakeet-tdt-0.6b-v3",
-             *       "quantization": "int8"
+             *       "quantization": "int8",
+             *       "hint_words": [],
+             *       "fix_misspellings": true
              *     }
              */
             stt?: components["schemas"]["STTConfig"];
@@ -3141,6 +3182,8 @@ export interface operations {
         parameters: {
             query?: {
                 dry_run?: boolean;
+                /** @description When the change renames him: also rewrite the old name as a whole word in his persona file (persona_rename in the dry run lists where), keeping persona.md.bak */
+                rename_persona?: boolean;
             };
             header?: never;
             path?: never;
@@ -3187,6 +3230,8 @@ export interface operations {
                 dry_run?: boolean;
                 /** @description Processes that already run this change (a live voice switch): not marked for restart */
                 applied?: string[];
+                /** @description When the change renames him: also rewrite the old name as a whole word in his persona file (persona_rename in the dry run lists where), keeping persona.md.bak */
+                rename_persona?: boolean;
             };
             header?: never;
             path?: never;

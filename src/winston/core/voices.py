@@ -3,7 +3,8 @@ voices/friends/. Each clone is three files named by a slug of the friend's name:
 
     friends/<slug>.wav           the reference clip the speech server clones from
     friends/<slug>.consent.wav   the friend saying they agree, kept as the record of it
-    friends/<slug>.json          name, when, and what the consent recording was heard to say
+    friends/<slug>.json          name, when, what the consent recording was heard to say, and how
+                                 close its voice came to the clip's (core/speaker)
 
 The speech server resolves a voice name relative to voices/, so a clone's voice name is
 "friends/<slug>". Nothing here touches the network; the voice channel records, this stores."""
@@ -32,6 +33,11 @@ class Clone:
     created: float
     consent_text: str
     seconds: float
+    # the same-voice check (core/speaker): cosine similarity of the consent recording and the clip, when it
+    # ran and with which model; None on clones made before the check or while the model was not available
+    consent_score: float | None = None
+    consent_checked_at: float | None = None
+    consent_model: str | None = None
 
     @property
     def voice(self) -> str:
@@ -107,15 +113,19 @@ def level(pcm: np.ndarray) -> np.ndarray:
     return (np.clip(x, -1, 1) * 32767).astype(np.int16)
 
 
-def save(name: str, clip: np.ndarray, consent: np.ndarray, rate: int, consent_text: str) -> Clone:
-    """Store a clone, replacing an earlier one of the same name. The clip is written last and
-    atomically, since the speech server may read it the moment it exists."""
+def save(name: str, clip: np.ndarray, consent: np.ndarray, rate: int, consent_text: str,
+         score: float | None = None, model: str | None = None) -> Clone:
+    """Store a clone, replacing an earlier one of the same name, with the same-voice score when the check
+    ran (score None: not checked). The clip is written last and atomically, since the speech server may
+    read it the moment it exists."""
     s = slug(name)
     if not s:
         raise ValueError(f"no usable name in {name!r}")
     clip = clip[:int(MAX_CLIP_SECS * rate)]
     c = Clone(slug=s, name=name.strip(), created=time.time(), consent_text=consent_text,
-              seconds=round(len(clip) / rate, 1))
+              seconds=round(len(clip) / rate, 1), consent_score=score,
+              consent_checked_at=time.time() if score is not None else None,
+              consent_model=model if score is not None else None)
     d = friends_dir()
     write_wav(d / f"{s}.consent.wav", consent, rate)
     (d / f"{s}.json").write_text(json.dumps(asdict(c), indent=2) + "\n")

@@ -44,7 +44,7 @@ flowchart TB
   LLM server, `subprocess` runs the TTS venv service and the voice channel, `external` points at
   something you already run. The supervisor owns start, stop, health and restart-on-change.
 - **Brain** (`winston/core`): one Pipecat LLM service plus its tools, shared by every channel. Tools come
-  from MCP servers and local plugins. The persona is the system instruction, flattened to one list of rules (the file's sections are for the Memory page). A claim guard sits after
+  from MCP servers and local plugins. The persona is the system instruction, flattened to one list of rules (the file's sections are for the Memory page), under a title and an identity line made from `assistant.name`. A claim guard sits after
   the LLM in every channel. A firm claim of an action or a memory change ("I've set", "has been sent",
   "done", "noted", "I've forgotten") needs a tool call in that turn or the one before. Looser wording ("is
   now", "is still", "turning") counts only when the sentence names something he can act on: an exposed
@@ -117,9 +117,13 @@ data/               your instance; gitignored
 ## Plugin contract
 
 An adapter is a class with a small contract and a settings model. For STT: a static `load_model(name,
-quantization)` returning a reusable model object, and a constructor taking it as `model=` so one load
-serves every connection. Contracts stay tiny on purpose; that is what keeps extension cheap and
-versioning sane.
+quantization)` returning a reusable model object, a constructor taking it as `model=` so one load
+serves every connection, and a static `transcribe(model, pcm, rate, hints=None)` for audio outside a
+pipeline. `supports_hints` says whether the engine can be told words in advance; one that can maps
+`hints` to its own setting (Whisper's initial prompt or hotwords, a cloud engine's keyterms). Parakeet
+cannot. The constructor's `hearing=` is the shared `core.hints.Hearing`, which corrects close
+misspellings of the hint words and logs the STT line; see [voices](voices.md#hint-words). Contracts
+stay tiny on purpose; that is what keeps extension cheap and versioning sane.
 
 ## Non-goals
 

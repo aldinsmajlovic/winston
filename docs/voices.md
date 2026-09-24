@@ -93,11 +93,15 @@ Clone only from a permissively licensed clip or from someone who agreed to it, a
 Ask with the friend in the room: "Winston, clone my friend Maria's voice", or "clone my voice" for
 your own. Winston then:
 
-1. asks Maria to say "I'm Maria, and I agree that Winston can copy my voice." Speech-to-text checks
+1. asks Maria to say "I'm Maria, and I agree that Winston can copy my voice.", with his name from
+   `assistant.name`. Speech-to-text checks
    the words; without "agree" (or with "don't agree") nothing is recorded.
 2. asks her to talk about anything for about fifteen seconds, and stops at 15 s of speech, or at a
    2.5 s pause after 10 s.
-3. keeps only the speech, levels it and switches to it: "Got it. This is me as Maria now." That
+3. checks that the voice that agreed is the voice she talked in (below). When they differ he says
+   "That doesn't sound like the person who agreed, so I won't keep it." and keeps nothing, not
+   even the consent recording.
+4. keeps only the speech, levels it and switches to it: "Got it. This is me as Maria now." That
    sentence starts about 0.4 s after she stops (measured headless).
 
 While he records, and until she stops after his "Got it", the mic goes to the recording only, so
@@ -107,13 +111,104 @@ voice" reverts; the clone lasts the conversation unless you say to keep it, whic
 `tts.voice`. Asking again for the same name records over the old clone.
 
 Each clone is `data/voices/friends/<name>.wav`, with the consent recording (`<name>.consent.wav`)
-and what it was heard to say (`<name>.json`) beside it. The Voice page lists them, plays both
-recordings and deletes them.
+and its record (`<name>.json`) beside it. The Voice page lists them, plays both recordings and
+deletes them.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
-  <img src="images/voice-light.png" alt="The Voice page with one cloned voice listed" width="720">
+  <img src="images/voice-light.png" alt="The Voice page with two cloned voices, one checked as the same voice and one not checked, and the hint words under Hearing" width="720">
 </picture>
+
+### The consent record
+
+The consent is a record of who agreed, when, and in which voice. `<name>.json` holds the name, the
+time, what speech to text heard (`consent_text`), and the same-voice check: `consent_score`,
+`consent_checked_at` and `consent_model`.
+
+The check compares the consent recording with the voice sample before anything is stored. A
+speaker-embedding model turns each into a vector of how the voice sounds, whatever the words, and
+the score is the cosine similarity of the two. At 0.55 or more the clone is kept with its score;
+below, nothing is kept and the tool call's log line carries the score (`tool_calls.jsonl`). The
+consent line has no date or weekday in it.
+
+What it does and does not prevent:
+
+- It stops keeping a voice when the one agreeing is not the one recorded: a friend says yes and
+  someone else talks, or a clip of someone is played after a real person agreed.
+- It does not stop a recording of the same person saying the line and then talking, played from a
+  speaker; a replay of a real recording scores as the same voice.
+- It cannot stop a clip added to `data/voices/` by hand. Such a clip is in the voice dropdown and
+  never in Cloned voices, since there is no record for it.
+
+The Consent column on the Voice page shows the check as an icon: a check for the same voice, a
+question mark for Not checked, with the score, the time and what speech to text heard in the
+tooltip. A mismatch never shows, since it is not kept. Clones made before the check have no score
+and read Not checked, and so does a clone made while the model could not load: the check is
+optional and never makes a clone fail.
+
+The model is WeSpeaker's ResNet34 trained on VoxCeleb2
+([Wespeaker/wespeaker-voxceleb-resnet34](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34),
+a 26.5 MB ONNX file), run on the CPU through onnx-asr, which the speech to text already uses. Its
+model card says Apache-2.0; WeSpeaker says its VoxCeleb models follow the dataset's licence, CC BY
+4.0, so credit: Wang et al., "WeSpeaker: A Research and Production oriented Speaker Embedding
+Learning Toolkit" (ICASSP 2023), trained on VoxCeleb2 (Chung, Nagrani, Zisserman, 2018). It loads
+when the first clone of a session starts, while the friend is talking; the very first time it
+downloads to the Hugging Face cache (about 2 s here), after that it loads in about 0.2 s.
+A check of a 5 s consent against a 17 s sample takes about 0.3 s on the CPU.
+
+The threshold was set on the clips in `data/voices/`: the first 3 or 5 s of one recording against a
+different recording of the same reader, and against every other speaker.
+
+| Pairs | Count | Scores |
+| --- | --- | --- |
+| Same speaker, other words | 52 | 0.61 to 0.91, median 0.77 |
+| Of those, Aldin's real consent and sample, room mic | 1 | 0.79 |
+| Same reader, one side processed to sound older | 50 | 0.38 to 0.68 |
+| Different speakers | 370 | -0.09 to 0.54, 95% under 0.39 |
+
+0.55 sits between the highest different pair (two older English audiobook readers, 0.54) and the
+lowest same pair (0.61). These are studio and audiobook voices plus one real home recording; a
+one-person home cannot measure how close a real second voice in the same room comes, so the numbers
+are a starting point, not a guarantee. `tests/consent_cases.py` (in `winston check unit`) checks
+that each VCTK speaker matches itself and none of the others, that a mismatch keeps nothing, and
+that a missing model stores the clone as not checked.
 
 `winston check clone` runs the whole exchange headless with two VCTK voices as the user and the
 friend. Recording from a satellite's far-field mic waits for M3.
+
+## Hint words
+
+Speech to text gets names wrong: Parakeet wrote "Hey Winson.", "Windsun" and "They win some." for
+"Hey Winston" on a real mic, and "Vardag's Rummet" for Vardagsrummet. Hint words are the names it
+should hear right. Winston adds some by himself: his name (`assistant.name`), the cloned voices,
+Discord contacts while Discord is on, and the proper nouns among the names and aliases in the Home
+Assistant list, one word at a time ("hektar lamp" gives Hektar; "the lights", "battery" and "phone"
+give nothing). `stt.hint_words` adds the rest, such as room names in Swedish. While a voice is being
+cloned, the friend's name is added for the consent recording.
+
+An engine that can be told words in advance (`supports_hints` in the adapter contract) gets the list:
+Whisper as its initial prompt or hotwords, a cloud engine as keyterms. Parakeet cannot, so with
+`stt.fix_misspellings` on (the default) Winston corrects close misspellings afterwards, in
+`core/hints.py`, for the voice channel, the satellites and the clone consent alike:
+
+- A word, or two words run together, that sounds like a hint word (a phonetic key where d and t, b
+  and p, g and k, v and f, s and z are one sound) and is spelled close to it (difflib ratio 0.7, 0.85
+  for words of five letters or fewer) becomes that word. "Winson", "Windsun" and "Winsten" become
+  Winston, "Vardag's Rummet" becomes Vardagsrummet.
+- A common English word is never changed (a built-in list, `core/common_words.txt`), and two words
+  run together only when neither is common, or when together they spell the hint word exactly. So
+  "wind", "win some", "Wind sun" and "one plus" stay. So do other names that are not close enough
+  (Wilson, Eric, Marie, Alden) and a hint word with more after it (Erika, Winstons).
+- Punctuation, a possessive 's and all capitals are kept.
+
+Every change is in the STT log line, before and after:
+
+```
+STT 1.20s audio -> 'Hey Winson.' -> 'Hey Winston.' (Winson -> Winston) in 180 ms
+```
+
+On the Voice page, Hearing shows the automatic words with their source's icon (the source in the
+tooltip), yours with a Remove x, and a box to add more; the (i) on Hint words says what the current
+engine does with them. `tests/hints_cases.py` (in `winston check unit`) checks the list, the
+corrections and 200 ordinary English sentences that must come through unchanged. "I modeled in" for
+"I'm" and a name is out of reach: every word in it is a common one.

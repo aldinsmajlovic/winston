@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
-import { Play, ShieldCheck, Square, Trash2 } from 'lucide-react'
+import { CircleAlert, CircleCheck, CircleHelp, Play, ShieldCheck, Square, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { $api, errorText } from '@/api/client'
+import { StatusTip } from '@/components/ha-connection'
 import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
 import { Badge } from '@/components/ui/badge'
@@ -15,7 +16,34 @@ type Clone = NonNullable<ReturnType<typeof useClones>['data']>[number]
 
 const tip = (name: string) =>
   `Say "${name}, clone my friend's voice" with your friend there. They agree out loud first, then talk for ` +
-  'about fifteen seconds. "Back to your own voice" switches back.'
+  'about fifteen seconds. "Back to your own voice" switches back. The consent is a record of who agreed, when, ' +
+  'and in which voice. It stops keeping a voice when the one agreeing is not the one recorded; it cannot stop a ' +
+  'clip added to data/voices by hand.'
+
+/** The same-voice check as an icon: the words, the score, when and what speech to text heard in its tooltip. */
+function Consent({ clone: c }: { clone: Clone }) {
+  const heard = `Heard: "${c.consent_text}"`
+  if (c.consent_score == null) {
+    return (
+      <StatusTip
+        icon={CircleHelp}
+        className="text-warning"
+        label="Not checked"
+        lines={['Recorded before the same-voice check, or while its model was not available', heard]}
+      />
+    )
+  }
+  const lines = [
+    `Score ${c.consent_score.toFixed(2)}, ${(c.same_voice_at ?? 0.55).toFixed(2)} needed`,
+    c.consent_checked_at ? `Checked ${new Date(c.consent_checked_at * 1000).toLocaleString()}` : null,
+    heard,
+  ].filter((l): l is string => l !== null)
+  return c.consent_score >= (c.same_voice_at ?? 0.55) ? (
+    <StatusTip icon={CircleCheck} className="text-success" label="Same voice" lines={lines} />
+  ) : (
+    <StatusTip icon={CircleAlert} className="text-destructive" label="Below the score a new clone needs now" lines={lines} />
+  )
+}
 
 const useClones = () => $api.useQuery('get', '/api/voices/clones')
 
@@ -78,6 +106,16 @@ export function ClonedVoices({ current }: Props) {
     },
     { key: 'created', title: 'Recorded', render: (c) => new Date(c.created * 1000).toLocaleDateString() },
     { key: 'seconds', title: 'Length', render: (c) => `${Math.round(c.seconds)} s` },
+    {
+      key: 'consent',
+      title: 'Consent',
+      // a block, so the icon centres in the row instead of sitting on the text's baseline
+      render: (c) => (
+        <div className="flex">
+          <Consent clone={c} />
+        </div>
+      ),
+    },
   ]
 
   return (

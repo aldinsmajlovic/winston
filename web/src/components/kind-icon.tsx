@@ -84,6 +84,9 @@ const kinds: Record<string, LucideIcon> = {
   external: Globe,
   // channels
   satellite: RadioTower,
+  // where a hint word comes from (stt.hint_words)
+  assistant: User,
+  voice: Mic,
   // Home Assistant domains
   light: Lightbulb,
   switch: ToggleRight,

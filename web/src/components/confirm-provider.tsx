@@ -10,14 +10,20 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { buttonVariants } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmContext, type Ask, type ConfirmRequest } from '@/hooks/use-confirm'
 
 type Pending = { request: ConfirmRequest; resolve: (value: string | null) => void }
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<Pending | null>(null)
-  const ask = useCallback<Ask>((request) => new Promise((resolve) => setPending({ request, resolve })), [])
+  const [checked, setChecked] = useState(false)
+  const ask = useCallback<Ask>((request) => new Promise((resolve) => {
+    setChecked(request.check?.checked ?? false)
+    setPending({ request, resolve })
+  }), [])
   const settle = (value: string | null) => {
+    pending?.request.check?.answer(checked)
     pending?.resolve(value)
     setPending(null)
   }
@@ -39,6 +45,21 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               </AlertDialogDescription>
             ) : null}
           </AlertDialogHeader>
+          {request?.check ? (
+            <div className="flex min-w-0 items-start gap-3">
+              <Checkbox id="confirm-check" className="mt-0.5" checked={checked} onCheckedChange={(on) => setChecked(on === true)} />
+              <div className="flex min-w-0 flex-col gap-1">
+                <label htmlFor="confirm-check" className="cursor-pointer text-sm">
+                  {request.check.label}
+                </label>
+                {request.check.detail?.map((line, i) => (
+                  <span key={i} className="truncate text-sm text-muted-foreground">
+                    {line}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             {request?.choices.map((choice) => (

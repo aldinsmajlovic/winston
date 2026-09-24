@@ -65,7 +65,8 @@ def main():
 
     with httpx.Client(base_url=args.url, timeout=httpx.Timeout(10, read=120)) as c:
         saved = c.get("/api/config").raise_for_status().json().get("tts", {})
-        tts = next((e for e in c.get("/api/status").raise_for_status().json()["engines"] if e["name"] == "tts"), None)
+        status = c.get("/api/status").raise_for_status().json()
+        tts = next((e for e in status["engines"] if e["name"] == "tts"), None)
         print(f"saved voice {saved.get('voice')}, streaming {saved.get('streaming')}")
         check(tts is not None and tts["state"] == "healthy", f"speech engine healthy ({tts and tts['state']})")
         check(tts is not None and not tts["config_changed"], "speech engine runs the saved settings (no restart pending)")
@@ -79,7 +80,7 @@ def main():
             sys.exit("no voice other than the saved one to try; pass --voice")
         check(voice != saved.get("voice"), f"trying {voice}, not the saved voice")
 
-        hello = {"text": "Hello, I'm Winston. This is how I sound.", "voice": voice}
+        hello = {"text": f"Hello, I'm {status.get('assistant', 'Winston')}. This is how I sound.", "voice": voice}
         cold = speak(c, "voice, first time", hello)
         warm = speak(c, "voice, again     ", hello)
         for name, r in (("first", cold), ("again", warm)):

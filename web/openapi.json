@@ -138,7 +138,7 @@
     },
     "/api/live": {
       "get": {
-        "summary": "What Winston hears, says and does: recent events, then new ones, as server-sent events (LiveEvent objects)",
+        "summary": "What he hears, says and does: recent events, then new ones, as server-sent events (LiveEvent objects)",
         "operationId": "live_api_live_get",
         "responses": {
           "200": {
@@ -194,7 +194,7 @@
     },
     "/api/chat": {
       "post": {
-        "summary": "Say something to Winston in the web conversation; the reply arrives on /api/live",
+        "summary": "Say something to him in the web conversation; the reply arrives on /api/live",
         "operationId": "chat_api_chat_post",
         "requestBody": {
           "content": {
@@ -232,7 +232,7 @@
     },
     "/api/speak": {
       "post": {
-        "summary": "Text in Winston's voice as streamed 16-bit mono PCM, for read aloud and the Voice page's previews; voice and streaming may be tried before they are saved",
+        "summary": "Text in his voice as streamed 16-bit mono PCM, for read aloud and the Voice page's previews; voice and streaming may be tried before they are saved",
         "operationId": "speak_api_speak_post",
         "requestBody": {
           "content": {
@@ -1032,6 +1032,18 @@
               "default": false,
               "title": "Dry Run"
             }
+          },
+          {
+            "name": "rename_persona",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When the change renames him: also rewrite the old name as a whole word in his persona file (persona_rename in the dry run lists where), keeping persona.md.bak",
+              "default": false,
+              "title": "Rename Persona"
+            },
+            "description": "When the change renames him: also rewrite the old name as a whole word in his persona file (persona_rename in the dry run lists where), keeping persona.md.bak"
           }
         ],
         "requestBody": {
@@ -1105,6 +1117,18 @@
               "title": "Applied"
             },
             "description": "Processes that already run this change (a live voice switch): not marked for restart"
+          },
+          {
+            "name": "rename_persona",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "When the change renames him: also rewrite the old name as a whole word in his persona file (persona_rename in the dry run lists where), keeping persona.md.bak",
+              "default": false,
+              "title": "Rename Persona"
+            },
+            "description": "When the change renames him: also rewrite the old name as a whole word in his persona file (persona_rename in the dry run lists where), keeping persona.md.bak"
           }
         ],
         "requestBody": {
@@ -1335,7 +1359,7 @@
     },
     "/api/options/{name}": {
       "get": {
-        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users",
+        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users",
         "operationId": "get_options_api_options__name__get",
         "parameters": [
           {
@@ -1476,7 +1500,7 @@
     },
     "/api/providers/home_assistant/exposure": {
       "get": {
-        "summary": "Winston's list as Home Assistant has it: exposed or not, aliases, area, device and state per entity, what else is exposed (drift), the MCP server and whether a save would change anything",
+        "summary": "His list as Home Assistant has it: exposed or not, aliases, area, device and state per entity, what else is exposed (drift), the MCP server and whether a save would change anything",
         "operationId": "ha_exposure_api_providers_home_assistant_exposure_get",
         "responses": {
           "200": {
@@ -1575,7 +1599,7 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled",
-            "description": "Let Winston speak on its own: Home Assistant automations, the API and `winston announce` send it something to say.",
+            "description": "Let him speak on his own: Home Assistant automations, the API and `winston announce` send him something to say.",
             "default": true
           },
           "chime": {
@@ -1652,7 +1676,7 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Context",
-            "description": "Details Winston keeps for follow-up questions but does not read out."
+            "description": "Details he keeps for follow-up questions but does not read out."
           },
           "source": {
             "type": "string",
@@ -1725,7 +1749,7 @@
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "What the assistant calls itself.",
+            "description": "What he is called: his name in the prompt, the consent line and the hint words. Renaming offers to change it in his persona too.",
             "default": "Winston"
           },
           "persona": {
@@ -1919,6 +1943,44 @@
           "consent_text": {
             "type": "string",
             "title": "Consent Text"
+          },
+          "consent_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Score"
+          },
+          "consent_checked_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Checked At"
+          },
+          "consent_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consent Model"
+          },
+          "same_voice_at": {
+            "type": "number",
+            "title": "Same Voice At",
+            "default": 0.55
           }
         },
         "type": "object",
@@ -2041,6 +2103,16 @@
                 "type": "null"
               }
             ]
+          },
+          "persona_rename": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonaRename"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2134,7 +2206,7 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled",
-            "description": "Talk to Winston in Discord DMs and get announcements there.",
+            "description": "Talk to him in Discord DMs and get announcements there.",
             "default": false
           },
           "token_env": {
@@ -2155,7 +2227,7 @@
             "type": "string",
             "pattern": "^(\\d{17,20})?$",
             "title": "Your Discord user id",
-            "description": "The one Discord user Winston answers and calls \"me\". In Discord: Settings, Advanced, Developer Mode on, then right-click yourself, Copy User ID. Empty reads the variable under Advanced.",
+            "description": "The one Discord user he answers and calls \"me\". In Discord: Settings, Advanced, Developer Mode on, then right-click yourself, Copy User ID. Empty reads the variable under Advanced.",
             "default": "",
             "level": "basic",
             "options": "discord_users",
@@ -2197,7 +2269,7 @@
             },
             "type": "object",
             "title": "Contacts",
-            "description": "People Winston may message, by the name you say and their Discord user. The bot can only reach people who share a server with it.",
+            "description": "People he may message, by the name you say and their Discord user. The bot can only reach people who share a server with it.",
             "icon": "discord",
             "key_title": "Name",
             "level": "basic",
@@ -3186,7 +3258,7 @@
             },
             "type": "object",
             "title": "Entities",
-            "description": "Entities Winston may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: exposes it, un-exposes the rest and adds the aliases.",
+            "description": "Entities he may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: exposes it, un-exposes the rest and adds the aliases.",
             "key_options": "ha_entities",
             "key_title": "Entity",
             "level": "basic"
@@ -3746,6 +3818,42 @@
         ],
         "title": "PersonaEdit"
       },
+      "PersonaRename": {
+        "properties": {
+          "old": {
+            "type": "string",
+            "title": "Old"
+          },
+          "new": {
+            "type": "string",
+            "title": "New"
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "places": {
+            "type": "integer",
+            "title": "Places"
+          },
+          "renamed": {
+            "type": "boolean",
+            "title": "Renamed",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "old",
+          "new",
+          "lines",
+          "places"
+        ],
+        "title": "PersonaRename"
+      },
       "Preset": {
         "properties": {
           "id": {
@@ -3889,7 +3997,7 @@
               }
             ],
             "title": "Home Assistant",
-            "description": "The Home Assistant Winston sees and controls. Unset: no smart home."
+            "description": "The Home Assistant he sees and controls. Unset: no smart home."
           }
         },
         "additionalProperties": false,
@@ -4012,6 +4120,22 @@
             "default": "int8",
             "empty_means_off": true,
             "level": "advanced"
+          },
+          "hint_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hint words",
+            "description": "Names and words he should hear right. His name, cloned voices, Discord contacts and names from the Home Assistant list are added by themselves; add the rest here, one word each, such as room names in another language.",
+            "level": "basic",
+            "widget": "hint_words"
+          },
+          "fix_misspellings": {
+            "type": "boolean",
+            "title": "Fix close misspellings",
+            "description": "After speech to text, a word that sounds like a hint word and is spelled close to it becomes that word, so a misheard name comes out right. Common English words are never changed, and every change is logged as before and after.",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -4073,7 +4197,7 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled",
-            "description": "Talk to Winston through room satellites such as Home Assistant's Voice Preview Edition. The box must not also be in Home Assistant's voice pipeline: only one client can have its microphone.",
+            "description": "Talk to him through room satellites such as Home Assistant's Voice Preview Edition. The box must not also be in Home Assistant's voice pipeline: only one client can have its microphone.",
             "default": false
           },
           "devices": {
@@ -4092,7 +4216,7 @@
             "maximum": 65535.0,
             "minimum": 1.0,
             "title": "Audio port",
-            "description": "Port the boxes fetch Winston's spoken replies from, on every interface.",
+            "description": "Port the boxes fetch his spoken replies from, on every interface.",
             "default": 8702,
             "level": "advanced"
           },
@@ -4772,7 +4896,7 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled",
-            "description": "Talk to Winston by voice from the browser. Room satellites have their own channel.",
+            "description": "Talk to him by voice from the browser. Room satellites have their own channel.",
             "default": true
           },
           "host": {
@@ -4818,7 +4942,7 @@
           "enabled": {
             "type": "boolean",
             "title": "Enabled",
-            "description": "Let Winston look up current facts on the web. Only the search question leaves the house.",
+            "description": "Let him look up current facts on the web. Only the search question leaves the house.",
             "default": false
           },
           "provider": {
@@ -4879,7 +5003,7 @@
             "type": "number",
             "minimum": 1.0,
             "title": "Timeout (s)",
-            "description": "Seconds before a search gives up and Winston says it could not look it up.",
+            "description": "Seconds before a search gives up and he says it could not look it up.",
             "default": 15.0,
             "level": "advanced"
           }
@@ -4934,7 +5058,9 @@
             "default": {
               "provider": "parakeet",
               "model": "nemo-parakeet-tdt-0.6b-v3",
-              "quantization": "int8"
+              "quantization": "int8",
+              "hint_words": [],
+              "fix_misspellings": true
             }
           },
           "tts": {

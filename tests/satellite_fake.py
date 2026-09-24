@@ -29,6 +29,7 @@ from winston.config import load  # noqa: E402
 from winston.config.registry import get as get_adapter  # noqa: E402
 from winston.config.schema import SatelliteDevice  # noqa: E402
 from winston.core import brain as brain_mod  # noqa: E402
+from winston.core.hints import Hearing  # noqa: E402
 
 from loguru import logger  # noqa: E402
 
@@ -199,7 +200,7 @@ async def main() -> int:
     server = await asyncio.start_server(box.serve, "127.0.0.1", PORT)
     audio = sat.AudioServer(cfg); await audio.start()
     cls = get_adapter("stt", cfg.stt.provider)
-    stt = (cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+    stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
     satellite = sat.Satellite(cfg, "test room", cfg.channels.satellite.devices["test room"], audio, stt, NoFeed())
     await satellite.connect()
     await asyncio.wait_for(box.subscribed.wait(), 15)

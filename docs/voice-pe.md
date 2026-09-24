@@ -50,6 +50,8 @@ must be able to reach this machine there.
   (`use_wake_word: false` in the firmware, so it never streams for a server-side wake word). "Hey
   Winston" needs a microWakeWord model of it and a firmware build, or a firmware that streams
   continuously for the model in `assets/wake/`. `wake_word` picks one of the three.
+- **The wake word is set per box and does not follow his name.** Renaming him (`assistant.name`)
+  changes what he calls himself, not what wakes a box: each box keeps its own `wake_word`.
 - **Replies are played from a URL**, as Home Assistant's streaming TTS: RUN_START carries it,
   INTENT_PROGRESS with `tts_start_streaming` tells the box to start fetching, and Winston serves a
   48 kHz WAV that grows while he speaks.

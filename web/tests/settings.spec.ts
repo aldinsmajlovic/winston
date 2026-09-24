@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 
@@ -53,14 +53,52 @@ test('every settings page loads', async ({ page }) => {
   expect(errors).toEqual([])
 })
 
-test('an edited field is saved and still there after a reload', async ({ page }) => {
+test('a rename is saved, still there after a reload, and changes his persona only when kept checked', async ({ page }) => {
+  const personaFile = join(data, 'persona.md')
+  const original = existsSync(personaFile) ? readFileSync(personaFile, 'utf8') : null
   await open(page, '/assistant')
   const name = page.locator('#cfg_assistant_name')
-  await name.fill('Smokey')
-  await save(page)
-  await page.reload()
-  await expect(page.locator('#cfg_assistant_name')).toHaveValue('Smokey')
-  expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('name: Smokey')
+  const old = await name.inputValue()
+  const persona = `# ${old}\n\n## How you behave\n\n- You are ${old}, a butler and voice assistant in a home full of rooms, lamps and speakers.\n\n## Instructions\n\n- Run \`winston announce\`.\n`
+  writeFileSync(personaFile, persona)
+  try {
+    await name.fill('Smokey')
+    await page.locator('header').getByRole('button', { name: 'Save', exact: true }).click()
+    const dialog = page.getByRole('alertdialog')
+    await expect(dialog.getByRole('heading')).toHaveText('Rename him to Smokey?')
+    const check = dialog.getByRole('checkbox', { name: `His persona says ${old} in 2 places. Change them to Smokey?` })
+    await expect(check).toBeChecked()
+    const line = dialog.getByText(`You are ${old}, a butler and voice assistant`)
+    await expect(line).toBeVisible()
+    // A long line is cut short inside the dialog, never pushing the checkbox or the buttons past its edge.
+    const edge = await dialog.boundingBox()
+    for (const part of [line, check, dialog.getByRole('button', { name: 'Save', exact: true })]) {
+      const box = await part.boundingBox()
+      expect(box!.x + box!.width).toBeLessThanOrEqual(edge!.x + edge!.width)
+    }
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect.poll(() => readFileSync(personaFile, 'utf8')).toBe(persona.replaceAll(old, 'Smokey'))
+    expect(readFileSync(`${personaFile}.bak`, 'utf8')).toBe(persona)
+    await page.reload()
+    await expect(page.locator('#cfg_assistant_name')).toHaveValue('Smokey')
+    expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('name: Smokey')
+
+    // Back to the old name with the box unchecked: the config changes, the persona does not.
+    const renamed = readFileSync(personaFile, 'utf8')
+    await page.locator('#cfg_assistant_name').fill(old)
+    await page.locator('header').getByRole('button', { name: 'Save', exact: true }).click()
+    await dialog.getByRole('checkbox').click()
+    await expect(dialog.getByRole('checkbox')).not.toBeChecked()
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(dialog).toHaveCount(0)
+    await expect(page.locator('header').getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+    expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain(`name: ${old}`)
+    expect(readFileSync(personaFile, 'utf8')).toBe(renamed)
+  } finally {
+    if (original === null) rmSync(personaFile, { force: true })
+    else writeFileSync(personaFile, original)
+  }
 })
 
 test('a pasted key shows as Set and never comes back from the server', async ({ page }) => {
@@ -153,6 +191,58 @@ test('the Voice page plays the unsaved voice and streaming, and not an unsaved e
   await page.getByRole('option', { selected: false }).filter({ hasNotText: 'Custom' }).first().click()
   await expect(play).toBeDisabled()
   expect(bodies).toHaveLength(2)
+  expect(errors).toEqual([])
+})
+
+test('the Hearing card shows his hint words and saves only yours', async ({ page }) => {
+  const errors = watchErrors(page)
+  await open(page, '/voice')
+  const name = String(/^ {2}name: (.+)$/m.exec(readFileSync(join(data, 'config.yaml'), 'utf8'))?.[1] ?? 'Winston')
+  const words = page.locator('#cfg_stt_hint_words')
+  await expect(words.getByText(name, { exact: true })).toBeVisible()
+  await expect(words.getByRole('button', { name: `Remove ${name}` })).toHaveCount(0)
+  const add = page.locator('#cfg_stt_hint_words-add')
+  await add.fill(name.toLowerCase())
+  await expect(words.getByText('Already in the list')).toBeVisible()
+  await add.fill('Vardagsrummet')
+  await add.press('Enter')
+  await expect(words.getByRole('button', { name: 'Remove Vardagsrummet' })).toBeVisible()
+  await expect(page.locator('header').getByRole('button', { name: 'Save', exact: true })).toBeEnabled()
+  await save(page)
+  await expect.poll(() => /hint_words:\n\s*- Vardagsrummet/.test(readFileSync(join(data, 'config.yaml'), 'utf8'))).toBe(true)
+  await page.reload()
+  await words.getByRole('button', { name: 'Remove Vardagsrummet' }).click()
+  await save(page)
+  await expect.poll(() => readFileSync(join(data, 'config.yaml'), 'utf8').includes('Vardagsrummet')).toBe(false)
+  expect(errors).toEqual([])
+})
+
+test('the Cloned voices card shows the consent check as an icon, the details in its tooltip', async ({ page }) => {
+  const errors = watchErrors(page)
+  // two clones in the throwaway copy: one checked as the same voice, one from before the check
+  const friends = join(data, 'voices', 'friends')
+  mkdirSync(friends, { recursive: true })
+  const wav = Buffer.alloc(44 + 3200)
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + 3200, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16)
+  wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28)
+  wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(3200, 40)
+  const clone = (slug: string, extra: object) => {
+    writeFileSync(join(friends, `${slug}.wav`), wav)
+    writeFileSync(join(friends, `${slug}.json`), JSON.stringify({ slug, name: slug[0].toUpperCase() + slug.slice(1),
+      created: 1790150000, consent_text: `I'm ${slug}, and I agree.`, seconds: 15, ...extra }))
+  }
+  clone('smokeerik', { consent_score: 0.82, consent_checked_at: 1790150000, consent_model: 'Wespeaker/wespeaker-voxceleb-resnet34' })
+  clone('smokemaria', {})
+  try {
+    await open(page, '/voice')
+    const same = page.getByRole('img', { name: 'Same voice' })
+    await expect(same).toBeVisible()
+    await expect(page.getByRole('img', { name: 'Not checked' })).toBeVisible()
+    await same.hover()
+    await expect(page.getByRole('tooltip').getByText('Score 0.82, 0.55 needed')).toBeVisible()
+  } finally {
+    for (const f of ['smokeerik.wav', 'smokeerik.json', 'smokemaria.wav', 'smokemaria.json']) rmSync(join(friends, f), { force: true })
+  }
   expect(errors).toEqual([])
 })
 

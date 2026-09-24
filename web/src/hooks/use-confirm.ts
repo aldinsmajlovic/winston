@@ -6,6 +6,9 @@ export type ConfirmRequest = {
   /** What the action costs, one line each ("llm: about 3 min"). */
   lines?: string[]
   choices: Choice[]
+  /** One option that rides along with the choice, drawn as a checkbox under the lines ("Change them
+   * to Mira?"), `checked` at first. `answer` gets its final state just before the dialog resolves. */
+  check?: { label: string; detail?: string[]; checked: boolean; answer: (checked: boolean) => void }
 }
 export type Ask = (request: ConfirmRequest) => Promise<string | null>
 

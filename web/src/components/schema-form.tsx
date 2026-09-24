@@ -25,6 +25,7 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { InfoTip } from '@/components/info-tip'
 import { KindIcon } from '@/components/kind-icon'
+import { HintWordsField } from '@/components/hint-words-field'
 import { KeyedMapField } from '@/components/keyed-map-field'
 import { SecretField } from '@/components/secret-field'
 import { Separator } from '@/components/ui/separator'
@@ -382,6 +383,7 @@ function SelectWidget(props: WidgetProps) {
 const widgets = { CheckboxWidget: SwitchWidget, TextWidget, SelectWidget }
 
 const DefaultObjectField = getDefaultRegistry().fields.ObjectField
+const DefaultArrayField = getDefaultRegistry().fields.ArrayField
 
 /** Objects of entries (contacts, environment, volumes) are tables with a dialog; others as usual. */
 function ObjectField(props: FieldProps) {
@@ -389,7 +391,13 @@ function ObjectField(props: FieldProps) {
   return <DefaultObjectField {...props} />
 }
 
-const fields = { ObjectField }
+/** A list whose schema names its own widget (hint words) draws that; others are one box per entry. */
+function ArrayField(props: FieldProps) {
+  if ((props.schema as Meta).widget === 'hint_words') return <HintWordsField {...props} />
+  return <DefaultArrayField {...props} />
+}
+
+const fields = { ObjectField, ArrayField }
 
 type Props = {
   schema: JsonSchema

@@ -33,7 +33,7 @@ MAX_TEXT = 300
 class Announcement(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_TEXT, description="Spoken as is.")
     context: dict[str, Any] = Field(default_factory=dict,
-                                    description="Details Winston keeps for follow-up questions but does not read out.")
+                                    description="Details he keeps for follow-up questions but does not read out.")
     source: str = Field("api", description="Who asked: api, cli, home_assistant.")
 
 

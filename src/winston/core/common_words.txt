@@ -1,0 +1,179 @@
+# Common English words, lower case, for core/hints.py: a word here is never corrected into a hint word
+# and never taken as an automatic one. Built in so it does not depend on a word list being installed.
+a able about above accept across act action actually add added address after afternoon again against age ago
+agree agreed ahead air alarm alive all allow almost alone along already alright also always am amazing among
+amount an and angry animal another answer any anybody anyone anything anyway anywhere apart apartment app apple
+april are area aren't arm around arrive art article as ask asked asking asleep at attention august aunt autumn
+available average avoid awake away awesome awful baby back bad bag bake ball band bank bar base basement basic
+bath bathroom battery be beach bean bear beat beautiful became because become bed bedroom been beer before began
+begin behind being believe bell below belt beside best better between big bike bill bin bird birthday bit bite
+black blanket blind blinds block blood blow blue board boat body boil book boots bored boring born borrow boss
+both bother bottle bottom bought bowl box boy brain bread break breakfast breath bridge brief bright bring broke
+broken brother brought brown brush budget build building built bulb bunch burn bus business busy but butter
+button buy by cabinet cake calendar call called calling calm came camera can can't cancel candle cannot cap car
+card care careful carry case cash cat catch caught ceiling cell center central chair chance change changed
+channel charge charger charging cheap check checked cheese chicken child children chill chips choice choose
+church city class clean clear clever click climate clock close closed closer closet cloth clothes cloud cloudy
+club coat code coffee cold collect color colour come comes comfortable coming comment common company complete
+computer concert confirm connect connected contact continue control cook cookie cool copy corner correct cost
+could couldn't count country couple course cousin cover crazy cream create cross crowd cry cup cupboard current
+curtain curtains cut cute dad daily damn dance danger dark date daughter day days dead deal dear december decide
+deep definitely degree degrees delete deliver dentist desk details device devices did didn't die diet
+difference different difficult dim dimmer dining dinner direction dirty dishes dishwasher do doctor does doesn't
+dog doing dollar don't done door double down download dozen draw drawer dream dress drink drive driver drop dry
+dryer during dust each ear earlier early earth easily east easy eat edge egg eight eighteen eighty either
+electric electricity eleven else email empty end energy engine enjoy enough enter entire entrance error evening
+event ever every everybody everyone everything everywhere exact exactly example except excited excuse exercise
+expect expensive explain extra eye face fact fair fall family famous fan far farm fast fat father favorite
+favourite fear february feed feel feeling feet fell felt few field fifteen fifth fifty fight file fill film
+final finally find fine finger finish finished fire first fish five fix fixed flat floor flower fly fog follow
+food foot for forecast forget forgot fork form forty forward found four fourteen fourth free freezer freezing
+fresh friday fridge friend friends from front frozen fruit full fun funny furniture future game garage garbage
+garden gas gate gave get gets getting gift girl give given glad glass go goal goes going gold gone good goodbye
+got great green grey ground group grow guess guest guy hair half hall hallway hand handle hang happen happened
+happy hard has hat hate have haven't he head hear heard heart heat heater heating heavy hello help her here hers
+hey hi high hill him his history hit hold hole holiday home homework honest hope hot hotel hour hours house how
+however huge humid humidity hundred hungry hurry hurt husband i i'd i'll i'm i've ice idea if ill important in
+inch include inside instead interesting into invite is isn't it it's its itself january job join joke juice
+july jump june just keep kept key keys kid kids kill kind kitchen knew know known lady lake lamp lamps land
+language laptop large last late later laugh laundry lawn lay lead learn least leave left leg less lesson let
+let's letter level library lie life lift light lights like liked line list listen little live living load lock
+locked long look looking lose lost lot loud love lovely low lower lunch machine mad made mail main make man many
+map march market married matter may maybe me meal mean meaning meant meat medicine meet meeting member memory
+mention menu message met metal meter middle midnight might mile milk mind mine minute minutes mirror miss
+mistake mode model modeled moment monday money month months mood moon more morning most mother motion mountain
+mouse mouth move movie much mum music must my myself name near nearly neck need needed neighbor neighbour never
+new news next nice night nine nineteen ninety no nobody noise none noon nor normal north nose not note nothing
+notice november now number nurse o'clock ocean october of off offer office often oh oil ok okay old on once one
+online only onto open opened or orange order other others our ours out outlet outside oven over own page pain
+paint pair pan paper parent parents park part party pass past pay peace pen pencil people pepper percent perfect
+perhaps person phone photo pick picture piece pink place plan plant plate play please plug plus pm pocket point
+police pool poor porch possible post pot power press pretty price print probably problem program promise pull
+purple push put question quick quickly quiet quite radio rain raining raise ran rather reach read ready real
+really reason receive recipe record red refrigerator relax remember remind reminder remove repeat reply rest
+restart result return rice rich ride right ring river road rock roof room rooms round rule run running sad safe
+said salad sale salt same sat saturday save saw say says school score screen sea search season seat second see
+seem seen sell send sensor sent september set setting settings seven seventeen seventy several shall shape share
+she shelf shirt shoe shoes shop short should shouldn't show shower shut sick side sign silly simple since sing
+single sink sister sit six sixteen sixty size skin sky sleep slow small smart smell smile snow so soap sock sofa
+soft some somebody someone something sometimes somewhere son song soon sorry sort sound soup south space speak
+speaker special speed spend spoke spoon sport spring stairs stand star start started state station stay steal
+step still stop store storm story stove straight strange street strong student study stuff stupid such sugar
+summer sun sunday sunny super supper sure surprise sweet swim switch table take taken talk talking tall task
+taste taxi tea teach teacher team tell temperature ten tennis terrible test text than thank thanks that that's
+the their them then there there's these they they're thing things think third thirsty thirteen thirty this those
+though thought thousand three through thursday ticket tidy time timer tired to today toe together toilet told
+tomorrow tonight too took tooth top total touch towel town toy traffic train trash travel tree trip trouble
+truck true try trying tuesday turn turned turning tv twelve twenty twice two type uh ugly um uncle under
+understand unit until up upon upstairs us use used useful usual usually vacation vacuum very video view visit
+voice volume wait wake walk wall want wanted war warm was wash washing washer wasn't watch water way we we're
+wear weather wednesday week weekend weight welcome well went were weren't west wet what what's when where which
+while white who whole whose why wide wife will win wind window windows wine winter wish with without woman won
+won't wonder wonderful word words work worked working world worry worse worst would wouldn't write wrong yard
+yeah year years yellow yes yesterday yet you you'd you'll you're you've young your yours yourself zero
+# forms and words that sit close to names
+agreeing allowed asks became beds believes bigger boxes brings calls cannot cars changes checks cleaning closes
+cooking cools copies copying days does doors dropped ends feels finds fixes gets gives goes hands has hearing
+helps holds keeps kinds knows leaves likes lives looks makes means minds models needs opens pays plays puts reads
+rings runs says seems sends sets shows sits sounds speaks starts stays stops takes talks tells thinks tries turns
+uses waits walks wants watches wins winning winner windy winds windows wine wines wing wings wish wishes won
+wonder wooden words works hectare modern modelled model's olden older holding molding
+some sum son sons sun suns sunset sunshine ton tons done stone stones win's mister miss missus sir madam
+icon icons pixel the a an my our your his her their this that these those
+# the home: rooms, devices and the words people put in names and aliases
+location locations status sensor sensors plug plugs strip socket sockets bulb bulbs led leds television tvs
+media player thermostat printer router modem vacuum robot cleaner purifier dehumidifier humidifier kettle toaster
+microwave washer heater radiator attic cellar nursery pantry utility driveway patio balcony spa sauna tablet
+console speakers display monitor projector soundbar remote hub bridge gateway siren doorbell camera cameras
+entry hallway landing downstairs outdoor indoor front rear upper floor ground living dining guest master closet
+reading standing bedside desk table ceiling wall floor globe clear white warm cool colour color bright dim
+scene scenes mode modes automation routine schedule timer alarm away home night day morning evening sleep
+work school gym car garage gate porch deck shed pond fountain plants plant aquarium tank pump valve boiler fan
+fans blind blinds shade shades shutter shutters curtain window windows door doors lock locks switch switches
+button buttons outlet outlets light lights lamp lamps strip strips spot spots spotlight spotlights pendant
+chandelier sconce lantern candle fireplace stove oven fridge freezer dishwasher dryer iron mixer blender tv
+phone phones watch battery batteries charger charging charged level percent state states mobile cell laptop
+computer computers pc tracker trackers presence occupancy motion contact leak smoke carbon monoxide water
+temperature humidity pressure power energy usage consumption voltage current solar grid meter meters weather
+forecast outside inside wifi network internet signal update updates version
+# more of everyday English
+able across actually afraid afterwards age agent ago airport alarm allowed alone along amount angle announce
+another answer appear apply appointment approach area argue arrange arrival article artist aside asleep attack
+attempt audio author autumn avenue average award aware backup balance banana band base basket battle beard beauty
+become beginning behave belong beneath benefit beyond bigger biggest birth biscuit bitter blame blank blind
+bloody board boil bold bone bonus border boring bottom bounce brave breakfast breeze brick brief brilliant
+broad broadcast brush bubble bucket budget buffer bullet bundle burger burst butter cable cafe cage calculate
+camp campaign candidate capital captain career careful carpet carrot cartoon castle casual category cause
+celebrate cellar centre century certain chain chalk champion channel chapter character charity chart chase
+cheap cheek chef chemical chest chew chin chocolate chorus circle citizen claim classic climb clinic clip coast
+coin collar collection college colleague comedy command comment commercial committee common community compare
+compete complain complex computer concept concern condition conference connection consider constant contain
+content contest context continue contract contrast convert cooker copper cotton council counter county courage
+court cousin cowboy crack craft crash cream credit crew crime crisis critic crop cruise crystal culture cupboard
+curious currency curve custom customer cycle damage damp danger dare data database dawn deadline debate debt
+decade decent decision decline decorate deep defence defend define delay delicious demand dentist deny depend
+deposit depth describe desert design desire destroy detail develop diamond diary dictionary diet digital
+dinner direct director discount discover discuss disease dish distance district divide divorce document domain
+dozen draft drama drawing drill driving drum duck dull dust duty eager earn east echo edit edition editor
+effect effort elbow elder election element elephant elevator email emergency emotion employ empty enemy engage
+engineer enormous entertain entire envelope equal equipment escape essay estate evening evidence evil exam
+examine excellent exchange exciting exercise exhibit exist exit expand expert explore export express extend
+extent extreme fabric factor factory fail faint faith false fancy fantasy fashion fault feature federal fee
+female fence festival fever fiction figure filter finance finger fitness flag flame flash flavour flight float
+flood flour fluid focus folder folk fool force foreign forest format formula fortune forum fountain frame
+freedom frequent fridge friendly frost fuel function fund funeral furniture gallery gap garlic gather gender
+general generous genius gentle genuine ghost giant ginger glove glue golden golf goods govern grab grade grain
+grand grant grape graph grass grave gravity greet grid grief grill grocery guard guide guilty guitar habit
+hammer handsome harbour hardware harm harvest hazard headline health healthy heaven height helmet hero hidden
+highlight highway hint hobby hockey holder hollow honey hook horizon horror horse hospital host humour hunger
+hunt hurricane husband ignore illness image imagine impact import impress improve incident income increase
+index industry infant inform injury inner insect insist install instance insurance intend interest interview
+invest iron island issue item jacket jail jam jazz jeans jelly jewel joint journal journey judge jungle junior
+justice kettle keyboard kidney kingdom kiss knee knife knock label labour ladder landscape lane laser latest
+latter launch lawyer layer leader league lean leather lecture legal lemon lend length lesson liberty license
+lifestyle limit linen lion liquid listener literature load loan local logic lonely loop lottery lucky luggage
+lunch luxury magazine magic magnet mail maintain major male manage manager manner manual marble margin marine
+mark marker marriage mask mass master match mate material maximum mayor meadow measure medal media medium
+melody melt member memo mental mention merchant mercy mess metal method middle midnight military mineral
+minimum minister minor minus miracle mission mixture mobile moderate modest monitor monkey monster monthly
+moral motor mountain movement mud muscle museum mushroom musical mystery myth narrow nation native nature
+navy neat necessary negative nerve nest network neutral newspaper niece noble nod nonsense normal notable novel
+nuclear nut object observe obtain obvious occasion occur odd offence officer official onion opera operate
+opinion opponent opposite option oral orbit orchestra ordinary organ origin outcome outfit output oval owner
+oxygen pace pack package paddle palace palm panel panic parade parcel pardon parking partner passage passenger
+passion passport password pasta patch path patient pattern pause peak peanut pearl penalty pension pepper
+perform period permit personal pet phase phrase physical piano pile pill pilot pin pipe pirate pitch pizza
+planet plastic platform pleasant plenty plot plug pocket poem poet poison pole policy polish politics pollution
+pond popular portion portrait position positive potato pound powder practice praise pray precise prefer
+pregnant premium prepare present preserve president pressure prevent pride priest primary prince princess
+print prison private prize process produce profit progress project proof proper property protect protest proud
+prove provide public pumpkin punch pupil purchase pure purpose puzzle quality quarter queen queue quote rabbit
+race rail random range rank rapid rare rate raw razor react reader reality rebel recall recent recover reduce
+reflect reform refuse region regret regular reject relation release relief rely remain remote rent repair
+replace report request require rescue research resort resource respect respond response retire reveal review
+reward rhythm ribbon ride rifle ring risk rival roast robot rocket role roll romance roof root rope rose rough
+route royal rubber rubbish rude ruin rural rush sack sail sailor salary salmon sample sand sandwich satellite
+sauce sausage scale scan scandal scare scarf scene schedule scheme science scissors scout scratch scream
+screw script sculpture seal secret section sector secure seed select senior sense sentence series serious
+servant serve service session settle severe sew shadow shallow shame shark sharp shed sheep sheet shell
+shelter shift shine shock shoot shore shoulder shout shrimp sigh signal silence silk silver similar simply
+sincere singer site situation sketch ski skill skirt slice slide slim slip slot smooth snack snake soap soccer
+social society sofa soil soldier solid solution solve source spare speech spell spice spider spin spirit split
+sponsor spot spray square stable stadium staff stage stamp standard stare statement statue steady steak steel
+steep stem stick stiff stock stomach stone storage strategy straw stream strength stress stretch strict strike
+string strip stroke structure studio style subject subway succeed success sudden suffer suggest suit summit
+supply support surface surgery surround survey survive suspect swap sweat sweater swing symbol sympathy system
+tail talent tank tap target tax technical technique technology teenager telephone temple tenant tend tender
+tent term terror theatre theme theory therapy thick thief thin thread threat throat throne thumb thunder tide
+tie tiger tight tile timber tiny tip tissue title toast tobacco toilet tomato tongue tool topic torch tour
+tourist tower track trade tradition trail transfer transport trap tray treasure treat trend trial triangle
+trick troop tropical trust truth tube tune tunnel turkey twin twist typical tyre umbrella uniform union unique
+universe university unless unusual upset urban urge usage user valley valuable value van variety vegetable
+vehicle venue version vessel victim victory village violin virus visible vision visitor visual vital vivid
+vote wage wagon waist wallet wander warn warning waste wave wealth weapon weave web wedding weekly welfare
+wheel whisper whistle wild wing wire wise witch witness wolf wood wool worker workshop worth wound wrap wrist
+writer yacht yell yield youth zone
+wednesday thursday saturday sunday monday tuesday friday january february april june july august september
+october november december weekend tonight today tomorrow yesterday
+# family and people
+mom mommy mum mummy dad daddy papa mama grandma grandpa granny gran nana grandad baby babe honey darling buddy mate boss doc sis bro auntie aunt uncle cousin nephew niece wife husband son daughter kid kids neighbour neighbor friend friends

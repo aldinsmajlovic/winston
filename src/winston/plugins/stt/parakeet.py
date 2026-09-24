@@ -20,7 +20,16 @@ from pipecat.utils.time import time_now_iso8601
 class ParakeetSTTService(SegmentedSTTService):
     """Adapter contract for STT plugins: `load_model(name, quantization)` returns a reusable model
     object, the constructor takes it as `model=` so one load serves every connection, and
-    `transcribe(model, pcm, rate)` turns int16 audio into text outside a pipeline (satellites)."""
+    `transcribe(model, pcm, rate, hints=None)` turns int16 audio into text outside a pipeline
+    (satellites, clone consent).
+
+    Hint words (core/hints.py): `supports_hints` says whether the engine can be told words in advance;
+    one that can maps `hints` (a list of words, or None) to its own setting: Whisper's initial prompt or
+    hotwords, a cloud engine's keyterms. The constructor's `hearing=` is the shared `Hearing`: run_stt
+    hands it what the engine heard (`hearing.finish`), which corrects close misspellings and logs the
+    STT line, and asks it for the words (`hearing.engine_hints()`) when the engine takes them."""
+
+    supports_hints = False          # greedy decoding in onnx-asr has no biasing hook
 
     @staticmethod
     def load_model(model_name: str = "nemo-parakeet-tdt-0.6b-v3", quantization: str | None = "int8"):
@@ -31,14 +40,15 @@ class ParakeetSTTService(SegmentedSTTService):
         return model
 
     @staticmethod
-    def transcribe(model, pcm: np.ndarray, rate: int) -> str:
+    def transcribe(model, pcm: np.ndarray, rate: int, hints: list[str] | None = None) -> str:
         return (model.recognize(pcm.astype(np.float32) / 32768.0, sample_rate=rate) or "").strip()
 
     def __init__(self, *, model=None, model_name: str = "nemo-parakeet-tdt-0.6b-v3",
-                 quantization: str | None = "int8", sample_rate: int | None = None, **kwargs):
+                 quantization: str | None = "int8", sample_rate: int | None = None, hearing=None, **kwargs):
         super().__init__(sample_rate=sample_rate,
                          settings=STTSettings(model=model_name, language=Language.EN), **kwargs)
         self._model = model if model is not None else self.load_model(model_name, quantization)
+        self._hearing = hearing
 
     @property
     def wants_wav_segments(self) -> bool:
@@ -55,8 +65,11 @@ class ParakeetSTTService(SegmentedSTTService):
         text = await asyncio.to_thread(self._model.recognize, pcm, sample_rate=self.sample_rate)
         await self.stop_ttfb_metrics()
         await self.stop_processing_metrics()
-        text = (text or "").strip()
-        logger.info(f"STT {len(pcm) / self.sample_rate:.2f}s audio -> {text!r} "
-                    f"in {(time.perf_counter() - t0) * 1000:.0f} ms")
+        secs, ms = len(pcm) / self.sample_rate, (time.perf_counter() - t0) * 1000
+        if self._hearing is not None:
+            text = self._hearing.finish(text, secs, ms)
+        else:
+            text = (text or "").strip()
+            logger.info(f"STT {secs:.2f}s audio -> {text!r} in {ms:.0f} ms")
         if text:
             yield TranscriptionFrame(text, self._user_id, time_now_iso8601(), "en")

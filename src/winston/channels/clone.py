@@ -1,18 +1,21 @@
 """Cloning a voice by asking, on the voice channel: "clone my friend Erik's voice", or "clone my voice".
 
 The clone_voice tool asks the friend to agree out loud, checks the words with the channel's own
-STT, has them talk for about fifteen seconds, keeps only the speech, stores it with the consent
-recording (winston.core.voices) and switches the speech voice to it for the rest of the
-conversation. While it records, MicTap holds the mic, so the friend is never taken for a turn and
+STT, has them talk for about fifteen seconds and keeps only the speech. Before anything is stored, a
+speaker-embedding model (winston.core.speaker) checks that the voice agreeing is the voice in the
+sample; when they differ nothing is kept, not even the consent. Otherwise it stores the clip with the
+consent recording and the score (winston.core.voices) and switches the speech voice to it for the rest
+of the conversation. While it records, MicTap holds the mic, so the friend is never taken for a turn and
 cannot interrupt the tool; Winston says nothing over them. use_voice switches between stored
 clones and back, and can keep a choice by saving it to config through winstond.
 
 Plan §6 rule 4: both are act tools, logged like every call. Nothing is stored without the spoken
-consent; the consent clip stays beside the voice."""
+consent; the consent clip stays beside the voice. When the speaker model is not available the clone is
+kept as not checked, which the Voice page shows."""
 import asyncio
 import re
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import Awaitable, Callable
 
 import httpx
 import numpy as np
@@ -26,11 +29,11 @@ from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.openai.tts import OpenAITTSService
 
 from winston.config.schema import WinstonConfig
-from winston.core import voices
+from winston.core import speaker, voices
 
 RATE = 16000
 VAD_FRAME = 512                  # Silero's window at 16 kHz, 32 ms
-CONSENT_LINE = "I'm {name}, and I agree that Winston can copy my voice."
+CONSENT_LINE = "I'm {name}, and I agree that {assistant} can copy my voice."   # {assistant}: assistant.name
 WANT_SPEECH_SECS = 15.0          # speech to collect for the clip
 MIN_SPEECH_SECS = 6.0            # below this the clone sounds like no one
 _AGREE = re.compile(r"\bagree\b")
@@ -134,7 +137,7 @@ def agreed(text: str) -> bool:
 
 
 def own_voice(cfg: WinstonConfig) -> str:
-    """Winston's own voice: the configured one, unless a clone was kept there."""
+    """His own voice: the configured one, unless a clone was kept there."""
     return cfg.tts.voice if not cfg.tts.voice.startswith("friends/") else "onyx"
 
 
@@ -153,11 +156,13 @@ async def keep_voice(cfg: WinstonConfig, voice: str) -> str | None:
     return None
 
 
-def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.ndarray], AsyncIterator[str]]):
-    """clone_voice and use_voice for the voice channel. transcribe turns 16 kHz int16 into text."""
+def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.ndarray, list[str]], Awaitable[str]]):
+    """clone_voice and use_voice for the voice channel. transcribe turns 16 kHz int16 into text, with
+    extra hint words (the friend's name) on top of the configured ones."""
     vad = SileroVADAnalyzer()
     vad.set_sample_rate(RATE)
     capture = Capture(tap, vad)
+    me = cfg.assistant.name
 
     async def say(params: FunctionCallParams, text: str, wait: bool = True):
         # kept out of the context: "now talk to me for fifteen seconds" read back later as his own words
@@ -174,17 +179,18 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
         own = bool(params.arguments.get("own", False))
         if not voices.slug(name):
             return await params.result_callback({"error": "say whose voice it is, by first name"})
+        speaker.warm()                  # loads while they talk
         tap.muted = True
         try:
             await say(params, ("Alright. So I know you agree, say: " if own else
-                               f"Alright. {name}, if you agree, please say: ") + CONSENT_LINE.format(name=name))
+                               f"Alright. {name}, if you agree, please say: ") + CONSENT_LINE.format(name=name, assistant=me))
             got = await capture.run(max_secs=12, start_timeout=8, end_silence_secs=1.0)
             if got is None:
                 await say(params, "I didn't hear anything, so I'll leave it.")
                 return await params.result_callback({"error": "nobody spoke, nothing recorded"},
                                                     properties=FunctionCallResultProperties(run_llm=False))
-            consent, _ = got
-            heard = "".join([t async for t in transcribe(consent)]).strip()
+            consent, consent_voiced = got
+            heard = (await transcribe(consent, [name])).strip()
             logger.info(f"clone: consent from {name!r} heard as {heard!r}")
             if not agreed(heard):
                 await say(params, "That didn't sound like a yes, so I won't record anything.")
@@ -201,16 +207,28 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
                                                     properties=FunctionCallResultProperties(run_llm=False))
             t_end = time.perf_counter()
             clip = voices.level(voices.speech_only(got[0], got[1], RATE, VAD_FRAME))
-            clone = await asyncio.to_thread(voices.save, name, clip, consent, RATE, heard)
+            agreeing = voices.speech_only(consent, consent_voiced, RATE, VAD_FRAME)
+            score = await asyncio.to_thread(speaker.compare, agreeing, clip)
+            check = {"consent_score": score, "same_voice_at": speaker.SAME_VOICE}
+            if speaker.same_voice(score) is False:
+                logger.info(f"clone: {name!r} not kept, the voices differ (score {score}, needs {speaker.SAME_VOICE})")
+                await say(params, "That doesn't sound like the person who agreed, so I won't keep it.")
+                await capture.run(max_secs=5, start_timeout=0.7, end_silence_secs=0.7)   # until they stop talking
+                return await params.result_callback(
+                    {"error": "the voice in the sample is not the voice that agreed, nothing kept", **check},
+                    properties=FunctionCallResultProperties(run_llm=False))
+            clone = await asyncio.to_thread(voices.save, name, clip, consent, RATE, heard, score,
+                                            speaker.MODEL if score is not None else None)
             await switch(params, clone.voice)
-            logger.info(f"clone: stored {clone.voice} ({clone.seconds} s of {speech:.0f} s speech), "
+            checked = f"same voice, {score}" if score is not None else "not checked"
+            logger.info(f"clone: stored {clone.voice} ({clone.seconds} s of {speech:.0f} s speech, {checked}), "
                         f"switched in {(time.perf_counter() - t_end) * 1000:.0f} ms")
             # still muted: the friend is usually mid-sentence when the recording stops, and their last words
             # would interrupt this line and become a turn of their own
             await say(params, "Got it. This is me in your voice now." if own else f"Got it. This is me as {name} now.")
             await capture.run(max_secs=5, start_timeout=0.7, end_silence_secs=0.7)   # until they stop talking
             await params.result_callback(
-                {"cloned": name, "voice": clone.voice, "seconds": clone.seconds,
+                {"cloned": name, "voice": clone.voice, "seconds": clone.seconds, **check,
                  "note": "Done and over: consent given, recording finished and saved, and you have already said "
                          "aloud that you now speak in this voice. Nobody needs to talk for it any more; carry on the "
                          "conversation normally, in this voice, until the user asks for your own voice back "
@@ -222,7 +240,7 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
     async def use_voice(params: FunctionCallParams):
         name = str(params.arguments.get("name", "")).strip()
         keep = bool(params.arguments.get("keep", False))
-        if voices.slug(name) in ("own", "your-own", "default", "winston", "yours"):
+        if voices.slug(name) in ("own", "your-own", "default", "yours", voices.slug(me)):
             voice, who = own_voice(cfg), "own"
         elif clone := voices.find(name):
             voice, who = clone.voice, clone.name
@@ -255,7 +273,7 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
     use_schema = FunctionSchema(
         name="use_voice",
         description="Switch the voice you speak in: a cloned voice by the person's name, or \"own\" for your own "
-                    "(Winston's) voice back. \"Use my voice\" from the user means their cloned voice, under their "
+                    f"({me}'s) voice back. \"Use my voice\" from the user means their cloned voice, under their "
                     "name, not \"own\". The switch lasts this conversation; set keep only when the user asks to keep "
                     "it. Clones are listed and deleted on the Voice page of the web UI, not by voice. "
                     f"Cloned voices: {', '.join(known) if known else 'none yet'}.",

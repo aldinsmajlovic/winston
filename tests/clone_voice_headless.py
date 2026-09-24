@@ -6,7 +6,7 @@ TTS) with a scripted microphone instead of a browser. Needs the LLM (:8000) and 
 The user asks in one VCTK voice to clone a friend; the "friend", another VCTK voice, says the
 consent line and then talks, as audio only (no VAD frames, as a real mic under the tap sends
 none); then the user asks for Winston's own voice back. Passes when the clone and its consent
-are stored, Winston's next sentence starts within 2 s of the recording ending, and use_voice
+are stored with a same-voice score at or above the threshold, Winston's next sentence starts within 2 s of the recording ending, and use_voice
 reverts, with no turn taken from the friend's words after the recording stopped (the passage runs
 past the 15 s the recording keeps, as a real friend mid-sentence does). The test clone is deleted afterwards unless --keep. The real clones are copied aside first
 and put back after, so a misheard name can never cost one.
@@ -33,9 +33,9 @@ from pipecat.workers.runner import WorkerRunner
 sys.path.insert(0, str(Path(__file__).parent))
 from m2_headless_roundtrip import CHUNK, SR, synth_user_audio, write_wav  # noqa: E402
 from winston.channels import voice as vp  # noqa: E402
-from winston.channels.clone import MicTap, make_voice_tools  # noqa: E402
+from winston.channels.clone import CONSENT_LINE, MicTap, make_voice_tools  # noqa: E402
 from winston.config import resolve  # noqa: E402
-from winston.core import voices  # noqa: E402
+from winston.core import speaker as same_voice, voices  # noqa: E402
 from winston.core.brain import Brain, ToolCallLogObserver  # noqa: E402
 
 USER_VOICE, FRIEND_VOICE, FRIEND = "vctk/p226_023", "vctk/p243_023", "Zelda"
@@ -165,19 +165,16 @@ async def main(keep: bool, save_dir: Path | None) -> int:
 
 
 async def run(keep: bool, save_dir: Path | None) -> int:
-    ask, _ = synth_user_audio(f"Winston, clone my friend {FRIEND}'s voice.", USER_VOICE)
-    consent, _ = synth_user_audio(f"I'm {FRIEND}, and I agree that Winston can copy my voice.", FRIEND_VOICE)
+    me = vp.CFG.assistant.name
+    ask, _ = synth_user_audio(f"{me}, clone my friend {FRIEND}'s voice.", USER_VOICE)
+    consent, _ = synth_user_audio(CONSENT_LINE.format(name=FRIEND, assistant=me), FRIEND_VOICE)
     talk, _ = synth_user_audio(PASSAGE, FRIEND_VOICE)
     back, _ = synth_user_audio("Thanks. Now go back to your own voice, please.", USER_VOICE)
 
     brain = Brain(vp.CFG, channel="voice"); await brain.start()
     stt, tts, tap, mic, speaker = vp.build_stt(), vp.build_tts(), MicTap(), Mic(), Speaker()
 
-    async def transcribe(pcm):
-        async for f in stt.run_stt(pcm.tobytes()):
-            if f is not None and getattr(f, "text", None):
-                yield f.text
-    for schema, handler in make_voice_tools(vp.CFG, tap, transcribe):
+    for schema, handler in make_voice_tools(vp.CFG, tap, vp.transcribe):
         brain.add_tool(schema, handler)
     agg = LLMContextAggregatorPair(brain.new_context())
     heard = Heard()
@@ -204,6 +201,8 @@ async def run(keep: bool, save_dir: Path | None) -> int:
         clone = voices.find(named)                  # the name as the STT heard it
         print(f"\nclone stored: {clone}\nfirst audio after the recording ended: {first:.0f} ms")
         ok &= clone is not None and (voices.friends_dir() / f"{clone.slug}.consent.wav").is_file() and first < 2000
+        # the friend's consent and passage are one voice, so the same-voice check must have run and passed
+        ok &= clone is not None and same_voice.same_voice(clone.consent_score) is True
         await wait_for(lambda: not speaker.speaking and not tap.muted, 30, "Winston kept talking")
         await asyncio.sleep(1)
         leaked = [t for at, t in heard.texts if at > speaker.mark]

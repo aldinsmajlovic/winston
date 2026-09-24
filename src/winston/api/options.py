@@ -100,6 +100,34 @@ def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="stt_models", choices=choices, source="onnx-asr")
 
 
+HINT_ICONS = {"assistant": "assistant", "voice": "voice", "contact": "discord", "home_assistant": "homeassistant"}
+
+
+def _hint_words(cfg: WinstonConfig, params: dict) -> Options:
+    """The hint words Winston adds by himself (core/hints.py), each with where it comes from. `source`
+    says what the current engine does with hint words."""
+    from winston.config.registry import get as get_adapter
+    from winston.core.hints import SOURCES, automatic
+    try:
+        takes = bool(getattr(get_adapter("stt", cfg.stt.provider), "supports_hints", False))
+    except Exception:                                                   # noqa: BLE001
+        takes = False
+    name = cfg.stt.provider.capitalize()
+    note = (f"{name} is given these words before it listens." if takes else
+            f"{name} cannot be told words in advance; {cfg.assistant.name} corrects close misspellings "
+            "afterwards.")
+    if not cfg.stt.fix_misspellings and not takes:
+        note = f"{name} cannot be told words in advance, and Fix close misspellings is off, so they are not used."
+    seen: set[str] = set()
+    choices = []
+    for h in automatic(cfg):
+        if h.word.lower() not in seen:
+            seen.add(h.word.lower())
+            choices.append(Choice(value=h.word, label=h.word, icon=HINT_ICONS[h.source], hint=SOURCES[h.source],
+                                  group=h.source))
+    return Options(name="hint_words", choices=choices, source=note)
+
+
 async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
     url = (params.get("base_url") or cfg.llm.base_url).rstrip("/")
     headers = {"Authorization": f"Bearer {key}"} if (key := _secret(cfg.llm.api_key_env)) else {}
@@ -319,6 +347,7 @@ async def _discord_users(cfg: WinstonConfig, params: dict) -> Options:
 
 PROVIDERS = {
     "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
+    "hint_words": _hint_words,
     "llm_models": _llm_models, "voices": _voices, "gemini_models": _gemini_models, "claude_models": _claude_models,
     "ha_entities": _ha_entities, "ha_domains": _ha_domains, "discord_users": _discord_users,
 }

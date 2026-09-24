@@ -6,6 +6,22 @@ Winston's logo is also his presence: the mark in the Talk page header, the talk 
 wall screen in dashboard mode, the favicon, and later the light pattern on a Voice PE. Every page draws him through
 one component, `web/src/components/presence.tsx`, so he looks and moves the same everywhere.
 
+## His name
+
+`assistant.name` on the Assistant page is the one source of his name. The system prompt opens with it
+("# Mira", then "Your name is Mira."), ahead of the persona's own rules, and the rest follows it: the
+consent line for a cloned voice, the voice and message tool descriptions, the hint words, the Talk and
+Memory headers, `winston talk` and the greeting. The product keeps its name: the package, the
+`winston` command, `winstond` and this logo.
+
+His persona is your text, so a rename does not change it silently. When you save a new name and
+`persona.md` says the old one, the Save confirm lists those lines and offers to change them, checked
+by default. Kept checked, the old name is rewritten as a whole word only ("Winston" and "Winston's",
+never `winston` or `winstond`) and the previous file is kept as `persona.md.bak`. Unchecked, the file
+stays as it is and the prompt still opens with the new name. A rename restarts the voice, satellite
+and Discord channels. The wake word on a Voice PE is set per box and does not change with the name
+([Voice PE](voice-pe.md)).
+
 ## The mark
 
 A disc split in two by a soft W: sky above, charcoal below. The W takes the middle 70% of the width

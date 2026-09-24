@@ -14,7 +14,7 @@ back to metric and a 24-hour clock.
 | `web_search` | Current facts via Gemini with Google Search grounding | `GEMINI_API_KEY`, billing on the key | `tools.web_search.max_per_day` (100) |
 | `ask_claude` | Hard questions to Claude through the Agent SDK | `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or a Claude Code login | `tools.ask_claude.max_usd_per_day` (3 USD) |
 | `send_message` | A Discord DM to a listed contact or you | `DISCORD_BOT_TOKEN`, `channels.discord.contacts` | Listed names only |
-| `clone_voice` | Records a friend who agrees out loud and speaks in their voice ([voices](voices.md#cloned-voices)) | The voice channel | Spoken consent, checked; typed channels only say to ask by voice |
+| `clone_voice` | Records a friend who agrees out loud and speaks in their voice ([voices](voices.md#cloned-voices)) | The voice channel | Spoken consent, checked for the words and for the same voice as the sample; typed channels only say to ask by voice |
 | `use_voice` | Switches to a cloned voice or back to his own, optionally kept in config | The voice channel | Cloned voices only |
 
 Only the question text leaves the house for `web_search` and `ask_claude`: no home state, no memory.
@@ -55,7 +55,8 @@ At the top, "How he behaves" shows his persona (`data/persona.md`): a few short 
 edited like facts, and the technical instructions folded under them. The file has two sections,
 `## How you behave` and `## Instructions`; the model reads them as one flat list. Only you write it,
 from the page or an editor: the remember tool never can, which is why rules for him belong here and
-facts about you in memory. The previous version is kept as `persona.md.bak`.
+facts about you in memory. The previous version is kept as `persona.md.bak`. His name is not taken
+from this file: the prompt opens with `assistant.name` (see [Identity](identity.md#his-name)).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/memory-dark.png">

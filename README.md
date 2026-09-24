@@ -27,7 +27,10 @@ be swapped for a hosted service when that suits you better.
 - **A wall dashboard.** Full screen for a tablet: tap the logo to talk, his answer in large type,
   announcements across the screen.
 - **Clones a friend's voice by asking.** "Clone my friend's voice": they agree out loud, talk for fifteen
-  seconds, and Winston speaks as them until you ask for his own voice back.
+  seconds, and Winston speaks as them until you ask for his own voice back. A voice is kept only when the
+  one agreeing is the one recorded.
+- **Hears your names.** His name, your friends' and your rooms' are hint words, and close mishearings
+  ("Winson") are corrected. Rename him in settings and everything he says about himself follows.
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; stored as Markdown in git, and
   shown on a Memory page where you can search, add, edit and forget, next to his own rules.
 - **Speaks your region.** Celsius or Fahrenheit, metric or imperial, 24- or 12-hour clock, taken from Home

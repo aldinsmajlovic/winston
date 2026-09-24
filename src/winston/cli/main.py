@@ -127,10 +127,10 @@ def talk(message: list[str] = typer.Argument(None, help="Messages to send; none 
 
 
 @app.command()
-def announce(text: str = typer.Argument(..., help="What Winston says."),
+def announce(text: str = typer.Argument(..., help="What the assistant says."),
              context: list[str] = typer.Option(None, "--context", "-c",
                                                help="key=value details kept for follow-up questions; repeatable.")):
-    """Make Winston say something on its own: chime and speech on connected speakers, Discord per config."""
+    """Make the assistant say something on its own: chime and speech on connected speakers, Discord per config."""
     ctx = dict(kv.split("=", 1) for kv in context or [] if "=" in kv)
     try:
         r = httpx.post(f"{_api()}/api/announce", json={"text": text, "context": ctx, "source": "cli"}, timeout=10)
@@ -147,7 +147,7 @@ def announce(text: str = typer.Argument(..., help="What Winston says."),
 
 @app.command()
 def memory():
-    """Show what Winston remembers, as it goes into the prompt. Edit the files to change it."""
+    """Show what the assistant remembers, as it goes into the prompt. Edit the files to change it."""
     from winston.core.memory import prompt_block, vault
     cfg = load()
     print(prompt_block(cfg) or "Nothing remembered yet.")
@@ -160,7 +160,7 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     the milestones need the engines up."""
     tests = repo_root() / "tests"
     unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py",
-            "verify_cases.py", "profiles_load.py"]
+            "verify_cases.py", "hints_cases.py", "consent_cases.py", "profiles_load.py"]
     plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {tests / t}" for t in unit)],
             "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],

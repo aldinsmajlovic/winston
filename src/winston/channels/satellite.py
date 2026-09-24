@@ -47,6 +47,7 @@ from winston.config.registry import get as get_adapter
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.brain import Brain, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
+from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 
 MIC_RATE = 16000                 # what the box streams
@@ -197,7 +198,7 @@ class Satellite:
     """One box: the API connection, its voice assistant subscription and its runs."""
 
     def __init__(self, cfg: WinstonConfig, room: str, dev: SatelliteDevice, audio: "AudioServer",
-                 stt, feed: FeedPoster):
+                 stt: Hearing, feed: FeedPoster):
         self.cfg, self.room, self.dev, self.audio, self.stt, self.feed = cfg, room, dev, audio, stt, feed
         key = os.environ.get(dev.key_env, "").strip() if dev.key_env else ""
         if dev.key_env and not key:
@@ -304,11 +305,7 @@ class Satellite:
         return buf
 
     async def _transcribe(self, pcm: np.ndarray) -> str:
-        cls, model = self.stt
-        t0 = time.perf_counter()
-        text = await asyncio.to_thread(cls.transcribe, model, pcm, MIC_RATE)
-        logger.info(f"{self.room}: STT {len(pcm) / MIC_RATE:.2f}s -> {text!r} in {(time.perf_counter() - t0) * 1000:.0f} ms")
-        return text
+        return await self.stt.transcribe(pcm, MIC_RATE, label=f"{self.room}: STT")
 
     async def _conversation(self) -> Conversation:
         c = self.conversation
@@ -414,7 +411,7 @@ async def main():
     audio = AudioServer(cfg)
     await audio.start()
     cls = get_adapter("stt", cfg.stt.provider)
-    stt = (cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+    stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
     sats = [Satellite(cfg, room, dev, audio, stt, feed) for room, dev in s.devices.items()]
     for sat in sats:
         await sat.connect()

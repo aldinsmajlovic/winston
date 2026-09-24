@@ -30,7 +30,7 @@ from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub
 from winston.core.brain import api_key
-from winston.core import memory, persona, region, voices
+from winston.core import memory, persona, region, speaker, voices
 from winston.core.live import Feed, LiveEvent
 from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
@@ -113,6 +113,10 @@ class ClonedVoice(BaseModel):
     created: float
     seconds: float
     consent_text: str       # what the consent recording was heard to say
+    consent_score: float | None = None        # same-voice check (core/speaker); None: not checked
+    consent_checked_at: float | None = None
+    consent_model: str | None = None
+    same_voice_at: float = speaker.SAME_VOICE  # the score a clone needs to be kept
 
 
 class MemoryFact(BaseModel):
@@ -181,6 +185,14 @@ class Forgotten(BaseModel):
     index: int              # where it was, for Undo
 
 
+class PersonaRename(BaseModel):
+    old: str
+    new: str
+    lines: list[str]        # the persona file's lines that say the old name as a whole word, as they are now
+    places: int             # whole-word occurrences in those lines
+    renamed: bool = False   # the save rewrote them (persona.md.bak keeps the previous file)
+
+
 class ConfigResult(BaseModel):
     saved: bool
     restarts: list[str]     # engines that must restart before the change is live; "control" is winstond itself
@@ -188,6 +200,9 @@ class ConfigResult(BaseModel):
     # Set when the save changed the Home Assistant list, domains or switch and Home Assistant is on: what
     # applying it there did. A Home Assistant that is away never fails the save; applied says false.
     ha_apply: HAApply | None = None
+    # Set when the change renames him and his persona file says the old name: what a rename would
+    # rewrite there (dry run), or what it did (a save with rename_persona).
+    persona_rename: PersonaRename | None = None
 
 
 class ConfigVersion(BaseModel):
@@ -280,6 +295,8 @@ def _if_match(header: str | None) -> str | None:
     return header.strip().removeprefix("W/").strip('"') or None
 
 
+RENAME_PERSONA = ("When the change renames him: also rewrite the old name as a whole word in his persona file "
+                  "(persona_rename in the dry run lists where), keeping persona.md.bak")
 CLAUDE_LABELS = {"api_key": "API key (ANTHROPIC_API_KEY)", "oauth_token": "Token from claude setup-token",
                  "login": "Claude Code login on this machine", "none": "Nothing"}
 MISSING = object()
@@ -423,7 +440,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                 hub.unsubscribe(channel, q)
         return StreamingResponse(gen(), media_type="text/event-stream")
 
-    @app.get("/api/live", summary="What Winston hears, says and does: recent events, then new ones, as "
+    @app.get("/api/live", summary="What he hears, says and does: recent events, then new ones, as "
                                   "server-sent events (LiveEvent objects)")
     async def live():
         q = feed.subscribe()
@@ -449,7 +466,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return Ok()
 
     @app.post("/api/chat", response_model=Ok,
-              summary="Say something to Winston in the web conversation; the reply arrives on /api/live")
+              summary="Say something to him in the web conversation; the reply arrives on /api/live")
     async def chat(m: ChatMessage):
         spawn(web.ask(m.text.strip()))
         return Ok()
@@ -466,7 +483,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                                                                   "streaming was sent but the engine does not take "
                                                                   "it (or its server predates per-request "
                                                                   "streaming). Absent otherwise."}}}},
-              summary="Text in Winston's voice as streamed 16-bit mono PCM, for read aloud and the Voice page's "
+              summary="Text in his voice as streamed 16-bit mono PCM, for read aloud and the Voice page's "
                       "previews; voice and streaming may be tried before they are saved")
     async def speak(s: SpeakRequest):
         cfg = app.state.cfg
@@ -541,7 +558,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def delete_clone(slug: str):
         c = clone(slug)
         if app.state.cfg.tts.voice == c.voice:
-            raise HTTPException(409, f"{c.name}'s voice is Winston's voice now; pick another voice first")
+            raise HTTPException(409, f"{c.name}'s voice is {app.state.cfg.assistant.name}'s voice now; pick another voice first")
         voices.delete(c.slug)
         return Ok()
 
@@ -666,15 +683,27 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     def running_restarts(old: dict, new: dict) -> list[str]:
         return sorted(r for r in restarts_for(old, new, schema) if r in sup.items or r == "control")
 
+    def persona_rename(cur: WinstonConfig, new: WinstonConfig) -> PersonaRename | None:
+        """What renaming him would change in the persona file new points at; None when the name is the
+        same or the file never says the old one."""
+        old, name = cur.assistant.name.strip(), " ".join(new.assistant.name.split())
+        if not name or old == name or not (lines := persona.rename_lines(new, old)):
+            return None
+        word = persona.name_word(old)
+        return PersonaRename(old=old, new=name, lines=lines, places=sum(len(word.findall(x)) for x in lines))
+
     async def commit(cur: WinstonConfig, v: str, new: WinstonConfig, dry_run: bool, applied: list[str],
-                     response: Response) -> ConfigResult:
+                     response: Response, rename_persona: bool = False) -> ConfigResult:
         restarts = [r for r in running_restarts(_dump(cur), _dump(new)) if r not in applied]
+        rename = persona_rename(cur, new)
         if dry_run:
             response.headers["ETag"] = _etag(v)
-            return ConfigResult(saved=False, restarts=restarts, version=v)
+            return ConfigResult(saved=False, restarts=restarts, version=v, persona_rename=rename)
         save(new)
         app.state.cfg, app.state.version = new, file_version()
         remember(app.state.version, new)
+        if rename and rename_persona:       # after the config, so a refused save never touches the file
+            rename.renamed = persona.rename(new, rename.old, rename.new) > 0
         # Before the reload, so channels that restart read Home Assistant's new tool list. A live voice
         # switch never touches Home Assistant.
         ha_apply = await apply_saved(cur, new) if "voice" not in applied and ha_changed(cur, new) else None
@@ -684,20 +713,22 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         sup.settle(lambda base: restarts_for(base, new_d, schema))     # a change undone needs no restart
         await web.reset(new)
         response.headers["ETag"] = _etag(app.state.version)
-        return ConfigResult(saved=True, restarts=restarts, version=app.state.version, ha_apply=ha_apply)
+        return ConfigResult(saved=True, restarts=restarts, version=app.state.version, ha_apply=ha_apply,
+                            persona_rename=rename)
 
     conflict = {409: {"model": ConfigConflict, "description": "Changed on disk since the If-Match version"}}
 
     @app.put("/api/config", response_model=ConfigResult, responses=conflict,
              summary="Validate and save a whole config; dry_run only reports which engines a change restarts. "
                      "With If-Match, refused while the saved file is another version")
-    async def put_config(new: WinstonConfig, request: Request, response: Response, dry_run: bool = Query(False)):
+    async def put_config(new: WinstonConfig, request: Request, response: Response, dry_run: bool = Query(False),
+                         rename_persona: bool = Query(False, description=RENAME_PERSONA)):
         async with config_lock:
             cur, v = current()
             if (base := _if_match(request.headers.get("if-match"))) and base != v:
                 return JSONResponse(ConfigConflict(detail="The config was saved elsewhere since it was loaded",
                                                    paths=[], version=v).model_dump(), status_code=409)
-            return await commit(cur, v, new, dry_run, [], response)
+            return await commit(cur, v, new, dry_run, [], response, rename_persona)
 
     @app.patch("/api/config", response_model=ConfigResult, responses=conflict,
                summary="Change some fields of the saved config: each change sets one path (null removes it). "
@@ -705,7 +736,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                        "that was also changed since that version is a conflict (409); without it the changes win")
     async def patch_config(p: ConfigPatch, request: Request, response: Response, dry_run: bool = Query(False),
                            applied: list[str] = Query([], description="Processes that already run this change "
-                                                                      "(a live voice switch): not marked for restart")):
+                                                                      "(a live voice switch): not marked for restart"),
+                           rename_persona: bool = Query(False, description=RENAME_PERSONA)):
         async with config_lock:
             cur, v = current()
             cur_d = _dump(cur)
@@ -727,7 +759,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             except ValidationError as e:
                 return JSONResponse({"detail": jsonable_encoder(e.errors(include_url=False, include_context=False,
                                                                          include_input=False))}, status_code=422)
-            return await commit(cur, v, new, dry_run, applied, response)
+            return await commit(cur, v, new, dry_run, applied, response, rename_persona)
 
     @app.get("/api/config/schema", summary="JSON Schema of the config, with level and restarts per field")
     async def get_schema() -> dict:
@@ -835,7 +867,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return "Not reachable: nothing answered at that address" if "Connect" in name else f"Not reachable ({name})"
 
     @app.get("/api/providers/home_assistant/exposure", response_model=HAExposure,
-             summary="Winston's list as Home Assistant has it: exposed or not, aliases, area, device and state per "
+             summary="His list as Home Assistant has it: exposed or not, aliases, area, device and state per "
                      "entity, what else is exposed (drift), the MCP server and whether a save would change anything")
     async def ha_exposure():
         ha = ha_client()

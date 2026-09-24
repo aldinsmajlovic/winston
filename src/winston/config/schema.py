@@ -52,7 +52,9 @@ class Model(BaseModel):
 
 class AssistantConfig(Model):
     model_config = section("{brains}")
-    name: str = Field("Winston", description="What the assistant calls itself.")
+    name: str = Field("Winston", description="What he is called: his name in the prompt, the "
+                                  "consent line and the hint words. Renaming offers to change it in "
+                                  "his persona too.")
     persona: str = Field("persona.md", title="Persona file",
                          description="Persona file, relative to the data directory.",
                          json_schema_extra=ui("advanced", options="personas"))
@@ -199,6 +201,17 @@ class STTConfig(Model):
                                      description="Weight precision. int8 is faster on the CPU at no audible "
                                                  "accuracy cost; empty for full precision.",
                                      json_schema_extra=ui("advanced", empty_means_off=True))
+    hint_words: list[str] = Field(default_factory=list, title="Hint words",
+                                  description="Names and words he should hear right. His name, cloned voices, "
+                                              "Discord contacts and names from the Home Assistant list are added by "
+                                              "themselves; add the rest here, one word each, such as room names in "
+                                              "another language.",
+                                  json_schema_extra=ui(widget="hint_words"))
+    fix_misspellings: bool = Field(True, title="Fix close misspellings",
+                                   description="After speech to text, a word that sounds like a hint word and is "
+                                               "spelled close to it becomes that word, so a misheard name comes "
+                                               "out right. Common English words are never changed, and "
+                                               "every change is logged as before and after.")
 
 
 class TTSStreamingConfig(Model):
@@ -272,7 +285,7 @@ class VADConfig(Model):
 
 class VoiceChannel(Model):
     model_config = section("voice", enabled_by="enabled")
-    enabled: bool = Field(True, description="Talk to Winston by voice from the browser. Room satellites have "
+    enabled: bool = Field(True, description="Talk to him by voice from the browser. Room satellites have "
                                             "their own channel.")
     host: str = Field("127.0.0.1",
                       description="Address the voice channel listens on. 127.0.0.1 keeps it on this machine; "
@@ -285,13 +298,13 @@ class VoiceChannel(Model):
 
 class DiscordChannel(Model):
     model_config = section("discord", enabled_by="enabled", icon="discord")
-    enabled: bool = Field(False, description="Talk to Winston in Discord DMs and get announcements there.")
+    enabled: bool = Field(False, description="Talk to him in Discord DMs and get announcements there.")
     token_env: str = Field("DISCORD_BOT_TOKEN", title="Token variable",
                            description="The variable in data/.env that holds the Discord bot token.",
                            json_schema_extra=ui("advanced", restarts=["{brains}"],
                                                 secret=secret("DISCORD_BOT_TOKEN", "Bot token")))
     allowed_user: str = Field("", title="Your Discord user id", pattern=r"^(\d{17,20})?$",
-                              description="The one Discord user Winston answers and calls \"me\". In Discord: "
+                              description="The one Discord user he answers and calls \"me\". In Discord: "
                                           "Settings, Advanced, Developer Mode on, then right-click yourself, Copy "
                                           "User ID. Empty reads the variable under Advanced.",
                               json_schema_extra=ui(restarts=["{brains}"], options="discord_users"))
@@ -305,7 +318,7 @@ class DiscordChannel(Model):
                                    json_schema_extra=ui("advanced"))
     contacts: dict[str, Annotated[str, Field(pattern=DISCORD_ID, json_schema_extra=ui(options="discord_users"))]] = \
         Field(default_factory=dict, title="Contacts",
-              description="People Winston may message, by the name you say and their Discord user. The bot can "
+              description="People he may message, by the name you say and their Discord user. The bot can "
                           "only reach people who share a server with it.",
               json_schema_extra=ui(restarts=["{brains}"], key_title="Name", value_title="Discord user",
                                    icon="discord"))
@@ -331,14 +344,14 @@ class SatelliteDevice(Model):
 
 class SatelliteChannel(Model):
     model_config = section("satellite", enabled_by="enabled")
-    enabled: bool = Field(False, description="Talk to Winston through room satellites such as Home Assistant's "
+    enabled: bool = Field(False, description="Talk to him through room satellites such as Home Assistant's "
                                              "Voice Preview Edition. The box must not also be in Home Assistant's "
                                              "voice pipeline: only one client can have its microphone.")
     devices: dict[str, SatelliteDevice] = Field(default_factory=dict,
                                                 description="Satellites by room or name, e.g. \"living room\".",
                                                 json_schema_extra=ui(key_title="Room", icon="satellite"))
     http_port: int = Field(8702, ge=1, le=65535, title="Audio port",
-                           description="Port the boxes fetch Winston's spoken replies from, on every interface.",
+                           description="Port the boxes fetch his spoken replies from, on every interface.",
                            json_schema_extra=ui("advanced"))
     public_host: str | None = Field(None, title="Address the boxes use",
                                     description="This machine's address as the boxes reach it. Unset finds it from "
@@ -402,7 +415,7 @@ class HomeAssistantConfig(Model):
     mcp_path: str = Field("/api/mcp", title="MCP path", description="Path of Home Assistant's MCP server integration.",
                           json_schema_extra=ui("advanced"))
     expose: dict[str, ExposedEntity] = Field(default_factory=dict, title="Entities",
-                                             description="Entities Winston may see and control, with the names people say for them. Nothing else in "
+                                             description="Entities he may see and control, with the names people say for them. Nothing else in "
                                                          "Home Assistant is visible to him. Saving applies the list to Home "
                                                          "Assistant: exposes it, un-exposes the rest and adds the "
                                                          "aliases.",
@@ -417,7 +430,7 @@ class HomeAssistantConfig(Model):
 
 class Providers(Model):
     home_assistant: HomeAssistantConfig | None = Field(None, title="Home Assistant",
-                                                        description="The Home Assistant Winston sees and controls. "
+                                                        description="The Home Assistant he sees and controls. "
                                                                     "Unset: no smart home.")
 
     @property
@@ -439,7 +452,7 @@ class SensorPair(Model):
 
 class WebSearchConfig(Model):
     model_config = section("{brains}", enabled_by="enabled", icon="gemini")
-    enabled: bool = Field(False, description="Let Winston look up current facts on the web. Only the search question "
+    enabled: bool = Field(False, description="Let him look up current facts on the web. Only the search question "
                                              "leaves the house.")
     provider: Literal["gemini"] = Field("gemini", description="Search backend. gemini: Gemini with Google Search "
                                                               "grounding (needs billing enabled on the key).",
@@ -457,7 +470,7 @@ class WebSearchConfig(Model):
     max_per_day: int = Field(100, ge=0, title="Searches per day",
                              description="Hard cap; past it the tool refuses until midnight.")
     timeout: float = Field(15.0, ge=1, title="Timeout (s)",
-                           description="Seconds before a search gives up and Winston says it could not look it up.",
+                           description="Seconds before a search gives up and he says it could not look it up.",
                            json_schema_extra=ui("advanced"))
 
 
@@ -507,8 +520,8 @@ class MemoryConfig(Model):
 
 class AnnounceConfig(Model):
     model_config = section("control", enabled_by="enabled")
-    enabled: bool = Field(True, description="Let Winston speak on its own: Home Assistant automations, the API and "
-                                            "`winston announce` send it something to say.")
+    enabled: bool = Field(True, description="Let him speak on his own: Home Assistant automations, the API and "
+                                            "`winston announce` send him something to say.")
     chime: str = Field("{repo}/assets/sounds/chime.wav", description="Sound played before an announcement, so it "
                        "is clearly a notification. Empty for none.",
                        json_schema_extra=ui("advanced", restarts=["voice"], options="sounds", empty_means_off=True))
