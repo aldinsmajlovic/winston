@@ -253,3 +253,25 @@ On the CPU (a 5800X, while the live engines held the GPU) all three new servers 
 `vctk/p254_023` and spoke streamed and whole, and Parakeet heard the words back: Gepard at a
 real-time factor of about 1.1 with the first audio after 0.75 s, Qwen3-TTS at about 6 and VoxCPM2 at
 about 20. These prove the servers, not the GPU speed the benchmark is for.
+
+### Results, 24 September
+
+Run on the RTX 3090 next to the 27B brain (the live Chatterbox stopped for the GPU candidates), 20 of
+Winston's lines in three voices; first sound is when a listener would hear him start. Then 36 blind
+A/B pairs against Turbo as it ran (unstreamed), judged by Aldin.
+
+| Engine | First sound | Word errors | GPU memory | Preferred over Turbo |
+| --- | --- | --- | --- | --- |
+| Chatterbox-Turbo, unstreamed | 0.96 s | 3.1% | 4.0 GB | (the baseline) |
+| Chatterbox-Turbo, streamed | 0.45 s | 3.4% | 4.2 GB | 4 of 6 |
+| Pocket TTS, built-in voice george | 0.71 s | 2.1% | none (CPU) | 4 of 6 |
+| VoxCPM2 | 0.87 s | 3.6% | 6.9 GB | 3 of 6 (1 same) |
+| Qwen3-TTS 1.7B | 0.93 s | 3.6% | 6.5 GB | 2 of 6 |
+| Gepard 1.0 | 0.46 s | 9.4% | 2.2 GB | 1 of 6 (1 same) |
+| Gepard 1.1 | 0.49 s | 14.4% | 2.2 GB | 0 of 6 |
+
+Turbo stays. Streamed, it halves the wait and was preferred over its unstreamed self, so the joins
+are not a problem. No candidate is clearly more human: VoxCPM2 edges it but leaves the card at 24.0 of
+24.6 GB, Qwen3-TTS runs slower than real time (RTF 1.25), and Gepard drops and garbles words. Pocket
+won with a different voice, so its pairs compare voices more than engines; they suggest the voice
+Winston speaks in matters more than the engine. Six pairs per engine is a leaning, not proof.
