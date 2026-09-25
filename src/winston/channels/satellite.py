@@ -45,7 +45,7 @@ from winston.channels.voice import LatencyLog, build_tts
 from winston.config import load
 from winston.config.registry import get as get_adapter
 from winston.config.schema import SatelliteDevice, WinstonConfig
-from winston.core.brain import Brain, ToolCallLogObserver
+from winston.core.brain import Brain, Clock, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
 from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
@@ -129,7 +129,7 @@ class Conversation:
         self.speaker = Speaker(cfg.tts.sample_rate)
         self.latency = LatencyLog(cfg, "satellite")
         self.worker = PipelineWorker(
-            Pipeline([agg.user(), self.brain.llm, guard, build_tts(cfg), self.speaker, agg.assistant()]),
+            Pipeline([agg.user(), Clock(), self.brain.llm, guard, build_tts(cfg), self.speaker, agg.assistant()]),
             params=PipelineParams(enable_metrics=False), idle_timeout_secs=None,
             observers=[guard.observer, self.brain.verifier.observer, self.tracker,
                        ToolCallLogObserver(cfg, channel="satellite"),
@@ -225,23 +225,28 @@ class Satellite:
         info = await self.client.device_info()
         logger.info(f"{self.room}: connected to {info.friendly_name or info.name} ({info.model}, ESPHome "
                     f"{info.esphome_version})")
-        if self.dev.wake_word:
-            try:
-                conf = await self.client.get_voice_assistant_configuration(5)
-                ids = [w.id for w in conf.available_wake_words]
-                if self.dev.wake_word in ids:
-                    await self.client.set_voice_assistant_configuration([self.dev.wake_word])
-                    logger.info(f"{self.room}: wake word {self.dev.wake_word}")
-                else:
-                    logger.warning(f"{self.room}: no wake word {self.dev.wake_word!r} on the box; it has {ids}")
-            except Exception as e:                                          # noqa: BLE001
-                logger.warning(f"{self.room}: could not set the wake word: {e}")
         if self.conversation is None:            # ready before the first wake word, prompt already read
             self.conversation = await Conversation(self.cfg, self.room, self.feed).start()
             await self.conversation.brain.warm()
         self._unsub = self.client.subscribe_voice_assistant(
             handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio,
             handle_announcement_finished=self._handle_announcement_finished)
+        if self.dev.wake_word:                   # after subscribing: the box answers only its voice client
+            try:
+                conf = await self.client.get_voice_assistant_configuration(5)
+                ids = [w.id for w in conf.available_wake_words]
+                wanted = [w.strip() for w in self.dev.wake_word.split(",") if w.strip()]
+                if missing := [w for w in wanted if w not in ids]:
+                    logger.warning(f"{self.room}: no wake word {', '.join(missing)} on the box; it has {ids}")
+                have = [w for w in wanted if w in ids]
+                if len(have) > (most := max(conf.max_active_wake_words, 1)):
+                    logger.warning(f"{self.room}: the box runs {most} wake word(s) at a time; "
+                                   f"not {', '.join(have[most:])}")
+                if use := have[:most]:
+                    await self.client.set_voice_assistant_configuration(use)
+                    logger.info(f"{self.room}: wake word {', '.join(use)}")
+            except Exception as e:                                          # noqa: BLE001
+                logger.warning(f"{self.room}: could not set the wake word: {e}")
 
     async def _on_disconnect(self, expected: bool):
         logger.info(f"{self.room}: disconnected{'' if expected else ' unexpectedly'}")
@@ -384,6 +389,7 @@ class AudioServer:
         run = self.runs.get(request.match_info["run"])
         if run is None:
             raise web.HTTPNotFound()
+        logger.info(f"reply {run.id} fetched by {request.remote}")
         resp = web.StreamResponse(headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
         await resp.prepare(request)
         await resp.write(wav_header(OUT_RATE))

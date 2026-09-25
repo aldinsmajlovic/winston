@@ -341,7 +341,9 @@ class SatelliteDevice(Model):
                                 json_schema_extra=ui("advanced", secret=secret("VOICE_PE_KEY", "Encryption key")))
     wake_word: str | None = Field(None, title="Wake word",
                                   description="On-device wake word to switch on, by id (okay_nabu, hey_jarvis, "
-                                              "hey_mycroft on a stock Voice PE). Unset keeps the box's choice.")
+                                              "hey_mycroft on a stock Voice PE; okay_winston with Winston's "
+                                              "firmware). Several, comma separated, if the box runs more than "
+                                              "one at a time. Unset keeps the box's choice.")
 
 
 class SatelliteChannel(Model):

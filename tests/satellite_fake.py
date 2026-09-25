@@ -110,12 +110,17 @@ class FakeVoicePE:
         elif isinstance(msg, pb.SubscribeVoiceAssistantRequest):
             (self.subscribed.set if msg.subscribe else self.subscribed.clear)()
         elif isinstance(msg, pb.VoiceAssistantConfigurationRequest):
+            # Like ESPHome: only the subscribed voice client gets the list, and a Voice PE runs one at a time
+            if not self.subscribed.is_set():
+                self.send(pb.VoiceAssistantConfigurationResponse())
+                return
             words = [pb.VoiceAssistantWakeWord(id=i, wake_word=w, trained_languages=["en"]) for i, w in
                      (("okay_nabu", "Okay Nabu"), ("hey_jarvis", "Hey Jarvis"), ("hey_mycroft", "Hey Mycroft"))]
             self.send(pb.VoiceAssistantConfigurationResponse(available_wake_words=words, active_wake_words=["okay_nabu"],
-                                                             max_active_wake_words=2))
+                                                             max_active_wake_words=1))
         elif isinstance(msg, pb.VoiceAssistantSetConfiguration):
-            self.active_wake_words = list(msg.active_wake_words)
+            if self.subscribed.is_set():
+                self.active_wake_words = list(msg.active_wake_words)
         elif isinstance(msg, pb.VoiceAssistantResponse):
             self.response.set()
         elif isinstance(msg, pb.VoiceAssistantEventResponse):
@@ -204,6 +209,10 @@ async def main() -> int:
     satellite = sat.Satellite(cfg, "test room", cfg.channels.satellite.devices["test room"], audio, stt, NoFeed())
     await satellite.connect()
     await asyncio.wait_for(box.subscribed.wait(), 15)
+    for _ in range(50):                  # the wake word is set just after subscribing
+        if box.active_wake_words:
+            break
+        await asyncio.sleep(0.1)
     print(f"subscribed; wake words set to {box.active_wake_words}")
 
     ok = box.active_wake_words == ["hey_jarvis"]

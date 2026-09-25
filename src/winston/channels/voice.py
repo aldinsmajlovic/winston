@@ -38,7 +38,7 @@ from pipecat.workers.runner import WorkerRunner
 from winston.config import load, resolve
 from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
-from winston.core.brain import Brain, ToolCallLogObserver, api_key
+from winston.core.brain import Brain, Clock, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
 from winston.core.announce import note, subscribe
 from winston.core.guard import ClaimGuard
@@ -239,6 +239,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         tap,                    # held while a voice is being cloned
         stt,                    # utterance -> text
         aggregators.user(),     # VAD + turn taking; text -> context
+        Clock(),                # the time in front of the newest user message
         brain.llm,              # context -> streamed text, tool calls
         guard,                  # holds back claims no tool call backs, retries once
         tts,                    # sentences -> pcm

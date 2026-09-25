@@ -16,8 +16,25 @@ already uses its MCP server), Assist stays what it is, and Winston becomes the v
 
 ## Setting one up
 
-The satellite channel (`winston/channels/satellite.py`) is built and passes against a fake box
-(`tests/satellite_fake.py`); it has not met a real one yet.
+The satellite channel (`winston/channels/satellite.py`) passes against a fake box
+(`tests/satellite_fake.py`) and has run on a real one since 2026-09-25.
+
+There are two ways in. Without Home Assistant is quicker and is how the first box was set up.
+
+### Without Home Assistant
+
+A box that was never adopted has no API encryption, so Winston needs no key and nothing else
+takes the microphone.
+
+1. Plug the box into the Winston machine with USB-C. It shows up as `/dev/ttyACM0` (Espressif USB
+   JTAG/serial).
+2. Give it Wi-Fi over that cable with Improv Serial, for example from https://web.esphome.io
+   ("Connect", then "Configure Wi-Fi"). Its serial log then prints its IP address.
+3. Add it to `data/config.yaml` without `key_env` (step 4 below) and restart Winston.
+4. When Home Assistant offers the discovered box, ignore it. Adopting it gives it a key and makes
+   Home Assistant the client that takes the microphone.
+
+### With Home Assistant
 
 1. Set the box up with the Home Assistant app as usual (Wi-Fi, adoption, firmware update) and talk
    to Assist once, so the hardware is known good.
@@ -40,6 +57,18 @@ The satellite channel (`winston/channels/satellite.py`) is built and passes agai
 
    and restart Winston. `winston status` lists the satellite; its log says when a box connects.
 
+### The network
+
+The box fetches the replies from this machine on port 8702, so that port must be open to it, and
+Winston connects to the box on port 6053. With the box on its own VLAN, both need a rule:
+
+- the router: the box to this machine, TCP 8702 (and this machine to the box, TCP 6053);
+- this machine's firewall, for example with firewalld:
+  `firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="<box subnet>" port port="8702" protocol="tcp" accept'`.
+
+The symptom of a blocked 8702: the log shows the wake word, what was heard and what he said, but no
+`reply ... fetched by <box>` line, and the box stays silent.
+
 Say the wake word, then the request. A reply that ends in a question keeps the box listening for
 the answer without the wake word. The replies are served from port 8702 on every interface; the box
 must be able to reach this machine there.
@@ -47,17 +76,47 @@ must be able to reach this machine there.
 ### What the stock firmware allows (checked 2026-09-24)
 
 - **The wake word is on the box**: microWakeWord with okay_nabu, hey_jarvis and hey_mycroft
-  (`use_wake_word: false` in the firmware, so it never streams for a server-side wake word). "Hey
-  Winston" needs a microWakeWord model of it and a firmware build, or a firmware that streams
-  continuously for the model in `assets/wake/`. `wake_word` picks one of the three.
+  (`use_wake_word: false` in the firmware, so it never streams for a server-side wake word).
+  `wake_word` picks one; "Okay Winston" needs Winston's firmware (below).
+- **One wake word at a time.** The Voice PE firmware reports `max_active_wake_words` 1, so a box
+  cannot listen for Okay Winston and Okay Nabu together; `wake_word` accepts a comma separated list
+  for boxes that can, and Winston keeps as many as the box allows.
+- **Only the voice client may ask.** The box lists and sets its wake words only for the connection
+  that has subscribed to its voice assistant; anyone else gets an empty list. Winston subscribes
+  first, then sets the wake word.
 - **The wake word is set per box and does not follow his name.** Renaming him (`assistant.name`)
   changes what he calls himself, not what wakes a box: each box keeps its own `wake_word`.
 - **Replies are played from a URL**, as Home Assistant's streaming TTS: RUN_START carries it,
   INTENT_PROGRESS with `tts_start_streaming` tells the box to start fetching, and Winston serves a
   48 kHz WAV that grows while he speaks.
 - **Turn based**: the box stops its microphone at STT_VAD_END and plays the reply; no barge-in.
+- Measured on the real box (2026-09-25, from this machine over Wi-Fi): first audio 0.7 to 0.9 s after
+  the transcript, speech recognition about 0.2 s for 2.5 s of speech.
 - Measured against the fake box: first audio 1.8 to 2.3 s after the end of speech, of which 0.8 s
   is the silence that ends a request (`end_silence_secs`). The browser path measures about 1.3 s.
+
+## Winston's firmware: "Okay Winston"
+
+`services/voice-pe/voice-pe-winston.yaml` is the official factory firmware at a pinned release plus
+the `okay_winston` model from `assets/wake/`; nothing else changes, and Wi-Fi set over USB survives
+the flash. Build and flash with the box on USB:
+
+```sh
+cd services/voice-pe
+uvx esphome compile voice-pe-winston.yaml     # first build 15 to 30 min, downloads the toolchain
+uvx esphome upload voice-pe-winston.yaml --device /dev/ttyACM0
+```
+
+then set `wake_word: okay_winston` for the box. Back up the box first
+(`uvx esptool --port /dev/ttyACM0 read-flash 0 0x1000000 backup.bin`); writing that file back at 0
+restores it exactly.
+
+The model was trained with the
+[microWakeWord trainer](https://github.com/TaterTotterson/microWakeWord-Trainer-Nvidia-Docker) (v17,
+Docker, NVIDIA): 50,000 Piper samples of the phrase, 40,000 steps, 36 min on an RTX 3090 after an
+hour of one-off dataset downloads. ESPHome rejects a manifest with keys it does not know, so
+`okay_winston.json` keeps only its schema's fields; the trainer's full report, with the
+calibration, is `okay_winston_eval.json`.
 
 ## The technical path
 
@@ -117,8 +176,9 @@ defensible position.
 
 ## Next step
 
-The box arrives 2026-09-24. Run the channel against it, measure it, then attempt step two and a
-"Hey Winston" firmware.
+The first box runs Winston's firmware and wakes on Okay Winston, turn based. Next: measure the new
+wake word in the room (misses, false wakes), retrain with real takes if needed, then attempt step
+two.
 
 Sources consulted: https://www.home-assistant.io/voice-pe/ ,
 https://esphome.io/components/voice_assistant/ , https://github.com/esphome/aioesphomeapi ,

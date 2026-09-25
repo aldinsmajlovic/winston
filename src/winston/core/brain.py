@@ -9,6 +9,7 @@ tool-call loop itself, streaming. Local tools sit next to the MCP ones.
 """
 import json
 import os
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -16,9 +17,10 @@ from pathlib import Path
 from loguru import logger
 from mcp.client.session_group import StreamableHttpParameters
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.frames.frames import FunctionCallResultFrame, FunctionCallsStartedFrame
+from pipecat.frames.frames import Frame, FunctionCallResultFrame, FunctionCallsStartedFrame, LLMContextFrame
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.processors.aggregators.llm_context import LLMContext
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.mcp_service import MCPClient
 from pipecat.services.openai.llm import OpenAILLMService
 
@@ -39,11 +41,32 @@ from winston.core.verify import Verifier
 def today() -> str:
     """The date, read when the conversation starts. Asked "what day is it?", the model skipped
     GetDateTime 4 of 6 times and guessed ("Wednesday, 24 June" on a Thursday in September), even
-    told it never knows the date; with the date here it has no reason to guess. The clock still
-    comes from GetDateTime."""
+    told it never knows the date; with the date here it has no reason to guess. The clock comes
+    with each message (Clock)."""
     now = datetime.now()
     return (f"# Today\n\nThis conversation started on {now.strftime('%A')} {now.day} {now.strftime('%B %Y')}. "
-            f"For the time, call GetDateTime.")
+            f"Each message from the user starts with the time it was said, like [06:22]: that is the time now.")
+
+
+class Clock(FrameProcessor):
+    """Puts the time in front of the newest user message, between the user aggregator and the LLM.
+    With thinking off (the spoken channels) the model called GetDateTime for "what time is it?" 3 of
+    6 times and made up the rest (15:44 at 06:22); a satellite said 19:52 at dawn. The system prompt
+    cannot carry the clock: changing it every turn throws away the server's prompt cache. The stamp
+    stays in the history, so the cached prefix does not change either."""
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, LLMContextFrame):
+            msgs = frame.context.get_messages()
+            last = msgs[-1] if msgs else None
+            if (isinstance(last, dict) and last.get("role") == "user" and isinstance(last.get("content"), str)
+                    and not _STAMP.match(last["content"])):
+                last["content"] = f"[{datetime.now():%H:%M}] {last['content']}"
+        await self.push_frame(frame, direction)
+
+
+_STAMP = re.compile(r"\[\d\d:\d\d\] ")
 
 
 def persona(cfg: WinstonConfig) -> str:

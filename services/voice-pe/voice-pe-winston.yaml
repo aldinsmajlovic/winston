@@ -1,0 +1,18 @@
+# Voice PE firmware with "Okay Winston": the official factory firmware at a pinned release, plus
+# the okay_winston microWakeWord model from assets/wake/. Everything else (Wi-Fi setup over USB and
+# Bluetooth, LEDs, dial, mute switch, media player) is the stock firmware. See docs/voice-pe.md.
+#
+#   uvx esphome compile voice-pe-winston.yaml
+#   uvx esphome upload voice-pe-winston.yaml --device /dev/ttyACM0
+packages:
+  voice_pe: github://esphome/home-assistant-voice-pe/home-assistant-voice.factory.yaml@26.9.0
+
+esphome:
+  project:
+    name: Nabu Casa.Home Assistant Voice PE
+    version: 26.9.0-winston
+
+micro_wake_word:
+  models:
+    - model: ../../assets/wake/okay_winston.json
+      id: okay_winston

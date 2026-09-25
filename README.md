@@ -50,13 +50,14 @@ be swapped for a hosted service when that suits you better.
   that do not apply to your engines stay hidden, and a Restart button appears when a saved change waits.
   Voices and streaming can be heard before you save them.
 - **Room satellites.** Home Assistant's Voice Preview Edition as Winston's microphone and speaker in a
-  room ([setup](docs/voice-pe.md)); built and tested against a fake box, the real one is next.
+  room ([setup](docs/voice-pe.md)); running on a real box since 2026-09-25, turn based, woken by "Okay Winston" with Winston's own
+  firmware build.
 - **"Hey Winston".** A custom wake word model for room satellites (for now the Voice PE uses its own
   wake words).
 
 **Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and
-announcements work. The Discord channel is built but not yet run against Discord; the room satellite
-waits for hardware. See [the plan](docs/plan.md).
+announcements work. A Voice PE room satellite works turn based. The Discord channel is built but not yet run against
+Discord. See [the plan](docs/plan.md).
 
 ## Quickstart
 

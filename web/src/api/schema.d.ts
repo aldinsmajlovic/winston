@@ -1899,7 +1899,7 @@ export interface components {
             key_env?: string | null;
             /**
              * Wake word
-             * @description On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE). Unset keeps the box's choice.
+             * @description On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE; okay_winston with Winston's firmware). Several, comma separated, if the box runs more than one at a time. Unset keeps the box's choice.
              */
             wake_word?: string | null;
         };

@@ -17,7 +17,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from winston.config.schema import WinstonConfig
 from winston.core.announce import note
-from winston.core.brain import Brain, ToolCallLogObserver
+from winston.core.brain import Brain, Clock, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
 
 QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-response end
@@ -94,7 +94,7 @@ class TextSession:
         agg = LLMContextAggregatorPair(self.brain.new_context())
         guard = ClaimGuard(cfg, channel=self.channel, spoken=False)
         self._tracker = TurnTracker(guard); self.printer = Printer(self._tracker, self.echo)
-        self._worker = PipelineWorker(Pipeline([agg.user(), self.brain.llm, guard, self.printer, agg.assistant()]),
+        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(), self.brain.llm, guard, self.printer, agg.assistant()]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[guard.observer, self.brain.verifier.observer,
                                                  ToolCallLogObserver(cfg, channel=self.channel),
