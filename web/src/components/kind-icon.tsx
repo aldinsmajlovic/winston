@@ -1,5 +1,6 @@
 import {
   AudioLines,
+  Bell,
   AudioWaveform,
   Blinds,
   Calendar,
@@ -30,6 +31,7 @@ import {
   Puzzle,
   RadioTower,
   ScrollText,
+  Smartphone,
   Speaker,
   Sun,
   Terminal,
@@ -89,6 +91,9 @@ const kinds: Record<string, LucideIcon> = {
   assistant: User,
   voice: Mic,
   extension: Puzzle,
+  // where a nudge can go (speak_up.phone)
+  phone: Smartphone,
+  notify: Bell,
   // Home Assistant domains
   light: Lightbulb,
   switch: ToggleRight,

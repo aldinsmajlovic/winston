@@ -22,6 +22,10 @@ Each box's key in config is its room. The box's conversation is the room's, shar
 sessions set to that room, and a wake holds the room's mic until the reply has played, so a browser
 in the room neither answers too nor hears his voice as a turn (core/rooms.py).
 
+Announcements and nudges reach the box as announcements it fetches like a reply, the chime first: an
+announcement is said as given, a nudge is worded by the box's brain in its conversation (its plain line
+if that does not come), and after a nudge the box listens on, so an answer needs no wake word.
+
 Only one client can hold a box's voice assistant, first come first served (ESPHome's
 voice_assistant.cpp): take the box out of Home Assistant's voice pipeline, or HA wins.
 Turn based for now: the stock firmware stops listening while it plays (docs/voice-pe.md)."""
@@ -51,7 +55,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from winston.channels.clone import make_use_voice_tool
 from winston.channels.text import TurnTracker
-from winston.channels.voice import LatencyLog, build_tts
+from winston.channels.voice import LatencyLog, build_tts, load_chime
 from winston.config import load
 from winston.config.registry import get as get_adapter
 from winston.config.schema import SatelliteDevice, WinstonConfig
@@ -59,7 +63,9 @@ from winston.core.brain import Brain, Clock, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
 from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
+from winston.core.announce import note, nudge_note, subscribe
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
+from winston.core.speak_up import WORDING_SECS, Mentions
 
 MIC_RATE = 16000                 # what the box streams
 OUT_RATE = 48000                 # what the box's media player is set up for
@@ -161,7 +167,8 @@ class Conversation:
         self.speaker = Speaker(cfg.tts.sample_rate)
         self.latency = LatencyLog(cfg, "satellite")
         self.worker = PipelineWorker(
-            Pipeline([agg.user(), Clock(area(cfg, self.room)), self.link.before, self.brain.llm, guard, build_tts(cfg),
+            Pipeline([agg.user(), Clock(area(cfg, self.room)), Mentions(cfg), self.link.before, self.brain.llm, guard,
+                      build_tts(cfg),
                       self.speaker, agg.assistant(), self.link.after]),
             params=PipelineParams(enable_metrics=False), idle_timeout_secs=None,
             observers=[guard.observer, self.brain.verifier.observer, self.tracker,
@@ -251,6 +258,7 @@ class Satellite:
         self._wake_words: list[str] = []    # what a long press switches back on
         self._long_press: int | None = None  # key of the box's button event entity
         self._switching: asyncio.Task | None = None
+        self._listener: asyncio.Task | None = None          # announcements and nudges while connected
 
     async def connect(self):
         self._reconnect = ReconnectLogic(client=self.client, on_connect=self._on_connect,
@@ -273,6 +281,8 @@ class Satellite:
         self._unsub = self.client.subscribe_voice_assistant(
             handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio,
             handle_announcement_finished=self._handle_announcement_finished)
+        if self.cfg.announce.enabled and (self._listener is None or self._listener.done()):
+            self._listener = asyncio.create_task(self._speak_up())
         try:                                     # after subscribing: the box answers only its voice client
             conf = await self.client.get_voice_assistant_configuration(5)
         except Exception as e:                                              # noqa: BLE001
@@ -362,9 +372,77 @@ class Satellite:
                 self.mic.hold(run.playing_for() + TAIL_SECS)
                 self.audio.forget(run.id, after=120)
 
+    async def _speak_up(self):
+        async for ev in subscribe(self.cfg, "satellite", self.room):
+            try:
+                await self.speak(ev)
+            except Exception as e:                                          # noqa: BLE001
+                logger.warning(f"{self.room}: could not deliver {ev.get('type', 'announcement')}: {e}")
+
+    async def speak(self, ev: dict):
+        """An announcement (said as given) or a nudge (worded by the brain, its plain line otherwise) on the
+        box, after the chime, as an announcement it fetches like a reply. After a nudge the box listens on."""
+        nudge = ev.get("type") == "nudge"
+        text = ev["say"] if nudge else ev["text"]
+        async with self._lock:
+            run = Run()
+            self.audio.runs[run.id] = run
+            url = f"{self.audio.base_url(self.dev.host)}/reply/{run.id}.flac"
+            self.mic.hold(HOLD_SECS)
+            try:
+                conv = await self._conversation()
+                chime = self.audio.chime()
+                if chime:
+                    run.out.put_nowait(chime)
+                    run.audio_secs += len(chime) / 2 / OUT_RATE
+                if nudge:
+                    logger.info(f"{self.room}: nudge {ev['id']}: {text!r}")
+                    can = any(t.name == "follow_up" for t in conv.brain.tools.standard_tools)
+                    replying = asyncio.create_task(conv.reply(nudge_note(ev, can), run, timeout=60))
+                    try:
+                        await asyncio.wait_for(run.first_audio.wait(), WORDING_SECS)
+                    except TimeoutError:
+                        logger.warning(f"{self.room}: nudge not worded within {WORDING_SECS:g} s; the plain line")
+                        await conv.worker.queue_frames([
+                            TTSSpeakFrame(text, append_to_context=False),
+                            LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": text}], run_llm=False)])
+                        await asyncio.wait_for(run.first_audio.wait(), 15)
+                else:
+                    logger.info(f"{self.room}: announcement {text!r}")
+                    conv.speaker.begin(run)
+                    await conv.worker.queue_frames([
+                        LLMMessagesAppendFrame(messages=[{"role": "user", "content": note(text, ev.get("context") or {})},
+                                                         {"role": "assistant", "content": text}], run_llm=False),
+                        TTSSpeakFrame(text, append_to_context=False)])
+                    await asyncio.wait_for(run.first_audio.wait(), 15)
+                listen = nudge and not self.button_only and self.cfg.channels.satellite.follow_up_secs > 0
+                played = asyncio.create_task(self.client.send_voice_assistant_announcement_await_response(
+                    url, 60, text=text, start_conversation=listen))
+                if nudge:
+                    logger.info(f"{self.room}: said {await replying!r}")
+                else:
+                    t0 = time.perf_counter()
+                    while conv.speaker.busy and time.perf_counter() - t0 < 30:
+                        await asyncio.sleep(0.05)
+                    conv.speaker.run = None
+                run.out.put_nowait(None)
+                if listen:          # the box starts listening once it has played; no wake word for that run
+                    self._follow_secs = max(START_TIMEOUT_SECS, self.cfg.channels.satellite.follow_up_secs)
+                    self._follow_until = time.monotonic() + run.playing_for() + FOLLOW_WAIT_SECS
+                await played
+            except Exception as e:                                          # noqa: BLE001
+                logger.warning(f"{self.room}: could not say {text!r}: {e}")
+                run.out.put_nowait(None)
+            finally:
+                self.mic.hold(run.playing_for() + TAIL_SECS)
+                self.audio.forget(run.id, after=120)
+
     async def _on_disconnect(self, expected: bool):
         logger.info(f"{self.room}: disconnected{'' if expected else ' unexpectedly'}")
         self._unsub = None
+        if self._listener:
+            self._listener.cancel()
+            self._listener = None
         if self.task:
             self.task.cancel()
 
@@ -526,6 +604,15 @@ class AudioServer:
     def __init__(self, cfg: WinstonConfig):
         self.cfg = cfg
         self.runs: dict[str, Run] = {}
+        self._chime: bytes | None = None
+
+    def chime(self) -> bytes:
+        """The announcement chime at the box's rate, b"" for none."""
+        if self._chime is None:
+            pcm = load_chime(self.cfg)
+            self._chime = soxr.resample(np.frombuffer(pcm, dtype="<i2"), self.cfg.tts.sample_rate, OUT_RATE)\
+                .astype("<i2").tobytes() if pcm else b""
+        return self._chime
 
     def base_url(self, device_host: str) -> str:
         s = self.cfg.channels.satellite

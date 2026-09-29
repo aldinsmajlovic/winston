@@ -31,6 +31,9 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from winston.channels import voice as vp  # noqa: E402  (loads config)
 from winston.core.brain import Brain, ToolCallLogObserver  # noqa: E402
+from winston.core.live import FeedPoster, LiveObserver  # noqa: E402
+
+FEED = FeedPoster(vp.CFG)       # as the voice channel posts its turns to winstond, when one is there
 
 SR = 16000
 CHUNK = SR // 50  # 20 ms
@@ -122,7 +125,8 @@ async def one_turn(utterance: str) -> dict:
     pipeline = Pipeline([speaker, vp.build_stt(), stt_tap, agg.user(), brain.llm, llm_tap,
                          vp.build_tts(), listener, agg.assistant()])
     task = PipelineWorker(pipeline, params=PipelineParams(enable_metrics=True), idle_timeout_secs=None,
-                          observers=[ToolCallLogObserver(vp.CFG, channel="headless")])
+                          observers=[ToolCallLogObserver(vp.CFG, channel="headless"),
+                                     LiveObserver("voice", FEED.put, spoken=True)])   # winstond sees the turn
     runner = WorkerRunner(handle_sigint=False)
     run = asyncio.create_task(runner.run(task))
     try:

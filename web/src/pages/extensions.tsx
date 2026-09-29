@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { CircleAlert, MemoryStick, MessageSquareText, Plus, RotateCw, ScrollText, ShieldAlert } from 'lucide-react'
+import { BellOff, CircleAlert, MemoryStick, MessageSquareText, Plus, RotateCw, ScrollText, ShieldAlert } from 'lucide-react'
 import { DynamicIcon, iconNames, type IconName } from 'lucide-react/dynamic'
 import { $api, type ExtensionView } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
@@ -42,6 +42,27 @@ const TIERS = {
   restricted: 'Restricted: waits for you to confirm',
 } as const
 type Tier = keyof typeof TIERS
+
+const DELIVER = {
+  now: 'As soon as allowed',
+  when_home: 'When you are home',
+  when_leaving: 'As you leave',
+  next_talk: 'Next time you talk',
+  briefing: 'Morning briefing',
+  silent: 'Silently',
+} as const
+const WHERE = { auto: 'Where you are', speakers: 'Speakers', phone: 'Phone' } as const
+const PER_LEVEL = 'per_level'
+
+/** A nudge's standing in a few words: "Put off until ...", "Held: quiet hours", "Said on the speakers". */
+function standing(n: NonNullable<ExtensionView['nudges']>[number]): string {
+  if (n.put_off) return `Put off until ${n.put_off}`
+  if (n.state === 'held') return `Held: ${n.why ?? 'waiting'}`
+  if (n.state === 'waiting') return n.why ? n.why.charAt(0).toUpperCase() + n.why.slice(1) : 'Waiting'
+  if (n.state === 'said') return `Said ${n.via === 'conversation' ? 'in a conversation' : n.via === 'silent' ? 'silently' : `on the ${(n.via ?? '').split(':')[0]}`}`
+  if (n.state === 'dismissed') return 'Dismissed'
+  return 'Ended'
+}
 
 const ORIGIN: Record<string, string> = { 'built-in': 'Built in', package: 'Package', personal: 'Personal', mcp: 'MCP server' }
 
@@ -150,6 +171,101 @@ function Tools({ e, page }: Props) {
   )
 }
 
+/** Its kinds of speaking up: when and where each is said (your choice over the extension's), on or
+ * off, muted or not; then its nudges and where each stands. */
+function SpeakingUp({ e, page }: Props) {
+  const unmute = $api.useMutation('post', '/api/extensions/{ext_id}/kinds/{kind}/unmute')
+  const kinds = e.kinds ?? []
+  if (!kinds.length) return null
+  const at = (kind: string, key: string) => [...EXTENSIONS, e.id, 'kinds', kind, key]
+  const set = (kind: string, key: string, value: unknown) => page.update((c) => setIn(c, at(kind, key), value))
+  const nudges = (e.nudges ?? []).filter((n) => n.state !== 'ended').slice(0, 5)
+  return (
+    <div className="flex flex-col gap-3">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Speaking up</TableHead>
+            <TableHead>When</TableHead>
+            <TableHead>Where</TableHead>
+            <TableHead>On</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {kinds.map((k) => {
+            const saved = getIn(page.value, [...EXTENSIONS, e.id, 'kinds', k.kind]) as Record<string, unknown> | undefined
+            const deliver = (saved?.deliver ?? k.declared_deliver) as unknown
+            const where = (saved?.where ?? k.declared_where) as unknown
+            const how = [
+              k.checked ? (k.triggers?.length ? `Checked ${k.triggers.join(', ')}` : 'Checked when the extension runs') : 'Sent by the extension',
+              k.requested ? 'what you ask for comes when you asked, through quiet hours' : null,
+              k.may_be_urgent ? 'may be urgent, and then spoken in quiet hours' : null,
+              k.repeat ? `said again after ${Math.round(k.repeat / 3600)} hours while it holds` : null,
+            ].filter(Boolean)
+            const pick = (value: unknown, labels: Record<string, string>, key: 'deliver' | 'where', declared: unknown) => (
+              <Select value={typeof value === 'string' ? value : PER_LEVEL} onValueChange={(v) => set(k.kind, key, v === declared ? null : v)}>
+                <SelectTrigger size="sm" aria-label={`${key === 'deliver' ? 'When' : 'Where'} ${k.title} is said`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {typeof value !== 'string' && <SelectItem value={PER_LEVEL}>By level</SelectItem>}
+                  {Object.entries(labels).map(([v, label]) => (
+                    <SelectItem key={v} value={v}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )
+            return (
+              <TableRow key={k.kind}>
+                <TableCell className="whitespace-normal">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    {k.title}
+                    <InfoTip text={how.join('; ') + '.'} />
+                    {k.muted_until != null && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-1.5 text-muted-foreground"
+                        disabled={unmute.isPending}
+                        onClick={() => unmute.mutate({ params: { path: { ext_id: e.id, kind: k.kind } } })}
+                      >
+                        <BellOff />
+                        {k.muted_until === 0
+                          ? 'Muted, switch back on'
+                          : `Muted until ${new Date(k.muted_until * 1000).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`}
+                      </Button>
+                    )}
+                  </span>
+                </TableCell>
+                <TableCell>{pick(deliver, DELIVER, 'deliver', k.declared_deliver)}</TableCell>
+                <TableCell>{pick(where, WHERE, 'where', k.declared_where)}</TableCell>
+                <TableCell>
+                  <Switch checked={saved?.enabled !== false} aria-label={`Let him say ${k.title}`} onCheckedChange={(v) => set(k.kind, 'enabled', v ? null : false)} />
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+      {nudges.length > 0 && (
+        <div className="flex flex-col gap-2 text-sm">
+          {nudges.map((n) => (
+            <div key={n.id} className="flex flex-col">
+              <span>{n.say}</span>
+              <span className="text-xs text-muted-foreground">
+                {n.title}: {standing(n)}
+                {n.reason ? `. You said: ${n.reason}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function hasFields(page: SettingsState, path: string[]): boolean {
   try {
     return Object.keys(section(page.schema, path).properties ?? {}).length > 0
@@ -240,6 +356,7 @@ function ExtensionCard({ e, page }: Props) {
         {hasFields(page, settingsPath) && <SectionForm page={page} path={settingsPath} />}
         {e.origin === 'mcp' && page.advanced && <SectionForm page={page} path={[...path, 'mcp']} />}
         <Tools e={e} page={page} />
+        <SpeakingUp e={e} page={page} />
         {values.length > 0 && (
           <div className="flex flex-col gap-1 text-sm">
             {values.map((v) => (

@@ -437,6 +437,275 @@
         }
       }
     },
+    "/api/nudges": {
+      "get": {
+        "tags": [
+          "speaking up"
+        ],
+        "summary": "Every nudge: where it stands and why it waits, newest first",
+        "operationId": "list_nudges_api_nudges_get",
+        "parameters": [
+          {
+            "name": "extension",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Extension"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NudgeView"
+                  },
+                  "title": "Response List Nudges Api Nudges Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nudges/kinds": {
+      "get": {
+        "tags": [
+          "speaking up"
+        ],
+        "summary": "How many kinds of nudges the extensions switched on have (the brain gets follow_up when any)",
+        "operationId": "nudge_kinds_api_nudges_kinds_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nudges/mentions": {
+      "post": {
+        "tags": [
+          "speaking up"
+        ],
+        "summary": "What to mention in the conversation going on now (next-talk nudges, the briefing); each once",
+        "operationId": "mentions_api_nudges_mentions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_mentions_api_nudges_mentions_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Mentions Api Nudges Mentions Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/nudges/{nid}/follow_up": {
+      "post": {
+        "tags": [
+          "speaking up"
+        ],
+        "summary": "The follow_up tool: later, dismiss, mute, why, or one of the extension's actions",
+        "operationId": "follow_up_api_nudges__nid__follow_up_post",
+        "parameters": [
+          {
+            "name": "nid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Nid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FollowUp"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{ext_id}/kinds/{kind}/check": {
+      "post": {
+        "tags": [
+          "speaking up"
+        ],
+        "summary": "What its check would say now, without recording or saying anything",
+        "operationId": "check_kind_api_extensions__ext_id__kinds__kind__check_post",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{ext_id}/kinds/{kind}/unmute": {
+      "post": {
+        "tags": [
+          "speaking up"
+        ],
+        "summary": "Switch a muted kind back on",
+        "operationId": "unmute_api_extensions__ext_id__kinds__kind__unmute_post",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/hooks/{ext_id}/{name}": {
       "post": {
         "tags": [
@@ -578,7 +847,7 @@
     },
     "/api/events": {
       "get": {
-        "summary": "Announcements for one channel process, as server-sent events",
+        "summary": "Announcements and nudges for one channel session, as server-sent events",
         "operationId": "events_api_events_get",
         "parameters": [
           {
@@ -588,11 +857,30 @@
             "schema": {
               "enum": [
                 "voice",
+                "satellite",
                 "discord"
               ],
               "type": "string",
               "title": "Channel"
             }
+          },
+          {
+            "name": "room",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The room the session is in: nudges go to the room you are in",
+              "title": "Room"
+            },
+            "description": "The room the session is in: nudges go to the room you are in"
           }
         ],
         "responses": {
@@ -2017,7 +2305,7 @@
     },
     "/api/options/{name}": {
       "get": {
-        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_areas, discord_users",
+        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_notify, ha_areas, discord_users",
         "operationId": "get_options_api_options__name__get",
         "parameters": [
           {
@@ -2463,6 +2751,17 @@
         ],
         "title": "Body_answer_api_confirmations__cid__post"
       },
+      "Body_mentions_api_nudges_mentions_post": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "Body_mentions_api_nudges_mentions_post"
+      },
       "BrainTool": {
         "properties": {
           "name": {
@@ -2593,6 +2892,38 @@
           "text"
         ],
         "title": "ChatMessage"
+      },
+      "CheckResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "nudges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Nudges"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "CheckResult"
       },
       "Choice": {
         "properties": {
@@ -4024,6 +4355,14 @@
             "type": "array",
             "title": "Kinds"
           },
+          "nudges": {
+            "items": {
+              "$ref": "#/components/schemas/NudgeView"
+            },
+            "type": "array",
+            "title": "Nudges",
+            "description": "Its nudges now and those ended lately"
+          },
           "entities": {
             "items": {
               "$ref": "#/components/schemas/EntityView"
@@ -4102,6 +4441,54 @@
           "fact"
         ],
         "title": "FactEdit"
+      },
+      "FollowUp": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "later, dismiss, mute, why, or one of the extension's actions"
+          },
+          "when": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "When"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel",
+            "description": "The conversation it comes from; a restricted action from one waits for your confirmation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "FollowUp"
       },
       "Forgotten": {
         "properties": {
@@ -4782,6 +5169,12 @@
           "where": {
             "title": "Where"
           },
+          "declared_deliver": {
+            "title": "Declared Deliver"
+          },
+          "declared_where": {
+            "title": "Declared Where"
+          },
           "requested": {
             "type": "boolean",
             "title": "Requested"
@@ -4790,9 +5183,41 @@
             "type": "boolean",
             "title": "May Be Urgent"
           },
+          "repeat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeat",
+            "description": "Seconds after which a checked nudge is said again"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Triggers",
+            "description": "When its check runs, in words"
+          },
           "enabled": {
             "type": "boolean",
             "title": "Enabled"
+          },
+          "muted_until": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Muted Until",
+            "description": "Muted: 0 until switched back on, else when it ends"
           }
         },
         "type": "object",
@@ -4923,7 +5348,8 @@
               "announcement",
               "error",
               "mic",
-              "confirm"
+              "confirm",
+              "nudge"
             ],
             "title": "Type"
           },
@@ -5058,7 +5484,7 @@
           "type"
         ],
         "title": "LiveEvent",
-        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text.\nmic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).\nconfirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then\nok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it."
+        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text.\nmic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).\nconfirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then\nok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.\nnudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:\nspeakers, phone, discord, conversation, silent): he spoke up, or would have."
       },
       "LogLines": {
         "properties": {
@@ -5389,6 +5815,141 @@
           "title"
         ],
         "title": "NewTopic"
+      },
+      "NudgeView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "extension": {
+            "type": "string",
+            "title": "Extension"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "about": {
+            "type": "string",
+            "title": "About"
+          },
+          "level": {
+            "type": "integer",
+            "title": "Level"
+          },
+          "say": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Say"
+          },
+          "facts": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Facts"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "checked or pushed"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "waiting, held, said, dismissed or ended"
+          },
+          "why": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why",
+            "description": "Why it waits or is held"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via",
+            "description": "Where it was said: speakers, phone, discord, conversation, silent"
+          },
+          "said_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Said At"
+          },
+          "held_until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Until"
+          },
+          "put_off": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Put Off",
+            "description": "Put off until, as he was told"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "extension",
+          "kind",
+          "title",
+          "about",
+          "level",
+          "source",
+          "state"
+        ],
+        "title": "NudgeView"
       },
       "Ok": {
         "properties": {
@@ -6291,12 +6852,63 @@
               }
             ],
             "title": "You",
-            "description": "The person entity that says whether you are home: for nudges held until you get home, and extensions allowed to know.",
+            "description": "The person entity that says whether you are home: for nudges held until you get home, spoken at home and sent to your phone away, and extensions allowed to know.",
             "level": "basic",
             "options": "ha_entities",
             "options_query": {
               "domain": "person"
             }
+          },
+          "phone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Your phone",
+            "description": "The Home Assistant notify service that reaches your phone (the companion app's): nudges while you are away, and confirming restricted calls. Empty: Discord, when it is set up.",
+            "empty_means_off": true,
+            "level": "basic",
+            "options": "ha_notify",
+            "placeholder": "None: Discord, when it is set up"
+          },
+          "max_per_day": {
+            "type": "integer",
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Spoken nudges a day",
+            "description": "Past this many spoken nudges in a day, the rest wait for the next morning's briefing. What you asked for (reminders, a time you gave) does not count.",
+            "default": 4
+          },
+          "briefing_from": {
+            "type": "string",
+            "title": "Briefing from",
+            "description": "The morning briefing is given at your first conversation after this time, or when you ask what's new.",
+            "default": "06:00",
+            "level": "basic",
+            "widget": "time"
+          },
+          "fallback_time": {
+            "type": "string",
+            "title": "After work",
+            "description": "\"Remind me after work\" when he does not know when you finish: when you get home that day, or at this time if you are home already.",
+            "default": "18:00",
+            "level": "advanced",
+            "widget": "time"
+          },
+          "day_parts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Parts of the day",
+            "description": "What \"tomorrow morning\" and \"this evening\" mean when you put something off.",
+            "key_title": "Part",
+            "level": "advanced",
+            "value_title": "Time"
           }
         },
         "additionalProperties": false,
@@ -7180,7 +7792,17 @@
           "speak_up": {
             "$ref": "#/components/schemas/SpeakUpConfig",
             "title": "Speaking up",
-            "default": {}
+            "default": {
+              "max_per_day": 4,
+              "briefing_from": "06:00",
+              "fallback_time": "18:00",
+              "day_parts": {
+                "afternoon": "15:00",
+                "evening": "19:00",
+                "morning": "08:00",
+                "tonight": "20:00"
+              }
+            }
           },
           "logging": {
             "$ref": "#/components/schemas/LoggingConfig",

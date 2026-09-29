@@ -201,6 +201,13 @@ class Rooms:
             r.last_used = time.monotonic()
         return SyncResult(epoch=r.epoch, seq=len(r.messages), reset=reset, others=others, seqs=seqs)
 
+    def recent(self, secs: float = 1800) -> str | None:
+        """The room last talked in, within secs: where you probably are."""
+        now = time.monotonic()
+        best = max((r for r in self._rooms.values() if r.messages and now - r.last_used < secs),
+                   key=lambda r: r.last_used, default=None)
+        return best.name if best else None
+
     def holder(self, name: str) -> str | None:
         r = self._rooms.get(key(name))
         return r.held_by if r and r.held_by and time.monotonic() < r.held_until else None

@@ -67,9 +67,13 @@ be swapped for a hosted service when that suits you better.
 - **Extensions.** Add tools and background jobs in one Python file (`winston ext new NAME`), or any MCP
   server. Each runs in its own process with only its own keys, asks for what it may reach, and shows on
   an Extensions page; tools you choose are offered to Claude Code too ([extensions](docs/extensions.md)).
+- **Speaking up.** Extensions give him reasons to speak; the core decides when and where: in the room
+  you are in, on your phone when you are away, at your next conversation or in the morning briefing,
+  never in quiet hours or mid-conversation. "I know, remind me after work" puts any of it off to when
+  you get home ([speaking up](docs/extensions.md#speaking-up)).
 
 **Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and
-announcements work. A Voice PE room satellite works turn based. Extensions run (speaking up from them comes next, then Hevy, news and reminders). The Discord channel is built but not yet run against
+announcements work. A Voice PE room satellite works turn based. Extensions run and speak up (Hevy, news and reminders on them come next). The Discord channel is built but not yet run against
 Discord. See [the plan](docs/plan.md).
 
 ## Quickstart
@@ -120,7 +124,7 @@ flowchart LR
 - [Tools](docs/tools.md): memory, web search, `ask_claude`, messaging; keys and limits
 - [Announcements](docs/announcements.md) and [Discord](docs/discord.md)
 - [Architecture](docs/architecture.md): the parts and how they plug together
-- [Extensions](docs/extensions.md): adding tools, jobs, entities and (next) reasons to speak up, with the SDK
+- [Extensions](docs/extensions.md): adding tools, jobs, entities and reasons to speak up, with the SDK
 - [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks, Winston's logo and how it moves
 - [Hardware](docs/hardware.md): profiles and measured budgets
 - [Voices](docs/voices.md), the [voice benchmark](docs/voices.md#benchmark), the [Voice PE satellite](docs/voice-pe.md) and [rooms](docs/rooms.md)

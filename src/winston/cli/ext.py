@@ -174,6 +174,35 @@ def run(ext_id: str = typer.Argument(..., metavar="ID"), job: str = typer.Argume
 
 
 @ext_app.command()
+def check(ext_id: str = typer.Argument(..., metavar="ID"), kind: str = typer.Argument(...)):
+    """What a checked kind's check would say now, without recording or saying anything."""
+    r = _ok(_call("POST", f"/api/extensions/{ext_id}/kinds/{kind}/check", timeout=30))
+    if not r["ok"]:
+        print(f"error: {r['error']}")
+        raise typer.Exit(1)
+    if not r["nudges"]:
+        print("nothing to say now")
+    for n in r["nudges"]:
+        extra = "".join(f", {k} {n[k]}" for k in ("not_before", "expires") if n.get(k)) + \
+            (", urgent" if n.get("urgent") else "")
+        print(f"  {n['about']}  level {n['level']}{extra}\n    {n['say']}")
+        if n.get("facts"):
+            print(f"    facts: {json.dumps(n['facts'], ensure_ascii=False)}")
+
+
+@ext_app.command()
+def nudges(ext_id: str = typer.Argument(None, metavar="[ID]", help="One extension's; all when left out.")):
+    """Where its nudges stand, and why each waits or was held (every step is in logs/nudges.jsonl)."""
+    rows = _ok(_call("GET", "/api/nudges", params={"extension": ext_id} if ext_id else {}))
+    if not rows:
+        print("no nudges")
+    for n in rows:
+        why = n["put_off"] and f"put off until {n['put_off']}" or n["why"] or (f"via {n['via']}" if n["via"] else "")
+        print(f"  {n['extension']}/{n['kind']:<12} {n['state']:<9} level {n['level']}  {n['about']}"
+              f"{'  (' + why + ')' if why else ''}\n    {n['say']}  [{n['id']}]")
+
+
+@ext_app.command()
 def logs(ext_id: str = typer.Argument(..., metavar="ID"), lines: int = typer.Option(50, "-n", help="How many lines.")):
     """The end of its log: what it printed and each failure with its traceback."""
     for line in _ok(_call("GET", f"/api/extensions/{ext_id}/log", params={"lines": lines}))["lines"]:

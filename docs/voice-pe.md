@@ -75,6 +75,13 @@ carries on without "Okay Winston" each time. If nothing is said the box goes bac
 wake word. 0 keeps the box listening only after a question. The replies are served from port 8702 on every interface; the box
 must be able to reach this machine there.
 
+### When he speaks first
+
+Announcements and nudges from extensions ([speaking up](extensions.md#speaking-up)) play on the box as
+a reply does, the chime first. A nudge goes to the box of the room you last talked in, and after one
+the box listens on, so "thanks, I know" or "remind me after work" needs no wake word (not in button
+only).
+
 ### Ending a conversation, and button only
 
 - **"Stop", "that's all", "never mind"** (or "be quiet", "not you", "nothing") in that listening

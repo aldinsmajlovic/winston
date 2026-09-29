@@ -5,7 +5,8 @@ and no others, builds the brain's tool list and routes tool calls.
 Tools are offered in a fixed order (extension id, then declaration) and the same list reaches every
 channel, so the prompt cache holds. A stopped extension keeps its tools listed; they answer that it
 is not running. Nudges, the scheduler and the services extensions call back into come in their own
-modules; this one owns the processes and the tool path."""
+modules; this one owns the processes and the tool path, and tells nudges when a handler ran (a check
+may now have something else to say)."""
 from __future__ import annotations
 
 import asyncio
@@ -50,9 +51,11 @@ def mcp_tier(annotations: Any) -> str:
 class Pending:
     """A restricted call waiting for you to confirm it outside the voice."""
 
-    def __init__(self, ext_id: str, tool: str, args: dict[str, Any], label: str, channel: str):
+    def __init__(self, ext_id: str, tool: str, args: dict[str, Any], label: str, channel: str,
+                 nudge: str | None = None):
         self.id = pysecrets.token_hex(6)
         self.ext_id, self.tool, self.args, self.label, self.channel = ext_id, tool, args, label, channel
+        self.nudge = nudge                              # an action on this nudge rather than a tool
         self.created = time.time()
         self.state = "waiting"
         self.outcome: str | None = None
@@ -79,6 +82,8 @@ class Host:
         self.pending: dict[str, Pending] = {}
         self.on_feed: Callable[[dict[str, Any]], None] | None = None    # the live feed, set by winstond
         self.scheduler = None                                           # set by winstond
+        self.nudges = None                                              # set by winstond (nudges.Nudges)
+        self.on_pending: Callable[[Pending], None] | None = None        # set by winstond: to your phone too
         self._lock = asyncio.Lock()
         # One refresh at a time: two at once (winstond's own at start and another) let the second see
         # nothing new and start an extension whose description the first had not finished, so it got
@@ -228,6 +233,7 @@ class Host:
                 await self.run_job(proc.id, job["name"])
         await self.refresh_texts(proc.id)
         self.timers_changed()
+        self.handled(proc.id)                           # its nudges as they stand now
 
     async def refresh_texts(self, ext_id: str) -> None:
         """Its prompt lines and hint words, as files the channels read when a conversation starts."""
@@ -241,6 +247,11 @@ class Host:
             texts.write(ext_id, context, words)
         except Exception as e:                                          # noqa: BLE001
             self._note(ext_id, "context", str(e))
+
+    def handled(self, ext_id: str) -> None:
+        """A handler of the extension ran: its checks run, since what there is to say may have changed."""
+        if self.nudges is not None:
+            self.nudges.after_handler(ext_id)
 
     def timers_changed(self) -> None:
         """Something the scheduler should look at now: a new timer, an extension just started."""
@@ -425,8 +436,7 @@ class Host:
             return {"ok": False, "error": f"{name} has no tool {tool}."}
         if channel is not None and not confirmed and self.tier(ext_id, tool) == "restricted":
             p = Pending(ext_id, tool, args, f"{name}: {spec['description'].rstrip('.')}", channel)
-            self.pending[p.id] = p
-            self._feed_confirm(p)
+            self._add_pending(p)
             return {"ok": False, "waiting": True,
                     "error": f"{p.label} needs your confirmation first, on the Talk page, within five minutes. "
                              "Nothing has happened yet."}
@@ -455,10 +465,18 @@ class Host:
         else:
             result = r.structured_content
         logger.info(f"extension {ext_id}: {tool} in {(time.perf_counter() - t0) * 1000:.0f} ms")
+        if not proc.is_mcp_server:
+            self.handled(ext_id)
         whole = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
         if len(whole) > RESULT_MAX:                     # a result is information for one turn, not a document
             result = whole[:RESULT_MAX] + f" [cut: {len(whole) - RESULT_MAX} more characters]"
         return {"ok": True, "result": result}
+
+    def _add_pending(self, p: Pending) -> None:
+        self.pending[p.id] = p
+        self._feed_confirm(p)
+        if self.on_pending is not None:
+            self.on_pending(p)
 
     def _feed_confirm(self, p: Pending) -> None:
         if self.on_feed:
@@ -485,12 +503,31 @@ class Host:
         if not approve:
             p.state, p.outcome = "declined", "Declined; nothing happened."
         else:
-            r = await self.call_tool(p.ext_id, p.tool, p.args, channel=None, confirmed=True)
+            if p.nudge is not None:
+                r = await self._confirmed_action(p)
+            else:
+                r = await self.call_tool(p.ext_id, p.tool, p.args, channel=None, confirmed=True)
             p.state = "ok" if r["ok"] else "error"
             result = r.get("result") if r["ok"] else r.get("error")
             p.outcome = result if isinstance(result, str) else json.dumps(result, default=str)[:300]
         self._feed_confirm(p)
         return p
+
+    def pend_action(self, rec: dict[str, Any], act: dict[str, Any], channel: str) -> dict[str, Any]:
+        """A restricted nudge action asked for in a conversation: it waits for you, as a restricted tool does."""
+        name = self.described.get(rec["ext"], {}).get("manifest", {}).get("name", rec["ext"])
+        p = Pending(rec["ext"], act["name"], {}, f"{name}: {act['title']}", channel, nudge=rec["id"])
+        self._add_pending(p)
+        return {"waiting": True, "note": f"{p.label} needs your confirmation first, on the Talk page, within five "
+                                         "minutes. Nothing has happened yet."}
+
+    async def _confirmed_action(self, p: Pending) -> dict[str, Any]:
+        rec = self.nudges.records.get(p.nudge) if self.nudges else None
+        if rec is None:
+            return {"ok": False, "error": "That nudge is gone."}
+        spec = self.nudges.kind(rec["ext"], rec["kind"]) or {"title": rec["kind"]}
+        r = await self.nudges.act(rec, spec, p.tool, channel=None, confirmed=True)
+        return {"ok": "error" not in r, "result": r.get("result") or r.get("done"), "error": r.get("error")}
 
     def _fail(self, ext_id: str, where: str, message: str) -> dict[str, Any]:
         self._note(ext_id, where, message)
@@ -518,13 +555,17 @@ class Host:
             self._note(ext_id, job, r.get("error", ""))
         else:
             await self.refresh_texts(ext_id)
+            self.handled(ext_id)
         return r
 
     async def hook(self, ext_id: str, name: str, body: Any, headers: dict[str, str]) -> dict[str, Any]:
         proc = self.procs.get(ext_id)
         if proc is None or proc.state != "running":
             return {"ok": False, "error": f"{ext_id} is not running"}
-        return await proc.call("hook", timeout=35, name=name, body=body, headers=headers)
+        r = await proc.call("hook", timeout=35, name=name, body=body, headers=headers)
+        if r.get("ok"):
+            self.handled(ext_id)
+        return r
 
     # what the card shows
 

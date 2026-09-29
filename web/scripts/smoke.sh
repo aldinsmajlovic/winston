@@ -46,6 +46,14 @@ fi
 cp "$src/config.yaml" "$copy/"
 [ -f "$src/persona.md" ] && cp "$src/persona.md" "$copy/"
 cp -r "$repo/examples/memory" "$copy/memory"
+# The docs' plants extension, off: a card whose settings have defaults its config leaves out.
+mkdir -p "$copy/extensions"
+uv run --project "$repo" python -c '
+import re, sys
+doc = open(sys.argv[1]).read()
+blocks = re.findall(r"```python\n(# /// script.*?)```", doc, re.S)
+open(sys.argv[2], "w").write(next(b for b in blocks if "id = \"plants\"" in b))
+' "$repo/docs/extensions.md" "$copy/extensions/plants.py"
 port="$(uv run --project "$repo" python - "$copy" "$src" "$fake_ha" <<'EOF'
 import os, re, socket, sys, yaml
 copy, fake_ha = sys.argv[1], sys.argv[3]

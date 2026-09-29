@@ -43,11 +43,12 @@ from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, Clock, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
-from winston.core.announce import note, subscribe
+from winston.core.announce import note, nudge_note, subscribe
 from winston.core.guard import ClaimGuard
 from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.rooms import MicGate, RoomLink, area, http_sync, mic_events, wake_phrases
+from winston.core.speak_up import WORDING_SECS, Mentions, SpeechWatch
 from winston.core.spoken import SpokenText
 
 CFG: WinstonConfig = load()
@@ -236,6 +237,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     ))
     guard = ClaimGuard(CFG, channel="voice")
     latency = LatencyLog(CFG, "voice")
+    watch = SpeechWatch()
     link = RoomLink(room, f"voice:{uuid.uuid4().hex[:8]}", http_sync(CFG)) if room else None
     gate = MicGate(wake_phrases(CFG) if room else None)
 
@@ -257,6 +259,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         gate.text,              # ...and nothing heard then becomes a turn
         aggregators.user(),     # VAD + turn taking; text -> context
         Clock(area(CFG, room) if room else None),   # the time (and room) in front of the newest user message
+        Mentions(CFG),          # nudges for the next conversation and the briefing, after his answer
         *([link.before] if link else []),           # the room's conversation in, this session's out
         brain.llm,              # context -> streamed text, tool calls
         guard,                  # holds back claims no tool call backs, retries once
@@ -268,7 +271,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
         observers=[guard.observer, brain.verifier.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
-                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), latency],
+                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), latency,
+                   watch],
         idle_timeout_secs=None,
     )
 
@@ -286,10 +290,30 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         await worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
     brain.on_slow = filler
 
+    async def speak_up(ev: dict):
+        """A nudge: the chime, then he words it with this conversation's brain from its note. If he has
+        not started within WORDING_SECS, the plain line instead."""
+        logger.info(f"nudge {ev['id']}: {ev['say']!r}")
+        before = watch.last
+        frames = [OutputAudioRawFrame(audio=CHIME, sample_rate=CFG.tts.sample_rate, num_channels=1)] if CHIME else []
+        can = any(t.name == "follow_up" for t in brain.tools.standard_tools)
+        frames.append(LLMMessagesAppendFrame(messages=[{"role": "user", "content": nudge_note(ev, can)}], run_llm=True))
+        await worker.queue_frames(frames)
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < WORDING_SECS:
+            await asyncio.sleep(0.1)
+            if watch.last > before:
+                return
+        logger.warning(f"nudge {ev['id']}: not worded within {WORDING_SECS:g} s; the plain line instead")
+        await worker.queue_frames([TTSSpeakFrame(ev["say"])])
+
     async def announcements():
-        """Announcements from winstond while this browser is connected: the note first, so a reply
-        has context, then the chime and the text spoken as is."""
-        async for ev in subscribe(CFG, "voice"):
+        """Announcements and nudges from winstond while this browser is connected. An announcement:
+        the note first, so a reply has context, then the chime and the text spoken as is."""
+        async for ev in subscribe(CFG, "voice", room):
+            if ev.get("type") == "nudge":
+                await speak_up(ev)
+                continue
             logger.info(f"announcement: {ev['text']!r}")
             frames = [LLMMessagesAppendFrame(messages=[{"role": "user", "content": note(ev["text"], ev["context"])}],
                                              run_llm=False)]

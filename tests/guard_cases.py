@@ -7,7 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from winston.config.schema import HomeAssistantConfig
-from winston.core.guard import judge, targets
+from winston.core.guard import judge, set_tier, targets
+
+set_tier("follow_up", "act")        # as every brain registers it while an extension can speak up
 
 ACT_OK = [("light__HassLightSet", True)]
 ACT_FAILED = [("intent__HassTurnOn", False)]
@@ -78,6 +80,9 @@ CASES = [
     ("I've forgotten that.", [("forget", False)], "act"),            # no such fact: nothing went
     ("I've forgotten that.", ACT_OK, "act"),                         # a light call is not a forget
     ("Noted.", ACT_OK, "act"),
+    ("Noted, sir. I'll remind you tomorrow at seventeen hundred.", [("follow_up", True)], None),  # put off
+    ("Noted, sir.", [("follow_up", False)], "act"),                   # the follow-up did not go through
+    ("Very good, noted.", [("remember", True)], None),
     ("Got it, I'll remember that the dentist moved to Friday.", [("remember", True)], None),
     ("I removed the note about the dentist.", [], "act"),
     ("I removed the note about the dentist.", ACT_OK, "act"),
@@ -177,6 +182,9 @@ PROMISES = [
     ("Let me tell you a story.", [], None),
     ("Shall I turn them on?", [], None),                          # a question promises nothing
     ("I won't switch anything off.", [], None),
+    ("Very good, sir, I'll remind you after work.", [], "act"),   # a reminder is kept only by a call
+    ("I'll remind you after work.", [("follow_up", True)], None),  # follow_up (act) set it
+    ("I'll remind you after work.", READ_OK, "act"),
 ]
 for text, tools, expected in PROMISES:
     got = promise(text, tools)

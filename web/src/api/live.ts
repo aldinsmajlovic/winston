@@ -20,6 +20,7 @@ export type Item =
   | { kind: 'announcement'; id: string; text: string; ts: number }
   | { kind: 'error'; id: string; text: string }
   | { kind: 'confirm'; id: string; label: string; status: NonNullable<LiveEvent['status']>; outcome: string }
+  | { kind: 'nudge'; id: string; label: string; text: string; via: string; ts: number }
 
 type Feed = {
   items: Item[]
@@ -60,6 +61,10 @@ function apply(feed: Feed, ev: LiveEvent): Feed {
       return { ...feed, items: [...feed.items, { kind: 'announcement', id, text: ev.text ?? '', ts: ev.ts ?? 0 }] }
     case 'error':
       return { ...feed, items: [...feed.items, { kind: 'error', id, text: ev.text ?? '' }] }
+    case 'nudge': {
+      const nudge: Item = { kind: 'nudge', id, label: ev.label ?? '', text: ev.text ?? '', via: (ev.name ?? '').split(':')[0], ts: ev.ts ?? 0 }
+      return { ...feed, items: [...feed.items, nudge] }
+    }
     case 'confirm': {
       const key = ev.call ?? id
       const confirm: Item = { kind: 'confirm', id: key, label: ev.label ?? '', status: ev.status ?? 'waiting', outcome: ev.text ?? '' }

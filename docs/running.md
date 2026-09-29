@@ -19,6 +19,8 @@ uv run winston ext list        # extensions: on or off, running or not, their st
 uv run winston ext new NAME    # a single-file extension in data/extensions/, with a test beside it
 uv run winston ext test NAME   # its tests, no winstond needed; then `winston ext enable NAME`
 uv run winston ext call ID TOOL '{"arg": 1}'   # a tool as the brain would call it; also run, logs, restart, disable
+uv run winston ext check ID KIND  # what a kind's check would say now, saying nothing
+uv run winston ext nudges [ID]    # where nudges stand and why each waits; every step is in logs/nudges.jsonl
 ```
 
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
@@ -45,8 +47,9 @@ extension misbehaves (blocks its loop, grows past its memory limit, crashes), in
 
 Logs: engine subprocesses write to `data/logs/<engine>.log`; each extension to
 `data/logs/extensions/<id>.log` (what it printed, every failure with its traceback), and keeps its state
-in `data/state/extensions/<id>/`; the LLM container to `docker logs
-winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
+in `data/state/extensions/<id>/`; every step of speaking up (a nudge held, said, put off, and why) to
+`data/logs/nudges.jsonl`, with the nudges themselves in `data/state/nudges.json`; the LLM container to
+`docker logs winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
 one line per spoken turn to `data/logs/latency.jsonl` (`logging.latency`; empty turns it off): time
 from the end of your speech to the transcript (`stt_ms`), the first token (`first_token_ms`) and the
 first audio (`first_audio_ms`), and the tools the turn called.

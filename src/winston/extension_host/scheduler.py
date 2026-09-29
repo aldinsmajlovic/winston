@@ -9,6 +9,10 @@ move one clock, missed runs are caught up in one place, and the card shows the n
   not running then.
 - Home Assistant triggers come over its websocket: state changes (with `to`, `from` and `for`), the
   person entity arriving or leaving (for extensions with the presence permission), and events.
+- A checked kind's triggers (`@ext.nudge(..., every=, on_state=, ...)`) run its check the same way,
+  as a job named `check:<kind>:<trigger>`.
+- Speaking up hears the person entity arrive and leave, and the phone's notification buttons
+  (`mobile_app_notification_action`).
 A job never runs twice at once; a run still going when the next is due is skipped and logged."""
 from __future__ import annotations
 
@@ -26,6 +30,24 @@ from winston_sdk.context import local_zone
 from winston.extension_host.sources import state_dir
 
 TIME_KINDS = ("every", "at", "cron")
+PHONE_EVENT = "mobile_app_notification_action"
+
+
+def kind_jobs(described: dict[str, Any]) -> list[dict[str, Any]]:
+    """A checked kind's triggers as jobs that run its check."""
+    out = []
+    for k in described.get("kinds", []):
+        for trig, value in (k.get("triggers") or {}).items():
+            trigger = {"every": lambda v: {"kind": "every", "seconds": v, "align": False},
+                       "at": lambda v: {"kind": "at", "time": v, "days": None},
+                       "cron": lambda v: {"kind": "cron", "expr": v},
+                       "on_state": lambda v: {"kind": "on_state", "entity": v, "to": None, "from": None, "for": None},
+                       "on_event": lambda v: {"kind": "on_event", "event_type": v},
+                       "on_arrive": lambda v: {"kind": "on_arrive"},
+                       "on_leave": lambda v: {"kind": "on_leave"}}[trig](value)
+            out.append({"name": f"check:{k['kind']}:{trig}", "trigger": trigger, "timeout": 10, "catch_up": False,
+                        "check": k["kind"]})
+    return out
 
 
 # cron
@@ -99,6 +121,7 @@ class Scheduler:
         self._ran_since_start: dict[str, float] = {}      # extension -> the start its "every" jobs ran for
         self._states: dict[str, str] = {}                  # entity -> its latest state, from the events
         self._ha_wants: tuple | None = None
+        self.on_phone_action = None                        # set by winstond: a notification button pressed
 
     def now(self) -> datetime:
         return datetime.now(self.zone)
@@ -170,6 +193,11 @@ class Scheduler:
 
     # running
 
+    def jobs(self, ext_id: str) -> list[dict[str, Any]]:
+        """Its jobs, and its checked kinds' triggers as jobs."""
+        d = self.host.described.get(ext_id, {})
+        return d.get("jobs", []) + kind_jobs(d)
+
     def _fire(self, ext_id: str, job: str, data: dict[str, Any]) -> None:
         key = (ext_id, job)
         if key in self._in_flight:
@@ -179,6 +207,10 @@ class Scheduler:
 
         async def run():
             try:
+                if job.startswith("check:"):
+                    if self.host.nudges is not None:
+                        await self.host.nudges.check(ext_id, job.split(":")[1])
+                    return
                 r = await self.host.run_job(ext_id, job, data)
                 if not r.get("ok"):
                     logger.warning(f"extension {ext_id}: {job} failed: {r.get('error')}")
@@ -208,7 +240,7 @@ class Scheduler:
             if proc.state != "running" or proc.is_mcp_server or not proc.started_at:
                 continue
             last = self._last(ext_id)
-            for job in self.host.described.get(ext_id, {}).get("jobs", []):
+            for job in self.jobs(ext_id):
                 if job["trigger"]["kind"] not in TIME_KINDS:
                     continue
                 try:
@@ -244,12 +276,19 @@ class Scheduler:
     # Home Assistant triggers
 
     def _wants(self) -> tuple[bool, tuple[str, ...]]:
-        """Whether any running extension needs state changes, and which custom events."""
+        """Whether any running extension needs state changes, and which custom events. Speaking up
+        needs the person entity's changes while any running extension has kinds, and the phone's
+        buttons while a phone is set."""
         states, events = False, set()
+        cfg = self.host.cfg
         for ext_id, proc in self.host.procs.items():
             if proc.state != "running":
                 continue
-            for job in self.host.described.get(ext_id, {}).get("jobs", []):
+            if self.host.described.get(ext_id, {}).get("kinds"):
+                states = states or bool(cfg.speak_up.home)
+                if cfg.speak_up.phone:
+                    events.add(PHONE_EVENT)
+            for job in self.jobs(ext_id):
                 kind = job["trigger"]["kind"]
                 if kind in ("on_state", "on_arrive", "on_leave"):
                     states = True
@@ -307,11 +346,16 @@ class Scheduler:
             person = self.host.cfg.speak_up.home
             arrived = eid == person and old.get("state") != "home" and new.get("state") == "home"
             left = eid == person and old.get("state") == "home" and new.get("state") not in (None, "home")
+            if self.host.nudges is not None and (arrived or left):
+                if arrived:
+                    self.host.nudges.arrived()
+                else:
+                    asyncio.create_task(self.host.nudges.left())
             for ext_id, proc in self.host.procs.items():
                 if proc.state != "running":
                     continue
                 perms = self.host.sources[ext_id].manifest.permissions if self.host.sources[ext_id].manifest else None
-                for job in self.host.described.get(ext_id, {}).get("jobs", []):
+                for job in self.jobs(ext_id):
                     trig = job["trigger"]
                     if trig["kind"] == "on_state":
                         entities = self._resolve(ext_id, trig["entity"])
@@ -334,10 +378,12 @@ class Scheduler:
                         else:
                             self.host._note(ext_id, job["name"], "on_arrive and on_leave need the presence permission")
         else:
+            if etype == PHONE_EVENT and self.on_phone_action is not None:
+                self.on_phone_action(data)
             for ext_id, proc in self.host.procs.items():
                 if proc.state != "running":
                     continue
-                for job in self.host.described.get(ext_id, {}).get("jobs", []):
+                for job in self.jobs(ext_id):
                     if job["trigger"]["kind"] == "on_event" and job["trigger"]["event_type"] == etype:
                         self._fire(ext_id, job["name"], {"type": etype, "data": data})
 

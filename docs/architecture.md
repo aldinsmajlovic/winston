@@ -84,8 +84,9 @@ flowchart TB
   its reply has played. The room goes in the time stamp of each message, so "the lights" means its
   lights. See [rooms](rooms.md).
 - **Announcements** (`core/announce.py`): winstond is the hub. Home Assistant events, the API and the
-  CLI publish; channel processes subscribe to `/api/events` and deliver (chime and speech, or a DM).
-  An announcement joins the conversation with its context, so replies to it work.
+  CLI publish; channel sessions (browser voice, each satellite box, Discord) subscribe to
+  `/api/events` with the room they are in and deliver (chime and speech, or a DM). An announcement
+  joins the conversation with its context, so replies to it work.
 - **Extensions** (`winston/extension_host`, the SDK in `sdk/`): each extension is its own process that
   speaks MCP to winstond, with a Winston extension to the protocol for jobs, checks and settings, and
   calls back into winstond's `/api/ext/v1/` with a token scoped to its manifest. winstond finds,
@@ -93,6 +94,12 @@ flowchart TB
   settings into the config schema (so the form, key fields and field errors cover them), and hands
   every channel's brain the same list of their tools. A restricted tool waits for a confirmation on
   the Talk page. See [extensions](extensions.md).
+- **Speaking up** (`extension_host/nudges.py`, `core/speak_up.py`): winstond's nudge engine keeps
+  every nudge from extensions in `data/state/nudges.json`, applies the rules (quiet hours, the daily
+  limit, never mid-conversation, deliveries, put off, dismissed, muted) and sends what is due through
+  the announcement hub to the speakers in the room you are in, or to your phone. The channel words it
+  with its own brain after the chime; `Mentions` adds next-talk nudges and the briefing to your next
+  message; `follow_up` is the one tool for answers to any of them.
 - **Providers** (`winston/providers`): platform helpers, currently Home Assistant's exposure allowlist.
 - **Control** (`winston/api`, `winston/cli`): `winstond` and the `winston` command.
 

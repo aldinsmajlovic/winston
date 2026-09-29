@@ -3,6 +3,7 @@ and the CLI use, and serves the built UI from web/dist. Bound to localhost by de
 behind auth before exposing it."""
 import asyncio
 import json
+import re
 from collections import OrderedDict
 from datetime import date
 import subprocess
@@ -12,6 +13,7 @@ from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 import httpx
+from loguru import logger
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -29,7 +31,7 @@ from winston.config.presets import LLM, PROFILES, TTS, stt_presets
 from winston.config.restarts import BRAIN_CHANNELS, control_sections, restarts_for
 from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
 from winston.channels.web import WebChat
-from winston.core.announce import Announcement, Delivery, Hub
+from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.brain import api_key
 from winston.core import memory, persona, region, speaker, voices
 from winston.core.live import Feed, LiveEvent
@@ -37,7 +39,8 @@ from winston.core.rooms import MicHold, Rooms, RoomState, SyncRequest, SyncResul
 from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
 from winston.extension_host.api import router as extensions_router
-from winston.extension_host.host import Host
+from winston.extension_host.host import Host, Pending
+from winston.extension_host.nudges import Nudges
 from winston.extension_host.scheduler import Scheduler
 from winston.extension_host.outward import build as outward_mcp
 from winston.extension_host.services import Services as ExtensionServices
@@ -345,6 +348,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     ctl = cfg.control.host if cfg.control.host not in ("0.0.0.0", "::", "") else "127.0.0.1"
     extensions = Host(cfg, api=f"http://{ctl}:{cfg.control.port}")
     extension_services = ExtensionServices(extensions)
+    extension_services.talking = feed.talking             # background model calls yield to conversations
     extensions.on_feed = lambda ev: feed.publish(LiveEvent(**ev))
     extensions.scheduler = Scheduler(extensions, extension_services)
     mcp_out = outward_mcp(extensions)
@@ -363,6 +367,71 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         spawn(web.announced(a.text, a.context))
         return d
 
+    # Speaking up: the engine decides (extension_host/nudges.py); here is how a nudge gets out.
+
+    async def to_phone(message: str, tag: str, actions: list[dict[str, str]]) -> bool:
+        """A notification through the notify service picked under speaking up (the companion app's),
+        with buttons that come back as mobile_app_notification_action events."""
+        service = extensions.cfg.speak_up.phone
+        if not service:
+            return False
+        try:
+            async with extension_services._ha_client() as c:
+                r = await c.post(f"/api/services/notify/{service.removeprefix('notify.')}",
+                                 json={"title": extensions.cfg.assistant.name, "message": message,
+                                       "data": {"tag": tag, "actions": actions}})
+            if r.status_code >= 300:
+                logger.warning(f"phone: notify.{service} answered {r.status_code}: {r.text[:200]}")
+            return r.status_code < 300
+        except Exception as e:                                          # noqa: BLE001
+            logger.warning(f"phone: {e}")
+            return False
+
+    async def deliver_nudge(ev: dict, where: str) -> str | None:
+        if where == "speakers":
+            if n := hub.publish_nudge(ev, rooms.recent()):
+                spawn(web.noted(nudge_note(ev), ev["say"]))
+                return f"speakers:{n}"
+        later = "When I'm home" if extensions.cfg.speak_up.home else "In two hours"
+        if await to_phone(ev["say"], ev["id"], [{"action": f"WINSTON_LATER_{ev['id']}", "title": later},
+                                                {"action": f"WINSTON_DISMISS_{ev['id']}", "title": "Done"}]):
+            return "phone"
+        if hub.publish_discord({"type": "nudge", **ev, "text": ev["say"], "context": {}}):
+            return "discord"
+        return None
+
+    async def home_now() -> bool | None:
+        if not extensions.cfg.speak_up.home:
+            return None
+        return bool((await extension_services.presence())["home"])
+
+    nudges = Nudges(extensions, deliver=deliver_nudge, busy=feed.talking, home=home_now,
+                    feed=lambda ev: feed.publish(LiveEvent(**ev)))
+    extensions.nudges = nudges
+
+    def confirm_on_phone(p: Pending):
+        spawn(to_phone(f"{p.label}? Asked for in {p.channel}.", f"confirm-{p.id}",
+                       [{"action": f"WINSTON_CONFIRM_{p.id}", "title": "Confirm"},
+                        {"action": f"WINSTON_DECLINE_{p.id}", "title": "Decline"}]))
+    extensions.on_pending = confirm_on_phone
+
+    def phone_action(data: dict):
+        """A button on one of his notifications."""
+        action = str(data.get("action") or "")
+        m = re.fullmatch(r"WINSTON_(LATER|DISMISS|CONFIRM|DECLINE)_(\w+)", action)
+        if m is None:
+            return
+        what, ident = m.groups()
+        logger.info(f"phone: {what.lower()} {ident}")
+        if what in ("CONFIRM", "DECLINE"):
+            spawn(extensions.confirm(ident, what == "CONFIRM"))
+        elif what == "LATER":
+            spawn(nudges.follow_up(ident, "later", "when I'm home" if extensions.cfg.speak_up.home else "in 2 hours",
+                                   channel="phone"))
+        else:
+            spawn(nudges.follow_up(ident, "dismiss", channel="phone"))
+    extensions.scheduler.on_phone_action = phone_action
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if autostart:
@@ -372,9 +441,11 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         spawn(extensions.start() if autostart else extensions.refresh())
         if autostart:
             extensions.scheduler.start()
+            nudges.start()
         async with mcp_out.session_manager.run():
             yield
         listener.cancel()
+        await nudges.stop()
         await extensions.scheduler.stop()
         await extensions.stop_all()
         await web.close()
@@ -485,9 +556,11 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             raise HTTPException(409, "announcements are off (announce.enabled)")
         return publish_announcement(a)
 
-    @app.get("/api/events", summary="Announcements for one channel process, as server-sent events")
-    async def events(channel: Literal["voice", "discord"] = Query(...)):
-        q = hub.subscribe(channel)
+    @app.get("/api/events", summary="Announcements and nudges for one channel session, as server-sent events")
+    async def events(channel: Literal["voice", "satellite", "discord"] = Query(...),
+                     room: str | None = Query(None, description="The room the session is in: nudges go to the "
+                                                                "room you are in")):
+        q = hub.subscribe(channel, room)
 
         async def gen():
             try:

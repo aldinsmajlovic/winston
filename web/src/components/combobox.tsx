@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
 
 export type Choice = {
   value: string
@@ -76,7 +77,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
         >
           <span className="flex min-w-0 items-center gap-2">
             <KindIcon name={current?.icon} />
-            <span className="truncate">{current?.label ?? (value || placeholder || '')}</span>
+            <span className={cn('truncate', !current && !value && 'text-muted-foreground')}>{current?.label ?? (value || placeholder || '')}</span>
           </span>
           <span className="flex items-center gap-2">
             {loading ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" /> : null}

@@ -81,12 +81,15 @@ _ACT_STRONG = re.compile(
     r"sen[dt]|messag(?:e|ed))\b"
     r"|\b(?:has|have) been (?:set|turned|switched|dimmed|changed|adjusted|booted|sent)\b"
     r"|\b(?:turned|switched) (?:on|off)\b|^(?:(?:it'?s|it is|that'?s|that is|all) )?done\b")
-# "I'll remember that", "noted", "I've forgotten that": a memory claim, backed only by the memory tools
-# (remember, forget). Bare "I remember" is recall from the prompt, not a claim.
+# "I'll remember that", "I've noted it", "I've forgotten that": a memory claim, backed only by the memory
+# tools (remember, forget). Bare "I remember" is recall from the prompt, not a claim. A bare "Noted." is
+# also what he says to a nudge put off ("Noted, sir. I'll remind you tomorrow."), so follow_up backs it too.
 MEMORY_TOOLS = {"remember", "forget"}
 _REMEMBER = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? (?:remember|noted?|made a note)\b"
-                       r"|\bi'll keep (?:that|it|this) in mind\b|^(?:got it, )?noted\b"
+                       r"|\bi'll keep (?:that|it|this) in mind\b"
                        r"|\bi(?:'ve| have)(?: just)? forgotten\b")
+_NOTED = re.compile(r"^(?:got it, |very good, |very well, )?noted\b")
+NOTING_TOOLS = MEMORY_TOOLS | {"follow_up"}
 # "I've updated it", "I removed milk from the list", "I've saved that": a change claim that may be about
 # memory or about the home (a to-do list, a voice); any act tool backs it, only a memory tool when the
 # sentence says it is about memory ("I removed the note about the dentist").
@@ -131,12 +134,15 @@ def judge(text: str, tools: list[tuple[str, bool]], names: re.Pattern = _GENERIC
     targets(cfg)."""
     ok = {tool_tier(name) for name, succeeded in tools if succeeded}
     memory_ok = any(succeeded and name.split("__")[-1].lower() in MEMORY_TOOLS for name, succeeded in tools)
+    noted_ok = any(succeeded and name.split("__")[-1].lower() in NOTING_TOOLS for name, succeeded in tools)
     for s in re.split(r"(?<=[.!])\s+", text.lower()):
         if _SKIP.search(s):
             continue
         named = bool(names.search(s))
         changed = _CHANGED.search(s)
         if not memory_ok and (_REMEMBER.search(s) or (changed and _ABOUT_MEMORY.search(s))):
+            return ACT
+        if not noted_ok and _NOTED.search(s):
             return ACT
         loose = _REMEMBER_PASSIVE.search(s) or (named and _ACT_WEAK.search(s))
         if ACT not in ok and (_ACT_STRONG.search(s) or changed or (named and _ACT_ING.search(s))
@@ -148,13 +154,14 @@ def judge(text: str, tools: list[tuple[str, bool]], names: re.Pattern = _GENERIC
 
 
 # A reply that ends on a promise to act: "Let me turn them on.", "I'll go ahead and switch it off",
-# "Let me check." Only verbs that need a tool count: "let me think of something" and "let me know"
-# promise nothing a tool keeps. Act verbs want an act tool; check verbs want any tool.
+# "Let me check.", "I'll remind you after work." Only verbs that need a tool count: "let me think of
+# something" and "let me know" promise nothing a tool keeps. Act verbs want an act tool (a reminder is
+# kept by follow_up's later or an extension's act tool); check verbs want any tool.
 _PROMISE = re.compile(
     r"\b(?:let me|let's|i'll|i will|i'm going to|i am going to|i'm about to)"
     r"(?: just| quickly| now| go ahead and| try to)? "
     r"(?:(?P<act>turn|switch|set|dim|brighten|change|adjust|boot|start|wake|put|send|message|lock|unlock|open|"
-    r"close|add|remove|delete|play|pause|stop|save|update|make (?:it|them|the)|do (?:that|it|this))"
+    r"close|add|remove|delete|play|pause|stop|save|update|remind|make (?:it|them|the)|do (?:that|it|this))"
     r"|(?P<check>check|look (?:it |that |this )?(?:up|at|into)|find out|pull up|read))\b")
 # A retry that says plainly it cannot, or has not checked, or asks: an answer, not a failure. Bare
 # "isn't" or "don't" is not enough: "The lamp isn't on" is a state claim the judge's negation rule lets by.

@@ -174,6 +174,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/nudges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every nudge: where it stands and why it waits, newest first */
+        get: operations["list_nudges_api_nudges_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nudges/kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** How many kinds of nudges the extensions switched on have (the brain gets follow_up when any) */
+        get: operations["nudge_kinds_api_nudges_kinds_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nudges/mentions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What to mention in the conversation going on now (next-talk nudges, the briefing); each once */
+        post: operations["mentions_api_nudges_mentions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/nudges/{nid}/follow_up": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The follow_up tool: later, dismiss, mute, why, or one of the extension's actions */
+        post: operations["follow_up_api_nudges__nid__follow_up_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{ext_id}/kinds/{kind}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What its check would say now, without recording or saying anything */
+        post: operations["check_kind_api_extensions__ext_id__kinds__kind__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{ext_id}/kinds/{kind}/unmute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Switch a muted kind back on */
+        post: operations["unmute_api_extensions__ext_id__kinds__kind__unmute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/hooks/{ext_id}/{name}": {
         parameters: {
             query?: never;
@@ -266,7 +368,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Announcements for one channel process, as server-sent events */
+        /** Announcements and nudges for one channel session, as server-sent events */
         get: operations["events_api_events_get"];
         put?: never;
         post?: never;
@@ -785,7 +887,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_areas, discord_users */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -1004,6 +1106,14 @@ export interface components {
             /** Approve */
             approve: boolean;
         };
+        /** Body_mentions_api_nudges_mentions_post */
+        Body_mentions_api_nudges_mentions_post: {
+            /**
+             * Text
+             * @default
+             */
+            text?: string;
+        };
         /** BrainTool */
         BrainTool: {
             /** Name */
@@ -1078,6 +1188,17 @@ export interface components {
              * @description The room the page is set to; its conversation is shared with the room's box. None: the household's.
              */
             room?: string | null;
+        };
+        /** CheckResult */
+        CheckResult: {
+            /** Ok */
+            ok: boolean;
+            /** Nudges */
+            nudges?: {
+                [key: string]: unknown;
+            }[];
+            /** Error */
+            error?: string | null;
         };
         /** Choice */
         Choice: {
@@ -1712,6 +1833,11 @@ export interface components {
             tools?: components["schemas"]["ToolView"][];
             /** Kinds */
             kinds?: components["schemas"]["KindView"][];
+            /**
+             * Nudges
+             * @description Its nudges now and those ended lately
+             */
+            nudges?: components["schemas"]["NudgeView"][];
             /** Entities */
             entities?: components["schemas"]["EntityView"][];
             /** Jobs */
@@ -1740,6 +1866,23 @@ export interface components {
              * @description Its last day; null clears it. Left out, the fact keeps its until unless the new text has a date still to come
              */
             until?: string | null;
+        };
+        /** FollowUp */
+        FollowUp: {
+            /**
+             * Action
+             * @description later, dismiss, mute, why, or one of the extension's actions
+             */
+            action: string;
+            /** When */
+            when?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Channel
+             * @description The conversation it comes from; a restricted action from one waits for your confirmation
+             */
+            channel?: string | null;
         };
         /** Forgotten */
         Forgotten: {
@@ -2020,12 +2163,31 @@ export interface components {
             deliver: unknown;
             /** Where */
             where: unknown;
+            /** Declared Deliver */
+            declared_deliver?: unknown;
+            /** Declared Where */
+            declared_where?: unknown;
             /** Requested */
             requested: boolean;
             /** May Be Urgent */
             may_be_urgent: boolean;
+            /**
+             * Repeat
+             * @description Seconds after which a checked nudge is said again
+             */
+            repeat?: number | null;
+            /**
+             * Triggers
+             * @description When its check runs, in words
+             */
+            triggers?: string[];
             /** Enabled */
             enabled: boolean;
+            /**
+             * Muted Until
+             * @description Muted: 0 until switched back on, else when it ends
+             */
+            muted_until?: number | null;
         };
         /** LLMConfig */
         LLMConfig: {
@@ -2082,6 +2244,8 @@ export interface components {
          *     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
          *     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
          *     ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
+         *     nudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:
+         *     speakers, phone, discord, conversation, silent): he spoke up, or would have.
          */
         LiveEvent: {
             /**
@@ -2100,7 +2264,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm";
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge";
             /** State */
             state?: ("idle" | "listening" | "thinking" | "speaking") | null;
             /** Text */
@@ -2266,6 +2430,58 @@ export interface components {
              * @description What belongs here; a plain default when unset
              */
             description?: string | null;
+        };
+        /** NudgeView */
+        NudgeView: {
+            /** Id */
+            id: string;
+            /** Extension */
+            extension: string;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** About */
+            about: string;
+            /** Level */
+            level: number;
+            /** Say */
+            say?: string | null;
+            /** Facts */
+            facts?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source
+             * @description checked or pushed
+             */
+            source: string;
+            /**
+             * State
+             * @description waiting, held, said, dismissed or ended
+             */
+            state: string;
+            /**
+             * Why
+             * @description Why it waits or is held
+             */
+            why?: string | null;
+            /**
+             * Via
+             * @description Where it was said: speakers, phone, discord, conversation, silent
+             */
+            via?: string | null;
+            /** Said At */
+            said_at?: string | null;
+            /** Held Until */
+            held_until?: string | null;
+            /**
+             * Put Off
+             * @description Put off until, as he was told
+             */
+            put_off?: string | null;
+            /** Reason */
+            reason?: string | null;
         };
         /** Ok */
         Ok: {
@@ -2667,9 +2883,39 @@ export interface components {
         SpeakUpConfig: {
             /**
              * You
-             * @description The person entity that says whether you are home: for nudges held until you get home, and extensions allowed to know.
+             * @description The person entity that says whether you are home: for nudges held until you get home, spoken at home and sent to your phone away, and extensions allowed to know.
              */
             home?: string | null;
+            /**
+             * Your phone
+             * @description The Home Assistant notify service that reaches your phone (the companion app's): nudges while you are away, and confirming restricted calls. Empty: Discord, when it is set up.
+             */
+            phone?: string | null;
+            /**
+             * Spoken nudges a day
+             * @description Past this many spoken nudges in a day, the rest wait for the next morning's briefing. What you asked for (reminders, a time you gave) does not count.
+             * @default 4
+             */
+            max_per_day?: number;
+            /**
+             * Briefing from
+             * @description The morning briefing is given at your first conversation after this time, or when you ask what's new.
+             * @default 06:00
+             */
+            briefing_from?: string;
+            /**
+             * After work
+             * @description "Remind me after work" when he does not know when you finish: when you get home that day, or at this time if you are home already.
+             * @default 18:00
+             */
+            fallback_time?: string;
+            /**
+             * Parts of the day
+             * @description What "tomorrow morning" and "this evening" mean when you put something off.
+             */
+            day_parts?: {
+                [key: string]: string;
+            };
         };
         /** Status */
         Status: {
@@ -3205,7 +3451,17 @@ export interface components {
             };
             /**
              * Speaking up
-             * @default {}
+             * @default {
+             *       "max_per_day": 4,
+             *       "briefing_from": "06:00",
+             *       "fallback_time": "18:00",
+             *       "day_parts": {
+             *         "afternoon": "15:00",
+             *         "evening": "19:00",
+             *         "morning": "08:00",
+             *         "tonight": "20:00"
+             *       }
+             *     }
              */
             speak_up?: components["schemas"]["SpeakUpConfig"];
             /**
@@ -3521,6 +3777,191 @@ export interface operations {
             };
         };
     };
+    list_nudges_api_nudges_get: {
+        parameters: {
+            query?: {
+                extension?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NudgeView"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    nudge_kinds_api_nudges_kinds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    mentions_api_nudges_mentions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Body_mentions_api_nudges_mentions_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    follow_up_api_nudges__nid__follow_up_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                nid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FollowUp"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_kind_api_extensions__ext_id__kinds__kind__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ext_id: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unmute_api_extensions__ext_id__kinds__kind__unmute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ext_id: string;
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     hook_hooks__ext_id___name__post: {
         parameters: {
             query?: never;
@@ -3649,7 +4090,9 @@ export interface operations {
     events_api_events_get: {
         parameters: {
             query: {
-                channel: "voice" | "discord";
+                channel: "voice" | "satellite" | "discord";
+                /** @description The room the session is in: nudges go to the room you are in */
+                room?: string | null;
             };
             header?: never;
             path?: never;

@@ -59,6 +59,7 @@ type Meta = JsonSchema & {
   dimmed?: boolean
   secret_field?: SecretMeta
   extra?: string
+  placeholder?: string // what an empty picker means
 }
 
 /** "reasoning_effort" -> "Reasoning effort", for enum values the schema gives no label. */
@@ -247,6 +248,7 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
       disabled={disabled || readonly}
       onChange={(v) => onChange(v)}
       onClear={schema.default === null ? () => onChange(undefined) : undefined}
+      placeholder={meta.placeholder}
     />
   )
 }

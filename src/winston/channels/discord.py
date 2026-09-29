@@ -19,7 +19,7 @@ from loguru import logger
 from winston.channels.text import TextSession
 from winston.config import load
 from winston.config.schema import WinstonConfig
-from winston.core.announce import subscribe
+from winston.core.announce import nudge_note, subscribe
 
 LIMIT = 2000        # Discord's message length
 
@@ -85,13 +85,18 @@ class DiscordChannel:
             logger.warning(f"correction not delivered: {e}")
 
     async def announcements(self):
+        """Announcements, and nudges while you are away with no phone set: sent as a DM and added to the
+        conversation, so a reply ("remind me when I'm home") has the context."""
         async for ev in subscribe(self.cfg, "discord"):
             try:
                 await (await self.dm()).send(ev["text"])
-                await (await self.current()).announced(ev["text"], ev["context"])
-                logger.info(f"announcement sent: {ev['text']!r}")
+                if ev.get("type") == "nudge":
+                    await (await self.current()).noted(nudge_note(ev), ev["text"])
+                else:
+                    await (await self.current()).announced(ev["text"], ev["context"])
+                logger.info(f"{ev.get('type', 'announcement')} sent: {ev['text']!r}")
             except discord.DiscordException as e:
-                logger.warning(f"announcement not delivered: {e}")
+                logger.warning(f"{ev.get('type', 'announcement')} not delivered: {e}")
 
     async def on_ready(self):
         logger.info(f"connected to Discord as {self.client.user}")

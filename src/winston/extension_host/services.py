@@ -4,11 +4,15 @@ Every call is checked against that extension's manifest and logged with its id. 
 reached only for entities exposed to Winston or picked in the extension's settings (picking one is
 consent); reads take `home_assistant = "read"`, services that change something take "act" and must
 name their entities. Memory goes through the same checks as the remember tool. The model is the
-background model: the brain's server with thinking off, never one an extension picks."""
+background model: the brain's server with thinking off, never one an extension picks. Its calls keep to
+a slot of their own and yield to conversations: one waits while anyone is talking to him, and one under
+way when a conversation starts is stopped and asked again after it."""
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+from collections.abc import Callable
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +25,9 @@ from winston.config.schema import WinstonConfig
 from winston.core import memory
 from winston.core.brain import api_key, thinking_body
 from winston.extension_host.sources import state_dir
+
+
+ASK_BUDGET = 45.0      # seconds a background call may wait for conversations; the SDK gives up at 60
 
 
 class Refused(Exception):
@@ -79,6 +86,8 @@ class Services:
     def __init__(self, host):
         self.host = host
         self._ha_services: tuple[float, dict[str, dict[str, Any]]] | None = None
+        self._slot: tuple[float, str, int | None] = (0.0, "", None)     # (when read, for which server, slot)
+        self.talking: Callable[[], bool] = lambda: False                # set by winstond: a conversation runs
 
     @property
     def cfg(self) -> WinstonConfig:
@@ -146,10 +155,12 @@ class Services:
             self.host.set_entity(ext_id, p["key"], p.get("entry"), p.get("value"), p.get("attributes") or {})
             return None
         if op in ("poke", "nudge.push", "nudge.withdraw", "nudge.list"):
-            nudges = getattr(self.host, "nudges", None)
-            if nudges is None:
-                raise Failed("speaking up is not built yet (Extensions track step 3); nothing was said")
-            return await nudges.handle(ext_id, op, p)
+            if self.host.nudges is None:
+                raise Failed("speaking up is not running in this winstond; nothing was said")
+            try:
+                return await self.host.nudges.handle(ext_id, op, p)
+            except (KeyError, ValueError) as e:
+                raise BadCall(str(e)) from e
         raise BadCall(f"unknown operation {op}")
 
     # Home Assistant
@@ -266,10 +277,52 @@ class Services:
 
     # the background model
 
+    async def background_slot(self) -> int | None:
+        """The server slot background calls keep to: llama.cpp's last one when it has more than one, so
+        they never take the slot that holds a conversation's cached prompt. Measured with the 27B and an
+        extension asking one story after another: a spoken turn's median first audio went from 982 ms to
+        2147 ms unpinned, the first turn 8.4 s (its prompt evicted). Other servers have no slots (no
+        /props): None, and nothing is sent."""
+        at, url, slot = self._slot
+        base = self.cfg.llm.base_url.rstrip("/").removesuffix("/v1")
+        if url == base and time.monotonic() - at < 300:
+            return slot
+        slot = None
+        try:
+            async with httpx.AsyncClient(timeout=2) as c:
+                r = await c.get(f"{base}/props")
+                total = int(r.json().get("total_slots") or 0) if r.status_code == 200 else 0
+            slot = total - 1 if total >= 2 else None
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+            pass
+        self._slot = (time.monotonic(), base, slot)
+        return slot
+
     async def _ask(self, prompt: str, schema: dict | None, max_tokens: int) -> Any:
+        """Yields to conversations: waits while one runs, and a call under way when one starts is
+        stopped (the server drops it) and asked again once it is over. Measured with the slot alone: a
+        spoken turn's median first audio still went from 892 ms to 1782 ms while an extension asked."""
+        deadline = time.monotonic() + ASK_BUDGET
+        while True:
+            while self.talking():
+                if time.monotonic() > deadline:
+                    raise Failed("a conversation is running and background calls wait for it; try again later")
+                await asyncio.sleep(0.2)
+            ask = asyncio.create_task(self._ask_once(prompt, schema, max_tokens))
+            while not ask.done() and not self.talking():
+                await asyncio.wait({ask}, timeout=0.05)
+            if ask.done():
+                return ask.result()
+            ask.cancel()
+            await asyncio.gather(ask, return_exceptions=True)
+            logger.info("background model call stopped for a conversation; asked again after it")
+
+    async def _ask_once(self, prompt: str, schema: dict | None, max_tokens: int) -> Any:
         c = self.cfg.llm
         client = AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=60)
         extra: dict[str, Any] = dict(thinking_body(self.cfg, "voice"))
+        if (slot := await self.background_slot()) is not None:
+            extra["id_slot"] = slot
         kwargs: dict[str, Any] = {}
         if schema:
             kwargs["response_format"] = {"type": "json_schema",

@@ -38,11 +38,13 @@ class LiveEvent(BaseModel):
     tool: call, name, status, label, ms. announcement: text. error: text.
     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
-    ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it."""
+    ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
+    nudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:
+    speakers, phone, discord, conversation, silent): he spoke up, or would have."""
     id: str = ""
     ts: float = 0
     channel: str
-    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm"]
+    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm", "nudge"]
     state: State | None = None
     text: str | None = None
     reply: str | None = None
@@ -65,10 +67,18 @@ class Feed:
         self._state: dict[str, LiveEvent] = {}         # latest state per channel
         self._mic: dict[str, LiveEvent] = {}           # latest mic holder per room
         self._subs: set[asyncio.Queue] = set()
+        self.talked_at = 0.0                            # the last word heard or said, any channel
+
+    def talking(self, secs: float = 30) -> bool:
+        """A conversation is running: something was heard, said or done within secs."""
+        return time.time() - self.talked_at < secs
 
     def publish(self, ev: LiveEvent) -> LiveEvent:
         ev.id = ev.id or uuid.uuid4().hex[:12]
         ev.ts = ev.ts or time.time()
+        if ev.type in ("user", "reply", "tool") or (ev.type == "state" and ev.state in ("listening", "thinking",
+                                                                                          "speaking")):
+            self.talked_at = max(self.talked_at, time.time())
         if ev.type == "state":
             self._state[ev.channel] = ev
         elif ev.type == "mic":

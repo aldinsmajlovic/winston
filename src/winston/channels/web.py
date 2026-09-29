@@ -12,6 +12,7 @@ from collections import deque
 from loguru import logger
 
 from winston.channels.text import TextSession
+from winston.core.announce import note
 from winston.config.schema import WinstonConfig
 from winston.core.live import Feed, LiveEvent, LiveObserver
 from winston.core.rooms import RoomLink, Rooms, area, key, local_sync
@@ -23,7 +24,7 @@ class WebChat:
         self.sessions: dict[str | None, TextSession] = {}       # by room key; None is the household's
         self._lock = asyncio.Lock()
         self._reaper: asyncio.Task | None = None
-        self._recent: deque[tuple[float, str, dict]] = deque(maxlen=10)    # announcements, for a new conversation
+        self._recent: deque[tuple[float, str, str]] = deque(maxlen=10)     # (at, note, said), for a new conversation
 
     @property
     def session(self) -> TextSession | None:
@@ -41,9 +42,9 @@ class WebChat:
                                                          area=area(self.cfg, room) if k else None).start()
                 s.notify = self._correction
                 window = self.cfg.channels.web.session_idle_mins * 60
-                for at, text, context in self._recent:
+                for at, house_note, said in self._recent:
                     if time.monotonic() - at < window:
-                        await s.announced(text, context)
+                        await s.noted(house_note, said)
                 logger.info(f"web chat: new conversation{f' in {room}' if k else ''}")
                 self._reaper = self._reaper or asyncio.create_task(self._reap())
             return s
@@ -66,9 +67,14 @@ class WebChat:
     async def announced(self, text: str, context: dict):
         """An announcement joins the conversation, so a typed follow-up has its context. Kept for a
         while, so a conversation that starts after it still knows."""
-        self._recent.append((time.monotonic(), text, context))
+        await self.noted(note(text, context), text)
+
+    async def noted(self, house_note: str, said: str):
+        """Something he said on his own (an announcement, a nudge on the speakers) joins the typed
+        conversations too, so "remind me tomorrow" typed after it has the nudge."""
+        self._recent.append((time.monotonic(), house_note, said))
         for s in list(self.sessions.values()):
-            await s.announced(text, context)
+            await s.noted(house_note, said)
 
     async def reset(self, cfg: WinstonConfig | None = None):
         """Close the conversations; the next message starts one with the current config and memory."""

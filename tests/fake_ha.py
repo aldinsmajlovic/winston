@@ -180,7 +180,8 @@ class FakeHA:
     SERVICES = {"light": {"turn_on": {}, "turn_off": {}}, "switch": {"turn_on": {}, "turn_off": {}},
                 "weather": {"get_forecasts": {"response": {"optional": False}}},
                 "calendar": {"get_events": {"response": {"optional": False}}},
-                "todo": {"get_items": {"response": {"optional": False}}, "add_item": {}}}
+                "todo": {"get_items": {"response": {"optional": False}}, "add_item": {}},
+                "notify": {"mobile_app_test_phone": {}, "persistent_notification": {}}}
 
     async def get_services(self, request):
         await self._gate(request)

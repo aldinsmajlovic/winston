@@ -10,9 +10,11 @@ Actions are stubbed as in tests/conversations.py. Passes when every request gets
 fetched from the URL, the events come in the box's order, every reply keeps the box listening
 without a wake word (channels.satellite.follow_up_secs), an answer there is taken as the next turn
 and silence there ends the run with the no-speech error, which takes the real box back to idle.
-Then: "that's all" there ends the conversation without a reply; a long press switches the box to
-button only (no wake word, a spoken line, a press gets a reply without a follow-up), a reconnect finds
-it still button only, and a second long press switches the wake word back on."""
+Then: "that's all" there ends the conversation without a reply; a nudge (speaking up) is played as an
+announcement with the chime first and his own wording after it, and the box listens on, so an answer
+needs no wake word; a long press switches the box to button only (no wake word, a spoken line, a press
+gets a reply without a follow-up), a reconnect finds it still button only, and a second long press
+switches the wake word back on."""
 import asyncio
 import sys
 import time
@@ -116,7 +118,7 @@ class FakeVoicePE:
         elif isinstance(msg, pb.SubscribeStatesRequest):
             self.states = True
         elif isinstance(msg, pb.VoiceAssistantAnnounceRequest):
-            asyncio.get_running_loop().create_task(self.announce(msg.media_id, msg.text))
+            asyncio.get_running_loop().create_task(self.announce(msg.media_id, msg.text, msg.start_conversation))
         elif isinstance(msg, pb.PingRequest):
             self.send(pb.PingResponse())
         elif isinstance(msg, pb.DisconnectRequest):
@@ -142,11 +144,13 @@ class FakeVoicePE:
             self.events.append((time.perf_counter(), Ev(msg.event_type), {d.name: d.value for d in msg.data}))
             self.new_event.set()
 
-    async def announce(self, url: str, text: str):
+    async def announce(self, url: str, text: str, start_conversation: bool = False):
         """Plays an announcement as the box does: fetches the URL, then says it has finished."""
         async with aiohttp.ClientSession() as s, s.get(url.replace(".flac", ".wav")) as r:
             wav = await r.read()
-        self.announced.append({"text": text, "audio_secs": max(0, len(wav) - 44) / 2 / sat.OUT_RATE})
+        pcm = np.frombuffer(wav[44:len(wav) - (len(wav) - 44) % 2], dtype="<i2")
+        self.announced.append({"text": text, "audio_secs": len(pcm) / sat.OUT_RATE, "pcm": pcm,
+                               "start_conversation": start_conversation})
         self.send(pb.VoiceAssistantAnnounceFinished(success=True))
 
     def long_press(self):
@@ -276,6 +280,27 @@ async def main() -> int:
     print(f"\n> That's all, thanks. (after {r['said']!r})\n  heard {r2['heard']!r}, said {r2['said']!r}\n"
           f"  {' '.join(r2['order'])}")
     ok &= r["follow_up"] and not r2["said"] and r2["order"][-2:] == ["ERROR", "RUN_END"]
+
+    # Speaking up: a nudge from an extension, as winstond's hub hands it to the box.
+    chime = audio.chime()
+    ev = {"type": "nudge", "id": "ntest", "extension": "Trainer", "kind": "Time to train",
+          "say": "It has been three days since your last workout, sir.", "facts": {"days_since": 3},
+          "outside": True, "reason": None, "actions": [], "urgent": False, "level": 1, "again": False}
+    n = len(box.announced)
+    satellite._follow_until = 0.0
+    t0 = time.perf_counter()
+    await satellite.speak(ev)
+    said = box.announced[n] if len(box.announced) > n else {}
+    chime_secs = len(chime) / 2 / sat.OUT_RATE
+    starts_with_chime = bool(chime) and len(said.get("pcm", [])) > len(chime) // 2 and np.array_equal(
+        said["pcm"][:len(chime) // 2], np.frombuffer(chime, dtype="<i2"))
+    worded = satellite.conversation.speaker.text if satellite.conversation else []
+    print(f"\n> (a nudge: {ev['say']!r})\n  {said.get('audio_secs', 0):.1f} s of audio in {time.perf_counter() - t0:.1f} s, "
+          f"the chime first {starts_with_chime}, then listening {said.get('start_conversation')}")
+    ok &= starts_with_chime and said.get("audio_secs", 0) > chime_secs + 1 and said.get("start_conversation")
+    r = await box.converse(synth_user_audio("Thanks, I know.", USER)[0], None)       # no wake word
+    print(f"  > Thanks, I know. (no wake word)\n    heard {r['heard']!r}\n    said  {r['said']!r}")
+    ok &= bool(r["heard"]) and bool(r["said"])
 
     async def pressed(want: list[str], line: str) -> bool:
         n = len(box.announced)

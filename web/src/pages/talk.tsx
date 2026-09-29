@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowUp,
   Bell,
+  BellRing,
   BookmarkMinus,
   BookmarkPlus,
   CircleAlert,
@@ -152,7 +153,28 @@ function Line({ item }: { item: Item }) {
       )
     case 'confirm':
       return <Confirm item={item} />
+    case 'nudge':
+      // Spoken or mentioned, his own words follow as a reply; otherwise its plain line is shown here.
+      return (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-muted-foreground">
+          <BellRing className="size-4 shrink-0" />
+          <span>{clock(item.ts)}</span>
+          <span>
+            {item.label}, {VIA[item.via] ?? item.via}
+          </span>
+          {!['speakers', 'conversation'].includes(item.via) && <span className="basis-full pl-6.5 text-base text-foreground">{item.text}</span>}
+        </div>
+      )
   }
+}
+
+/** Where a nudge went, after its extension and kind. */
+const VIA: Record<string, string> = {
+  speakers: 'said on the speakers',
+  phone: 'sent to your phone',
+  discord: 'sent on Discord',
+  conversation: 'mentioned in the conversation',
+  silent: 'shown here only',
 }
 
 /** Template: Talk page. The conversation across every channel, his presence, a text field and the

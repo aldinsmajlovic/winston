@@ -1,7 +1,8 @@
 # Announcements
 
 Winston can speak without being spoken to: a chime, then the text as given, on every connected
-speaker (the Talk page with its talk button on, the Voice PE satellite later). Outside quiet hours
+speaker (the Talk page with its talk button on, and each Voice PE box). Extensions speak up the same
+way, with their own rules ([speaking up](extensions.md#speaking-up)). Outside quiet hours
 (`announce.quiet_hours`, default 22:00-07:00) it is spoken; `announce.discord` decides when it also
 goes to Discord (`fallback`: only when nothing could speak it). You can answer: the announcement and
 its `context` join the conversation, so "how long did it run?" works right after. Every announcement
@@ -49,5 +50,6 @@ Under `announce` (web UI: Channels): `enabled`, `chime` (any 16-bit WAV, empty f
 way a browser does, announces, and transcribes what it hears: the chime, the text word for word,
 then the answer to a spoken follow-up ("How long did it run?", answered from the context).
 
-Replying without the wake word needs a satellite that opens its mic after announcing; that comes
-with the [Voice PE](voice-pe.md). In the browser the mic is always open.
+A Voice PE box plays an announcement as it plays a reply, the chime first; after a nudge it listens
+on, so an answer needs no wake word (`tests/satellite_fake.py` checks both). In the browser the mic
+is always open.

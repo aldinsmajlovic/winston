@@ -116,7 +116,13 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
         idPrefix={fieldId(path)}
         extraErrors={errors.extraErrors}
         formContext={context}
-        onChange={(next) => page.update((c) => setIn(c, path, applyForm(getIn(c, path), next, formSchema)))}
+        onChange={(next) =>
+          page.update((c) => {
+            const before = getIn(c, path)
+            const after = applyForm(before, next, formSchema)
+            return after === before ? c : setIn(c, path, after)
+          })
+        }
       />
     </Adornments.Provider>
   )

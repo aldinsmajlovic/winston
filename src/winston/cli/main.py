@@ -166,7 +166,7 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     tests = repo_root() / "tests"
     unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py",
             "verify_cases.py", "hints_cases.py", "consent_cases.py", "rooms_cases.py", "home_cases.py", "profiles_load.py",
-            "extensions_cases.py"]
+            "extensions_cases.py", "nudges_cases.py"]
     unit_paths = [tests / t for t in unit] + [repo_root() / "sdk" / "tests" / "sdk_cases.py"]
     plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {t}" for t in unit_paths)],
             "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],

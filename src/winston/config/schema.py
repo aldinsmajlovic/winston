@@ -626,9 +626,33 @@ class ExtensionConfig(Model):
 class SpeakUpConfig(Model):
     model_config = section()
     home: str | None = Field(None, title="You", description="The person entity that says whether you are home: "
-                                                            "for nudges held until you get home, and extensions "
-                                                            "allowed to know.",
+                                                            "for nudges held until you get home, spoken at home "
+                                                            "and sent to your phone away, and extensions allowed "
+                                                            "to know.",
                              json_schema_extra=ui(options="ha_entities", options_query={"domain": "person"}))
+    phone: str | None = Field(None, title="Your phone",
+                              description="The Home Assistant notify service that reaches your phone (the companion "
+                                          "app's): nudges while you are away, and confirming restricted calls. "
+                                          "Empty: Discord, when it is set up.",
+                              json_schema_extra=ui(options="ha_notify", empty_means_off=True,
+                                                   placeholder="None: Discord, when it is set up"))
+    max_per_day: int = Field(4, ge=0, le=50, title="Spoken nudges a day",
+                             description="Past this many spoken nudges in a day, the rest wait for the next "
+                                         "morning's briefing. What you asked for (reminders, a time you gave) "
+                                         "does not count.")
+    briefing_from: str = Field("06:00", title="Briefing from",
+                               description="The morning briefing is given at your first conversation after this "
+                                           "time, or when you ask what's new.",
+                               json_schema_extra=ui(widget="time"))
+    fallback_time: str = Field("18:00", title="After work",
+                               description="\"Remind me after work\" when he does not know when you finish: "
+                                           "when you get home that day, or at this time if you are home already.",
+                               json_schema_extra=ui("advanced", widget="time"))
+    day_parts: dict[str, str] = Field(
+        default_factory=lambda: {"morning": "08:00", "afternoon": "15:00", "evening": "19:00", "tonight": "20:00"},
+        title="Parts of the day", description="What \"tomorrow morning\" and \"this evening\" mean when you put "
+                                              "something off.",
+        json_schema_extra=ui("advanced", key_title="Part", value_title="Time"))
 
 
 class LoggingConfig(Model):

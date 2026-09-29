@@ -440,6 +440,24 @@ async def _ha_entities(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="ha_entities", choices=choices, source=url)
 
 
+async def _ha_notify(cfg: WinstonConfig, params: dict) -> Options:
+    """Home Assistant's notify services (the companion app's is the phone), from its service list."""
+    ha = _ha(cfg)
+    if ha is None:
+        return Options(name="ha_notify", choices=[], source="Home Assistant is switched off", ok=False)
+    try:
+        async with httpx.AsyncClient(timeout=10, headers={"Authorization": f"Bearer {os.environ.get(ha.token_env, '')}"}) as c:
+            r = await c.get(f"{ha.url.rstrip('/')}/api/services")
+            r.raise_for_status()
+            listing = r.json()
+    except Exception as e:                                              # noqa: BLE001
+        return Options(name="ha_notify", choices=[], source=str(e) or type(e).__name__, ok=False)
+    names = sorted(s for d in listing if d.get("domain") == "notify" for s in d.get("services", {}))
+    return Options(name="ha_notify", source=ha.url, choices=[
+        Choice(value=f"notify.{n}", label=n.removeprefix("mobile_app_").replace("_", " ").capitalize(),
+               hint=f"notify.{n}", icon="phone" if n.startswith("mobile_app_") else "notify") for n in names])
+
+
 async def _ha_domains(cfg: WinstonConfig, params: dict) -> Options:
     try:
         states, url = await _ha_states(cfg, params)
@@ -543,7 +561,7 @@ PROVIDERS = {
     "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
     "hint_words": _hint_words,
     "llm_models": _llm_models, "voices": _voices, "gemini_models": _gemini_models, "claude_models": _claude_models,
-    "ha_entities": _ha_entities, "ha_domains": _ha_domains, "ha_areas": _ha_areas, "discord_users": _discord_users,
+    "ha_entities": _ha_entities, "ha_domains": _ha_domains, "ha_notify": _ha_notify, "ha_areas": _ha_areas, "discord_users": _discord_users,
 }
 
 

@@ -219,15 +219,28 @@ function emptyMeansOff(schema: JsonSchema): boolean {
   return schema.empty_means_off === true
 }
 
+/** Only what the form fills in by itself: its schema's defaults, all the way down. */
+function onlyDefaults(value: unknown, schema: JsonSchema): boolean {
+  if (schema.default !== undefined && deepEqual(value, schema.default)) return true
+  if (!isRecord(value) || !schema.properties) return false
+  const props = schema.properties
+  return Object.entries(value).every(([k, v]) => k in props && onlyDefaults(v, props[k]))
+}
+
 /** Write a form's data back over the current value, touching only the fields the form showed. A
- * cleared field drops its key (the server's default applies), unless empty means off. */
+ * cleared field drops its key (the server's default applies), unless empty means off. A key the saved
+ * value leaves out stays out while the form holds only its defaults there: an extension's settings
+ * are saved as written, so opening its card must not add them. */
 export function applyForm(current: unknown, formData: unknown, formSchema: JsonSchema): unknown {
+  if (current === undefined && onlyDefaults(formData, formSchema)) return current
   if (!formSchema.properties || !isRecord(current) || !isRecord(formData)) return formData
   const next: Record<string, unknown> = { ...current }
   for (const [key, child] of Object.entries(formSchema.properties)) {
     if (child.virtual === true) continue
     if (child.properties && isRecord(current[key])) {
       next[key] = applyForm(current[key], formData[key] ?? {}, child)
+    } else if (!(key in current) && formData[key] !== undefined && onlyDefaults(formData[key], child)) {
+      continue
     } else if (formData[key] === undefined) {
       if (emptyMeansOff(child)) next[key] = ''
       else delete next[key]

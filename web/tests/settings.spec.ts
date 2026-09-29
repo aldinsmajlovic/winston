@@ -43,12 +43,24 @@ async function save(page: Page, choice?: string) {
   await expect(button).toBeDisabled()
 }
 
-test('every settings page loads', async ({ page }) => {
+test('every settings page loads, with nothing to save until something is changed', async ({ page }) => {
   const errors = watchErrors(page)
   for (const path of pages) {
     await open(page, path)
     await advanced(page)
     await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0)
+    // A form filling in its defaults is not a change: the plants card (off, so its config has no entry)
+    // shows Below at its default of 30, and redrawing the forms (Advanced off and on) must not save it.
+    if (path === '/extensions') {
+      await expect(page.getByLabel('Below')).toHaveValue('30', { timeout: 30_000 })
+      await page.getByRole('switch', { name: 'Advanced' }).click()
+      await advanced(page)
+    }
+    const saveButton = page.locator('header').getByRole('button', { name: 'Save', exact: true })
+    if (await saveButton.count()) {
+      await page.waitForTimeout(500)
+      await expect(saveButton, `${path} opened with unsaved changes`).toBeDisabled()
+    }
   }
   expect(errors).toEqual([])
 })

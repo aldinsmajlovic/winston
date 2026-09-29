@@ -1,8 +1,7 @@
 # Extensions
 
-Approved 2026-09-29. Built: everything on this page except speaking up (nudges, their follow-ups, the
-morning briefing and delivery to your phone), which is step 3 of the Extensions track in the
-[plan](plan.md); until then `ctx.nudge` and `ctx.poke` answer that it is not built, and no check runs.
+Approved 2026-09-29. Built: everything on this page but entities reaching Home Assistant, which wait
+for Winston's integration (UI track step 3 in the [plan](plan.md)).
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs
@@ -383,7 +382,7 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.ha.call(domain, service, data=None, target=None)` | Any service on permitted entities (act); returns its response or `None` |
 | `ctx.memory.facts(topic=None)`, `.remember(text, topic, until=None)` | `Fact(text, topic, noted, until)` items; writing as `remember` |
 | `ctx.presence.home()`, `.since()` | `bool`, `datetime` |
-| `ctx.llm.ask(prompt, schema=None, max_tokens=500)` | Text, or an instance of the Pydantic model `schema`. The background model is the local brain unless you pick a cloud model; an extension never chooses, so nothing leaves the house unless a setting says so |
+| `ctx.llm.ask(prompt, schema=None, max_tokens=500)` | Text, or an instance of the Pydantic model `schema`. The background model is the local brain unless you pick a cloud model; an extension never chooses, so nothing leaves the house unless a setting says so. It waits while a conversation runs (see [How it runs](#how-it-runs)) |
 | `ctx.ext(id).call(tool, **args)` | Another extension's read tool (needs `extensions`) |
 | `ctx.later(when, job, data=None)` | Runs one of its jobs once at a computed `datetime` or after a `timedelta`, kept across restarts; returns a timer with `cancel()`. `ctx.timers()` lists them |
 | `ctx.nudge(kind, nudge)`, `ctx.withdraw(kind, about)` | Pushes a nudge of a pushed kind, or takes one back |
@@ -412,7 +411,7 @@ the same follow-ups.
   The core keeps each one until it is said (and not put off), dismissed, expired, or withdrawn with
   `await ctx.withdraw(kind, about)`.
 
-The core keeps every nudge's state in `data/state/nudges.db`, so a restart loses nothing and nothing
+The core keeps every nudge's state in `data/state/nudges.json`, so a restart loses nothing and nothing
 is said twice. A check gets 5 s: read the store, Home Assistant and presence there, and leave the
 internet and the model to jobs. A check that raises or runs out of time counts as no answer: nothing
 changes, and the error shows on the card.
@@ -458,8 +457,8 @@ A kind's options, given to `@ext.nudge` or `ext.kind`; you change `deliver` and 
 | Where | |
 | --- | --- |
 | `auto` | The speakers while you are home, your phone while you are away |
-| `speakers` | Every connected speaker, as announcements go today |
-| `phone` | The notify service picked in the speaking-up settings (the Home Assistant companion app), or Discord when none is set |
+| `speakers` | The speakers in the room you are in (the room last talked in, within 30 minutes: its box, and browser sessions set to it or to no room), else every connected speaker. With none connected, the phone |
+| `phone` | The notify service picked in the speaking-up settings (the Home Assistant companion app), with Done and Later buttons; Discord when none is set |
 
 The rules, each step logged to `logs/nudges.jsonl`:
 
@@ -468,7 +467,8 @@ The rules, each step logged to `logs/nudges.jsonl`:
 - **Not said again after a dismissal**, until it ends and comes back, or its level rises.
 - **Held** while its kind is muted, while it is put off, before `not_before`, while its delivery
   waits, during quiet hours (the same `announce.quiet_hours` as announcements) unless urgent, and
-  while a conversation is running, until 30 s of quiet.
+  while a conversation is running, on any channel, until 30 s of quiet. Nothing that can deliver it
+  (no speaker connected, no phone, no Discord) holds it too, and says so on the card.
 - **Moved to the briefing** past `speak_up.max_per_day` (4) spoken nudges today.
 - **What you asked for comes when you asked.** Nudges of a `requested` kind, and any nudge at a time
   you gave with `later`, come at that time through quiet hours, the daily limit and their delivery's
@@ -481,10 +481,13 @@ What happens to a nudge runs the extension's `@ext.on_nudge`: said (and where), 
 `ctx.nudges()`.
 
 The channel that speaks a nudge words it with its own brain inside the conversation, from `facts`
-and the persona, so it sounds like him and a follow-up has the context. The nudge's kind, `about`
-and actions go into the conversation with it. After a spoken nudge the box listens as it does after
-a reply (ESPHome's announcement with `start_conversation`), so an answer needs no wake word; the
-browser's mic is always open.
+and the persona, so it sounds like him and a follow-up has the context. The chime plays first; the
+plain `say` line is spoken instead when no wording has started within 12 s. The nudge's kind,
+`about` and actions go into the conversation with it, and into the Talk page's typed conversation.
+After a spoken nudge the box listens as it does after a reply (ESPHome's announcement with
+`start_conversation`), so an answer needs no wake word; the browser's mic is always open. Next-talk
+nudges and the briefing are added to your message at your next turn, on any channel, and he mentions
+them after answering. Every delivered nudge shows on the Talk page with where it went.
 
 Every nudge takes the same follow-ups through one fixed core tool, `follow_up(nudge, action, when,
 reason)`, so extensions write none of it:
@@ -507,7 +510,28 @@ code still cannot read ("tomorrow after work" with nothing in memory) becomes "w
 day, with `speak_up.fallback_time` (18:00) if you are already home. The tool answers with what it
 set, so he says the real time. Extensions read times the same way through a `When` argument or
 `ctx.parse_when`. The claim guard counts "I'll remind you" as a promise, backed only by a `later`
-call or an act tool call in that turn.
+call or an act tool call in that turn, and a bare "Noted" as backed by `follow_up` as well as by
+`remember`.
+
+The brain has `follow_up` whenever an extension that is switched on declares a kind; a conversation
+keeps the tools it started with, so one started before such an extension was switched on gets its
+nudges without it and says that they can be put off in a new conversation. Your phone's buttons
+are follow-ups too: Done dismisses, Later puts it off until you are home (two hours when no person
+entity is set). A restricted call waiting for you (a tool or an action) is also sent to the phone,
+with Confirm and Decline.
+
+Measured with the 27B (`tests/speak_up_brain.py`, three runs each): he words the nudge himself
+("It's been three days since your last workout, sir. Time to get moving?"); "Yeah I know Winston,
+I'm training tomorrow, remind me after work" becomes `follow_up(later, "tomorrow after work",
+reason "training tomorrow")`, "when you get home tomorrow, or at 18:00", 3 of 3; with "finishes work
+at 17:00" in memory it becomes "tomorrow 17:00", 3 of 3; he says the time back ("Noted, sir. I'll
+remind you tomorrow at seventeen hundred."), and "why are you telling me this?" names the Trainer
+extension, its check and the facts, 6 of 6.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/extensions-speaking-up-dark.png">
+  <img src="images/extensions-speaking-up-light.png" alt="Two extension cards: a plant that needs water waiting for the next conversation, and a reminder put off until you get home tomorrow, with the reason you gave" width="720">
+</picture>
 
 ## Tools
 
@@ -587,7 +611,7 @@ flowchart LR
   w -->|MCP over stdio: tools, jobs, checks, actions| x[Extension process]
   x -->|REST with its own token: Home Assistant, memory, presence, model, entities| w
   w --> ha[Home Assistant]
-  w -->|nudges, as announcements| ch
+  w -->|nudges: to the speakers, your phone or Discord| ch
 ```
 
 - **One process per extension**, started and watched by winstond. Its environment holds
@@ -625,6 +649,15 @@ flowchart LR
   stop it. Past its memory limit (`memory_mb`, 500) it is stopped, and one that stops answering for
   30 s is started again. The reason is on its card either way. MCP 2026-07-28 has no ping, so an
   extension is asked `winston/info` and an MCP server to list its tools every 10 s.
+- **The background model yields to conversations.** `ctx.llm.ask` keeps to a slot of its own on the
+  model server (llama.cpp's last one, when it has more than one), so it never takes the one that
+  holds a conversation's cached prompt, and it waits while anyone is talking to him (until 30 s of
+  quiet); a call under way when a conversation starts is stopped and asked again after it. It gives
+  up after 45 s of waiting, with an error saying so. Measured with the 27B and an extension asking
+  one story after another (`tests/background_llm_voice.py`): unpinned and unyielding, a spoken turn's
+  median first audio went from 982 ms to 2147 ms, and the first turn took 8.4 s, its prompt evicted;
+  with the slot alone, 892 ms to 1782 ms; yielding as well, 976 ms quiet and 1004 ms with every turn
+  starting while a call was under way (five stopped and asked again, 60 answered between turns).
 - **Its prompt lines and hint words** are written as files in its folder when it starts and after
   each of its jobs, and read by every channel when a conversation starts, as memory is, so the prompt
   stays the same through a conversation and its cache holds.
@@ -691,8 +724,8 @@ winston ext enable ID                # or disable
 winston ext call ID TOOL '{"a": 1}'  # call a tool as the brain would
 winston ext run ID JOB               # run a job now
 winston ext restart ID
-winston ext check ID KIND            # (step 3) what a check would say now, without saying it
-winston ext nudges ID                # (step 3) where its nudges stand, and why each was held or dropped
+winston ext check ID KIND            # what a check would say now, without saying it
+winston ext nudges [ID]              # where its nudges stand, and why each waits (all when no ID)
 winston ext logs ID
 winston ext test ID                  # its tests, with the harness
 ```
@@ -701,14 +734,18 @@ A personal extension reloads when its file is saved (winstond looks every 2 s).
 
 ## The Extensions page
 
-In the settings sidebar after Tools, under the Speaking up card (the person entity that says whether
-you are home). A card per extension: its icon, name and state, a shield on anything not built in,
+In the settings sidebar after Tools, under the Speaking up card: you (the person entity that says
+whether you are home), your phone (Home Assistant's notify service for it), spoken nudges a day and
+when the briefing starts; the parts of the day and "after work" are under Advanced. A card per extension: its icon, name and state, a shield on anything not built in,
 Log, Restart and its switch in the title; then what it may reach (read before switching it on), a
 problem or why it stopped lately, its status line, its settings (key fields included), its tools with
 their tier, whether the brain gets each and whether other apps may use it, its entities' values, and
 its memory and prompt cost. The + in the header adds an MCP server: an id, a command or a URL, and
-the variables it gets. Kinds of speaking up join the card with step 3. A restricted call waiting for
-you shows on the Talk page with Confirm and Decline.
+the variables it gets. Its kinds of speaking up are a table: when and where each is said (your choice
+over the extension's; a kind that delivers per level shows By level), whether it may speak at all,
+and a Muted button that switches a muted kind back on; below it, its nudges now, each with where it
+stands (waiting for the next conversation, put off until when and the reason you gave, held in quiet
+hours). A restricted call waiting for you shows on the Talk page with Confirm and Decline.
 
 ## Not extensions
 

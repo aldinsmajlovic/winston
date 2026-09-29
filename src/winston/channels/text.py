@@ -20,6 +20,7 @@ from winston.core.announce import note
 from winston.core.brain import Brain, Clock, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
 from winston.core.rooms import RoomLink
+from winston.core.speak_up import Mentions
 
 QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-response end
 
@@ -97,7 +98,7 @@ class TextSession:
         guard = ClaimGuard(cfg, channel=self.channel, spoken=False)
         self._tracker = TurnTracker(guard); self.printer = Printer(self._tracker, self.echo)
         before, after = ([self.room.before], [self.room.after]) if self.room else ([], [])
-        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), *before, self.brain.llm, guard,
+        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), Mentions(cfg), *before, self.brain.llm, guard,
                                                 self.printer, agg.assistant(), *after]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[guard.observer, self.brain.verifier.observer,
@@ -137,10 +138,15 @@ class TextSession:
 
     async def announced(self, text: str, context: dict):
         """An announcement delivered on this channel joins the conversation, so replies to it work."""
+        await self.noted(note(text, context), text)
+
+    async def noted(self, house_note: str, said: str):
+        """Something he said on his own (an announcement, a nudge) joins the conversation: the house's
+        note, then his words."""
         async with self._lock:
             self.last_used = time.monotonic()
             await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[
-                {"role": "user", "content": note(text, context)}, {"role": "assistant", "content": text}],
+                {"role": "user", "content": house_note}, {"role": "assistant", "content": said}],
                 run_llm=False)])
 
     async def close(self):

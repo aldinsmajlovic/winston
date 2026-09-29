@@ -1,6 +1,6 @@
 """winstond's routes for extensions: what the Extensions page, the CLI and the channels' brains use
-(/api/extensions...), what extensions call back into (/api/ext/v1/<op>, with their own token), and
-their hooks (/hooks/<id>/<name>)."""
+(/api/extensions..., /api/nudges...), what extensions call back into (/api/ext/v1/<op>, with their own
+token), and their hooks (/hooks/<id>/<name>)."""
 from __future__ import annotations
 
 from collections import deque
@@ -30,9 +30,47 @@ class KindView(BaseModel):
     checked: bool
     deliver: Any
     where: Any
+    declared_deliver: Any = None
+    declared_where: Any = None
     requested: bool
     may_be_urgent: bool
+    repeat: float | None = Field(None, description="Seconds after which a checked nudge is said again")
+    triggers: list[str] = Field(default_factory=list, description="When its check runs, in words")
     enabled: bool
+    muted_until: float | None = Field(None, description="Muted: 0 until switched back on, else when it ends")
+
+
+class NudgeView(BaseModel):
+    id: str
+    extension: str
+    kind: str
+    title: str
+    about: str
+    level: int
+    say: str | None = None
+    facts: dict[str, Any] = Field(default_factory=dict)
+    source: str = Field(description="checked or pushed")
+    state: str = Field(description="waiting, held, said, dismissed or ended")
+    why: str | None = Field(None, description="Why it waits or is held")
+    via: str | None = Field(None, description="Where it was said: speakers, phone, discord, conversation, silent")
+    said_at: str | None = None
+    held_until: str | None = None
+    put_off: str | None = Field(None, description="Put off until, as he was told")
+    reason: str | None = None
+
+
+class FollowUp(BaseModel):
+    action: str = Field(description="later, dismiss, mute, why, or one of the extension's actions")
+    when: str | None = None
+    reason: str | None = None
+    channel: str | None = Field(None, description="The conversation it comes from; a restricted action from one "
+                                                  "waits for your confirmation")
+
+
+class CheckResult(BaseModel):
+    ok: bool
+    nudges: list[dict[str, Any]] = Field(default_factory=list)
+    error: str | None = None
 
 
 class EntityValue(BaseModel):
@@ -90,6 +128,7 @@ class ExtensionView(BaseModel):
     started_at: float | None = None
     tools: list[ToolView] = Field(default_factory=list)
     kinds: list[KindView] = Field(default_factory=list)
+    nudges: list[NudgeView] = Field(default_factory=list, description="Its nudges now and those ended lately")
     entities: list[EntityView] = Field(default_factory=list)
     jobs: list[JobView] = Field(default_factory=list)
     prompt_chars: int = 0
@@ -157,13 +196,17 @@ def view(host: Host, ext_id: str, status_text: str | None = None) -> ExtensionVi
                               tier=(choice.tier if choice and choice.tier else t["tier"]), declared_tier=t["tier"],
                               outside=t["outside"], enabled=on, offer=bool(choice and choice.offer)))
     kinds = []
+    nudges = host.nudges
     for k in d.get("kinds", []):
         choice = ec.kinds.get(k["kind"])
         kinds.append(KindView(kind=k["kind"], title=k["title"], checked=k["checked"],
                               deliver=choice.deliver if choice and choice.deliver else k["deliver"],
                               where=choice.where if choice and choice.where else k["where"],
-                              requested=k["requested"], may_be_urgent=k["may_be_urgent"],
-                              enabled=not (choice and not choice.enabled)))
+                              declared_deliver=k["deliver"], declared_where=k["where"],
+                              requested=k["requested"], may_be_urgent=k["may_be_urgent"], repeat=k.get("repeat"),
+                              triggers=nudges._trigger_words(k.get("triggers") or {}) if nudges else [],
+                              enabled=not (choice and not choice.enabled),
+                              muted_until=nudges.muted_until(ext_id, k["kind"]) if nudges else None))
     entities = []
     for e in d.get("entities", []):
         values = [EntityValue(entry=entry, value=v["value"], at=v["at"])
@@ -184,7 +227,8 @@ def view(host: Host, ext_id: str, status_text: str | None = None) -> ExtensionVi
         status=status_text, memory_mb=round(proc.rss_mb, 1) if proc else 0,
         peak_mb=round(proc.peak_mb, 1) if proc else 0, memory_limit_mb=ec.memory_mb,
         started_at=proc.started_at if proc and proc.state == "running" else None,
-        tools=tools, kinds=kinds, entities=entities, jobs=jobs, prompt_chars=host.prompt_cost(ext_id),
+        tools=tools, kinds=kinds, nudges=[NudgeView(**n) for n in nudges.listing(ext_id)] if nudges else [],
+        entities=entities, jobs=jobs, prompt_chars=host.prompt_cost(ext_id),
         errors=[ErrorView(**e) for e in host.errors.get(ext_id, [])],
         exits=[ExitView(**e) for e in proc.exits] if proc else [])
 
@@ -270,6 +314,52 @@ def router(host: Host, services: Services) -> APIRouter:
             return LogLines(lines=[])
         with open(path, encoding="utf-8", errors="replace") as f:
             return LogLines(lines=[ln.rstrip("\n") for ln in deque(f, maxlen=lines)])
+
+    # speaking up
+
+    def speaking():
+        if host.nudges is None:
+            raise HTTPException(409, "speaking up is not running in this winstond")
+        return host.nudges
+
+    @r.get("/api/nudges", response_model=list[NudgeView], tags=["speaking up"],
+           summary="Every nudge: where it stands and why it waits, newest first")
+    async def list_nudges(extension: str | None = None):
+        return [NudgeView(**n) for n in speaking().listing(extension)]
+
+    @r.get("/api/nudges/kinds", tags=["speaking up"],
+           summary="How many kinds of nudges the extensions switched on have (the brain gets follow_up when any)")
+    async def nudge_kinds():
+        # Switched on and described, running or not yet: a conversation keeps its tools, and one that
+        # starts while its extensions are still starting would otherwise have no follow_up all along.
+        n = sum(len(d.get("kinds", [])) for i, d in host.described.items() if host.enabled(i))
+        return {"kinds": n if host.nudges is not None else 0}
+
+    @r.post("/api/nudges/mentions", response_model=list[dict[str, Any]], tags=["speaking up"],
+            summary="What to mention in the conversation going on now (next-talk nudges, the briefing); each once")
+    async def mentions(text: str = Body("", embed=True)):
+        if host.nudges is None:
+            return []
+        return await host.nudges.mentions(text)
+
+    @r.post("/api/nudges/{nid}/follow_up", tags=["speaking up"],
+            summary="The follow_up tool: later, dismiss, mute, why, or one of the extension's actions")
+    async def follow_up(nid: str, f: FollowUp):
+        return await speaking().follow_up(nid, f.action, when=f.when, reason=f.reason, channel=f.channel)
+
+    @r.post("/api/extensions/{ext_id}/kinds/{kind}/check", response_model=CheckResult, tags=["speaking up"],
+            summary="What its check would say now, without recording or saying anything")
+    async def check_kind(ext_id: str, kind: str):
+        known(ext_id)
+        res = await speaking().ask_check(ext_id, kind)
+        return CheckResult(ok=bool(res.get("ok")), nudges=res.get("nudges", []), error=res.get("error"))
+
+    @r.post("/api/extensions/{ext_id}/kinds/{kind}/unmute", response_model=ExtensionView, tags=["speaking up"],
+            summary="Switch a muted kind back on")
+    async def unmute(ext_id: str, kind: str):
+        known(ext_id)
+        speaking().unmute(ext_id, kind)
+        return view(host, ext_id)
 
     @r.post("/api/ext/v1/{op}", include_in_schema=False)
     async def ext_call(op: str, request: Request):
