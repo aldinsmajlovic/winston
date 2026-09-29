@@ -58,7 +58,13 @@ flowchart TB
   didn't go through. Shall I do it now?"). Channels wait for a pending retry before closing a reply, the
   Talk page shows only what the guard let through, and every guard event is logged with what he heard,
   `retried` and `retry_backed`. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
-  starts; the `remember` tool adds to them.
+  starts; the `remember` tool adds to them. Thinking is set per channel (`llm.thinking`); on the spoken
+  channels, where it is off, a request about the home (an exposed name or alias, a light word, or a verb
+  like "turn" or "dim") thinks anyway (`llm.thinking.home`, at `llm.thinking.home_effort`, medium by
+  default), and he first says a butler's line by code ("One moment.", "Let me see to that."), pushed
+  straight to the TTS so it covers the thinking. Without it the 27B sometimes said a light was on without
+  calling a tool. Home Assistant tools that take a name and an area get the area dropped when the named
+  device is in another one (`rooms.scoped_by_name`).
 - **Adapters** (`winston/plugins`): Pipecat services with a settings model, discovered through Python
   entry points (`winston.stt`, `winston.tts`, ...). A third-party package adds one without touching core.
 - **Channels** (`winston/channels`): feed the same brain. Voice is the Pipecat pipeline with VAD,
@@ -70,6 +76,11 @@ flowchart TB
   read `GET /api/live` (recent history, then new events). The browser's WebRTC offer goes through
   `/api/voice/offer` to the voice channel, so the UI needs only winstond's origin. `POST /api/speak`
   passes text to the speech server and streams its PCM back, for the Talk page's read aloud.
+- **Rooms** (`core/rooms.py`): a box and the browser sessions set to its room share one conversation,
+  which winstond keeps; each session links its own context to it before the LLM runs and after each
+  reply. A box that wakes holds the room's mic, and a browser session in the room hears silence until
+  its reply has played. The room goes in the time stamp of each message, so "the lights" means its
+  lights. See [rooms](rooms.md).
 - **Announcements** (`core/announce.py`): winstond is the hub. Home Assistant events, the API and the
   CLI publish; channel processes subscribe to `/api/events` and deliver (chime and speech, or a DM).
   An announcement joins the conversation with its context, so replies to it work.

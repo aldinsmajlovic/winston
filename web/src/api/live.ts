@@ -20,10 +20,14 @@ export type Item =
   | { kind: 'announcement'; id: string; text: string; ts: number }
   | { kind: 'error'; id: string; text: string }
 
-type Feed = { items: Item[]; states: Record<string, { state: PresenceState; ts: number }> }
+type Feed = {
+  items: Item[]
+  states: Record<string, { state: PresenceState; ts: number }>
+  mics: Record<string, string> // room (lower case) -> who has its mic; absent when nobody has
+}
 type Action = { type: 'reset' } | { type: 'event'; event: LiveEvent }
 
-const empty: Feed = { items: [], states: {} }
+const empty: Feed = { items: [], states: {}, mics: {} }
 const STALE_SECS = 90 // a state older than this without a follow-up is treated as idle
 
 function apply(feed: Feed, ev: LiveEvent): Feed {
@@ -55,6 +59,13 @@ function apply(feed: Feed, ev: LiveEvent): Feed {
       return { ...feed, items: [...feed.items, { kind: 'announcement', id, text: ev.text ?? '', ts: ev.ts ?? 0 }] }
     case 'error':
       return { ...feed, items: [...feed.items, { kind: 'error', id, text: ev.text ?? '' }] }
+    case 'mic': {
+      const mics = { ...feed.mics }
+      const room = (ev.room ?? '').toLowerCase()
+      if (ev.held_by) mics[room] = ev.held_by
+      else delete mics[room]
+      return { ...feed, mics }
+    }
     default:
       return feed
   }
@@ -69,6 +80,11 @@ export function presence(feed: Feed, now: number): PresenceState {
   const latest = Object.values(feed.states).sort((a, b) => b.ts - a.ts)[0]
   if (!latest || (latest.state !== 'idle' && now / 1000 - latest.ts > STALE_SECS)) return 'idle'
   return latest.state
+}
+
+/** Who has the room's mic (a box that woke up), or undefined when nobody has or there is no room. */
+export function micHolder(feed: Feed, room: string): string | undefined {
+  return room ? feed.mics[room.replace(/\s+/g, ' ').toLowerCase()] : undefined
 }
 
 /** When any channel last changed state, in server seconds; 0 if none has. */

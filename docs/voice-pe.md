@@ -69,9 +69,33 @@ Winston connects to the box on port 6053. With the box on its own VLAN, both nee
 The symptom of a blocked 8702: the log shows the wake word, what was heard and what he said, but no
 `reply ... fetched by <box>` line, and the box stays silent.
 
-Say the wake word, then the request. A reply that ends in a question keeps the box listening for
-the answer without the wake word. The replies are served from port 8702 on every interface; the box
+Say the wake word, then the request. After every reply the box listens again without the wake word
+for `channels.satellite.follow_up_secs` (6 s; at least 8 s after a question), so a conversation
+carries on without "Okay Winston" each time. If nothing is said the box goes back to waiting for the
+wake word. 0 keeps the box listening only after a question. The replies are served from port 8702 on every interface; the box
 must be able to reach this machine there.
+
+### Ending a conversation, and button only
+
+- **"Stop", "that's all", "never mind"** (or "be quiet", "not you", "nothing") in that listening
+  window end the conversation without a reply, and the box goes back to waiting for the wake word.
+  "No" and "thank you" on their own are answers and get one.
+- **"Stop" or a press of the button while he talks** stops him, and the box does not listen again
+  afterwards (the stock firmware's stop word).
+- **A long press** (hold the button a second) switches the box to **button only**: the wake word is
+  off, a short press starts a request, and he never listens after a reply. He says "Very well. I shall
+  listen only when you press the button." Another long press switches the wake word back on. Meant
+  for a party or the TV. The box keeps the choice through restarts of it and of Winston.
+- **The mute switch** on the side cuts the microphones altogether. Two red LEDs by the microphones
+  mean it is on; a red ring slowly twinkling means Winston is not connected.
+
+### Wake word sensitivity
+
+`wake_sensitivity` per box sets the box's own "Wake word sensitivity": `Slightly sensitive` (fewest
+false wakes), `Moderately sensitive` or `Very sensitive` (fewest misses). On stock firmware it covers
+okay_nabu, hey_jarvis and hey_mycroft; Winston's firmware from 2026-09-27 adds Okay Winston at
+thresholds 0.95, 0.85 and 0.70 (before that it stayed at 0.95 whatever the setting said). Empty
+keeps what the box has.
 
 ### What the stock firmware allows (checked 2026-09-24)
 
@@ -107,7 +131,9 @@ uvx esphome compile voice-pe-winston.yaml     # first build 15 to 30 min, downlo
 uvx esphome upload voice-pe-winston.yaml --device /dev/ttyACM0
 ```
 
-then set `wake_word: okay_winston` for the box. Back up the box first
+then set `wake_word: okay_winston` for the box. Later builds go over the network:
+`uvx esphome upload voice-pe-winston.yaml --device <box address>` (13 s; the box needs TCP 3232 open
+from this machine). Back up the box first
 (`uvx esptool --port /dev/ttyACM0 read-flash 0 0x1000000 backup.bin`); writing that file back at 0
 restores it exactly.
 
@@ -163,7 +189,8 @@ Doing it properly, in order of importance:
   with Ollama, or the hosted profile where the words go to a cloud model and the microphone never
   leaves the house. Measure both on modest hardware before publishing numbers.
 - **Room awareness.** Two boxes means "turn off the lights" should mean this room. Small feature,
-  big effect on how finished it feels.
+  big effect on how finished it feels. Built 2026-09-25 with rooms: each box's key is its room, and a
+  screen in the same room shares its conversation and mic ([rooms](rooms.md)).
 - **One page and one video.** A fifteen-minute setup page and a ninety-second clip: the voice, a
   tool call, an interruption. The interruption is what sells it.
 
@@ -176,9 +203,10 @@ defensible position.
 
 ## Next step
 
-The first box runs Winston's firmware and wakes on Okay Winston, turn based. Next: measure the new
-wake word in the room (misses, false wakes), retrain with real takes if needed, then attempt step
-two.
+The first box runs Winston's firmware and wakes on Okay Winston, turn based. It woke 70 to 80% of
+the time at the fixed 0.95 threshold, against 98.6% on the trainer's synthetic voices; since
+2026-09-27 it runs `Moderately sensitive` (0.85). Next: count misses and false wakes at that setting,
+retrain with real takes of the household's voices if it is still short, then attempt step two.
 
 Sources consulted: https://www.home-assistant.io/voice-pe/ ,
 https://esphome.io/components/voice_assistant/ , https://github.com/esphome/aioesphomeapi ,

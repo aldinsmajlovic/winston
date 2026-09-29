@@ -110,6 +110,9 @@ already cloned is switched to by name ("use Maria's voice") without recording ag
 voice" reverts; the clone lasts the conversation unless you say to keep it, which saves it as
 `tts.voice`. Asking again for the same name records over the old clone.
 
+Recording needs the browser (the Talk page or the dashboard's talk button). Switching does not: a
+Voice PE box takes "Okay Winston, talk like Maria" and "your own voice again" too, for its conversation.
+
 Each clone is `data/voices/friends/<name>.wav`, with the consent recording (`<name>.consent.wav`)
 and its record (`<name>.json`) beside it. The Voice page lists them, plays both recordings and
 deletes them.

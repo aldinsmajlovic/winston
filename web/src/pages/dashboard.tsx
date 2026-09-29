@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react'
 import { Bell } from 'lucide-react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { STATE_LABEL, clock, lastChange, presence, useLive, type Item } from '@/api/live'
+import { STATE_LABEL, clock, lastChange, micHolder, presence, useLive, type Item } from '@/api/live'
 import { Presence } from '@/components/presence'
+import { useRoom } from '@/hooks/use-room'
 import { useVoice } from '@/hooks/use-voice'
 import { useWakeLock } from '@/hooks/use-wake-lock'
 
@@ -32,7 +33,8 @@ export default function DashboardPage() {
   const [now, setNow] = useState(() => Date.now())
   const [dismissed, setDismissed] = useState('')
   const onVoiceError = useCallback((message: string) => toast.error(message), [])
-  const { status: voice, start, stop } = useVoice(onVoiceError)
+  const [room] = useRoom() // ?room=main room: a wall panel and its room's box share one conversation
+  const { status: voice, start, stop } = useVoice(onVoiceError, room)
   useWakeLock()
 
   useEffect(() => {
@@ -50,7 +52,15 @@ export default function DashboardPage() {
     found?.kind === 'announcement' && found.id !== dismissed && said < last && seconds - found.ts < ANNOUNCE_SECS ? found : undefined
   const recent = state !== 'idle' || seconds - lastChange(feed) < LINGER_SECS
   const { user, reply } = recent && !announcement ? lastExchange(feed.items) : {}
-  const line = voice === 'connecting' ? 'Connecting' : voice === 'off' && state === 'idle' ? 'Tap to talk' : STATE_LABEL[state]
+  const paused = voice === 'on' && micHolder(feed, room)
+  const line =
+    voice === 'connecting'
+      ? 'Connecting'
+      : paused && state !== 'speaking'
+        ? `Mic paused while the ${paused} has it`
+        : voice === 'off' && state === 'idle'
+          ? 'Tap to talk'
+          : STATE_LABEL[state]
 
   // One composition for every view: the mark and its line fixed in the middle row, words in the row
   // below, the empty row above balancing them. Type sizes follow the screen, two steps only.

@@ -20,6 +20,12 @@ uv run winston check clone     # clone a synthetic friend's voice headless and s
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
 localhost: wake, request, streamed reply, a follow-up without the wake word, silence.
 
+`uv run python tests/rooms_voice.py` puts that fake box and a headless browser session in one room
+against the running `winston up` and checks he answers once and the conversation carries across
+([rooms](rooms.md)); `uv run python tests/room_trials.py` checks "the lights" in a room means that
+room's. Both leave the house alone: the box's actions are stubbed, and the browser session is only
+asked questions.
+
 `.venv/bin/python tests/conversations.py [name ...]` talks to the voice pipeline headless in eighteen
 scripted conversations (vague requests, things he cannot do, Swedish, talking over him, prompt
 injection, the claim guard's retry and more) and prints each transcript: what speech-to-text heard,
@@ -64,7 +70,8 @@ or press the round button to talk; it connects the browser's mic to the voice ch
 winstond, and press it again to hang up. The speaker button at the top reads typed replies aloud in
 Winston's voice through the browser, a sentence at a time as the reply streams in (off by default,
 remembered per browser); spoken turns already are. Typed messages form one conversation that starts fresh
-after `channels.web.session_idle_mins` (30) and after a settings save. Browsers only give the mic to
+after `channels.web.session_idle_mins` (30) and after a settings save. The room picker beside it puts
+this browser in a room with a Voice PE box: one conversation and one mic for both ([rooms](rooms.md)). Browsers only give the mic to
 `localhost` or HTTPS, so talking from another device needs HTTPS on the LAN. The page keeps the last
 few hundred events while winstond runs; it is not a transcript archive (the tool log is the record).
 
@@ -74,7 +81,8 @@ few hundred events while winstond runs; it is not a transcript archive (the tool
 </picture>
 
 Dashboard mode, at http://localhost:8700/dashboard (the Dashboard link on the Talk page), is the
-same feed full screen for a wall tablet. Tap the logo to talk and again to hang up. The line under it
+same feed full screen for a wall tablet; `/dashboard?room=main room` puts it in a box's room
+([rooms](rooms.md)). Tap the logo to talk and again to hang up. The line under it
 follows his state; what you said and his answer show while he is busy and for 20 seconds after. An
 announcement takes the screen for a minute, until you tap it or until you answer it. The page asks the browser to keep
 the screen on, which like the mic only works on `localhost` or HTTPS. To show it in Home Assistant,

@@ -7,11 +7,16 @@ to and follows up when continue_conversation is set. Needs the LLM (:8000) and t
     .venv/bin/python tests/satellite_fake.py
 
 Actions are stubbed as in tests/conversations.py. Passes when every request gets a spoken reply
-fetched from the URL, the events come in the box's order, and a question keeps the conversation
-open without a wake word."""
+fetched from the URL, the events come in the box's order, every reply keeps the box listening
+without a wake word (channels.satellite.follow_up_secs), an answer there is taken as the next turn
+and silence there ends the run with the no-speech error, which takes the real box back to idle.
+Then: "that's all" there ends the conversation without a reply; a long press switches the box to
+button only (no wake word, a spoken line, a press gets a reply without a follow-up), a reconnect finds
+it still button only, and a second long press switches the wake word back on."""
 import asyncio
 import sys
 import time
+import uuid
 from pathlib import Path
 
 import aiohttp
@@ -35,6 +40,7 @@ from loguru import logger  # noqa: E402
 
 logger.remove(); logger.add(sys.stderr, level="INFO")
 PORT, HTTP_PORT = 16053, 18702
+LONG_PRESS_KEY = 4242
 TYPE_OF = {cls: n for n, cls in MESSAGE_TYPE_TO_PROTO.items()}
 USER = "vctk/p226_023"
 FLAGS = (Feature.VOICE_ASSISTANT | Feature.API_AUDIO | Feature.ANNOUNCE | Feature.START_CONVERSATION
@@ -70,6 +76,8 @@ class FakeVoicePE:
         self.new_event = asyncio.Event()
         self.response = asyncio.Event()
         self.active_wake_words: list[str] = []
+        self.states = False                                 # states subscribed: button events go out
+        self.announced: list[dict] = []
 
     def send(self, msg):
         payload = msg.SerializeToString()
@@ -102,7 +110,13 @@ class FakeVoicePE:
                                             model="Home Assistant Voice PE", esphome_version="2026.9.0",
                                             mac_address="00:00:00:00:00:01", voice_assistant_feature_flags=FLAGS))
         elif isinstance(msg, pb.ListEntitiesRequest):
+            self.send(pb.ListEntitiesEventResponse(object_id="button_press", key=LONG_PRESS_KEY, name="Button press",
+                                                   event_types=["double_press", "triple_press", "long_press"]))
             self.send(pb.ListEntitiesDoneResponse())
+        elif isinstance(msg, pb.SubscribeStatesRequest):
+            self.states = True
+        elif isinstance(msg, pb.VoiceAssistantAnnounceRequest):
+            asyncio.get_running_loop().create_task(self.announce(msg.media_id, msg.text))
         elif isinstance(msg, pb.PingRequest):
             self.send(pb.PingResponse())
         elif isinstance(msg, pb.DisconnectRequest):
@@ -116,7 +130,8 @@ class FakeVoicePE:
                 return
             words = [pb.VoiceAssistantWakeWord(id=i, wake_word=w, trained_languages=["en"]) for i, w in
                      (("okay_nabu", "Okay Nabu"), ("hey_jarvis", "Hey Jarvis"), ("hey_mycroft", "Hey Mycroft"))]
-            self.send(pb.VoiceAssistantConfigurationResponse(available_wake_words=words, active_wake_words=["okay_nabu"],
+            self.send(pb.VoiceAssistantConfigurationResponse(available_wake_words=words,
+                                                             active_wake_words=self.active_wake_words,
                                                              max_active_wake_words=1))
         elif isinstance(msg, pb.VoiceAssistantSetConfiguration):
             if self.subscribed.is_set():
@@ -126,6 +141,16 @@ class FakeVoicePE:
         elif isinstance(msg, pb.VoiceAssistantEventResponse):
             self.events.append((time.perf_counter(), Ev(msg.event_type), {d.name: d.value for d in msg.data}))
             self.new_event.set()
+
+    async def announce(self, url: str, text: str):
+        """Plays an announcement as the box does: fetches the URL, then says it has finished."""
+        async with aiohttp.ClientSession() as s, s.get(url.replace(".flac", ".wav")) as r:
+            wav = await r.read()
+        self.announced.append({"text": text, "audio_secs": max(0, len(wav) - 44) / 2 / sat.OUT_RATE})
+        self.send(pb.VoiceAssistantAnnounceFinished(success=True))
+
+    def long_press(self):
+        self.send(pb.EventResponse(key=LONG_PRESS_KEY, event_type="long_press"))
 
     async def wait_event(self, ev: Ev, since: int, timeout: float = 60) -> dict | None:
         t0 = time.perf_counter()
@@ -142,8 +167,9 @@ class FakeVoicePE:
                 pass
         return None
 
-    async def converse(self, audio: np.ndarray, wake_word: str | None) -> dict:
-        """One run as the box does it: request start, stream the mic until STT_VAD_END, play the reply."""
+    async def converse(self, audio: np.ndarray, wake_word: str | None, on_audio=None) -> dict:
+        """One run as the box does it: request start, stream the mic until STT_VAD_END, play the reply.
+        on_audio gets the reply's WAV bytes as they arrive (tests/rooms_voice.py plays them into a room)."""
         since = len(self.events)
         self.response.clear()
         self.send(pb.VoiceAssistantRequest(start=True, conversation_id="", flags=1 if wake_word else 0,
@@ -168,11 +194,14 @@ class FakeVoicePE:
         t_fetch = time.perf_counter()
         wav, t_first = b"", None
         if progress and run_start.get("url"):
-            async with aiohttp.ClientSession() as s, s.get(run_start["url"]) as r:
+            # the WAV variant of the reply the box gets as FLAC, so the bytes can be counted and played
+            async with aiohttp.ClientSession() as s, s.get(run_start["url"].replace(".flac", ".wav")) as r:
                 async for part in r.content.iter_any():
                     if t_first is None and len(wav) + len(part) > 44:
                         t_first = time.perf_counter()
                     wav += part
+                    if on_audio:
+                        on_audio(part)
         end = await self.wait_event(Ev.VOICE_ASSISTANT_INTENT_END, since) or {}
         spoken = await self.wait_event(Ev.VOICE_ASSISTANT_TTS_START, since) or {}
         await self.wait_event(Ev.VOICE_ASSISTANT_RUN_END, since)
@@ -185,7 +214,8 @@ class FakeVoicePE:
 
 async def main() -> int:
     cfg = load()
-    cfg.channels.satellite.devices = {"test room": SatelliteDevice(host="127.0.0.1", port=PORT, wake_word="hey_jarvis")}
+    room = f"test room {uuid.uuid4().hex[:6]}"          # its own conversation, not a leftover of the last run
+    cfg.channels.satellite.devices = {room: SatelliteDevice(host="127.0.0.1", port=PORT, wake_word="hey_jarvis")}
     cfg.channels.satellite.http_port, cfg.channels.satellite.public_host = HTTP_PORT, "127.0.0.1"
 
     start = brain_mod.Brain.start
@@ -202,15 +232,16 @@ async def main() -> int:
             pass
 
     box = FakeVoicePE()
+    box.active_wake_words = ["okay_nabu"]                  # the stock box's choice before Winston sets his
     server = await asyncio.start_server(box.serve, "127.0.0.1", PORT)
     audio = sat.AudioServer(cfg); await audio.start()
     cls = get_adapter("stt", cfg.stt.provider)
     stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
-    satellite = sat.Satellite(cfg, "test room", cfg.channels.satellite.devices["test room"], audio, stt, NoFeed())
+    satellite = sat.Satellite(cfg, room, cfg.channels.satellite.devices[room], audio, stt, NoFeed())
     await satellite.connect()
     await asyncio.wait_for(box.subscribed.wait(), 15)
     for _ in range(50):                  # the wake word is set just after subscribing
-        if box.active_wake_words:
+        if box.active_wake_words == ["hey_jarvis"]:
             break
         await asyncio.sleep(0.1)
     print(f"subscribed; wake words set to {box.active_wake_words}")
@@ -223,15 +254,57 @@ async def main() -> int:
         print(f"\n> {text}\n  heard {r['heard']!r}\n  said  {r['said']!r}\n  {r['audio_secs']:.1f} s of audio, first "
               f"audio {r['first_audio_ms']} ms after speech ended, follow-up {r['follow_up']}\n  {' '.join(r['order'])}")
         ok &= bool(r["said"]) and r["audio_secs"] > 0.5 and r["order"][0] == "RUN_START" and r["order"][-1] == "RUN_END"
-        if r["follow_up"]:                                  # the box listens again without a wake word
+        ok &= r["follow_up"]                                # every reply keeps the box listening
+        if text == script[0][0]:                            # nothing more to say: closes quietly
+            t0 = time.perf_counter()
+            r2 = await box.converse(np.zeros(16000 * 12, np.int16), None)
+            print(f"  > (silence after the reply)\n    {' '.join(r2['order'])} after {time.perf_counter() - t0:.1f} s")
+            ok &= r2["order"][-2:] == ["ERROR", "RUN_END"] and not r2["said"]   # the error takes the box to idle
+        elif r["said"].rstrip().endswith("?"):              # a question: the answer needs no wake word
             r2 = await box.converse(synth_user_audio("Warm, please.", USER)[0], None)
             print(f"  > Warm, please.\n    heard {r2['heard']!r}\n    said  {r2['said']!r}\n    {r2['audio_secs']:.1f} s "
                   f"of audio, first audio {r2['first_audio_ms']} ms")
             ok &= bool(r2["said"]) and r2["audio_secs"] > 0.5
 
+    satellite._follow_until = 0.0                          # long after the last reply: a real wake, not a follow-up
     r = await box.converse(np.zeros(16000 * 3, np.int16), "hey_jarvis")      # woken, then nothing said
     print(f"\n> (silence)\n  {' '.join(r['order'])}")
     ok &= "ERROR" in r["order"] and r["order"][-1] == "RUN_END"
+
+    r = await box.converse(synth_user_audio("What time is it?", USER)[0], "hey_jarvis")
+    r2 = await box.converse(synth_user_audio("That's all, thanks.", USER)[0], None)      # in the follow-up window
+    print(f"\n> That's all, thanks. (after {r['said']!r})\n  heard {r2['heard']!r}, said {r2['said']!r}\n"
+          f"  {' '.join(r2['order'])}")
+    ok &= r["follow_up"] and not r2["said"] and r2["order"][-2:] == ["ERROR", "RUN_END"]
+
+    async def pressed(want: list[str], line: str) -> bool:
+        n = len(box.announced)
+        box.long_press()
+        for _ in range(300):
+            if len(box.announced) > n:
+                break
+            await asyncio.sleep(0.1)
+        said = box.announced[n] if len(box.announced) > n else {}
+        print(f"\n> (long press)\n  wake words {box.active_wake_words}, said {said.get('text')!r}, "
+              f"{said.get('audio_secs', 0):.1f} s of audio")
+        return box.active_wake_words == want and said.get("text") == line and said.get("audio_secs", 0) > 0.5
+
+    ok &= await pressed([], sat.BUTTON_ONLY_LINE)
+    satellite._follow_until = 0.0
+    r = await box.converse(synth_user_audio("What time is it?", USER)[0], None)            # the button
+    print(f"\n> What time is it? (button)\n  said {r['said']!r}, follow-up {r['follow_up']}")
+    ok &= bool(r["said"]) and not r["follow_up"]
+
+    await satellite.stop()
+    satellite = sat.Satellite(cfg, room, cfg.channels.satellite.devices[room], audio, stt, NoFeed())
+    await satellite.connect()
+    for _ in range(50):
+        if satellite._long_press is not None:
+            break
+        await asyncio.sleep(0.1)
+    print(f"\n> (reconnect)\n  button only {satellite.button_only}, wake words {box.active_wake_words}")
+    ok &= satellite.button_only and box.active_wake_words == []
+    ok &= await pressed(["hey_jarvis"], sat.WAKE_WORD_LINE)
 
     await satellite.stop()
     server.close()

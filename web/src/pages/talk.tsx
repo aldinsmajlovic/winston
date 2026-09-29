@@ -21,13 +21,46 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { $api, errorText } from '@/api/client'
-import { clock, presence, useChat, useLive, type Item } from '@/api/live'
+import { clock, micHolder, presence, useChat, useLive, type Item } from '@/api/live'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { WinstonHeader } from '@/components/winston-header'
 import { Input } from '@/components/ui/input'
+import { useRoom } from '@/hooks/use-room'
 import { useSpeech } from '@/hooks/use-speech'
 import { useVoice } from '@/hooks/use-voice'
 import { cn } from '@/lib/utils'
+
+const NO_ROOM = 'none' // the picker's value for no room; Radix wants a non-empty one
+
+/** Which room this browser is in: its conversation and mic are shared with that room's box. */
+function RoomPicker({ room, onChange, disabled }: { room: string; onChange: (room: string) => void; disabled: boolean }) {
+  const rooms = $api.useQuery('get', '/api/rooms')
+  const names = rooms.data?.map((r) => r.name) ?? []
+  if (!room && names.length === 0) return null
+  const known = names.some((n) => n.toLowerCase() === room.toLowerCase())
+  return (
+    <Select value={room || NO_ROOM} disabled={disabled} onValueChange={(v) => onChange(v === NO_ROOM ? '' : v)}>
+      <SelectTrigger
+        aria-label="Room"
+        title={disabled ? 'Stop talking to change the room' : 'The room you are in'}
+        className="border-0 bg-transparent text-base text-muted-foreground shadow-none hover:text-foreground dark:bg-transparent"
+      >
+        <House className="size-4" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="end">
+        <SelectItem value={NO_ROOM}>No room</SelectItem>
+        {!known && room && <SelectItem value={room}>{room}</SelectItem>}
+        {names.map((n) => (
+          <SelectItem key={n} value={n}>
+            {n.charAt(0).toUpperCase() + n.slice(1)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
 const TOOL_ICONS: [(base: string) => boolean, LucideIcon][] = [
   [(b) => b.startsWith('hass'), Lightbulb],
@@ -101,7 +134,8 @@ export default function TalkPage() {
   const [now, setNow] = useState(() => Date.now())
   const end = useRef<HTMLDivElement>(null)
   const onVoiceError = useCallback((message: string) => toast.error(message), [])
-  const { status: voiceStatus, start: startVoice, stop: stopVoice } = useVoice(onVoiceError)
+  const [room, setRoom] = useRoom()
+  const { status: voiceStatus, start: startVoice, stop: stopVoice } = useVoice(onVoiceError, room)
   const speech = useSpeech(onVoiceError)
   const listened = useRef<{ since: number; said: Map<string, number> } | null>(null) // replies to what was typed here, and how much of each is spoken
   const heard = presence(feed, now)
@@ -135,29 +169,33 @@ export default function TalkPage() {
     if (!message) return
     if (readAloud) speech.prime()
     listened.current = { since: feed.items.length, said: new Map() }
-    chat.mutate({ body: { text: message } }, { onError: (error) => toast.error(errorText(error)) })
+    chat.mutate({ body: { text: message, room: room || null } }, { onError: (error) => toast.error(errorText(error)) })
     setText('')
   }
 
   const talking = voiceStatus !== 'off'
+  const paused = talking && micHolder(feed, room)
   return (
     <div className="flex h-svh flex-col items-center">
       <WinstonHeader
         name={status.data?.assistant ?? 'Winston'}
         state={state}
         actions={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Read replies aloud"
-            aria-pressed={readAloud}
-            title={readAloud ? 'Reading replies aloud' : 'Read replies aloud'}
-            onClick={speech.toggle}
-            className={cn('rounded-full', !readAloud && 'text-muted-foreground')}
-          >
-            {readAloud ? <Volume2 className="size-5" /> : <VolumeOff className="size-5" />}
-          </Button>
+          <>
+            <RoomPicker room={room} onChange={setRoom} disabled={talking} />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Read replies aloud"
+              aria-pressed={readAloud}
+              title={readAloud ? 'Reading replies aloud' : 'Read replies aloud'}
+              onClick={speech.toggle}
+              className={cn('rounded-full', !readAloud && 'text-muted-foreground')}
+            >
+              {readAloud ? <Volume2 className="size-5" /> : <VolumeOff className="size-5" />}
+            </Button>
+          </>
         }
       />
 
@@ -169,6 +207,8 @@ export default function TalkPage() {
           <div ref={end} />
         </div>
       </main>
+
+      {paused && <p className="w-full max-w-3xl px-8 text-sm text-muted-foreground">Mic paused while the {paused} has it</p>}
 
       <form onSubmit={send} className="flex w-full max-w-3xl items-center gap-3 px-4 pt-3 pb-8">
         <Input

@@ -41,7 +41,8 @@ transport), connecting through winstond to the voice channel.
 - Voice and typing sit side by side at the bottom: a text field and one round talk button.
 - Links to Talk, Memory, Dashboard and Settings are plain text at the top right, not a sidebar, the
   current one in the text colour. On Talk they follow one speaker icon button that reads typed
-  replies aloud. `WinstonHeader` draws this for every page on Winston's side.
+  replies aloud, and before it the room picker (a house icon and the room's name, "No room" by
+  default, plain text in the links' size), shown once a box is set up. `WinstonHeader` draws this for every page on Winston's side.
 - Memory reads like his notes: "How he behaves" first (his rules, with "Only you can change these"
   and the technical instructions folded), then one heading per topic with an (i) for its
   description, facts as plain lines as stored, the date muted at the end and a muted outline "Until
@@ -52,7 +53,8 @@ transport), connecting through winstond to the voice channel.
   the top; a quiet size line at the bottom that counts only what is in his prompt. Forget, remove
   and edit all on "How he behaves" offer Undo in their toast. With memory off, one muted line under the search says he does not use these and
   links to Tools.
-- Dashboard mode shows the logo large as the talk button, one line for his state, the last exchange
+- Dashboard mode shows the logo large as the talk button, one line for his state ("Mic paused while the
+  box has it" while its room's box has the mic), the last exchange
   in large type and announcements across the screen; a plain Close link at the top right is its only
   control besides the logo.
 

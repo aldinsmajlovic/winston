@@ -35,11 +35,12 @@ State = Literal["idle", "listening", "thinking", "speaking"]
 class LiveEvent(BaseModel):
     """One thing that happened. Which fields are set depends on `type`:
     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
-    tool: call, name, status, label, ms. announcement: text. error: text."""
+    tool: call, name, status, label, ms. announcement: text. error: text.
+    mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py)."""
     id: str = ""
     ts: float = 0
     channel: str
-    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error"]
+    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic"]
     state: State | None = None
     text: str | None = None
     reply: str | None = None
@@ -48,6 +49,8 @@ class LiveEvent(BaseModel):
     status: Literal["running", "ok", "error"] | None = None
     label: str | None = None
     ms: int | None = None
+    room: str | None = None
+    held_by: str | None = None
 
 
 class Feed:
@@ -58,6 +61,7 @@ class Feed:
         self._history: deque[LiveEvent] = deque(maxlen=keep)
         self._open: dict[str, LiveEvent] = {}          # reply or call id -> its event in the history
         self._state: dict[str, LiveEvent] = {}         # latest state per channel
+        self._mic: dict[str, LiveEvent] = {}           # latest mic holder per room
         self._subs: set[asyncio.Queue] = set()
 
     def publish(self, ev: LiveEvent) -> LiveEvent:
@@ -65,6 +69,8 @@ class Feed:
         ev.ts = ev.ts or time.time()
         if ev.type == "state":
             self._state[ev.channel] = ev
+        elif ev.type == "mic":
+            self._mic[(ev.room or "").casefold()] = ev
         elif ev.type == "reply" and ev.reply in self._open:
             self._open[ev.reply].text = (self._open[ev.reply].text or "") + (ev.text or "")
         elif ev.type == "tool" and ev.call in self._open:
@@ -86,7 +92,7 @@ class Feed:
         return ev
 
     def backlog(self) -> list[LiveEvent]:
-        return [*self._history, *self._state.values()]
+        return [*self._history, *self._state.values(), *self._mic.values()]
 
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=1000)
@@ -156,6 +162,9 @@ class LiveObserver(BaseObserver):
         # Reply text and its end count only as the claim guard passes them on, not on their way in:
         # what it holds back is never said, and it may add to a reply before ending it.
         if isinstance(f, (LLMTextFrame, LLMFullResponseEndFrame)) and isinstance(data.destination, ClaimGuard):
+            return
+        # Speech counts once past a gate that may drop it (core/rooms.py), not on its way in.
+        if isinstance(f, TranscriptionFrame) and getattr(data.destination, "may_drop_speech", False):
             return
         if f.id in self._seen:
             return

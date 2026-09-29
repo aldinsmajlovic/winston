@@ -4,8 +4,9 @@ import { SmallWebRTCTransport } from '@pipecat-ai/small-webrtc-transport'
 
 export type VoiceStatus = 'off' | 'connecting' | 'on'
 
-/** The browser's mic and speaker, connected to the voice channel over WebRTC through winstond. */
-export function useVoice(onError: (message: string) => void) {
+/** The browser's mic and speaker, connected to the voice channel over WebRTC through winstond. In a
+ * room, the session shares the room's conversation and pauses while the room's box has the mic. */
+export function useVoice(onError: (message: string) => void, room = '') {
   const client = useRef<PipecatClient | null>(null)
   const audio = useRef<HTMLAudioElement | null>(null)   // Winston's voice; not in the DOM, it only plays
   const [status, setStatus] = useState<VoiceStatus>('off')
@@ -20,7 +21,9 @@ export function useVoice(onError: (message: string) => void) {
   const start = useCallback(async () => {
     setStatus('connecting')
     const c = new PipecatClient({
-      transport: new SmallWebRTCTransport({ webrtcRequestParams: { endpoint: '/api/voice/offer' } }),
+      transport: new SmallWebRTCTransport({
+        webrtcRequestParams: { endpoint: '/api/voice/offer', requestData: room ? { room } : undefined },
+      }),
       enableMic: true,
       enableCam: false,
       callbacks: {
@@ -43,7 +46,7 @@ export function useVoice(onError: (message: string) => void) {
       await stop()
       onError(error instanceof Error ? error.message : 'Could not connect to the voice channel')
     }
-  }, [onError, stop])
+  }, [onError, room, stop])
 
   useEffect(() => () => void client.current?.disconnect(), [])
 

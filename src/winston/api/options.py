@@ -453,6 +453,28 @@ async def _ha_domains(cfg: WinstonConfig, params: dict) -> Options:
                             for d, n in sorted(counts.items())])
 
 
+async def _ha_areas(cfg: WinstonConfig, params: dict) -> Options:
+    """Home Assistant's areas, from its registry (needs an admin token), with how many exposed entities each has."""
+    from winston.providers.home_assistant import HomeAssistant
+    ha = _ha(cfg)
+    if ha is None:
+        return Options(name="ha_areas", choices=[], ok=False,
+                       source="Home Assistant is turned off" if _ha_off(cfg) else "Home Assistant is not configured")
+    try:
+        snap = await HomeAssistant(cfg).snapshot()
+    except Exception as e:                                              # noqa: BLE001
+        return Options(name="ha_areas", choices=[], source=str(e) or type(e).__name__, ok=False)
+    if snap.registry is None:
+        return Options(name="ha_areas", choices=[], source="; ".join(snap.errors) or "no registry", ok=False)
+    exposed: dict[str, int] = {}
+    for eid in snap.exposed or ():
+        if aid := snap.area(eid)[0]:
+            exposed[aid] = exposed.get(aid, 0) + 1
+    return Options(name="ha_areas", source=ha.url, choices=[
+        Choice(value=name, label=name, hint=f"{exposed.get(aid, 0)} exposed")
+        for aid, name in sorted(snap.areas.items(), key=lambda a: a[1].casefold())])
+
+
 DISCORD_API = "https://discord.com/api/v10"
 DISCORD_TIMEOUT = 3
 
@@ -520,7 +542,7 @@ PROVIDERS = {
     "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
     "hint_words": _hint_words,
     "llm_models": _llm_models, "voices": _voices, "gemini_models": _gemini_models, "claude_models": _claude_models,
-    "ha_entities": _ha_entities, "ha_domains": _ha_domains, "discord_users": _discord_users,
+    "ha_entities": _ha_entities, "ha_domains": _ha_domains, "ha_areas": _ha_areas, "discord_users": _discord_users,
 }
 
 

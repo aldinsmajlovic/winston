@@ -28,7 +28,7 @@ be swapped for a hosted service when that suits you better.
   announcements across the screen.
 - **Clones a friend's voice by asking.** "Clone my friend's voice": they agree out loud, talk for fifteen
   seconds, and Winston speaks as them until you ask for his own voice back. A voice is kept only when the
-  one agreeing is the one recorded.
+  one agreeing is the one recorded. Recorded in the browser, then used anywhere, the Voice PE too.
 - **Hears your names.** His name, your friends' and your rooms' are hint words, and close mishearings
   ("Winson") are corrected. Rename him in settings and everything he says about himself follows.
 - **Remembers.** Tell it a fact and a fresh conversation still knows it; correct or forget it by voice,
@@ -36,6 +36,13 @@ be swapped for a hosted service when that suits you better.
   you can search, add, edit and forget, next to his own rules.
 - **Speaks your region.** Celsius or Fahrenheit, metric or imperial, 24- or 12-hour clock, taken from Home
   Assistant unless you pick otherwise; answers from the web are converted.
+- **Thinks before he touches the house.** A spoken request about a light or a device gets a moment's
+  reasoning ("One moment.", about a second at medium effort) so he calls the tool instead of claiming
+  he did; small talk stays fast. Home Assistant scripts become his tools, each with its own first line
+  if you like ([Home Assistant](docs/home-assistant.md)).
+- **Keeps listening, until told.** After each reply the Voice PE listens a few seconds more, so a
+  follow-up needs no wake word; "that's all" or "stop" ends it, and a long press on its button makes it
+  listen only when pressed ([Voice PE](docs/voice-pe.md#ending-a-conversation-and-button-only)).
 - **Looks things up.** Small current facts through web search, hard questions handed to Claude, both
   capped per day.
 - **Speaks on its own.** A Home Assistant automation says "the washing machine is done": a chime, the
@@ -52,8 +59,11 @@ be swapped for a hosted service when that suits you better.
 - **Room satellites.** Home Assistant's Voice Preview Edition as Winston's microphone and speaker in a
   room ([setup](docs/voice-pe.md)); running on a real box since 2026-09-25, turn based, woken by "Okay Winston" with Winston's own
   firmware build.
-- **"Hey Winston".** A custom wake word model for room satellites (for now the Voice PE uses its own
-  wake words).
+- **Rooms.** A box and a wall panel in one room are one Winston: one conversation you can start at one and
+  finish at the other, one mic at a time so they never both answer, and "the lights" means that room's
+  ([rooms](docs/rooms.md)).
+- **"Okay Winston".** A custom wake word in Winston's firmware for the Voice PE, with a sensitivity
+  setting per box.
 
 **Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and
 announcements work. A Voice PE room satellite works turn based. The Discord channel is built but not yet run against
@@ -109,7 +119,7 @@ flowchart LR
 - [Architecture](docs/architecture.md): the parts and how they plug together
 - [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks, Winston's logo and how it moves
 - [Hardware](docs/hardware.md): profiles and measured budgets
-- [Voices](docs/voices.md), the [voice benchmark](docs/voices.md#benchmark) and the [Voice PE satellite](docs/voice-pe.md)
+- [Voices](docs/voices.md), the [voice benchmark](docs/voices.md#benchmark), the [Voice PE satellite](docs/voice-pe.md) and [rooms](docs/rooms.md)
 - [Decisions](docs/decisions.md): what changed and why
 - [Writing docs](docs/writing-docs.md): how these pages are kept
 

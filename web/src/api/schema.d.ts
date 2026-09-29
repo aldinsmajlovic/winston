@@ -124,6 +124,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rooms: the satellite boxes' and any a browser session named, with who has each mic */
+        get: operations["list_rooms_api_rooms_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A session in a room hands over its new messages and takes in the others' (core/rooms.py) */
+        post: operations["room_sync_api_rooms__room__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rooms/{room}/mic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who has the room's mic, now and on every change, as server-sent events ({room, held_by}) */
+        get: operations["room_mic_events_api_rooms__room__mic_get"];
+        put?: never;
+        /** Hold the room's mic for secs (a box that woke up); secs 0 lets go */
+        post: operations["room_mic_api_rooms__room__mic_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/speak": {
         parameters: {
             query?: never;
@@ -546,7 +598,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_areas, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -787,6 +839,7 @@ export interface components {
              *       "devices": {},
              *       "http_port": 8702,
              *       "end_silence_secs": 0.8,
+             *       "follow_up_secs": 6,
              *       "session_idle_mins": 10
              *     }
              */
@@ -802,6 +855,11 @@ export interface components {
         ChatMessage: {
             /** Text */
             text: string;
+            /**
+             * Room
+             * @description The room the page is set to; its conversation is shared with the room's box. None: the household's.
+             */
+            room?: string | null;
         };
         /** Choice */
         Choice: {
@@ -1128,6 +1186,23 @@ export interface components {
              * @description Other names people say for it, saved to Home Assistant as aliases.
              */
             aliases?: string[];
+            /**
+             * Said first
+             * @description What he says as soon as a spoken request names it (by name or alias), in place of "One moment.", before he acts. For a script that sets a scene: "Movie night it is."
+             */
+            say_first?: string | null;
+            /**
+             * Quiet after
+             * @description Once a spoken request that names it has worked, he says nothing more and the box does not listen on: for a scene with music that speaks for itself. A failure is still reported.
+             * @default false
+             */
+            quiet_after?: boolean;
+            /**
+             * Run when named
+             * @description For a script: saying just one of its names ("Winston, movie night") runs it straight away without asking the model, so it does the same every time, even twice in a row. Anything longer goes to the model as usual.
+             * @default false
+             */
+            shortcut?: boolean;
         };
         /** ExposurePlan */
         ExposurePlan: {
@@ -1477,6 +1552,8 @@ export interface components {
              * @default {
              *       "voice": false,
              *       "text": true,
+             *       "home": true,
+             *       "home_effort": "medium",
              *       "control": "chat_template"
              *     }
              */
@@ -1487,6 +1564,7 @@ export interface components {
          * @description One thing that happened. Which fields are set depends on `type`:
          *     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
          *     tool: call, name, status, label, ms. announcement: text. error: text.
+         *     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
          */
         LiveEvent: {
             /**
@@ -1505,7 +1583,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error";
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic";
             /** State */
             state?: ("idle" | "listening" | "thinking" | "speaking") | null;
             /** Text */
@@ -1522,6 +1600,10 @@ export interface components {
             label?: string | null;
             /** Ms */
             ms?: number | null;
+            /** Room */
+            room?: string | null;
+            /** Held By */
+            held_by?: string | null;
         };
         /** LoggingConfig */
         LoggingConfig: {
@@ -1601,6 +1683,19 @@ export interface components {
             limit: number;
             /** Day First */
             day_first: boolean;
+        };
+        /** MicHold */
+        MicHold: {
+            /**
+             * By
+             * @description Who holds the mic, e.g. "box".
+             */
+            by: string;
+            /**
+             * Secs
+             * @description How long from now; 0 lets go.
+             */
+            secs: number;
         };
         /** NewFact */
         NewFact: {
@@ -1781,6 +1876,37 @@ export interface components {
              */
             currency?: string;
         };
+        /** RoomState */
+        RoomState: {
+            /** Name */
+            name: string;
+            /**
+             * Box
+             * @description A satellite box is set up for this room.
+             */
+            box: boolean;
+            /**
+             * Area
+             * @description The Home Assistant area "the lights" means here.
+             */
+            area: string;
+            /**
+             * Held By
+             * @description Who has the room's mic now; None: nobody.
+             */
+            held_by?: string | null;
+            /**
+             * Screens
+             * @description Browser voice sessions in the room now (they follow its mic).
+             * @default 0
+             */
+            screens?: number;
+            /**
+             * Messages
+             * @default 0
+             */
+            messages?: number;
+        };
         /** STTConfig */
         STTConfig: {
             /**
@@ -1873,8 +1999,14 @@ export interface components {
              */
             end_silence_secs?: number;
             /**
+             * Listen after a reply (s)
+             * @description After every reply the box listens this long for more, without the wake word (at least 8 s after a question). 0: only after a question.
+             * @default 6
+             */
+            follow_up_secs?: number;
+            /**
              * Conversation resets after (min)
-             * @description Idle minutes before a box's conversation starts fresh.
+             * @description Idle minutes before a room's conversation starts fresh: its box and the browser sessions set to that room share one.
              * @default 10
              */
             session_idle_mins?: number;
@@ -1899,9 +2031,21 @@ export interface components {
             key_env?: string | null;
             /**
              * Wake word
-             * @description On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE; okay_winston with Winston's firmware). Several, comma separated, if the box runs more than one at a time. Unset keeps the box's choice.
+             * @description On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE; okay_winston with Winston's firmware). Several, comma separated, if the box runs more than one at a time. Unset keeps the box's choice. A long press on the box's button switches it off and on again (button only).
              */
             wake_word?: string | null;
+            /**
+             * Wake word sensitivity
+             * @description How readily the box wakes. More sensitive misses less and wakes by mistake more. On a stock Voice PE it covers its own wake words; Okay Winston needs Winston's firmware from 2026-09-27 on (0.95, 0.85, 0.70). Empty keeps the box's setting.
+             * @default
+             * @enum {string}
+             */
+            wake_sensitivity?: "" | "Slightly sensitive" | "Moderately sensitive" | "Very sensitive";
+            /**
+             * Home Assistant area
+             * @description The area this room is in Home Assistant, so "turn off the lights" said here means its lights. Unset uses the room's name. Browser sessions set to the same room use it too.
+             */
+            area?: string | null;
         };
         /** SecretResult */
         SecretResult: {
@@ -1994,6 +2138,62 @@ export interface components {
              */
             pending_control?: string[];
         };
+        /** SyncRequest */
+        SyncRequest: {
+            /**
+             * Origin
+             * @description The session handing over messages; its own come back to it never.
+             */
+            origin: string;
+            /**
+             * Epoch
+             * @description The room conversation the session last saw; None at its start.
+             */
+            epoch?: string | null;
+            /**
+             * After
+             * @description How many of the room's messages the session has taken in.
+             * @default 0
+             */
+            after?: number;
+            /**
+             * Messages
+             * @description The session's new messages, OpenAI chat format.
+             */
+            messages?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Pull
+             * @description False: only hand over (after a reply); nothing comes back.
+             * @default true
+             */
+            pull?: boolean;
+        };
+        /** SyncResult */
+        SyncResult: {
+            /** Epoch */
+            epoch: string;
+            /**
+             * Seq
+             * @description The room's message count after this call.
+             */
+            seq: number;
+            /**
+             * Reset
+             * @description The session's epoch is not the room's: its context is from an older conversation, and `others` is the whole of this one.
+             */
+            reset: boolean;
+            /** Others */
+            others?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Seqs
+             * @description Each of `others`' place in the room's messages.
+             */
+            seqs?: number[];
+        };
         /** TTSConfig */
         TTSConfig: {
             /**
@@ -2077,6 +2277,18 @@ export interface components {
              * @default true
              */
             text?: boolean;
+            /**
+             * Home requests
+             * @description Reasoning on a spoken request about the home (a light, a lamp, the PC), even with voice off. About 1 s slower at medium effort; without it he sometimes said a light was on without switching it.
+             * @default true
+             */
+            home?: boolean;
+            /**
+             * Home request effort
+             * @description How long he reasons about a home request, for chat templates that take a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, high). Medium was as right as xhigh on the 27B and about twice as fast. Empty uses the template's default.
+             * @default medium
+             */
+            home_effort?: string;
             /**
              * Control
              * @description How the server is told to think or not: chat_template for vLLM and llama.cpp (enable_thinking), reasoning_effort for Ollama, none for servers without a switch.
@@ -2345,6 +2557,7 @@ export interface components {
              *         "devices": {},
              *         "enabled": false,
              *         "end_silence_secs": 0.8,
+             *         "follow_up_secs": 6,
              *         "http_port": 8702,
              *         "session_idle_mins": 10
              *       },
@@ -2607,6 +2820,127 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ChatMessage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rooms_api_rooms_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomState"][];
+                };
+            };
+        };
+    };
+    room_sync_api_rooms__room__sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                room: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    room_mic_events_api_rooms__room__mic_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                room: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    room_mic_api_rooms__room__mic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                room: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MicHold"];
             };
         };
         responses: {

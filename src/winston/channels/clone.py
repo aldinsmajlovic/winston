@@ -141,19 +141,63 @@ def own_voice(cfg: WinstonConfig) -> str:
     return cfg.tts.voice if not cfg.tts.voice.startswith("friends/") else "onyx"
 
 
-async def keep_voice(cfg: WinstonConfig, voice: str) -> str | None:
+async def keep_voice(cfg: WinstonConfig, voice: str, channel: str = "voice") -> str | None:
     """Save the voice as tts.voice through winstond, so the UI and the next session agree. Error or None.
-    A patch of that one field, so a settings page saved meanwhile is not overwritten; this channel already
-    speaks in it, so it is not marked for a restart (the satellite still is)."""
+    A patch of that one field, so a settings page saved meanwhile is not overwritten; the channel asking
+    already speaks in it, so it is not marked for a restart (the other voice channels still are)."""
     url = f"http://{cfg.control.host}:{cfg.control.port}/api/config"
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.patch(url, params={"applied": "voice"},
+            r = await c.patch(url, params={"applied": channel},
                               json={"changes": [{"path": ["tts", "voice"], "value": voice}]})
             r.raise_for_status()
     except httpx.HTTPError as e:
         return f"could not save it to the config: {type(e).__name__}"
     return None
+
+
+async def switch(params: FunctionCallParams, voice: str):
+    """Speak in voice from now on in this conversation: the TTS below the LLM takes the new setting."""
+    await params.llm.push_frame(TTSUpdateSettingsFrame(delta=OpenAITTSService.Settings(voice=voice)))
+
+
+def make_use_voice_tool(cfg: WinstonConfig, channel: str = "voice"):
+    """use_voice: switch between stored clones and his own voice. Needs no microphone, so the satellite has it
+    too: a voice cloned at the browser can be used on the box ("Okay Winston, talk like Omar")."""
+    me = cfg.assistant.name
+
+    async def use_voice(params: FunctionCallParams):
+        name = str(params.arguments.get("name", "")).strip()
+        keep = bool(params.arguments.get("keep", False))
+        if voices.slug(name) in ("own", "your-own", "default", "yours", voices.slug(me)):
+            voice, who = own_voice(cfg), "own"
+        elif clone := voices.find(name):
+            voice, who = clone.voice, clone.name
+        else:
+            known = [c.name for c in voices.clones()]
+            return await params.result_callback({"error": f"no cloned voice called {name!r}; cloned voices are "
+                                                          f"{known or 'none yet'}"})
+        await switch(params, voice)
+        result = {"voice": who, "kept": False}
+        if keep:
+            if err := await keep_voice(cfg, voice, channel):
+                result["error_keeping"] = err
+            else:
+                result["kept"] = True
+        await params.result_callback(result)
+
+    known = [c.name for c in voices.clones()]
+    use_schema = FunctionSchema(
+        name="use_voice",
+        description="Switch the voice you speak in: a cloned voice by the person's name, or \"own\" for your own "
+                    f"({me}'s) voice back. \"Use my voice\" from the user means their cloned voice, under their "
+                    "name, not \"own\". The switch lasts this conversation; set keep only when the user asks to keep "
+                    "it. Clones are listed and deleted on the Voice page of the web UI, not by voice. "
+                    f"Cloned voices: {', '.join(known) if known else 'none yet'}.",
+        properties={"name": {"type": "string", "description": "A cloned friend's name, or \"own\"."},
+                    "keep": {"type": "boolean", "description": "Save it as your voice from now on."}},
+        required=["name"])
+    return use_schema, use_voice
 
 
 def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.ndarray, list[str]], Awaitable[str]]):
@@ -170,9 +214,6 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
         await params.llm.push_frame(TTSSpeakFrame(text, append_to_context=False))
         if wait:
             await tap.said()
-
-    async def switch(params: FunctionCallParams, voice: str):
-        await params.llm.push_frame(TTSUpdateSettingsFrame(delta=OpenAITTSService.Settings(voice=voice)))
 
     async def clone_voice(params: FunctionCallParams):
         name = " ".join(str(params.arguments.get("name", "")).split()).strip()
@@ -237,27 +278,6 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
         finally:
             tap.muted = False
 
-    async def use_voice(params: FunctionCallParams):
-        name = str(params.arguments.get("name", "")).strip()
-        keep = bool(params.arguments.get("keep", False))
-        if voices.slug(name) in ("own", "your-own", "default", "yours", voices.slug(me)):
-            voice, who = own_voice(cfg), "own"
-        elif clone := voices.find(name):
-            voice, who = clone.voice, clone.name
-        else:
-            known = [c.name for c in voices.clones()]
-            return await params.result_callback({"error": f"no cloned voice called {name!r}; cloned voices are "
-                                                          f"{known or 'none yet'}"})
-        await switch(params, voice)
-        result = {"voice": who, "kept": False}
-        if keep:
-            if err := await keep_voice(cfg, voice):
-                result["error_keeping"] = err
-            else:
-                result["kept"] = True
-        await params.result_callback(result)
-
-    known = [c.name for c in voices.clones()]
     clone_schema = FunctionSchema(
         name="clone_voice",
         description="Clone a voice and switch to it: a friend's, or the user's own (\"clone my voice\"). Only this "
@@ -270,14 +290,4 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
                              "description": "Whose voice, by first name; the user's own name for their own voice."},
                     "own": {"type": "boolean", "description": "True when it is the user's own voice."}},
         required=["name"])
-    use_schema = FunctionSchema(
-        name="use_voice",
-        description="Switch the voice you speak in: a cloned voice by the person's name, or \"own\" for your own "
-                    f"({me}'s) voice back. \"Use my voice\" from the user means their cloned voice, under their "
-                    "name, not \"own\". The switch lasts this conversation; set keep only when the user asks to keep "
-                    "it. Clones are listed and deleted on the Voice page of the web UI, not by voice. "
-                    f"Cloned voices: {', '.join(known) if known else 'none yet'}.",
-        properties={"name": {"type": "string", "description": "A cloned friend's name, or \"own\"."},
-                    "keep": {"type": "boolean", "description": "Save it as your voice from now on."}},
-        required=["name"])
-    return [(clone_schema, clone_voice), (use_schema, use_voice)]
+    return [(clone_schema, clone_voice), make_use_voice_tool(cfg)]

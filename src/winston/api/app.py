@@ -32,6 +32,7 @@ from winston.core.announce import Announcement, Delivery, Hub
 from winston.core.brain import api_key
 from winston.core import memory, persona, region, speaker, voices
 from winston.core.live import Feed, LiveEvent
+from winston.core.rooms import MicHold, Rooms, RoomState, SyncRequest, SyncResult
 from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
 from winston.providers import ha_events
@@ -74,6 +75,8 @@ class Ok(BaseModel):
 
 class ChatMessage(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
+    room: str | None = Field(None, max_length=60, description="The room the page is set to; its conversation is "
+                                                               "shared with the room's box. None: the household's.")
 
 
 def _partial(model: type[BaseModel], name: str, doc: str) -> type[BaseModel]:
@@ -322,7 +325,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     sup = Supervisor(cfg)
     hub = Hub(cfg)
     feed = Feed()
-    web = WebChat(cfg, feed)
+    rooms = Rooms(cfg, on_mic=lambda room, held: feed.publish(
+        LiveEvent(channel="rooms", type="mic", room=room, held_by=held)))
+    web = WebChat(cfg, feed, rooms)
     tasks: set[asyncio.Task] = set()
 
     def spawn(coro):
@@ -348,6 +353,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     app = FastAPI(title="winstond", version=__version__, lifespan=lifespan)
     app.state.supervisor, app.state.cfg, app.state.hub, app.state.feed = sup, cfg, hub, feed
+    app.state.rooms = rooms
     schema = WinstonConfig.model_json_schema()
     # Config versions this winstond has seen, so a patch made against an older one can be merged:
     # only a path that also changed since then is a conflict.
@@ -483,8 +489,41 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     @app.post("/api/chat", response_model=Ok,
               summary="Say something to him in the web conversation; the reply arrives on /api/live")
     async def chat(m: ChatMessage):
-        spawn(web.ask(m.text.strip()))
+        spawn(web.ask(m.text.strip(), (m.room or "").strip() or None))
         return Ok()
+
+    @app.get("/api/rooms", response_model=list[RoomState],
+             summary="Rooms: the satellite boxes' and any a browser session named, with who has each mic")
+    async def list_rooms():
+        return rooms.states()
+
+    @app.post("/api/rooms/{room}/sync", response_model=SyncResult,
+              summary="A session in a room hands over its new messages and takes in the others' (core/rooms.py)")
+    async def room_sync(room: str, req: SyncRequest):
+        return rooms.sync(room, req)
+
+    @app.post("/api/rooms/{room}/mic", response_model=Ok,
+              summary="Hold the room's mic for secs (a box that woke up); secs 0 lets go")
+    async def room_mic(room: str, h: MicHold):
+        rooms.hold(room, h.by, h.secs)
+        return Ok()
+
+    @app.get("/api/rooms/{room}/mic", summary="Who has the room's mic, now and on every change, as server-sent "
+                                              "events ({room, held_by})")
+    async def room_mic_events(room: str):
+        q = rooms.subscribe(room)
+
+        async def gen():
+            try:
+                while True:
+                    try:
+                        ev = await asyncio.wait_for(q.get(), timeout=15)
+                        yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+            finally:
+                rooms.unsubscribe(room, q)
+        return StreamingResponse(gen(), media_type="text/event-stream")
 
     @app.post("/api/speak", response_class=StreamingResponse,
               responses={200: {"content": {"audio/pcm": {}}, "description": "16-bit mono PCM, rate in X-Sample-Rate",
@@ -651,10 +690,21 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         """The browser's WebRTC offer and ICE candidates, passed to the voice channel, so the page
         needs only winstond's origin."""
         v = app.state.cfg.channels.voice
+        body = await request.body()
+        if request.method == "POST":
+            # The browser client sends its data (the room) as requestData; Pipecat's /api/offer reads only
+            # request_data and drops the other without a word.
+            try:
+                offer = json.loads(body)
+                if isinstance(offer, dict) and "requestData" in offer and "request_data" not in offer:
+                    offer["request_data"] = offer.pop("requestData")
+                    body = json.dumps(offer).encode()
+            except ValueError:
+                pass
         try:
             async with httpx.AsyncClient(timeout=15) as c:
                 r = await c.request(request.method, f"http://{v.host}:{v.port}/api/offer",
-                                    params=request.query_params, content=await request.body(),
+                                    params=request.query_params, content=body,
                                     headers={"content-type": "application/json"})
         except httpx.HTTPError as e:
             raise HTTPException(503, f"voice channel not reachable: {type(e).__name__}")
@@ -732,6 +782,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         # switch never touches Home Assistant.
         ha_apply = await apply_saved(cur, new) if "voice" not in applied and ha_changed(cur, new) else None
         await sup.reload(new)
+        rooms.cfg = new
         new_d = _dump(new)
         sup.mark_stale((r for r in restarts if r != "control"), base=_dump(cur))
         sup.settle(lambda base: restarts_for(base, new_d, schema))     # a change undone needs no restart

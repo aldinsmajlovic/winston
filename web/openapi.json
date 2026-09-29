@@ -230,6 +230,161 @@
         }
       }
     },
+    "/api/rooms": {
+      "get": {
+        "summary": "Rooms: the satellite boxes' and any a browser session named, with who has each mic",
+        "operationId": "list_rooms_api_rooms_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RoomState"
+                  },
+                  "type": "array",
+                  "title": "Response List Rooms Api Rooms Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room}/sync": {
+      "post": {
+        "summary": "A session in a room hands over its new messages and takes in the others' (core/rooms.py)",
+        "operationId": "room_sync_api_rooms__room__sync_post",
+        "parameters": [
+          {
+            "name": "room",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rooms/{room}/mic": {
+      "post": {
+        "summary": "Hold the room's mic for secs (a box that woke up); secs 0 lets go",
+        "operationId": "room_mic_api_rooms__room__mic_post",
+        "parameters": [
+          {
+            "name": "room",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MicHold"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "Who has the room's mic, now and on every change, as server-sent events ({room, held_by})",
+        "operationId": "room_mic_events_api_rooms__room__mic_get",
+        "parameters": [
+          {
+            "name": "room",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Room"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/speak": {
       "post": {
         "summary": "Text in his voice as streamed 16-bit mono PCM, for read aloud and the Voice page's previews; voice and streaming may be tried before they are saved",
@@ -1381,7 +1536,7 @@
     },
     "/api/options/{name}": {
       "get": {
-        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, discord_users",
+        "summary": "Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_areas, discord_users",
         "operationId": "get_options_api_options__name__get",
         "parameters": [
           {
@@ -1842,6 +1997,7 @@
               "devices": {},
               "http_port": 8702,
               "end_silence_secs": 0.8,
+              "follow_up_secs": 6.0,
               "session_idle_mins": 10
             }
           },
@@ -1863,6 +2019,19 @@
             "maxLength": 4000,
             "minLength": 1,
             "title": "Text"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 60
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room",
+            "description": "The room the page is set to; its conversation is shared with the room's box. None: the household's."
           }
         },
         "type": "object",
@@ -2689,6 +2858,30 @@
             "type": "array",
             "title": "Aliases",
             "description": "Other names people say for it, saved to Home Assistant as aliases."
+          },
+          "say_first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Said first",
+            "description": "What he says as soon as a spoken request names it (by name or alias), in place of \"One moment.\", before he acts. For a script that sets a scene: \"Movie night it is.\""
+          },
+          "quiet_after": {
+            "type": "boolean",
+            "title": "Quiet after",
+            "description": "Once a spoken request that names it has worked, he says nothing more and the box does not listen on: for a scene with music that speaks for itself. A failure is still reported.",
+            "default": false
+          },
+          "shortcut": {
+            "type": "boolean",
+            "title": "Run when named",
+            "description": "For a script: saying just one of its names (\"Winston, movie night\") runs it straight away without asking the model, so it does the same every time, even twice in a row. Anything longer goes to the model as usual.",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -3480,6 +3673,8 @@
             "default": {
               "voice": false,
               "text": true,
+              "home": true,
+              "home_effort": "medium",
               "control": "chat_template"
             }
           }
@@ -3520,7 +3715,8 @@
               "reply_end",
               "tool",
               "announcement",
-              "error"
+              "error",
+              "mic"
             ],
             "title": "Type"
           },
@@ -3622,6 +3818,28 @@
               }
             ],
             "title": "Ms"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "held_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held By"
           }
         },
         "type": "object",
@@ -3630,7 +3848,7 @@
           "type"
         ],
         "title": "LiveEvent",
-        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text."
+        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text.\nmic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py)."
       },
       "LoggingConfig": {
         "properties": {
@@ -3799,6 +4017,28 @@
           "day_first"
         ],
         "title": "MemoryView"
+      },
+      "MicHold": {
+        "properties": {
+          "by": {
+            "type": "string",
+            "title": "By",
+            "description": "Who holds the mic, e.g. \"box\"."
+          },
+          "secs": {
+            "type": "number",
+            "maximum": 120.0,
+            "minimum": 0.0,
+            "title": "Secs",
+            "description": "How long from now; 0 lets go."
+          }
+        },
+        "type": "object",
+        "required": [
+          "by",
+          "secs"
+        ],
+        "title": "MicHold"
       },
       "NewFact": {
         "properties": {
@@ -4260,6 +4500,54 @@
           "{brains}"
         ]
       },
+      "RoomState": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "box": {
+            "type": "boolean",
+            "title": "Box",
+            "description": "A satellite box is set up for this room."
+          },
+          "area": {
+            "type": "string",
+            "title": "Area",
+            "description": "The Home Assistant area \"the lights\" means here."
+          },
+          "held_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held By",
+            "description": "Who has the room's mic now; None: nobody."
+          },
+          "screens": {
+            "type": "integer",
+            "title": "Screens",
+            "description": "Browser voice sessions in the room now (they follow its mic).",
+            "default": 0
+          },
+          "messages": {
+            "type": "integer",
+            "title": "Messages",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "box",
+          "area"
+        ],
+        "title": "RoomState"
+      },
       "STTConfig": {
         "properties": {
           "provider": {
@@ -4414,11 +4702,19 @@
             "default": 0.8,
             "level": "advanced"
           },
+          "follow_up_secs": {
+            "type": "number",
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Listen after a reply (s)",
+            "description": "After every reply the box listens this long for more, without the wake word (at least 8 s after a question). 0: only after a question.",
+            "default": 6.0
+          },
           "session_idle_mins": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Conversation resets after (min)",
-            "description": "Idle minutes before a box's conversation starts fresh.",
+            "description": "Idle minutes before a room's conversation starts fresh: its box and the browser sessions set to that room share one.",
             "default": 10,
             "level": "advanced"
           }
@@ -4474,7 +4770,43 @@
               }
             ],
             "title": "Wake word",
-            "description": "On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE; okay_winston with Winston's firmware). Several, comma separated, if the box runs more than one at a time. Unset keeps the box's choice."
+            "description": "On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE; okay_winston with Winston's firmware). Several, comma separated, if the box runs more than one at a time. Unset keeps the box's choice. A long press on the box's button switches it off and on again (button only)."
+          },
+          "wake_sensitivity": {
+            "type": "string",
+            "enum": [
+              "",
+              "Slightly sensitive",
+              "Moderately sensitive",
+              "Very sensitive"
+            ],
+            "title": "Wake word sensitivity",
+            "description": "How readily the box wakes. More sensitive misses less and wakes by mistake more. On a stock Voice PE it covers its own wake words; Okay Winston needs Winston's firmware from 2026-09-27 on (0.95, 0.85, 0.70). Empty keeps the box's setting.",
+            "default": "",
+            "labels": {
+              "": "The box's setting",
+              "Moderately sensitive": "Moderately",
+              "Slightly sensitive": "Slightly (fewest false wakes)",
+              "Very sensitive": "Very (fewest misses)"
+            },
+            "level": "basic"
+          },
+          "area": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Home Assistant area",
+            "description": "The area this room is in Home Assistant, so \"turn off the lights\" said here means its lights. Unset uses the room's name. Browser sessions set to the same room use it too.",
+            "level": "basic",
+            "options": "ha_areas",
+            "restarts": [
+              "{brains}"
+            ]
           }
         },
         "additionalProperties": false,
@@ -4723,6 +5055,95 @@
         ],
         "title": "Status"
       },
+      "SyncRequest": {
+        "properties": {
+          "origin": {
+            "type": "string",
+            "title": "Origin",
+            "description": "The session handing over messages; its own come back to it never."
+          },
+          "epoch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epoch",
+            "description": "The room conversation the session last saw; None at its start."
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "After",
+            "description": "How many of the room's messages the session has taken in.",
+            "default": 0
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Messages",
+            "description": "The session's new messages, OpenAI chat format."
+          },
+          "pull": {
+            "type": "boolean",
+            "title": "Pull",
+            "description": "False: only hand over (after a reply); nothing comes back.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "origin"
+        ],
+        "title": "SyncRequest"
+      },
+      "SyncResult": {
+        "properties": {
+          "epoch": {
+            "type": "string",
+            "title": "Epoch"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq",
+            "description": "The room's message count after this call."
+          },
+          "reset": {
+            "type": "boolean",
+            "title": "Reset",
+            "description": "The session's epoch is not the room's: its context is from an older conversation, and `others` is the whole of this one."
+          },
+          "others": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Others"
+          },
+          "seqs": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Seqs",
+            "description": "Each of `others`' place in the room's messages."
+          }
+        },
+        "type": "object",
+        "required": [
+          "epoch",
+          "seq",
+          "reset"
+        ],
+        "title": "SyncResult"
+      },
       "TTSConfig": {
         "properties": {
           "provider": {
@@ -4857,6 +5278,24 @@
             "title": "Text",
             "description": "Reasoning on text channels. Much better at multi-part requests.",
             "default": true
+          },
+          "home": {
+            "type": "boolean",
+            "title": "Home requests",
+            "description": "Reasoning on a spoken request about the home (a light, a lamp, the PC), even with voice off. About 1 s slower at medium effort; without it he sometimes said a light was on without switching it.",
+            "default": true
+          },
+          "home_effort": {
+            "type": "string",
+            "title": "Home request effort",
+            "description": "How long he reasons about a home request, for chat templates that take a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, high). Medium was as right as xhigh on the 27B and about twice as fast. Empty uses the template's default.",
+            "default": "medium",
+            "level": "advanced",
+            "when": {
+              "llm.thinking.control": [
+                "chat_template"
+              ]
+            }
           },
           "control": {
             "type": "string",
@@ -5293,6 +5732,7 @@
                 "devices": {},
                 "enabled": false,
                 "end_silence_secs": 0.8,
+                "follow_up_secs": 6.0,
                 "http_port": 8702,
                 "session_idle_mins": 10
               },

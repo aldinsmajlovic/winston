@@ -19,6 +19,7 @@ from winston.config.schema import WinstonConfig
 from winston.core.announce import note
 from winston.core.brain import Brain, Clock, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
+from winston.core.rooms import RoomLink
 
 QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-response end
 
@@ -78,8 +79,9 @@ class TextSession:
         s = TextSession(cfg, channel="discord"); await s.start()
         reply = await s.ask("turn on the lights"); await s.close()"""
 
-    def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False, observers: list | None = None):
-        self.cfg, self.channel, self.echo = cfg, channel, echo
+    def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False, observers: list | None = None,
+                 room: RoomLink | None = None, area: str | None = None):
+        self.cfg, self.channel, self.echo, self.room, self.area = cfg, channel, echo, room, area
         self._extra = observers or []
         self.last_used = time.monotonic()
         self._lock = asyncio.Lock()          # one question at a time; a second waits its turn
@@ -94,7 +96,9 @@ class TextSession:
         agg = LLMContextAggregatorPair(self.brain.new_context())
         guard = ClaimGuard(cfg, channel=self.channel, spoken=False)
         self._tracker = TurnTracker(guard); self.printer = Printer(self._tracker, self.echo)
-        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(), self.brain.llm, guard, self.printer, agg.assistant()]),
+        before, after = ([self.room.before], [self.room.after]) if self.room else ([], [])
+        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), *before, self.brain.llm, guard,
+                                                self.printer, agg.assistant(), *after]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[guard.observer, self.brain.verifier.observer,
                                                  ToolCallLogObserver(cfg, channel=self.channel),

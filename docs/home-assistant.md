@@ -23,6 +23,16 @@ flowchart LR
 - The tools depend on what is exposed: an exposed light brings "Set brightness and colour", a to-do list
   brings the to-do tools. A channel reads the tool list when it starts, which is why saving the list
   marks the brain channels for a restart.
+- An exposed script becomes a tool of its own, described by the script's description, so a scene with
+  several steps (lamps one after another, music) is one call. Say in the description when to run it and
+  give it the phrases as aliases: an alias in what was said also makes a spoken request think first.
+  `say_first` on the entry is what he says right away when a spoken request names it, in place of "One
+  moment." ("Movie night it is."), and `quiet_after` makes him say nothing once it has worked and keeps
+  the box from listening on, so a scene with music is not talked over or answered; a failure is still
+  reported. `shortcut` runs a script straight away, without the model, when what was said is only one of
+  its names ("Okay Winston, movie night"), so it does the same every time, twice in a row too; add what
+  the speech recognition makes of the phrase as an alias ("make it six in here"). The Home Assistant
+  page's edit dialog has them as "Said first", "Quiet after" and "Run when named".
 - He learns names only from GetLiveContext: each entity's name, its aliases, its area and its state.
 
 ## Aliases matter more than rooms

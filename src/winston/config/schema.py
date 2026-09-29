@@ -158,6 +158,16 @@ class Thinking(Model):
     model_config = section("{brains}")
     voice: bool = Field(False, description="Reasoning before answering on the voice channel. Costs seconds.")
     text: bool = Field(True, description="Reasoning on text channels. Much better at multi-part requests.")
+    home: bool = Field(True, title="Home requests",
+                       description="Reasoning on a spoken request about the home (a light, a lamp, the PC), even "
+                                   "with voice off. About 1 s slower at medium effort; without it he sometimes "
+                                   "said a light was on without switching it.")
+    home_effort: str = Field("medium", title="Home request effort",
+                             description="How long he reasons about a home request, for chat templates that take "
+                                         "a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, "
+                                         "high). Medium was as right as xhigh on the 27B and about twice as fast. "
+                                         "Empty uses the template's default.",
+                             json_schema_extra=ui("advanced", when={"llm.thinking.control": ["chat_template"]}))
     control: Literal["chat_template", "reasoning_effort", "none"] = Field(
         "chat_template", description="How the server is told to think or not: chat_template for vLLM and llama.cpp "
                                      "(enable_thinking), reasoning_effort for Ollama, none for servers without a switch.",
@@ -343,7 +353,20 @@ class SatelliteDevice(Model):
                                   description="On-device wake word to switch on, by id (okay_nabu, hey_jarvis, "
                                               "hey_mycroft on a stock Voice PE; okay_winston with Winston's "
                                               "firmware). Several, comma separated, if the box runs more than "
-                                              "one at a time. Unset keeps the box's choice.")
+                                              "one at a time. Unset keeps the box's choice. A long press on "
+                                              "the box's button switches it off and on again (button only).")
+    wake_sensitivity: Literal["", "Slightly sensitive", "Moderately sensitive", "Very sensitive"] = Field(
+        "", title="Wake word sensitivity",
+        description="How readily the box wakes. More sensitive misses less and wakes by mistake more. On a stock "
+                    "Voice PE it covers its own wake words; Okay Winston needs Winston's firmware from "
+                    "2026-09-27 on (0.95, 0.85, 0.70). Empty keeps the box's setting.",
+        json_schema_extra=ui(labels={"": "The box's setting", "Slightly sensitive": "Slightly (fewest false wakes)",
+                                     "Moderately sensitive": "Moderately", "Very sensitive": "Very (fewest misses)"}))
+    area: str | None = Field(None, title="Home Assistant area",
+                             description="The area this room is in Home Assistant, so \"turn off the lights\" "
+                                         "said here means its lights. Unset uses the room's name. Browser "
+                                         "sessions set to the same room use it too.",
+                             json_schema_extra=ui(restarts=["{brains}"], options="ha_areas"))
 
 
 class SatelliteChannel(Model):
@@ -364,8 +387,12 @@ class SatelliteChannel(Model):
     end_silence_secs: float = Field(0.8, ge=0.3, le=3.0, title="End of speech (s)",
                                     description="Silence after speech that ends a request.",
                                     json_schema_extra=ui("advanced"))
+    follow_up_secs: float = Field(6.0, ge=0.0, le=20.0, title="Listen after a reply (s)",
+                                  description="After every reply the box listens this long for more, without the "
+                                              "wake word (at least 8 s after a question). 0: only after a question.")
     session_idle_mins: int = Field(10, ge=1, title="Conversation resets after (min)",
-                                   description="Idle minutes before a box's conversation starts fresh.",
+                                   description="Idle minutes before a room's conversation starts fresh: its box "
+                                               "and the browser sessions set to that room share one.",
                                    json_schema_extra=ui("advanced"))
 
 
@@ -389,6 +416,18 @@ class ExposedEntity(Model):
                                                "Home Assistant's own name is never changed.")
     aliases: list[str] = Field(default_factory=list, description="Other names people say for it, saved to Home "
                                                                  "Assistant as aliases.")
+    say_first: str | None = Field(None, title="Said first",
+                                  description="What he says as soon as a spoken request names it (by name or alias), "
+                                              "in place of \"One moment.\", before he acts. For a script that sets a "
+                                              "scene: \"Movie night it is.\"")
+    quiet_after: bool = Field(False, title="Quiet after",
+                              description="Once a spoken request that names it has worked, he says nothing more and "
+                                          "the box does not listen on: for a scene with music that speaks for itself. "
+                                          "A failure is still reported.")
+    shortcut: bool = Field(False, title="Run when named",
+                           description="For a script: saying just one of its names (\"Winston, movie night\") runs it "
+                                       "straight away without asking the model, so it does the same every time, even "
+                                       "twice in a row. Anything longer goes to the model as usual.")
 
 
 class VerifyConfig(Model):

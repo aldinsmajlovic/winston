@@ -248,7 +248,7 @@ export default function HomeAssistantPage() {
               <HAEntityTables
                 groups={groups}
                 empty={rows.length ? 'Nothing matches.' : 'None yet.'}
-                onEdit={(r) => setEditing({ id: r.id, original: r.id, value: { name: r.entry.name, aliases: r.entry.aliases } })}
+                onEdit={(r) => setEditing({ id: r.id, original: r.id, value: { ...r.entry } })}
                 onRemove={(r) => void remove(r)}
               />
               {domains.length ? (

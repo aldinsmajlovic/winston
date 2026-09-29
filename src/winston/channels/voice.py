@@ -4,6 +4,9 @@ started by the supervisor:
 
     python -m winston.channels.voice --host 127.0.0.1 --port 7860
 
+A browser set to a room (the offer's request_data {"room": ...}) shares that room's conversation and
+pauses its mic while the room's box has it (core/rooms.py).
+
 Every model sits behind an adapter chosen in config (plan §6, rule 1)."""
 import asyncio
 import json
@@ -44,6 +47,8 @@ from winston.core.announce import note, subscribe
 from winston.core.guard import ClaimGuard
 from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
+from winston.core.rooms import MicGate, RoomLink, area, http_sync, mic_events, wake_phrases
+from winston.core.spoken import SpokenText
 
 CFG: WinstonConfig = load()
 _HEARING: Hearing | None = None
@@ -98,7 +103,8 @@ def build_tts(cfg: WinstonConfig = CFG):
     if c.provider != "openai_speech":
         raise ValueError(f"unsupported tts provider {c.provider}")
     return SpeechTTS(api_key=api_key(c.api_key_env), base_url=c.base_url, sample_rate=c.sample_rate,
-                     settings=SpeechTTS.Settings(model="winston-tts", voice=c.voice))
+                     settings=SpeechTTS.Settings(model="winston-tts", voice=c.voice),
+                     text_filters=[SpokenText(cfg)])      # times in the region's clock, in words
 
 
 def load_chime(cfg: WinstonConfig = CFG) -> bytes:
@@ -205,7 +211,14 @@ transport_params = {
 }
 
 
+def room_of(runner_args: RunnerArguments) -> str | None:
+    body = runner_args.body if isinstance(runner_args.body, dict) else {}
+    room = body.get("room")
+    return (" ".join(room.split())[:60] or None) if isinstance(room, str) else None
+
+
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
+    room = room_of(runner_args)
     brain = Brain(CFG, channel="voice"); await brain.start()
     stt, tts = build_stt(), build_tts()
     tap = MicTap()                  # lets clone_voice record a friend without it becoming a turn
@@ -223,6 +236,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     ))
     guard = ClaimGuard(CFG, channel="voice")
     latency = LatencyLog(CFG, "voice")
+    link = RoomLink(room, f"voice:{uuid.uuid4().hex[:8]}", http_sync(CFG)) if room else None
+    gate = MicGate(wake_phrases(CFG) if room else None)
 
     @brain.llm.event_handler("on_function_calls_started")
     async def on_function_calls_started(service, function_calls):
@@ -236,15 +251,19 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
 
     pipeline = Pipeline([
         transport.input(),      # mic audio from the browser
+        gate.audio,             # silence while the room's box has the mic
         tap,                    # held while a voice is being cloned
         stt,                    # utterance -> text
+        gate.text,              # ...and nothing heard then becomes a turn
         aggregators.user(),     # VAD + turn taking; text -> context
-        Clock(),                # the time in front of the newest user message
+        Clock(area(CFG, room) if room else None),   # the time (and room) in front of the newest user message
+        *([link.before] if link else []),           # the room's conversation in, this session's out
         brain.llm,              # context -> streamed text, tool calls
         guard,                  # holds back claims no tool call backs, retries once
         tts,                    # sentences -> pcm
         transport.output(),     # speaker audio to the browser
         aggregators.assistant(),
+        *([link.after] if link else []),            # the reply out to the room
     ])
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
@@ -274,13 +293,20 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             frames.append(TTSSpeakFrame(ev["text"]))
             await worker.queue_frames(frames)
 
+    async def room_mic():
+        """Follow the room's mic: closed while its box has it."""
+        async for ev in mic_events(CFG, room):
+            if gate.set(ev.get("held_by")):
+                logger.info(f"{room}: mic {'paused for the ' + ev['held_by'] if gate.closed else 'back'}")
+
     listener: asyncio.Task | None = None
+    follower = asyncio.create_task(room_mic()) if room else None
     warming: set[asyncio.Task] = set()          # held so the warm-up task is not collected mid-way
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         nonlocal listener
-        logger.info("client connected")
+        logger.info(f"client connected{f' in {room}' if room else ''}")
         await worker.queue_frames([TTSSpeakFrame(f"{CFG.assistant.name} online.")])
         warming.add(t := asyncio.create_task(brain.warm())); t.add_done_callback(warming.discard)
         if CFG.announce.enabled:
@@ -291,6 +317,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         logger.info("client disconnected")
         if listener:
             listener.cancel()
+        if follower:
+            follower.cancel()
         FEED.put(LiveEvent(channel="voice", type="state", state="idle"))
         latency.flush()
         await worker.cancel()
