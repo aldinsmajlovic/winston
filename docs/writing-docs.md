@@ -29,6 +29,7 @@ links to it.
 | `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md` | Their one subject |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
 | `docs/announcements.md`, `docs/discord.md` | Their one subject |
+| `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
 | `docs/plan.md` | Milestones and their status |
 | `docs/decisions.md` | What changed and why, one line each |
 
