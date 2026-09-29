@@ -4,6 +4,193 @@
  */
 
 export interface paths {
+    "/api/extensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every extension found: where it comes from, whether it runs, what it offers and may reach */
+        get: operations["list_extensions_api_extensions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/tools": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tools the brain is offered, in a fixed order, the same for every channel */
+        get: operations["brain_tools_api_extensions_tools_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Look for extensions again and describe what changed (a new file in data/extensions/) */
+        post: operations["refresh_api_extensions_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{ext_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One */
+        get: operations["one_api_extensions__ext_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{ext_id}/tools/{tool}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Call a tool as the brain would; the answer or an error written for him to say */
+        post: operations["call_tool_api_extensions__ext_id__tools__tool__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/confirmations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Restricted calls waiting for you, and ones answered in the last hour */
+        get: operations["confirmations_api_confirmations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/confirmations/{cid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm (approve true) or decline a restricted call; confirmed, it runs now */
+        post: operations["answer_api_confirmations__cid__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{ext_id}/jobs/{job}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run one of its jobs now */
+        post: operations["run_job_api_extensions__ext_id__jobs__job__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{ext_id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart */
+        post: operations["restart_api_extensions__ext_id__restart_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/extensions/{ext_id}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The end of its log: what it printed and every failure with its traceback */
+        get: operations["log_api_extensions__ext_id__log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/hooks/{ext_id}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A hook of an extension; reachable wherever winstond is, never opened to the internet by Winston */
+        post: operations["hook_hooks__ext_id___name__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -812,6 +999,37 @@ export interface components {
              */
             language?: string;
         };
+        /** Body_answer_api_confirmations__cid__post */
+        Body_answer_api_confirmations__cid__post: {
+            /** Approve */
+            approve: boolean;
+        };
+        /** BrainTool */
+        BrainTool: {
+            /** Name */
+            name: string;
+            /** Extension */
+            extension: string;
+            /** Tool */
+            tool: string;
+            /** Description */
+            description: string;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Tier */
+            tier: string;
+            /** Outside */
+            outside: boolean;
+            /** Filler */
+            filler?: string | null;
+            /**
+             * Timeout
+             * @default 10
+             */
+            timeout?: number;
+        };
         /** Channels */
         Channels: {
             /**
@@ -979,6 +1197,34 @@ export interface components {
         ConfigVersion: {
             /** Version */
             version: string;
+        };
+        /** Confirmation */
+        Confirmation: {
+            /** Id */
+            id: string;
+            /** Extension */
+            extension: string;
+            /** Tool */
+            tool: string;
+            /** Args */
+            args: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label: string;
+            /** Channel */
+            channel: string;
+            /** Created */
+            created: number;
+            /** Expires */
+            expires: number;
+            /**
+             * State
+             * @description waiting, ok, error, declined or expired
+             */
+            state: string;
+            /** Outcome */
+            outcome?: string | null;
         };
         /** ControlConfig */
         ControlConfig: {
@@ -1174,6 +1420,46 @@ export interface components {
              */
             config_changed?: boolean;
         };
+        /** EntityValue */
+        EntityValue: {
+            /** Entry */
+            entry: string | null;
+            /** Value */
+            value: unknown;
+            /** At */
+            at: number;
+        };
+        /** EntityView */
+        EntityView: {
+            /** Key */
+            key: string;
+            /** Kind */
+            kind: string;
+            /** Name */
+            name: string;
+            /** Unit */
+            unit?: string | null;
+            /** Per */
+            per?: string | null;
+            /** Values */
+            values?: components["schemas"]["EntityValue"][];
+        };
+        /** ErrorView */
+        ErrorView: {
+            /** At */
+            at: number;
+            /** Where */
+            where: string;
+            /** Error */
+            error: string;
+        };
+        /** ExitView */
+        ExitView: {
+            /** At */
+            at: number;
+            /** Why */
+            why: string;
+        };
         /** ExposedEntity */
         ExposedEntity: {
             /**
@@ -1250,6 +1536,198 @@ export interface components {
              * @default []
              */
             targets?: string[];
+        };
+        /** ExtensionBrief */
+        ExtensionBrief: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** State */
+            state: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+        };
+        /** ExtensionConfig */
+        ExtensionConfig: {
+            /**
+             * Enabled
+             * @description Run it. Off until switched on; its card shows what it may reach first.
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Settings
+             * @description Its own settings, drawn from what it describes.
+             */
+            settings?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Speaking up
+             * @description Your choices for each kind of nudge, by kind.
+             */
+            kinds?: {
+                [key: string]: components["schemas"]["ExtensionKind"];
+            };
+            /**
+             * Tools
+             * @description Your choices for each tool, by the tool's own name. For an MCP server, only the tools listed here are offered.
+             */
+            tools?: {
+                [key: string]: components["schemas"]["ExtensionTool"];
+            };
+            /**
+             * Memory limit (MB)
+             * @description Past this much memory it is stopped, with the reason on its card.
+             * @default 500
+             */
+            memory_mb?: number;
+            /**
+             * MCP server
+             * @description Set for an MCP server added as a tools-only extension.
+             */
+            mcp?: components["schemas"]["McpServer"] | null;
+        };
+        /** ExtensionKind */
+        ExtensionKind: {
+            /**
+             * Enabled
+             * @description Let him speak up with this kind at all.
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Deliver
+             * @description When it is said, over the extension's own choice; one per level if you like.
+             */
+            deliver?: string | {
+                [key: string]: string;
+            } | null;
+            /**
+             * Where
+             * @description Where it is said, over the extension's own choice.
+             */
+            where?: string | {
+                [key: string]: string;
+            } | null;
+        };
+        /** ExtensionTool */
+        ExtensionTool: {
+            /**
+             * Enabled
+             * @description Offer the tool to the brain.
+             * @default true
+             */
+            enabled?: boolean;
+            /**
+             * Tier
+             * @description Your tier for it, over what the extension says: read runs, act runs and is logged as an action, restricted waits for you to confirm it outside the voice.
+             */
+            tier?: ("read" | "act" | "restricted") | null;
+            /**
+             * Offer to other apps
+             * @description List it at winstond's /mcp, for Claude Code and other MCP clients.
+             * @default false
+             */
+            offer?: boolean;
+        };
+        /** ExtensionView */
+        ExtensionView: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description?: string;
+            /**
+             * Icon
+             * @default puzzle
+             */
+            icon?: string;
+            /** Origin */
+            origin: string;
+            /** Target */
+            target: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * State
+             * @description stopped, starting, running, restarting, failed; or problem when it cannot run
+             */
+            state: string;
+            /**
+             * Detail
+             * @default
+             */
+            detail?: string;
+            /** Problem */
+            problem?: string | null;
+            /** Api */
+            api?: number | null;
+            /** Sdk */
+            sdk?: string | null;
+            /** Permissions */
+            permissions?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Secrets
+             * @description Its key fields and the variable each names
+             */
+            secrets?: {
+                [key: string]: string;
+            };
+            /**
+             * Needs
+             * @description Variables it names that are not set in data/.env
+             */
+            needs?: string[];
+            /** Status */
+            status?: string | null;
+            /**
+             * Memory Mb
+             * @default 0
+             */
+            memory_mb?: number;
+            /**
+             * Peak Mb
+             * @default 0
+             */
+            peak_mb?: number;
+            /**
+             * Memory Limit Mb
+             * @default 500
+             */
+            memory_limit_mb?: number;
+            /** Started At */
+            started_at?: number | null;
+            /** Tools */
+            tools?: components["schemas"]["ToolView"][];
+            /** Kinds */
+            kinds?: components["schemas"]["KindView"][];
+            /** Entities */
+            entities?: components["schemas"]["EntityView"][];
+            /** Jobs */
+            jobs?: components["schemas"]["JobView"][];
+            /**
+             * Prompt Chars
+             * @default 0
+             */
+            prompt_chars?: number;
+            /** Errors */
+            errors?: components["schemas"]["ErrorView"][];
+            /**
+             * Exits
+             * @description Why it stopped lately, newest last
+             */
+            exits?: components["schemas"]["ExitView"][];
         };
         /** FactEdit */
         FactEdit: {
@@ -1512,6 +1990,43 @@ export interface components {
              */
             verify?: components["schemas"]["VerifyConfig"];
         };
+        /** JobResult */
+        JobResult: {
+            /** Ok */
+            ok: boolean;
+            /** Error */
+            error?: string | null;
+        };
+        /** JobView */
+        JobView: {
+            /** Name */
+            name: string;
+            /** Trigger */
+            trigger: {
+                [key: string]: unknown;
+            };
+            /** Next Run */
+            next_run?: number | null;
+        };
+        /** KindView */
+        KindView: {
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Checked */
+            checked: boolean;
+            /** Deliver */
+            deliver: unknown;
+            /** Where */
+            where: unknown;
+            /** Requested */
+            requested: boolean;
+            /** May Be Urgent */
+            may_be_urgent: boolean;
+            /** Enabled */
+            enabled: boolean;
+        };
         /** LLMConfig */
         LLMConfig: {
             /**
@@ -1565,6 +2080,8 @@ export interface components {
          *     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
          *     tool: call, name, status, label, ms. announcement: text. error: text.
          *     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
+         *     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
+         *     ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
          */
         LiveEvent: {
             /**
@@ -1583,7 +2100,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic";
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm";
             /** State */
             state?: ("idle" | "listening" | "thinking" | "speaking") | null;
             /** Text */
@@ -1595,7 +2112,7 @@ export interface components {
             /** Name */
             name?: string | null;
             /** Status */
-            status?: ("running" | "ok" | "error") | null;
+            status?: ("running" | "ok" | "error" | "waiting" | "declined" | "expired") | null;
             /** Label */
             label?: string | null;
             /** Ms */
@@ -1604,6 +2121,11 @@ export interface components {
             room?: string | null;
             /** Held By */
             held_by?: string | null;
+        };
+        /** LogLines */
+        LogLines: {
+            /** Lines */
+            lines: string[];
         };
         /** LoggingConfig */
         LoggingConfig: {
@@ -1619,6 +2141,24 @@ export interface components {
              * @default logs/latency.jsonl
              */
             latency?: string;
+        };
+        /** McpServer */
+        McpServer: {
+            /**
+             * Command
+             * @description How to start it, for a server that talks over stdio.
+             */
+            command?: string[] | null;
+            /**
+             * Url
+             * @description Where it listens, for a server that talks over HTTP.
+             */
+            url?: string | null;
+            /**
+             * Env
+             * @description Variables from data/.env it gets; no others.
+             */
+            env?: string[];
         };
         /** MemoryConfig */
         MemoryConfig: {
@@ -2123,6 +2663,14 @@ export interface components {
              */
             lookahead_secs?: number;
         };
+        /** SpeakUpConfig */
+        SpeakUpConfig: {
+            /**
+             * You
+             * @description The person entity that says whether you are home: for nudges held until you get home, and extensions allowed to know.
+             */
+            home?: string | null;
+        };
         /** Status */
         Status: {
             /** Version */
@@ -2132,6 +2680,11 @@ export interface components {
             /** Engines */
             engines: components["schemas"]["EngineStatus"][];
             gpu?: components["schemas"]["GpuStatus"] | null;
+            /**
+             * Extensions
+             * @description Extensions switched on
+             */
+            extensions?: components["schemas"]["ExtensionBrief"][];
             /**
              * Pending Control
              * @default []
@@ -2296,6 +2849,40 @@ export interface components {
              * @enum {string}
              */
             control?: "chat_template" | "reasoning_effort" | "none";
+        };
+        /** ToolResult */
+        ToolResult: {
+            /** Ok */
+            ok: boolean;
+            /** Result */
+            result?: unknown;
+            /** Error */
+            error?: string | null;
+            /**
+             * Waiting
+             * @description A restricted tool waiting for your confirmation
+             * @default false
+             */
+            waiting?: boolean;
+        };
+        /** ToolView */
+        ToolView: {
+            /** Name */
+            name: string;
+            /** Brain Name */
+            brain_name: string;
+            /** Description */
+            description: string;
+            /** Tier */
+            tier: string;
+            /** Declared Tier */
+            declared_tier: string;
+            /** Outside */
+            outside: boolean;
+            /** Enabled */
+            enabled: boolean;
+            /** Offer */
+            offer: boolean;
         };
         /** ToolsConfig */
         ToolsConfig: {
@@ -2610,6 +3197,18 @@ export interface components {
              */
             announce?: components["schemas"]["AnnounceConfig"];
             /**
+             * Extensions
+             * @description Each extension by its id: whether it runs, its settings, and your choices for its tools and nudges.
+             */
+            extensions?: {
+                [key: string]: components["schemas"]["ExtensionConfig"];
+            };
+            /**
+             * Speaking up
+             * @default {}
+             */
+            speak_up?: components["schemas"]["SpeakUpConfig"];
+            /**
              * @default {
              *       "tool_calls": "logs/tool_calls.jsonl",
              *       "latency": "logs/latency.jsonl"
@@ -2633,6 +3232,327 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_extensions_api_extensions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionView"][];
+                };
+            };
+        };
+    };
+    brain_tools_api_extensions_tools_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainTool"][];
+                };
+            };
+        };
+    };
+    refresh_api_extensions_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionView"][];
+                };
+            };
+        };
+    };
+    one_api_extensions__ext_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ext_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    call_tool_api_extensions__ext_id__tools__tool__post: {
+        parameters: {
+            query?: {
+                /** @description The conversation calling it; a restricted tool called from one waits for your confirmation */
+                channel?: string | null;
+            };
+            header?: never;
+            path: {
+                ext_id: string;
+                tool: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToolResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirmations_api_confirmations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Confirmation"][];
+                };
+            };
+        };
+    };
+    answer_api_confirmations__cid__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                cid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Body_answer_api_confirmations__cid__post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Confirmation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_job_api_extensions__ext_id__jobs__job__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ext_id: string;
+                job: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restart_api_extensions__ext_id__restart_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ext_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExtensionView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    log_api_extensions__ext_id__log_get: {
+        parameters: {
+            query?: {
+                lines?: number;
+            };
+            header?: never;
+            path: {
+                ext_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogLines"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hook_hooks__ext_id___name__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ext_id: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_api_health_get: {
         parameters: {
             query?: never;

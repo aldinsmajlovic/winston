@@ -7,6 +7,7 @@ import ChannelsPage from '@/pages/channels'
 import DashboardPage from '@/pages/dashboard'
 import EnginePage from '@/pages/engine'
 import EnginesPage from '@/pages/engines'
+import ExtensionsPage from '@/pages/extensions'
 import HomeAssistantPage from '@/pages/home-assistant'
 import MemoryPage from '@/pages/memory'
 import StatusPage from '@/pages/status'
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/home-assistant" element={<HomeAssistantPage />} />
         <Route path="/tools" element={<ToolsPage />} />
+        <Route path="/extensions" element={<ExtensionsPage />} />
         <Route path="/engines" element={<EnginesPage />} />
         <Route path="/engines/:name" element={<EnginePage />} />
         <Route path="/system" element={<SystemPage />} />

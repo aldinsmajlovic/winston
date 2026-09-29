@@ -169,6 +169,7 @@ class Conversation:
                        LiveObserver("satellite", self.feed.put, spoken=True), self.latency])
         self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self.worker))
         self.brain.verifier.deliver = self.correct
+        self.brain.on_slow = lambda text: self.worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
         return self
 
     async def correct(self, text: str):

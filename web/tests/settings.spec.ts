@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Runs against the throwaway winstond `pnpm smoke` starts: WINSTON_DATA is its copy of data/, with the
 // engines and channels switched off and one external engine, `smoke`, that nothing runs.
 const data = process.env.WINSTON_DATA ?? ''
-const pages = ['/status', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/tools', '/engines', '/system']
+const pages = ['/status', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/tools', '/extensions', '/engines', '/system']
 
 test.describe.configure({ mode: 'serial' })
 
@@ -113,15 +113,17 @@ test('a pasted key shows as Set and never comes back from the server', async ({ 
   })
 
   await open(page, '/channels')
-  const field = page.getByLabel('Bot token')
+  // Exact: once a token is saved, the contacts field checks it with Discord and a made-up one gets an
+  // icon labelled "Discord refused the bot token", which a loose match would find too.
+  const field = page.getByLabel('Bot token', { exact: true })
   await expect(field.locator('..').getByLabel('Not set', { exact: true })).toBeVisible()
   await field.fill(secret)
   await save(page)
   await page.reload()
   await open(page, '/channels')
-  const row = page.getByLabel('Bot token').locator('..')
+  const row = page.getByLabel('Bot token', { exact: true }).locator('..')
   await expect(row.getByLabel('Set', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('Bot token')).toHaveValue('')
+  await expect(page.getByLabel('Bot token', { exact: true })).toHaveValue('')
 
   for (const url of ['/api/config', '/api/secrets', '/api/status', '/api/config/schema']) {
     const body = await (await page.request.get(url)).text()

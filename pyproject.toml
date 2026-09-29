@@ -22,6 +22,7 @@ dependencies = [
     "claude-agent-sdk>=0.2.158",
     "discord-py>=2.7.1",
     "aioesphomeapi>=46.5",
+    "winston-sdk",
 ]
 
 [project.scripts]
@@ -37,6 +38,13 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/winston"]
+
+# The extension SDK is its own package (sdk/), so an extension needs none of the voice stack.
+[tool.uv.workspace]
+members = ["sdk"]
+
+[tool.uv.sources]
+winston-sdk = { workspace = true }
 
 [tool.ruff]
 line-length = 110

@@ -1,11 +1,18 @@
 # Extensions
 
-Design approved 2026-09-29, not built yet: the Extensions track in the [plan](plan.md) builds it.
+Approved 2026-09-29. Built: everything on this page except speaking up (nudges, their follow-ups, the
+morning briefing and delivery to your phone), which is step 3 of the Extensions track in the
+[plan](plan.md); until then `ctx.nudge` and `ctx.poke` answer that it is not built, and no check runs.
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs
 in its own process. What it may reach is in a manifest you see before switching it on, and it gets
 no secrets but the ones its own settings name. A personal one is a single file in `data/extensions/`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/extensions-dark.png">
+  <img src="images/extensions-light.png" alt="The Extensions page: Speaking up, and cards for a coin flipper and an MCP server with their tools, tiers and switches" width="720">
+</picture>
 
 ## The smallest one
 
@@ -356,7 +363,7 @@ handler returns without raising.
 | `@ext.status` | Returns the line on its card and in `winston status` |
 | `@ext.context` | Returns up to 300 characters for his prompt at the start of each conversation, or `None` for nothing |
 | `@ext.hint_words` | Returns words speech to text should hear right (exercise names, band names) |
-| `@ext.validate` | Runs on save, may use the network, 10 s; `raise SettingsError("field", "Hevy rejected this key")` shows on that field |
+| `@ext.validate` | Runs on save while the extension runs (one that does not is checked against its settings schema), may use the network, 10 s; `raise SettingsError("field", "Hevy rejected this key")` shows on that field |
 
 ### ctx
 
@@ -518,8 +525,9 @@ call or an act tool call in that turn.
   | `restricted` | Destructive, security or money | `destructiveHint: true` | Waits for you to confirm it outside the voice |
 
   A restricted call does nothing until you confirm it within 5 minutes: with a button on the Talk
-  page at winstond's own address (never from a wall panel, which anyone in the house can reach), or
-  with an actionable notification on your phone through the Home Assistant app. The tool answers
+  page at winstond's own address (never from a wall panel, which anyone in the house can reach), or,
+  from step 3, with an actionable notification on your phone through the Home Assistant app. A call
+  you make yourself at the machine (`winston ext call`, the API without a conversation) runs. The tool answers
   that it is waiting and he says so; voice alone never runs one (plan §6 rule 4). A tool with no
   annotations counts as restricted, which is also MCP's default. Annotations are trusted from
   built-in and personal extensions; for anything else the card shows them as suggestions and you
@@ -529,7 +537,8 @@ call or an act tool call in that turn.
   text from a web service or a feed can carry instructions meant for him. Set `outside=False` only
   for values the extension works out itself (a count, a sum); a title or a note from an API is
   still outside.
-- **Results** are cut at 4,000 characters with a note.
+- **Results** travel as one JSON text, so a list or a string arrives as exactly what the tool
+  returned, and are cut at 4,000 characters with a note.
 - **Time**: 10 s by default, up to 60 s with `timeout=`. `filler="Let me check."` is said on the
   spoken channels when a result takes more than a second.
 - **Prompt cost**: each extension's tool schemas and context are counted on its card and in a total,
@@ -562,10 +571,11 @@ extensions:
   hevy_mcp:
     enabled: true
     mcp: {command: [npx, -y, hevy-mcp], env: [HEVY_API_KEY]}
-    tools: {allow: [get-workouts], tiers: {get-workouts: read}}
+    tools: {get-workouts: {tier: read}}
 ```
 
-The page writes this; it is shown so you know what the file holds. Speaking up has its own section,
+The page writes this; it is shown so you know what the file holds. An MCP server offers the brain only
+the tools listed under its `tools`; the card lists every tool it has, each with a switch. Speaking up has its own section,
 `speak_up`: `max_per_day` (4), `briefing_from` (06:00), `fallback_time` (18:00), the parts of the
 day, `home` (the person entity) and `phone` (a notify service).
 
@@ -580,9 +590,11 @@ flowchart LR
   w -->|nudges, as announcements| ch
 ```
 
-- **One process per extension**, started by the supervisor. Its environment holds `WINSTON_API`,
-  `WINSTON_TOKEN` (scoped to its permissions), `WINSTON_STATE` (its folder) and the values of its
-  own secret fields; none of winstond's other keys.
+- **One process per extension**, started and watched by winstond. Its environment holds
+  `WINSTON_API`, `WINSTON_TOKEN` (scoped to its permissions) and `WINSTON_STATE` (its folder), and
+  nothing else of winstond's, whose environment holds every key in `data/.env`. The values of its own
+  secret fields arrive with its settings over the protocol, so a new key reaches it without a restart.
+  An MCP server gets the variables named in its `env`, and no others. Each takes about 76 MB.
 - **MCP over stdio**, spec 2026-07-28, with winstond as the client. Tools are plain MCP tools. The
   rest travels on Winston's extension to the protocol, `io.github.aldinsmajlovic/winston` version 1,
   negotiated as the spec's extension mechanism (SEP-2133) provides:
@@ -594,16 +606,28 @@ flowchart LR
   - `winston/act`: a nudge action
   - `winston/entity`: a value set from Home Assistant
   - `winston/hook`: a request to one of its hooks
-  - `winston/status` and `winston/context`
+  - `winston/nudge_event`: what happened to one of its nudges, for `@ext.on_nudge`
+  - `winston/status`, `winston/context` and `winston/hint_words`
+  - `winston/errors`: its last failures, for the card
+  - `winston/info`: its process id, for the watch on crashes and memory
 - **Back to winstond over REST**, under `/api/ext/v1/`, with its token. winstond checks every call
   against the manifest and logs it with the extension's id.
 - **The core owns time.** Jobs, triggers, timers and checks are scheduled by winstond, which resolves
   `From` references with the saved settings. Tests can move one clock, missed runs are caught up in
   one place, and the card shows the next run.
-- **Describe runs** without secrets or a token when the extension is found or its code changes.
-  winstond keeps the answer, so the config and the form are checked without starting it.
+- **Until its settings arrive**, an extension with keys or required settings runs no tool and no job
+  (a key would still be its variable's name); one with neither runs on its defaults, so a plain MCP
+  client can use it directly. winstond starts an extension only once it is described, so its keys are
+  known.
+- **Describe runs** without secrets or a token when the extension is found, its code changes or the
+  SDK changes. winstond keeps the answer, so the config and the form are checked without starting it.
 - **Failures stay contained.** A crash restarts it after 1, 5 and 30 s; five crashes in ten minutes
-  stop it, with the reason on its card.
+  stop it. Past its memory limit (`memory_mb`, 500) it is stopped, and one that stops answering for
+  30 s is started again. The reason is on its card either way. MCP 2026-07-28 has no ping, so an
+  extension is asked `winston/info` and an MCP server to list its tools every 10 s.
+- **Its prompt lines and hint words** are written as files in its folder when it starts and after
+  each of its jobs, and read by every channel when a conversation starts, as memory is, so the prompt
+  stays the same through a conversation and its cache holds.
 - **Other languages** work too: anything that speaks MCP and HTTP can be an extension by following
   this page. `winston-sdk` is the Python reference, a small package in `sdk/` with no part of
   Winston's voice stack in it.
@@ -666,21 +690,25 @@ winston ext list                     # id, where it comes from, state, status li
 winston ext enable ID                # or disable
 winston ext call ID TOOL '{"a": 1}'  # call a tool as the brain would
 winston ext run ID JOB               # run a job now
-winston ext check ID KIND            # what a check would say now, without saying it
-winston ext nudges ID                # where its nudges stand, and why each was held or dropped
+winston ext restart ID
+winston ext check ID KIND            # (step 3) what a check would say now, without saying it
+winston ext nudges ID                # (step 3) where its nudges stand, and why each was held or dropped
 winston ext logs ID
 winston ext test ID                  # its tests, with the harness
 ```
 
-A personal extension reloads when its file is saved.
+A personal extension reloads when its file is saved (winstond looks every 2 s).
 
 ## The Extensions page
 
-In the settings sidebar after Tools. A row per extension: switch, name, where it comes from, status
-line. Its card holds, in order: permissions (read before switching on), settings, kinds of speaking
-up (on or off, delivery per level, where, muted until, and its nudges now with what happened to
-each), tools (tier, offered to other apps), entities, prompt cost, the last errors and a link to its
-log. Screenshots come with the build, per the UI guide.
+In the settings sidebar after Tools, under the Speaking up card (the person entity that says whether
+you are home). A card per extension: its icon, name and state, a shield on anything not built in,
+Log, Restart and its switch in the title; then what it may reach (read before switching it on), a
+problem or why it stopped lately, its status line, its settings (key fields included), its tools with
+their tier, whether the brain gets each and whether other apps may use it, its entities' values, and
+its memory and prompt cost. The + in the header adds an MCP server: an id, a command or a URL, and
+the variables it gets. Kinds of speaking up join the card with step 3. A restricted call waiting for
+you shows on the Talk page with Confirm and Decline.
 
 ## Not extensions
 

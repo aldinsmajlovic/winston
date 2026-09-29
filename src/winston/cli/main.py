@@ -12,6 +12,7 @@ import typer
 from loguru import logger
 
 from winston import __version__
+from winston.cli.ext import ext_app
 from winston.config import data_dir, load, repo_root, resolve
 
 app = typer.Typer(help="Winston, a self-hosted voice assistant.", no_args_is_help=True, add_completion=False)
@@ -21,6 +22,7 @@ api_app = typer.Typer(help="The control API.")
 app.add_typer(config_app, name="config")
 app.add_typer(ha_app, name="ha")
 app.add_typer(api_app, name="api")
+app.add_typer(ext_app, name="ext")
 
 
 def _api() -> str:
@@ -103,6 +105,9 @@ def status():
             print(f"  {icons.get(e['state'], '?')} {e['name']:<8} {e['state']:<10} {port:<6}  {e['detail']}")
     if g := s.get("gpu"):
         print(f"  ▮ gpu      {g['used_mb']} / {g['total_mb']} MB  {g['name']}")
+    for x in s.get("extensions", []):
+        icon = {"running": "●", "starting": "◐", "restarting": "◑", "failed": "✕"}.get(x["state"], "○")
+        print(f"  {icon} {x['id']:<8} {x['state']:<10} extension  {x['detail']}")
 
 
 @app.command()
@@ -160,8 +165,10 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     the milestones need the engines up."""
     tests = repo_root() / "tests"
     unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py",
-            "verify_cases.py", "hints_cases.py", "consent_cases.py", "rooms_cases.py", "home_cases.py", "profiles_load.py"]
-    plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {tests / t}" for t in unit)],
+            "verify_cases.py", "hints_cases.py", "consent_cases.py", "rooms_cases.py", "home_cases.py", "profiles_load.py",
+            "extensions_cases.py"]
+    unit_paths = [tests / t for t in unit] + [repo_root() / "sdk" / "tests" / "sdk_cases.py"]
+    plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {t}" for t in unit_paths)],
             "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],

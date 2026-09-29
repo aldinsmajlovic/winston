@@ -582,6 +582,55 @@ class AnnounceConfig(Model):
                           json_schema_extra=ui("advanced"))
 
 
+class ExtensionKind(Model):
+    enabled: bool = Field(True, description="Let him speak up with this kind at all.")
+    deliver: str | dict[str, str] | None = Field(None, description="When it is said, over the extension's own "
+                                                                   "choice; one per level if you like.")
+    where: str | dict[str, str] | None = Field(None, description="Where it is said, over the extension's own choice.")
+
+
+class ExtensionTool(Model):
+    enabled: bool = Field(True, description="Offer the tool to the brain.")
+    tier: Literal["read", "act", "restricted"] | None = Field(
+        None, description="Your tier for it, over what the extension says: read runs, act runs and is logged as "
+                          "an action, restricted waits for you to confirm it outside the voice.")
+    offer: bool = Field(False, title="Offer to other apps",
+                        description="List it at winstond's /mcp, for Claude Code and other MCP clients.")
+
+
+class McpServer(Model):
+    command: list[str] | None = Field(None, description="How to start it, for a server that talks over stdio.")
+    url: str | None = Field(None, description="Where it listens, for a server that talks over HTTP.")
+    env: list[str] = Field(default_factory=list, description="Variables from data/.env it gets; no others.")
+
+
+class ExtensionConfig(Model):
+    model_config = section()
+    enabled: bool = Field(False, description="Run it. Off until switched on; its card shows what it may reach "
+                                             "first.")
+    settings: dict[str, Any] = Field(default_factory=dict, description="Its own settings, drawn from what it "
+                                                                         "describes.")
+    kinds: dict[str, ExtensionKind] = Field(default_factory=dict, title="Speaking up",
+                                            description="Your choices for each kind of nudge, by kind.")
+    tools: dict[str, ExtensionTool] = Field(default_factory=dict,
+                                            description="Your choices for each tool, by the tool's own name. For an "
+                                                        "MCP server, only the tools listed here are offered.")
+    memory_mb: int = Field(500, ge=50, le=16000, title="Memory limit (MB)",
+                           description="Past this much memory it is stopped, with the reason on its card.",
+                           json_schema_extra=ui("advanced"))
+    mcp: McpServer | None = Field(None, title="MCP server", description="Set for an MCP server added as a "
+                                                                          "tools-only extension.",
+                                  json_schema_extra=ui("advanced"))
+
+
+class SpeakUpConfig(Model):
+    model_config = section()
+    home: str | None = Field(None, title="You", description="The person entity that says whether you are home: "
+                                                            "for nudges held until you get home, and extensions "
+                                                            "allowed to know.",
+                             json_schema_extra=ui(options="ha_entities", options_query={"domain": "person"}))
+
+
 class LoggingConfig(Model):
     model_config = section("{brains}")
     tool_calls: str = Field("logs/tool_calls.jsonl", title="Tool calls",
@@ -621,5 +670,10 @@ class WinstonConfig(Model):
     tools: ToolsConfig = ToolsConfig()
     memory: MemoryConfig = MemoryConfig()
     announce: AnnounceConfig = AnnounceConfig()
+    extensions: dict[str, ExtensionConfig] = Field(default_factory=dict, title="Extensions",
+                                                   description="Each extension by its id: whether it runs, its "
+                                                               "settings, and your choices for its tools and nudges.",
+                                                   json_schema_extra=ui(key_title="Extension"))
+    speak_up: SpeakUpConfig = Field(SpeakUpConfig(), title="Speaking up")
     logging: LoggingConfig = LoggingConfig()
     control: ControlConfig = ControlConfig()

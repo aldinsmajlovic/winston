@@ -1,5 +1,5 @@
 """A fake Home Assistant for tests that must not touch the real one. It speaks the subset Winston uses:
-REST (/api/config, /api/states), the websocket API (auth; entity, area and device registry lists;
+REST (/api/config, /api/states, /api/services and calls to them, /api/history), the websocket API (auth; entity, area and device registry lists;
 entity_registry/get_entries and /update; expose_entity, expose_entity/list, expose_new_entities/get
 and /set; subscribe_events) and the MCP server's Streamable HTTP endpoint (initialize, tools/list), whose
 tools follow the exposed domains as the real one's do.
@@ -12,9 +12,12 @@ a "name"). Control endpoints for tests:
     POST /fake/reset           back to the seed, log cleared
     POST /fake/admin?on=0      the token is not an admin: registry and exposure commands are refused
     POST /fake/delay?s=10      every answer waits s seconds (Home Assistant hanging)
+    POST /fake/state?entity_id=light.x&state=on   change a state and send state_changed to subscribers
+    POST /fake/event?event_type=x  (JSON body: its data)   send an event to subscribers
 
 Run it alone:  .venv/bin/python tests/fake_ha.py [--port 18123] [--token fake-ha-token] [--seed test|home]
-Or in-process: `async with FakeHA(port) as ha: ...` (ha.url, ha.writes, ha.reset())."""
+Or in-process: `async with FakeHA(port) as ha: ...` (ha.url, ha.writes, ha.reset(), await ha.change(...),
+await ha.fire(...))."""
 import argparse
 import asyncio
 import copy
@@ -80,6 +83,7 @@ HOME_ENTITIES = [
      {**_no, "device_id": "dev_phone"}, True),
     ("button.wake_pc", "PC", "2026-09-24T07:12:00+00:00", {}, {**_no, "device_id": "dev_pc"}, True),
     ("binary_sensor.ytterdorr", "Ytterdörr", "off", {"device_class": "door"}, {**_no, "device_id": "dev_door"}, False),
+    ("sensor.ficus_moisture", "Ficus moisture", "22", {"unit_of_measurement": "%", "device_class": "moisture"}, _no, False),
     ("person.someone", "Someone", "home", {}, _no, True),
     ("weather.forecast_home", "Forecast", "cloudy", {"temperature": 12}, _no, True),
     ("todo.shopping_list", "Shopping list", "3", {}, _no, True),
@@ -115,11 +119,15 @@ class FakeHA:
         self.app.add_routes([
             web.get("/api/", self.api_root), web.get("/api/config", self.get_config), web.get("/api/states", self.get_states),
             web.get("/api/states/{eid}", self.get_state), web.get("/api/websocket", self.websocket),
+            web.get("/api/services", self.get_services), web.post("/api/services/{domain}/{service}", self.call_service),
+            web.get("/api/history/period/{since}", self.get_history),
             web.post("/api/mcp", self.mcp), web.get("/api/mcp", self.mcp_get), web.delete("/api/mcp", self.mcp_delete),
             web.get("/fake/log", self.fake_log), web.get("/fake/entity/{eid}", self.fake_entity),
             web.post("/fake/reset", self.fake_reset), web.post("/fake/admin", self.fake_admin),
-            web.post("/fake/delay", self.fake_delay),
+            web.post("/fake/delay", self.fake_delay), web.post("/fake/state", self.fake_state),
+            web.post("/fake/event", self.fake_event),
         ])
+        self.subscribers: dict[web.WebSocketResponse, dict[int, str]] = {}
         self.runner: web.AppRunner | None = None
 
     @property
@@ -167,6 +175,40 @@ class FakeHA:
         await self._gate(request)
         s = self.states.get(request.match_info["eid"])
         return web.json_response(s) if s else web.json_response({"message": "Entity not found."}, status=404)
+
+    # Services: a few that change things, and the response-only ones Home Assistant has for reading.
+    SERVICES = {"light": {"turn_on": {}, "turn_off": {}}, "switch": {"turn_on": {}, "turn_off": {}},
+                "weather": {"get_forecasts": {"response": {"optional": False}}},
+                "calendar": {"get_events": {"response": {"optional": False}}},
+                "todo": {"get_items": {"response": {"optional": False}}, "add_item": {}}}
+
+    async def get_services(self, request):
+        await self._gate(request)
+        return web.json_response([{"domain": d, "services": s} for d, s in self.SERVICES.items()])
+
+    async def call_service(self, request):
+        await self._gate(request)
+        domain, service = request.match_info["domain"], request.match_info["service"]
+        if service not in self.SERVICES.get(domain, {}):
+            return web.json_response({"message": f"Service {domain}.{service} not found."}, status=400)
+        body = await request.json() if request.can_read_body else {}
+        self.writes.append({"type": f"service/{domain}.{service}", **body})
+        ids = body.get("entity_id") or []
+        for eid in [ids] if isinstance(ids, str) else ids:
+            if eid in self.states and service in ("turn_on", "turn_off"):
+                self.states[eid]["state"] = service.removeprefix("turn_")
+        if "return_response" in request.query:
+            response = {eid: {"forecast": [{"condition": "sunny", "temperature": 14}]} if domain == "weather"
+                        else {"events": []} if domain == "calendar" else {"items": []}
+                        for eid in ([ids] if isinstance(ids, str) else ids)}
+            return web.json_response({"changed_states": [], "service_response": response})
+        return web.json_response([self.states[e] for e in ([ids] if isinstance(ids, str) else ids) if e in self.states])
+
+    async def get_history(self, request):
+        await self._gate(request)
+        eid = request.query.get("filter_entity_id", "")
+        s = self.states.get(eid)
+        return web.json_response([[s]] if s else [])
 
     # ------------------------------------------------------------ websocket
 
@@ -228,10 +270,20 @@ class FakeHA:
             await ws.close()
             return ws
         await ws.send_json({"type": "auth_ok", "ha_version": VERSION})
+        self.subscribers[ws] = {}
+        try:
+            await self._serve(ws)
+        finally:
+            self.subscribers.pop(ws, None)
+        return ws
+
+    async def _serve(self, ws):
         async for m in ws:
             if m.type != WSMsgType.TEXT:
                 break
             msg = json.loads(m.data)
+            if msg.get("type") == "subscribe_events":
+                self.subscribers[ws][msg["id"]] = msg.get("event_type") or "*"
             if self.delay:
                 await asyncio.sleep(self.delay)
             out = {"id": msg.get("id"), "type": "result"}
@@ -244,7 +296,32 @@ class FakeHA:
             except KeyError as e:
                 out |= {"success": False, "error": {"code": "unknown_command", "message": f"Unknown command {e}"}}
             await ws.send_json(out)
-        return ws
+
+    async def fire(self, event_type: str, data: dict):
+        """Sends an event to every subscription that asked for it (or for all events)."""
+        for ws, subs in list(self.subscribers.items()):
+            for sub_id, wanted in subs.items():
+                if wanted in (event_type, "*"):
+                    await ws.send_json({"id": sub_id, "type": "event",
+                                        "event": {"event_type": event_type, "data": data, "origin": "LOCAL",
+                                                  "time_fired": "2026-09-24T07:00:00+00:00"}})
+
+    async def change(self, entity_id: str, state: str):
+        """Changes a state and sends state_changed, as Home Assistant does."""
+        old = copy.deepcopy(self.states.get(entity_id))
+        new = {**(old or {"entity_id": entity_id, "attributes": {}}), "state": state,
+               "last_changed": "2026-09-24T07:05:00+00:00"}
+        self.states[entity_id] = new
+        await self.fire("state_changed", {"entity_id": entity_id, "old_state": old, "new_state": new})
+
+    async def fake_state(self, request):
+        await self.change(request.query["entity_id"], request.query["state"])
+        return web.json_response(self.states[request.query["entity_id"]])
+
+    async def fake_event(self, request):
+        data = await request.json() if request.can_read_body else {}
+        await self.fire(request.query["event_type"], data)
+        return web.json_response({"ok": True})
 
     # ------------------------------------------------------------ MCP (Streamable HTTP, JSON answers)
 

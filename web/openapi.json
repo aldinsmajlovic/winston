@@ -5,6 +5,487 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/extensions": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Every extension found: where it comes from, whether it runs, what it offers and may reach",
+        "operationId": "list_extensions_api_extensions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionView"
+                  },
+                  "type": "array",
+                  "title": "Response List Extensions Api Extensions Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/tools": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "The tools the brain is offered, in a fixed order, the same for every channel",
+        "operationId": "brain_tools_api_extensions_tools_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrainTool"
+                  },
+                  "type": "array",
+                  "title": "Response Brain Tools Api Extensions Tools Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/refresh": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Look for extensions again and describe what changed (a new file in data/extensions/)",
+        "operationId": "refresh_api_extensions_refresh_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExtensionView"
+                  },
+                  "type": "array",
+                  "title": "Response Refresh Api Extensions Refresh Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{ext_id}": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "One",
+        "operationId": "one_api_extensions__ext_id__get",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{ext_id}/tools/{tool}": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Call a tool as the brain would; the answer or an error written for him to say",
+        "operationId": "call_tool_api_extensions__ext_id__tools__tool__post",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          },
+          {
+            "name": "tool",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Tool"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The conversation calling it; a restricted tool called from one waits for your confirmation",
+              "title": "Channel"
+            },
+            "description": "The conversation calling it; a restricted tool called from one waits for your confirmation"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Args"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ToolResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/confirmations": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Restricted calls waiting for you, and ones answered in the last hour",
+        "operationId": "confirmations_api_confirmations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Confirmation"
+                  },
+                  "type": "array",
+                  "title": "Response Confirmations Api Confirmations Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/confirmations/{cid}": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Confirm (approve true) or decline a restricted call; confirmed, it runs now",
+        "operationId": "answer_api_confirmations__cid__post",
+        "parameters": [
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_answer_api_confirmations__cid__post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Confirmation"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{ext_id}/jobs/{job}": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Run one of its jobs now",
+        "operationId": "run_job_api_extensions__ext_id__jobs__job__post",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          },
+          {
+            "name": "job",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Data"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{ext_id}/restart": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "Restart",
+        "operationId": "restart_api_extensions__ext_id__restart_post",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/extensions/{ext_id}/log": {
+      "get": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "The end of its log: what it printed and every failure with its traceback",
+        "operationId": "log_api_extensions__ext_id__log_get",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          },
+          {
+            "name": "lines",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 5000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Lines"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogLines"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hooks/{ext_id}/{name}": {
+      "post": {
+        "tags": [
+          "extensions"
+        ],
+        "summary": "A hook of an extension; reachable wherever winstond is, never opened to the internet by Winston",
+        "operationId": "hook_hooks__ext_id___name__post",
+        "parameters": [
+          {
+            "name": "ext_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Ext Id"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/health": {
       "get": {
         "summary": "Health",
@@ -1969,6 +2450,79 @@
           "{brains}"
         ]
       },
+      "Body_answer_api_confirmations__cid__post": {
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "title": "Approve"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approve"
+        ],
+        "title": "Body_answer_api_confirmations__cid__post"
+      },
+      "BrainTool": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "extension": {
+            "type": "string",
+            "title": "Extension"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          },
+          "outside": {
+            "type": "boolean",
+            "title": "Outside"
+          },
+          "filler": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filler"
+          },
+          "timeout": {
+            "type": "number",
+            "title": "Timeout",
+            "default": 10
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "extension",
+          "tool",
+          "description",
+          "parameters",
+          "tier",
+          "outside"
+        ],
+        "title": "BrainTool"
+      },
       "Channels": {
         "properties": {
           "voice": {
@@ -2406,6 +2960,72 @@
         ],
         "title": "ConfigVersion"
       },
+      "Confirmation": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "extension": {
+            "type": "string",
+            "title": "Extension"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "args": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Args"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "created": {
+            "type": "number",
+            "title": "Created"
+          },
+          "expires": {
+            "type": "number",
+            "title": "Expires"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "waiting, ok, error, declined or expired"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "extension",
+          "tool",
+          "args",
+          "label",
+          "channel",
+          "created",
+          "expires",
+          "state"
+        ],
+        "title": "Confirmation"
+      },
       "ControlConfig": {
         "properties": {
           "host": {
@@ -2837,6 +3457,128 @@
         ],
         "title": "EngineStatus"
       },
+      "EntityValue": {
+        "properties": {
+          "entry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "at": {
+            "type": "number",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry",
+          "value",
+          "at"
+        ],
+        "title": "EntityValue"
+      },
+      "EntityView": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "per": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Per"
+          },
+          "values": {
+            "items": {
+              "$ref": "#/components/schemas/EntityValue"
+            },
+            "type": "array",
+            "title": "Values"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "kind",
+          "name"
+        ],
+        "title": "EntityView"
+      },
+      "ErrorView": {
+        "properties": {
+          "at": {
+            "type": "number",
+            "title": "At"
+          },
+          "where": {
+            "type": "string",
+            "title": "Where"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "where",
+          "error"
+        ],
+        "title": "ErrorView"
+      },
+      "ExitView": {
+        "properties": {
+          "at": {
+            "type": "number",
+            "title": "At"
+          },
+          "why": {
+            "type": "string",
+            "title": "Why"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "why"
+        ],
+        "title": "ExitView"
+      },
       "ExposedEntity": {
         "properties": {
           "name": {
@@ -2963,6 +3705,370 @@
         },
         "type": "object",
         "title": "ExposurePlan"
+      },
+      "ExtensionBrief": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "state"
+        ],
+        "title": "ExtensionBrief"
+      },
+      "ExtensionConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Run it. Off until switched on; its card shows what it may reach first.",
+            "default": false
+          },
+          "settings": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Settings",
+            "description": "Its own settings, drawn from what it describes."
+          },
+          "kinds": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExtensionKind"
+            },
+            "type": "object",
+            "title": "Speaking up",
+            "description": "Your choices for each kind of nudge, by kind."
+          },
+          "tools": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExtensionTool"
+            },
+            "type": "object",
+            "title": "Tools",
+            "description": "Your choices for each tool, by the tool's own name. For an MCP server, only the tools listed here are offered."
+          },
+          "memory_mb": {
+            "type": "integer",
+            "maximum": 16000.0,
+            "minimum": 50.0,
+            "title": "Memory limit (MB)",
+            "description": "Past this much memory it is stopped, with the reason on its card.",
+            "default": 500,
+            "level": "advanced"
+          },
+          "mcp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpServer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "MCP server",
+            "description": "Set for an MCP server added as a tools-only extension.",
+            "level": "advanced"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExtensionConfig",
+        "restarts": []
+      },
+      "ExtensionKind": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Let him speak up with this kind at all.",
+            "default": true
+          },
+          "deliver": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deliver",
+            "description": "When it is said, over the extension's own choice; one per level if you like."
+          },
+          "where": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Where",
+            "description": "Where it is said, over the extension's own choice."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExtensionKind"
+      },
+      "ExtensionTool": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Offer the tool to the brain.",
+            "default": true
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "read",
+                  "act",
+                  "restricted"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier",
+            "description": "Your tier for it, over what the extension says: read runs, act runs and is logged as an action, restricted waits for you to confirm it outside the voice."
+          },
+          "offer": {
+            "type": "boolean",
+            "title": "Offer to other apps",
+            "description": "List it at winstond's /mcp, for Claude Code and other MCP clients.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExtensionTool"
+      },
+      "ExtensionView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "icon": {
+            "type": "string",
+            "title": "Icon",
+            "default": "puzzle"
+          },
+          "origin": {
+            "type": "string",
+            "title": "Origin"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "state": {
+            "type": "string",
+            "title": "State",
+            "description": "stopped, starting, running, restarting, failed; or problem when it cannot run"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "default": ""
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          },
+          "api": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api"
+          },
+          "sdk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sdk"
+          },
+          "permissions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Permissions"
+          },
+          "secrets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Secrets",
+            "description": "Its key fields and the variable each names"
+          },
+          "needs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Needs",
+            "description": "Variables it names that are not set in data/.env"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "memory_mb": {
+            "type": "number",
+            "title": "Memory Mb",
+            "default": 0
+          },
+          "peak_mb": {
+            "type": "number",
+            "title": "Peak Mb",
+            "default": 0
+          },
+          "memory_limit_mb": {
+            "type": "integer",
+            "title": "Memory Limit Mb",
+            "default": 500
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolView"
+            },
+            "type": "array",
+            "title": "Tools"
+          },
+          "kinds": {
+            "items": {
+              "$ref": "#/components/schemas/KindView"
+            },
+            "type": "array",
+            "title": "Kinds"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/EntityView"
+            },
+            "type": "array",
+            "title": "Entities"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobView"
+            },
+            "type": "array",
+            "title": "Jobs"
+          },
+          "prompt_chars": {
+            "type": "integer",
+            "title": "Prompt Chars",
+            "default": 0
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorView"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "exits": {
+            "items": {
+              "$ref": "#/components/schemas/ExitView"
+            },
+            "type": "array",
+            "title": "Exits",
+            "description": "Why it stopped lately, newest last"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "origin",
+          "target",
+          "enabled",
+          "state"
+        ],
+        "title": "ExtensionView"
       },
       "FactEdit": {
         "properties": {
@@ -3602,6 +4708,106 @@
           "{brains}"
         ]
       },
+      "JobResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "JobResult"
+      },
+      "JobView": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "trigger": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trigger"
+          },
+          "next_run": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Run"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "trigger"
+        ],
+        "title": "JobView"
+      },
+      "KindView": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "checked": {
+            "type": "boolean",
+            "title": "Checked"
+          },
+          "deliver": {
+            "title": "Deliver"
+          },
+          "where": {
+            "title": "Where"
+          },
+          "requested": {
+            "type": "boolean",
+            "title": "Requested"
+          },
+          "may_be_urgent": {
+            "type": "boolean",
+            "title": "May Be Urgent"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "title",
+          "checked",
+          "deliver",
+          "where",
+          "requested",
+          "may_be_urgent",
+          "enabled"
+        ],
+        "title": "KindView"
+      },
       "LLMConfig": {
         "properties": {
           "provider": {
@@ -3716,7 +4922,8 @@
               "tool",
               "announcement",
               "error",
-              "mic"
+              "mic",
+              "confirm"
             ],
             "title": "Type"
           },
@@ -3788,7 +4995,10 @@
                 "enum": [
                   "running",
                   "ok",
-                  "error"
+                  "error",
+                  "waiting",
+                  "declined",
+                  "expired"
                 ]
               },
               {
@@ -3848,7 +5058,23 @@
           "type"
         ],
         "title": "LiveEvent",
-        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text.\nmic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py)."
+        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text.\nmic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).\nconfirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then\nok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it."
+      },
+      "LogLines": {
+        "properties": {
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lines"
+        ],
+        "title": "LogLines"
       },
       "LoggingConfig": {
         "properties": {
@@ -3873,6 +5099,48 @@
         "restarts": [
           "{brains}"
         ]
+      },
+      "McpServer": {
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command",
+            "description": "How to start it, for a server that talks over stdio."
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Where it listens, for a server that talks over HTTP."
+          },
+          "env": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Env",
+            "description": "Variables from data/.env it gets; no others."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "McpServer"
       },
       "MemoryConfig": {
         "properties": {
@@ -5011,6 +6279,31 @@
         "title": "SpeakStreaming",
         "description": "tts.streaming for this request only; unset fields keep the saved values."
       },
+      "SpeakUpConfig": {
+        "properties": {
+          "home": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "You",
+            "description": "The person entity that says whether you are home: for nudges held until you get home, and extensions allowed to know.",
+            "level": "basic",
+            "options": "ha_entities",
+            "options_query": {
+              "domain": "person"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "SpeakUpConfig",
+        "restarts": []
+      },
       "Status": {
         "properties": {
           "version": {
@@ -5037,6 +6330,14 @@
                 "type": "null"
               }
             ]
+          },
+          "extensions": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionBrief"
+            },
+            "type": "array",
+            "title": "Extensions",
+            "description": "Extensions switched on"
           },
           "pending_control": {
             "items": {
@@ -5321,6 +6622,87 @@
         "restarts": [
           "{brains}"
         ]
+      },
+      "ToolResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "result": {
+            "title": "Result"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "waiting": {
+            "type": "boolean",
+            "title": "Waiting",
+            "description": "A restricted tool waiting for your confirmation",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "ToolResult"
+      },
+      "ToolView": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "brain_name": {
+            "type": "string",
+            "title": "Brain Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "tier": {
+            "type": "string",
+            "title": "Tier"
+          },
+          "declared_tier": {
+            "type": "string",
+            "title": "Declared Tier"
+          },
+          "outside": {
+            "type": "boolean",
+            "title": "Outside"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "offer": {
+            "type": "boolean",
+            "title": "Offer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "brain_name",
+          "description",
+          "tier",
+          "declared_tier",
+          "outside",
+          "enabled",
+          "offer"
+        ],
+        "title": "ToolView"
       },
       "ToolsConfig": {
         "properties": {
@@ -5784,6 +7166,21 @@
               "discord": "fallback",
               "ha_event": "winston_announce"
             }
+          },
+          "extensions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ExtensionConfig"
+            },
+            "type": "object",
+            "title": "Extensions",
+            "description": "Each extension by its id: whether it runs, its settings, and your choices for its tools and nudges.",
+            "key_title": "Extension",
+            "level": "basic"
+          },
+          "speak_up": {
+            "$ref": "#/components/schemas/SpeakUpConfig",
+            "title": "Speaking up",
+            "default": {}
           },
           "logging": {
             "$ref": "#/components/schemas/LoggingConfig",

@@ -17,6 +17,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.routing import Route as StarletteRoute
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from winston import __version__
@@ -35,6 +36,11 @@ from winston.core.live import Feed, LiveEvent
 from winston.core.rooms import MicHold, Rooms, RoomState, SyncRequest, SyncResult
 from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
+from winston.extension_host.api import router as extensions_router
+from winston.extension_host.host import Host
+from winston.extension_host.scheduler import Scheduler
+from winston.extension_host.outward import build as outward_mcp
+from winston.extension_host.services import Services as ExtensionServices
 from winston.providers import ha_events
 from winston.providers.home_assistant import (HAApply, HAExposure, HARegistry, HATool, HomeAssistant,
                                               apply_saved, exposure_view, ha_changed, registry_view)
@@ -59,11 +65,19 @@ class GpuStatus(BaseModel):
     total_mb: int
 
 
+class ExtensionBrief(BaseModel):
+    id: str
+    name: str
+    state: str
+    detail: str = ""
+
+
 class Status(BaseModel):
     version: str
     assistant: str
     engines: list[EngineStatus]
     gpu: GpuStatus | None = None
+    extensions: list[ExtensionBrief] = Field(default_factory=list, description="Extensions switched on")
     # Saved since winstond started and read only when it starts: config sections ("announce") and
     # secrets ("HA_TOKEN"). They apply at the next `winston up`; nothing here restarts winstond.
     pending_control: list[str] = []
@@ -328,6 +342,14 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     rooms = Rooms(cfg, on_mic=lambda room, held: feed.publish(
         LiveEvent(channel="rooms", type="mic", room=room, held_by=held)))
     web = WebChat(cfg, feed, rooms)
+    ctl = cfg.control.host if cfg.control.host not in ("0.0.0.0", "::", "") else "127.0.0.1"
+    extensions = Host(cfg, api=f"http://{ctl}:{cfg.control.port}")
+    extension_services = ExtensionServices(extensions)
+    extensions.on_feed = lambda ev: feed.publish(LiveEvent(**ev))
+    extensions.scheduler = Scheduler(extensions, extension_services)
+    mcp_out = outward_mcp(extensions)
+    mcp_app = mcp_out.streamable_http_app(streamable_http_path="/mcp", stateless_http=True, json_response=True,
+                                          host=ctl)
     tasks: set[asyncio.Task] = set()
 
     def spawn(coro):
@@ -346,15 +368,31 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         if autostart:
             asyncio.create_task(sup.start_all())
         listener = asyncio.create_task(ha_events.listen(cfg, publish_announcement))
-        yield
+        # Found and described either way, so the page shows them; run only when winstond starts things.
+        spawn(extensions.start() if autostart else extensions.refresh())
+        if autostart:
+            extensions.scheduler.start()
+        async with mcp_out.session_manager.run():
+            yield
         listener.cancel()
+        await extensions.scheduler.stop()
+        await extensions.stop_all()
         await web.close()
         await sup.stop_all(owned_only=True)
 
     app = FastAPI(title="winstond", version=__version__, lifespan=lifespan)
     app.state.supervisor, app.state.cfg, app.state.hub, app.state.feed = sup, cfg, hub, feed
     app.state.rooms = rooms
+    app.state.extensions = extensions
+    app.include_router(extensions_router(extensions, extension_services))
+    # The tools you offer, for Claude Code and other MCP clients, at exactly /mcp (a mount would want /mcp/).
+    app.router.routes.append(StarletteRoute("/mcp", endpoint=mcp_app))
     schema = WinstonConfig.model_json_schema()
+
+    def full_schema() -> dict:
+        """The config schema with each described extension's settings grafted in, so key fields,
+        field errors and the settings form work for extensions too."""
+        return extensions.graft(schema)
     # Config versions this winstond has seen, so a patch made against an older one can be merged:
     # only a path that also changed since then is a conflict.
     history: OrderedDict[str, dict] = OrderedDict()
@@ -412,6 +450,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                                   started_in=m.started_in,
                                   config_changed=bool(m.pending or m.retired or m.stale)) for m in sup.items.values()],
             gpu=gpu_status(),
+            extensions=[ExtensionBrief(id=i, name=extensions.described.get(i, {}).get("manifest", {}).get("name", i),
+                                       state=p.state, detail=p.detail)
+                        for i, p in sorted(extensions.procs.items()) if extensions.enabled(i)],
             pending_control=control_sections(started, _dump(app.state.cfg), schema) + sorted(control_secrets),
         )
 
@@ -783,6 +824,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         ha_apply = await apply_saved(cur, new) if "voice" not in applied and ha_changed(cur, new) else None
         await sup.reload(new)
         rooms.cfg = new
+        await extensions.apply(cur, new)
         new_d = _dump(new)
         sup.mark_stale((r for r in restarts if r != "control"), base=_dump(cur))
         sup.settle(lambda base: restarts_for(base, new_d, schema))     # a change undone needs no restart
@@ -803,6 +845,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             if (base := _if_match(request.headers.get("if-match"))) and base != v:
                 return JSONResponse(ConfigConflict(detail="The config was saved elsewhere since it was loaded",
                                                    paths=[], version=v).model_dump(), status_code=409)
+            if errors := await extensions.validate(new):
+                return JSONResponse({"detail": errors}, status_code=422)
             return await commit(cur, v, new, dry_run, [], response, rename_persona)
 
     @app.patch("/api/config", response_model=ConfigResult, responses=conflict,
@@ -834,14 +878,20 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             except ValidationError as e:
                 return JSONResponse({"detail": jsonable_encoder(e.errors(include_url=False, include_context=False,
                                                                          include_input=False))}, status_code=422)
+            if errors := await extensions.validate(new):
+                return JSONResponse({"detail": errors}, status_code=422)
             return await commit(cur, v, new, dry_run, applied, response, rename_persona)
 
     @app.get("/api/config/schema", summary="JSON Schema of the config, with level and restarts per field")
     async def get_schema() -> dict:
-        return WinstonConfig.model_json_schema()
+        return full_schema()
 
     def secret_status(name: str, dump: dict) -> SecretStatus:
-        refs = secrets.references(dump, schema)
+        refs = secrets.references(dump, full_schema())
+        for ext_id in extensions.described:
+            for field, var in extensions.secret_fields(ext_id).items():
+                if var == name and ["extensions", ext_id, "settings", field] not in refs.get(name, []):
+                    refs.setdefault(name, []).append(["extensions", ext_id, "settings", field])
         claude = name in secrets.CLAUDE_NAMES
         used = refs.get(name, []) + ([secrets.CLAUDE_PATH] if claude else [])
         # a feature switched off reads nothing: no restart for it (ask_claude, Home Assistant, a channel)
@@ -854,7 +904,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
              summary="Variables in data/.env the config names, and the two Claude ones: set or not, never values")
     async def list_secrets():
         dump = _dump(app.state.cfg)
-        names = sorted(secrets.references(dump, schema)) + [n for n in secrets.CLAUDE_NAMES]
+        ext_vars = [v for i in extensions.described for v in extensions.secret_fields(i).values()]
+        names = sorted({*secrets.references(dump, full_schema()), *ext_vars}) + [n for n in secrets.CLAUDE_NAMES]
         return [secret_status(n, dump) for n in dict.fromkeys(names)]
 
     async def secret_changed(name: str) -> SecretResult:
@@ -865,6 +916,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             control_secrets.add(name)
         if set(st.restarts) & set(BRAIN_CHANNELS) or name in secrets.CLAUDE_NAMES:
             await web.reset(app.state.cfg)          # the Talk page's brain reads keys when it is built
+        await extensions.secret_changed(name)
         return SecretResult(name=name, set=st.set, restarts=st.restarts)
 
     def writable(request: Request, name: str):
@@ -872,7 +924,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         secrets.guard(request, [started["control"]["host"], app.state.cfg.control.host], request.method == "PUT")
         if secrets.denied(name):
             raise HTTPException(403, f"{name} is not a variable Winston sets")
-        if not secrets.allowed(name, _dump(app.state.cfg), schema):
+        ext_vars = {v for i in extensions.described for v in extensions.secret_fields(i).values()}
+        if name not in ext_vars and not secrets.allowed(name, _dump(app.state.cfg), full_schema()):
             raise HTTPException(403, f"no setting names {name}; save the setting first")
 
     @app.put("/api/secrets/{name}", response_model=SecretResult, dependencies=[Depends(writable)],

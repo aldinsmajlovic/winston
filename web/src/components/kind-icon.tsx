@@ -27,6 +27,7 @@ import {
   MessageSquare,
   Mic,
   Palette,
+  Puzzle,
   RadioTower,
   ScrollText,
   Speaker,
@@ -87,6 +88,7 @@ const kinds: Record<string, LucideIcon> = {
   // where a hint word comes from (stt.hint_words)
   assistant: User,
   voice: Mic,
+  extension: Puzzle,
   // Home Assistant domains
   light: Lightbulb,
   switch: ToggleRight,

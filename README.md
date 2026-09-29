@@ -64,9 +64,12 @@ be swapped for a hosted service when that suits you better.
   ([rooms](docs/rooms.md)).
 - **"Okay Winston".** A custom wake word in Winston's firmware for the Voice PE, with a sensitivity
   setting per box.
+- **Extensions.** Add tools and background jobs in one Python file (`winston ext new NAME`), or any MCP
+  server. Each runs in its own process with only its own keys, asks for what it may reach, and shows on
+  an Extensions page; tools you choose are offered to Claude Code too ([extensions](docs/extensions.md)).
 
 **Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and
-announcements work. A Voice PE room satellite works turn based. An extension standard (Hevy, news and reminders first) is designed and being built. The Discord channel is built but not yet run against
+announcements work. A Voice PE room satellite works turn based. Extensions run (speaking up from them comes next, then Hevy, news and reminders). The Discord channel is built but not yet run against
 Discord. See [the plan](docs/plan.md).
 
 ## Quickstart
@@ -117,7 +120,7 @@ flowchart LR
 - [Tools](docs/tools.md): memory, web search, `ask_claude`, messaging; keys and limits
 - [Announcements](docs/announcements.md) and [Discord](docs/discord.md)
 - [Architecture](docs/architecture.md): the parts and how they plug together
-- [Extensions](docs/extensions.md): the standard for adding tools, reasons to speak up and Home Assistant entities (designed, being built)
+- [Extensions](docs/extensions.md): adding tools, jobs, entities and (next) reasons to speak up, with the SDK
 - [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks, Winston's logo and how it moves
 - [Hardware](docs/hardware.md): profiles and measured budgets
 - [Voices](docs/voices.md), the [voice benchmark](docs/voices.md#benchmark), the [Voice PE satellite](docs/voice-pe.md) and [rooms](docs/rooms.md)

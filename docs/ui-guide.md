@@ -121,6 +121,12 @@ transport), connecting through winstond to the voice channel.
   cannot give (another engine in the draft, a restart pending) is disabled with the reason in its
   tooltip.
 - A channel's card title carries its state icon from `/api/status`, the detail in the tooltip.
+- The Extensions page is one card per extension, drawn from `/api/extensions`: state icon, a shield
+  with a tooltip on anything not built in, Log and Restart icons and the switch in the title; what it
+  may reach as outline badges, a problem or its last stop as an icon line, its settings as a
+  `SectionForm` at `extensions.<id>.settings` (its schema is grafted into the config schema), and its
+  tools as a table with a tier select and two switches. An extension's own icon is a lucide name,
+  loaded by `DynamicIcon`.
 - A dot in the sidebar marks each page with unsaved edits. A saved change that waits for a restart is
   the changed icon beside Save, its tooltip naming each process and its cost, plus a Restart text
   button while one of them runs; what only the next `winston up` applies has the icon and no button.
@@ -145,7 +151,8 @@ is exempt. `pnpm api` regenerates the client from `winston api schema`.
 ## Templates
 
 - Talk page: `pages/talk.tsx`, fed by `useLive` (the `/api/live` stream) with `Presence` in the
-  header.
+  header. A restricted extension call waiting for you is a line with Confirm and Decline, replaced by
+  its outcome.
 - Memory page: `pages/memory.tsx`, from `/api/memory`, under the same `WinstonHeader`.
 - Settings page: `SettingsPage` with one `SectionForm` per config section, a form from the schema
   pruned against the whole draft (`when`, `hidden`, `drivers`, `enabled_by`, `secret`), so pages do

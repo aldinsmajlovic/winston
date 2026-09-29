@@ -13,6 +13,7 @@ import os
 import re
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +44,8 @@ from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.messaging import make_send_message_tool
 from winston.core.tools.sensors import make_sensor_tool
 from winston.core.tools.web_search import make_web_search_tool
+from winston.extension_host import client as extension_tools
+from winston.extension_host import texts as extension_texts
 from winston.core.verify import Verifier
 
 
@@ -87,12 +90,12 @@ _STAMP = re.compile(r"\[\d\d:\d\d(, room: [^\]]+)?\] ")
 
 
 def persona(cfg: WinstonConfig) -> str:
-    """The persona file, the remembered facts, the region and the reply language, read when a session's
-    LLM is built.
+    """The persona file, the remembered facts, notes from running extensions, the region and the reply
+    language, read when a session's LLM is built.
     The language comes last: a line in the persona lost to the user's language every time (asked in
     Swedish, he answered in Swedish 8 of 8); at the end of the prompt it holds."""
     text = persona_file.prompt_text(cfg).strip()
-    parts = [text, prompt_block(cfg), region.prompt_block(cfg), today(),
+    parts = [text, prompt_block(cfg), extension_texts.prompt_block(cfg), region.prompt_block(cfg), today(),
              f"The user may speak another language, like Swedish: understand it and do what they ask, as you "
              f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
              f"only {cfg.assistant.language}."]
@@ -337,6 +340,8 @@ class Brain:
         # verifier.observer to its pipeline (core/verify.py).
         self.verifier = Verifier(cfg, channel)
         self._areas: asyncio.Task | None = None
+        # A spoken channel sets this to say a line (an extension tool's filler when it is slow).
+        self.on_slow: Callable[[str], Awaitable[None]] | None = None
 
     async def start(self):
         ha = self.cfg.providers.ha
@@ -362,6 +367,7 @@ class Brain:
                 self.tools.standard_tools.append(schema)
         if self.channel != "voice":                 # the voice channel adds the real one
             self.add_tool(*make_clone_hint_tool())
+        await extension_tools.register(self, self.channel)
         if isinstance(self.llm, WinstonLLM):
             self.llm.bind([t.name for t in self.tools.standard_tools])
         logger.info(f"tools: {[t.name for t in self.tools.standard_tools]}")

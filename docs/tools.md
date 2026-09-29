@@ -1,6 +1,7 @@
 # Tools
 
-Besides Home Assistant's own tools (over its MCP server), Winston has these. All are logged to
+Besides Home Assistant's own tools (over its MCP server) and the tools of extensions you switch on
+([extensions](extensions.md)), Winston has these. All are logged to
 `data/logs/tool_calls.jsonl`; settings are in the web UI under Tools.
 
 Switching Home Assistant off (`providers.home_assistant.enabled: false`) keeps its settings but drops

@@ -281,6 +281,11 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         await worker.queue_frames([TTSSpeakFrame(text)])
     brain.verifier.deliver = correct
 
+    async def filler(text: str):
+        """An extension tool is slow: its own line covers the wait, spoken by code, never kept as said."""
+        await worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
+    brain.on_slow = filler
+
     async def announcements():
         """Announcements from winstond while this browser is connected: the note first, so a reply
         has context, then the chime and the text spoken as is."""

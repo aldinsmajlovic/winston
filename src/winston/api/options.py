@@ -104,7 +104,8 @@ def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="stt_models", choices=choices, source="onnx-asr")
 
 
-HINT_ICONS = {"assistant": "assistant", "voice": "voice", "contact": "discord", "home_assistant": "homeassistant"}
+HINT_ICONS = {"assistant": "assistant", "voice": "voice", "contact": "discord", "home_assistant": "homeassistant",
+              "extension": "extension"}
 
 
 def _hint_words(cfg: WinstonConfig, params: dict) -> Options:

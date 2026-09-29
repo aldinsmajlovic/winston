@@ -28,7 +28,8 @@ MIN_LETTERS = 3             # shorter words are never hint words
 SIMILAR = 0.7               # spelling similarity (difflib ratio) a correction needs at least,
 SIMILAR_SHORT = 0.85        # and for a word of five letters or fewer, so Marie, Eric and Alden stay themselves
 SOURCES = {"assistant": "His name", "voice": "A cloned voice", "contact": "A Discord contact",
-           "home_assistant": "A name in the Home Assistant list", "yours": "Added by you"}
+           "home_assistant": "A name in the Home Assistant list", "extension": "Asked for by an extension",
+           "yours": "Added by you"}
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,9 @@ def automatic(cfg: WinstonConfig, clone_names: list[str] | None = None) -> list[
         for e in ha.expose.values():
             for n in [e.name or "", *e.aliases]:
                 add(n, "home_assistant")
+    from winston.extension_host import texts
+    for w in texts.hint_words(cfg):                       # words running extensions asked for, whole
+        add(w, "extension", only_proper=False)
     return out
 
 

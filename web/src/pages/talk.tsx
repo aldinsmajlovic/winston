@@ -5,6 +5,8 @@ import {
   BookmarkMinus,
   BookmarkPlus,
   CircleAlert,
+  CircleCheck,
+  CircleX,
   Clock,
   House,
   Lightbulb,
@@ -14,6 +16,7 @@ import {
   MicOff,
   Search,
   Send,
+  ShieldQuestion,
   Volume2,
   VolumeOff,
   Wrench,
@@ -88,6 +91,32 @@ function sentencesEnd(text: string): number {
   return end
 }
 
+/** A restricted tool waiting for you: it runs only once confirmed here (plan §6 rule 4), never by voice. */
+function Confirm({ item }: { item: Extract<Item, { kind: 'confirm' }> }) {
+  const answer = $api.useMutation('post', '/api/confirmations/{cid}')
+  const reply = (approve: boolean) => answer.mutate({ params: { path: { cid: item.id } }, body: { approve } })
+  const done = item.status !== 'waiting'
+  const Icon = !done ? ShieldQuestion : item.status === 'ok' ? CircleCheck : CircleX
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <Icon className={cn('size-4 shrink-0', item.status === 'error' ? 'text-destructive' : 'text-muted-foreground')} />
+      <span className={done ? 'text-muted-foreground' : 'font-medium'}>{item.label}</span>
+      {done ? (
+        <span className="text-muted-foreground">{item.outcome}</span>
+      ) : (
+        <span className="flex gap-2">
+          <Button size="sm" disabled={answer.isPending} onClick={() => reply(true)}>
+            Confirm
+          </Button>
+          <Button size="sm" variant="outline" disabled={answer.isPending} onClick={() => reply(false)}>
+            Decline
+          </Button>
+        </span>
+      )}
+    </div>
+  )
+}
+
 function Line({ item }: { item: Item }) {
   switch (item.kind) {
     case 'user':
@@ -121,6 +150,8 @@ function Line({ item }: { item: Item }) {
           <span>{item.text}</span>
         </div>
       )
+    case 'confirm':
+      return <Confirm item={item} />
   }
 }
 

@@ -19,6 +19,7 @@ export type Item =
   | { kind: 'tool'; id: string; name: string; label: string; status: NonNullable<LiveEvent['status']> }
   | { kind: 'announcement'; id: string; text: string; ts: number }
   | { kind: 'error'; id: string; text: string }
+  | { kind: 'confirm'; id: string; label: string; status: NonNullable<LiveEvent['status']>; outcome: string }
 
 type Feed = {
   items: Item[]
@@ -59,6 +60,13 @@ function apply(feed: Feed, ev: LiveEvent): Feed {
       return { ...feed, items: [...feed.items, { kind: 'announcement', id, text: ev.text ?? '', ts: ev.ts ?? 0 }] }
     case 'error':
       return { ...feed, items: [...feed.items, { kind: 'error', id, text: ev.text ?? '' }] }
+    case 'confirm': {
+      const key = ev.call ?? id
+      const confirm: Item = { kind: 'confirm', id: key, label: ev.label ?? '', status: ev.status ?? 'waiting', outcome: ev.text ?? '' }
+      return feed.items.some((item) => item.id === key)
+        ? { ...feed, items: replace(key, () => confirm) }
+        : { ...feed, items: [...feed.items, confirm] }
+    }
     case 'mic': {
       const mics = { ...feed.mics }
       const room = (ev.room ?? '').toLowerCase()

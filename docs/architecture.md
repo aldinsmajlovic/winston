@@ -38,6 +38,8 @@ flowchart TB
   sup --> drv[Drivers<br/>docker, subprocess, external URL]
   brain --> mcp[MCP servers<br/>Home Assistant is one entry]
   brain --> local[Local tool plugins]
+  api --> ext[Extension host<br/>one process per extension]
+  brain -. extension tools .-> api
 ```
 
 - **Engines** (`winston/engines`): heavy processes declared in config with a driver. `docker` runs the
@@ -84,6 +86,13 @@ flowchart TB
 - **Announcements** (`core/announce.py`): winstond is the hub. Home Assistant events, the API and the
   CLI publish; channel processes subscribe to `/api/events` and deliver (chime and speech, or a DM).
   An announcement joins the conversation with its context, so replies to it work.
+- **Extensions** (`winston/extension_host`, the SDK in `sdk/`): each extension is its own process that
+  speaks MCP to winstond, with a Winston extension to the protocol for jobs, checks and settings, and
+  calls back into winstond's `/api/ext/v1/` with a token scoped to its manifest. winstond finds,
+  describes, starts and watches them, owns their schedules and Home Assistant triggers, grafts their
+  settings into the config schema (so the form, key fields and field errors cover them), and hands
+  every channel's brain the same list of their tools. A restricted tool waits for a confirmation on
+  the Talk page. See [extensions](extensions.md).
 - **Providers** (`winston/providers`): platform helpers, currently Home Assistant's exposure allowlist.
 - **Control** (`winston/api`, `winston/cli`): `winstond` and the `winston` command.
 
@@ -122,7 +131,8 @@ maps, and `icon` for a section's title.
 ## Repository
 
 ```
-src/winston/        config/ core/ engines/ plugins/ channels/ providers/ api/ cli/
+src/winston/        config/ core/ engines/ plugins/ channels/ providers/ api/ cli/ extension_host/
+sdk/                winston-sdk: the extension SDK, its own package (a uv workspace member)
 services/           engines with their own environments (tts-chatterbox pins torch 2.6)
 web/                the UI (Vite, React, shadcn/ui); built assets are served by winstond
 assets/             bundled voice samples (CC BY 4.0)
@@ -142,6 +152,8 @@ pipeline. `supports_hints` says whether the engine can be told words in advance;
 cannot. The constructor's `hearing=` is the shared `core.hints.Hearing`, which corrects close
 misspellings of the hint words and logs the STT line; see [voices](voices.md#hint-words). Contracts
 stay tiny on purpose; that is what keeps extension cheap and versioning sane.
+
+Extensions have their own, larger contract: [extensions](extensions.md).
 
 ## Non-goals
 

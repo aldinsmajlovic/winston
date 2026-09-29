@@ -45,11 +45,19 @@ SOFT = {
 
 
 READ_TOOLS = {"web_search", "ask_claude"}
+# Tools that say their own tier (extensions declare one per tool), by the name the brain sees.
+DECLARED: dict[str, str] = {}
+
+
+def set_tier(name: str, tier: str) -> None:
+    DECLARED[name] = tier
 
 
 def tool_tier(name: str) -> str:
-    """Read tools only look (GetLiveContext, GetDateTime, get_sensor_readings, web_search,
-    ask_claude); everything else acts."""
+    """A tool's declared tier when it has one (an extension's); otherwise read tools only look
+    (GetLiveContext, GetDateTime, get_sensor_readings, web_search, ask_claude) and everything else acts."""
+    if name in DECLARED:
+        return DECLARED[name]
     base = name.split("__")[-1].lower()
     return READ if base.startswith("get") or base in READ_TOOLS else ACT
 

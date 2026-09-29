@@ -1,0 +1,7 @@
+[
+  {"method": "GET", "url": "https://api.hevyapp.com/v1/workouts",
+   "json": {"page": 1, "page_count": 1, "workouts": [
+     {"id": "w-1", "title": "Push day", "start_time": "2026-01-05T07:00:00+00:00",
+      "end_time": "2026-01-05T08:02:00+00:00",
+      "exercises": [{"title": "Bench Press (Barbell)", "sets": []}, {"title": "Overhead Press", "sets": []}]}]}}
+]

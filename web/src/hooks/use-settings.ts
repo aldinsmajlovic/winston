@@ -97,6 +97,7 @@ export const settingsPages: SettingsPageInfo[] = [
   { to: '/channels', label: 'Channels', sections: [['channels'], ['announce']] },
   { to: '/home-assistant', label: 'Home Assistant', sections: [['providers']] },
   { to: '/tools', label: 'Tools', sections: [['tools'], ['memory']] },
+  { to: '/extensions', label: 'Extensions', sections: [['extensions'], ['speak_up']] },
   { to: '/engines', label: 'Engines', sections: [['engines']] },
   { to: '/system', label: 'System', sections: [['logging'], ['control'], ['version']] },
 ]

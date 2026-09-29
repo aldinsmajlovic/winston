@@ -72,6 +72,8 @@ llm = cfg.get("engines", {}).get("llm")
 if isinstance(llm, dict):
     vols = {h: c for h, c in (llm.get("volumes") or {}).items() if not str(c).rstrip("/").endswith("huggingface")}
     llm["volumes"] = {hf: "/root/.cache/huggingface", **vols}
+# winstond listens on loopback here whatever the real config says: keys are written from the UI only then.
+cfg.setdefault("control", {})["host"] = "127.0.0.1"
 # One engine the supervisor sees as running without starting anything: an external one nothing serves.
 cfg["engines"]["smoke"] = {"driver": "external", "port": 9, "url": "http://127.0.0.1:9", "health": "/health"}
 yaml.safe_dump(cfg, open(path, "w"), sort_keys=False)

@@ -27,6 +27,7 @@ export type ConfigConflict = components['schemas']['ConfigConflict']
 export type SecretStatus = components['schemas']['SecretStatus']
 export type SecretResult = components['schemas']['SecretResult']
 export type ClaudeAuth = components['schemas']['ClaudeAuth']
+export type ExtensionView = components['schemas']['ExtensionView']
 
 /** A 422 `loc` without FastAPI's leading 'body', 'query' or 'path'; the config routes already start
  * at the config root. */

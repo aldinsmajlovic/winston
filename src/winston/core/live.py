@@ -36,17 +36,19 @@ class LiveEvent(BaseModel):
     """One thing that happened. Which fields are set depends on `type`:
     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
     tool: call, name, status, label, ms. announcement: text. error: text.
-    mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py)."""
+    mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
+    confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
+    ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it."""
     id: str = ""
     ts: float = 0
     channel: str
-    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic"]
+    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm"]
     state: State | None = None
     text: str | None = None
     reply: str | None = None
     call: str | None = None
     name: str | None = None
-    status: Literal["running", "ok", "error"] | None = None
+    status: Literal["running", "ok", "error", "waiting", "declined", "expired"] | None = None
     label: str | None = None
     ms: int | None = None
     room: str | None = None
@@ -73,13 +75,15 @@ class Feed:
             self._mic[(ev.room or "").casefold()] = ev
         elif ev.type == "reply" and ev.reply in self._open:
             self._open[ev.reply].text = (self._open[ev.reply].text or "") + (ev.text or "")
-        elif ev.type == "tool" and ev.call in self._open:
+        elif ev.type in ("tool", "confirm") and ev.call in self._open:
             stored = self._open[ev.call]
             stored.status, stored.label, stored.ms = ev.status, ev.label, ev.ms
+            if ev.text is not None:
+                stored.text = ev.text
         elif ev.type != "reply_end":
             stored = ev.model_copy()
             self._history.append(stored)
-            if ev.type in ("reply", "tool"):
+            if ev.type in ("reply", "tool", "confirm"):
                 self._open[ev.reply or ev.call or ""] = stored
             if len(self._open) > 2 * (self._history.maxlen or 0):    # forget ids that left the history
                 kept = {id(e) for e in self._history}

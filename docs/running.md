@@ -15,6 +15,10 @@ uv run winston check           # unit (no hardware), ui, then the m0, m1, m2 acc
 uv run winston check ui        # the settings smoke test in Chromium on a throwaway winstond (needs pnpm build)
 uv run winston check brain     # the configured brain on the trial requests: tool calls and speed
 uv run winston check clone     # clone a synthetic friend's voice headless and switch back (about 90 s)
+uv run winston ext list        # extensions: on or off, running or not, their status line
+uv run winston ext new NAME    # a single-file extension in data/extensions/, with a test beside it
+uv run winston ext test NAME   # its tests, no winstond needed; then `winston ext enable NAME`
+uv run winston ext call ID TOOL '{"arg": 1}'   # a tool as the brain would call it; also run, logs, restart, disable
 ```
 
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
@@ -33,7 +37,15 @@ tool calls, what he said (a failed retry's soft line included) and time to first
 stubbed and the guard's records go to the temp dir, so the house and `data/` are untouched. It judges
 nothing; read the transcripts.
 
-Logs: engine subprocesses write to `data/logs/<engine>.log`; the LLM container to `docker logs
+`uv run python tests/extensions_voice.py` measures spoken turns against the running engines while an
+extension misbehaves (blocks its loop, grows past its memory limit, crashes), in a throwaway winstond:
+2026-09-29, median first audio 892 ms with it quiet and 967 ms while it misbehaved 44 times.
+`uv run python tests/extensions_demo.py` serves the docs' example extensions and an MCP server on
+:8790 against the fake Home Assistant, for looking at the Extensions page; neither touches `data/`.
+
+Logs: engine subprocesses write to `data/logs/<engine>.log`; each extension to
+`data/logs/extensions/<id>.log` (what it printed, every failure with its traceback), and keeps its state
+in `data/state/extensions/<id>/`; the LLM container to `docker logs
 winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
 one line per spoken turn to `data/logs/latency.jsonl` (`logging.latency`; empty turns it off): time
 from the end of your speech to the transcript (`stt_ms`), the first token (`first_token_ms`) and the
@@ -202,10 +214,13 @@ un-exposes anything else, adds aliases (never renaming Home Assistant's own enti
 auto-expose. `winston ha expose` does the same from the shell and `--list` prints the plan. The model sees
 exactly that list. Details in [Home Assistant](home-assistant.md).
 
-## Announcements, Discord, tools
+## Announcements, Discord, tools, extensions
 
 Winston speaking on its own is in [announcements](announcements.md), the Discord channel in
 [discord](discord.md), and memory, web search, `ask_claude` and `send_message` in [tools](tools.md).
+Extensions, and the Extensions page under Settings, are in [extensions](extensions.md): each runs as
+its own process, gets only its own keys, and its tools reach every channel's brain; one marked "Offer
+to other apps" is also listed for Claude Code at http://127.0.0.1:8700/mcp.
 
 ## Memory of what was measured
 
