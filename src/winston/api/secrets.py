@@ -102,12 +102,18 @@ def restarts(config: dict, schema: dict, paths: list[list[str]]) -> set[str]:
     return out
 
 
-def is_set(name: str) -> bool:
-    """Holds a value, looked up as a process started now would: the environment, then data/.env."""
-    if (os.environ.get(name) or "").strip():
-        return True
+def value(name: str) -> str:
+    """Its value, looked up as a process started now would: the environment, then data/.env. So a key
+    added to data/.env by hand reaches what starts next without restarting winstond."""
+    if v := (os.environ.get(name) or "").strip():
+        return v
     f = env_file()
-    return bool(f.is_file() and (dotenv_values(f).get(name) or "").strip())
+    return (dotenv_values(f).get(name) or "").strip() if f.is_file() else ""
+
+
+def is_set(name: str) -> bool:
+    """Holds a value, looked up as a process started now would."""
+    return bool(value(name))
 
 
 def allowed(name: str, config: dict, schema: dict) -> bool:

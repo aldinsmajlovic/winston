@@ -30,6 +30,7 @@ links to it.
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
 | `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
+| `docs/built-in-extensions.md` | The extensions that come with Winston: Hevy, news, reminders |
 | `docs/plan.md` | Milestones and their status |
 | `docs/decisions.md` | What changed and why, one line each |
 

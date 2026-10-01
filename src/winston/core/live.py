@@ -40,7 +40,8 @@ class LiveEvent(BaseModel):
     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
     ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
     nudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:
-    speakers, phone, discord, conversation, silent): he spoke up, or would have."""
+    speakers, phone, discord, conversation, silent), links (title and url, if it has any): he spoke up,
+    or would have."""
     id: str = ""
     ts: float = 0
     channel: str
@@ -55,6 +56,7 @@ class LiveEvent(BaseModel):
     ms: int | None = None
     room: str | None = None
     held_by: str | None = None
+    links: list[dict[str, str]] | None = None
 
 
 class Feed:

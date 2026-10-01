@@ -133,12 +133,13 @@ The schema tells the form what to draw (`config/schema.py` has the full list): `
 dotted path, or `{"cmd_uses": "tts.streaming."}` holds; `{slot}` is the section's `slot`), `enabled_by`
 on a section (grey its fields while that switch is off), `hidden`, `secret` (`{default, label}`: draw a
 field for the value beside the variable name), `key_title`, `value_title` and `key_options` for keyed
-maps, and `icon` for a section's title.
+maps, `placeholder` (what an empty picker or optional choice shows; an optional choice gets a first
+item for none), and `icon` for a section's title.
 
 ## Repository
 
 ```
-src/winston/        config/ core/ engines/ plugins/ channels/ providers/ api/ cli/ extension_host/
+src/winston/        config/ core/ engines/ plugins/ channels/ providers/ api/ cli/ extension_host/ extensions/
 sdk/                winston-sdk: the extension SDK, its own package (a uv workspace member)
 services/           engines with their own environments (tts-chatterbox pins torch 2.6)
 web/                the UI (Vite, React, shadcn/ui); built assets are served by winstond

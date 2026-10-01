@@ -153,6 +153,23 @@ class _Presence:
         return _dt((await self._ctx._call("presence"))["since"])
 
 
+class _Speakers:
+    """Your speakers (the satellite box in the room you are in): an audio stream the extension serves
+    on this machine (127.0.0.1) or from a host it declares, in any common format. The core turns it
+    into what the box plays, 48 kHz stereo, lossless on the way. One stream at a time per extension;
+    the box turns it down while he listens and talks."""
+
+    def __init__(self, ctx: Ctx):
+        self._ctx = ctx
+
+    async def play(self, url: str, title: str | None = None) -> int:
+        """Starts playing `url`; returns how many speakers took it (0: none is connected)."""
+        return int((await self._ctx._call("speakers.play", url=url, title=title))["speakers"])
+
+    async def stop(self) -> None:
+        await self._ctx._call("speakers.stop")
+
+
 class _LLM:
     def __init__(self, ctx: Ctx):
         self._ctx = ctx
@@ -181,6 +198,7 @@ class Ctx:
         self.memory = _Memory(self)
         self.presence = _Presence(self)
         self.llm = _LLM(self)
+        self.speakers = _Speakers(self)
         self._http: httpx.AsyncClient | None = None
 
     async def _call(self, op: str, **params: Any) -> Any:

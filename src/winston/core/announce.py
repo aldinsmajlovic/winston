@@ -107,11 +107,12 @@ def mention_note(items: list[dict]) -> str:
     for i in items:
         lines.append(f"- {i['extension']} ({i['kind']}), nudge \"{i['id']}\": \"{i['say']}\" {_nudge_facts(i)}"
                      + (f" He said when putting it off: \"{i['reason']}\"." if i.get("reason") else ""))
-    what = "the morning briefing" if briefing and len(briefing) == len(items) else \
-        "things to mention" if not briefing else "things to mention and the morning briefing"
+    name = "the morning briefing" if datetime.now().hour < 12 else "today's briefing (his first conversation today)"
+    what = name if briefing and len(briefing) == len(items) else \
+        "things to mention" if not briefing else f"things to mention and {name}"
     return (f"\n\n{MENTION_MARK} after answering, give him {what}, briefly, in your own "
-            f"words:\n" + "\n".join(lines) + "\nIf he answers one, call follow_up with its nudge id "
-            f"(later, dismiss, mute, why).]")
+            f"words. All of it is here; do not call a tool to gather more:\n" + "\n".join(lines) +
+            "\nIf he answers one, call follow_up with its nudge id (later, dismiss, mute, why).]")
 
 
 class Hub:
@@ -153,6 +154,14 @@ class Hub:
         if k is not None and any(r == k for c in SPEAKERS for r in self._subs.get(c, {}).values()):
             targets = [(c, q) for c, q in targets if self._subs[c][q] in (k, None)]
         return sum(self._send(c, q, ev) for c, q in targets)
+
+    def publish_media(self, ev: dict, room: str | None = None) -> int:
+        """A stream to play (or stop) on the satellite boxes: the one in the room you are in, else every
+        box. Returns how many took it."""
+        k = " ".join(room.split()).casefold() if room else None
+        boxes = self._subs.get("satellite", {})
+        targets = [q for q, r in boxes.items() if k is None or r in (k, None)] or list(boxes)
+        return sum(self._send("satellite", q, ev) for q in targets)
 
     def publish_discord(self, ev: dict) -> int:
         return sum(self._send("discord", q, ev) for q in list(self._subs.get("discord", {})))

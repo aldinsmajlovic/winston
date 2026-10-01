@@ -12,6 +12,7 @@ from collections import deque
 from loguru import logger
 
 from winston.channels.text import TextSession
+from winston.extension_host.client import tools_changed
 from winston.core.announce import note
 from winston.config.schema import WinstonConfig
 from winston.core.live import Feed, LiveEvent, LiveObserver
@@ -35,6 +36,10 @@ class WebChat:
         k = key(room) if room and self.rooms else None
         async with self._lock:
             s = self.sessions.get(k)
+            if s is not None and not s.busy and await tools_changed(s.brain):
+                logger.info("web chat: extension tools changed; a new conversation with them")
+                await self.sessions.pop(k).close()
+                s = None
             if s is None:
                 obs = LiveObserver("web", self.feed.publish)
                 link = RoomLink(room, f"web:{uuid.uuid4().hex[:8]}", local_sync(self.rooms)) if k else None

@@ -38,6 +38,26 @@ async def fetch_tools(cfg: WinstonConfig) -> list[dict[str, Any]]:
         return []
 
 
+def signature(tools: list[dict[str, Any]], speaking: bool) -> str:
+    """What a conversation's extension tools are: their names, and whether follow_up is among them."""
+    return "|".join(sorted(t["name"] for t in tools)) + ("|follow_up" if speaking else "")
+
+
+async def tools_changed(brain) -> bool:
+    """Whether the extension tools on offer are no longer the ones this brain started with (an extension
+    switched on or off since). A conversation keeps its tools, so a channel starts a new one then; the
+    room's conversation lives in winstond, so what was said carries over. False when winstond is away."""
+    if getattr(brain, "tools_signature", None) is None:
+        return False
+    try:
+        async with httpx.AsyncClient(base_url=api_base(brain.cfg), timeout=2) as c:
+            tools = (await c.get("/api/extensions/tools")).json()
+            kinds = (await c.get("/api/nudges/kinds")).json().get("kinds", 0)
+    except Exception:                                                   # noqa: BLE001
+        return False
+    return signature(tools, kinds > 0) != brain.tools_signature
+
+
 def schema_of(tool: dict[str, Any]) -> FunctionSchema:
     params = tool.get("parameters") or {}
     return FunctionSchema(name=tool["name"], description=tool["description"],
@@ -93,6 +113,7 @@ async def register(brain, channel: str) -> list[str]:
         guard.set_tier(tool["name"], guard.READ if tool["tier"] == "read" else guard.ACT)
         brain.add_tool(schema_of(tool), make_handler(brain.cfg, tool, channel, lambda: brain.on_slow))
     names = [t["name"] for t in tools]
+    brain.tools_signature = signature(tools, speaking)
     if speaking:
         guard.set_tier("follow_up", guard.ACT)
         brain.add_tool(*make_follow_up_tool(brain.cfg, channel))

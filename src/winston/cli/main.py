@@ -168,7 +168,10 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
             "verify_cases.py", "hints_cases.py", "consent_cases.py", "rooms_cases.py", "home_cases.py", "profiles_load.py",
             "extensions_cases.py", "nudges_cases.py"]
     unit_paths = [tests / t for t in unit] + [repo_root() / "sdk" / "tests" / "sdk_cases.py"]
-    plan = {"unit": ["bash", "-c", " && ".join(f"{sys.executable} {t}" for t in unit_paths)],
+    builtin = sorted(p.name.removesuffix("_test.py") for p in (repo_root() / "src" / "winston" / "extensions").glob("*_test.py"))
+    unit_steps = [f"{sys.executable} {t}" for t in unit_paths] + \
+        [f"{sys.executable} -m winston.cli.main ext test {name}" for name in builtin]   # built-in extensions' own tests
+    plan = {"unit": ["bash", "-c", " && ".join(unit_steps)],
             "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],

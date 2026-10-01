@@ -35,7 +35,7 @@ from winston_sdk.loader import load
 from winston_sdk.nudge import Nudge, NudgeInfo
 from winston_sdk.runtime import Runtime
 
-__all__ = ["FakeClock", "FakeHA", "Harness", "HandlerFailed", "recorded", "run_tests"]
+__all__ = ["FakeClock", "FakeHA", "Harness", "HandlerFailed", "recorded", "run_tests", "tests_for"]
 
 
 class HandlerFailed(AssertionError):
@@ -133,6 +133,8 @@ class FakeServices:
             raise NotPermitted("this extension has no llm permission")
         if op == "ext.call" and p["extension"] not in perms.extensions:
             raise NotPermitted(f"this extension may not call {p['extension']}")
+        if op.startswith("speakers.") and not perms.speakers:
+            raise NotPermitted("this extension has no speakers permission")
         match op:
             case "ha.state":
                 return h.ha.states.get(p["entity_id"])
@@ -186,6 +188,12 @@ class FakeServices:
             case "nudge.list":
                 return [{"kind": k, "about": n.about, "level": n.level, "facts": n.facts, "state": "waiting"}
                         for k, n in h.pushed if p.get("kind") in (None, k)]
+            case "speakers.play":
+                h.speakers.append(("play", p["url"], p.get("title")))
+                return {"speakers": h.speaker_count}
+            case "speakers.stop":
+                h.speakers.append(("stop", None, None))
+                return None
             case "entity.set":
                 name = p["key"] if p.get("entry") is None else f"{p['key']}[{p['entry']}]"
                 h.entities[name] = p["value"]
@@ -209,6 +217,8 @@ class Harness:
         self.pushed: list[tuple[str, Nudge]] = []
         self.timers: dict[str, dict[str, Any]] = {}
         self.pokes: list[str] = []
+        self.speakers: list[tuple[str, str | None, str | None]] = []    # ("play", url, title) or ("stop", ...)
+        self.speaker_count = 1                                          # connected speakers, as winstond answers
         self.quota_used: dict[tuple[str, str], int] = {}
         self.log: list[tuple[str, str]] = []
         self._folder = tempfile.mkdtemp(prefix=f"winston-{self.ext.manifest.id}-")
@@ -308,6 +318,18 @@ class Harness:
     async def close(self) -> None:
         await self.rt.close()
         shutil.rmtree(self._folder, ignore_errors=True)
+
+
+def tests_for(target: str | Path) -> list[Path]:
+    """An extension's test files: `<name>_test.py` beside a single file, `test_*.py` and `*_test.py` in a
+    package folder; a test file is its own."""
+    p = Path(target)
+    if p.is_file() and (p.name.endswith("_test.py") or p.name.startswith("test_")):
+        return [p]
+    if p.is_file():
+        beside = p.with_name(f"{p.stem}_test.py")
+        return [beside] if beside.is_file() else []
+    return sorted({*p.rglob("test_*.py"), *p.rglob("*_test.py")}) if p.is_dir() else []
 
 
 def run_tests(path: str | Path, only: str | None = None) -> int:

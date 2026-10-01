@@ -163,6 +163,15 @@ function Line({ item }: { item: Item }) {
             {item.label}, {VIA[item.via] ?? item.via}
           </span>
           {!['speakers', 'conversation'].includes(item.via) && <span className="basis-full pl-6.5 text-base text-foreground">{item.text}</span>}
+          {item.links.length > 0 && (
+            <span className="flex basis-full flex-wrap gap-x-3 pl-6.5">
+              {item.links.map((link) => (
+                <a key={link.url} href={link.url} target="_blank" rel="noreferrer" className="text-foreground underline underline-offset-4">
+                  {link.title}
+                </a>
+              ))}
+            </span>
+          )}
         </div>
       )
   }

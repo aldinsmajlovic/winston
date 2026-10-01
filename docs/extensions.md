@@ -1,7 +1,8 @@
 # Extensions
 
 Approved 2026-09-29. Built: everything on this page but entities reaching Home Assistant, which wait
-for Winston's integration (UI track step 3 in the [plan](plan.md)).
+for Winston's integration (UI track step 3 in the [plan](plan.md)). Three extensions come with Winston,
+written on this standard alone: Hevy, News and Reminders ([built-in extensions](built-in-extensions.md)).
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs
@@ -199,7 +200,17 @@ package. The same keys in both.
 
 `winston-sdk` is always there. The standard `dependencies` key lists anything else it needs; an
 extension runs in Winston's environment when that already has them, and in its own environment made
-by uv when it does not.
+by uv when it does not, and so do its tests. In a single file the key is PEP 723's own line, before the
+table:
+
+```python
+# /// script
+# dependencies = ["feedparser==6.0.14"]
+# [tool.winston]
+# id = "news"
+# ...
+# ///
+```
 
 ## Permissions
 
@@ -216,6 +227,7 @@ permissions = { network = ["api.elprisetjustnu.se"], home_assistant = "act", llm
 | `presence = true` | Whether you are home, and since when |
 | `llm = true` | The background model, through `ctx.llm` |
 | `extensions = ["id", ...]` | The read tools of those extensions, through `ctx.ext` |
+| `speakers = true` | Playing an audio stream on the speakers, through `ctx.speakers` |
 
 Picking an entity in an extension's settings is consent for it to use that entity, even if it is not
 exposed to the brain.
@@ -236,7 +248,9 @@ A settings model subclasses `Settings`; its form is drawn on the card and its va
 `extensions.<id>.settings` in `config.yaml`. The entries of a `dict` setting subclass `Model`.
 `Field(default, ...)` works on any type. `Field`, `Entity`, `Topic`, `TimeOfDay` and `Duration` take
 `default=` (`None` makes the field optional); `Secret` takes the variable name instead. All take
-`description=` and `level=` (`"advanced"` puts it behind Advanced, as elsewhere in settings).
+`description=` and `level=` (`"advanced"` puts it behind Advanced, as elsewhere in settings); `Field`
+also takes `placeholder=`, what the form shows while it is empty ("None: no crisis alerts"). An
+optional choice (`Literal[...] | None`) gets a first item for none, so it can be taken back.
 
 | Field | Form | Value in code |
 | --- | --- | --- |
@@ -262,7 +276,7 @@ its entities and their history.
 ### Imports
 
 Everything comes from `winston_sdk`: `Extension`, `Settings`, `Model`, `Field`, `Secret`, `Entity`,
-`Topic`, `TimeOfDay`, `Duration`, `From`, `Choices`, `When`, `Nudge`, `SettingsError`,
+`Topic`, `TimeOfDay`, `Duration`, `From`, `Choices`, `When`, `Nudge`, `Link`, `SettingsError`,
 `NotPermitted`, `HomeAssistantError`.
 
 ### Handlers
@@ -315,7 +329,7 @@ skips that). A job gets 120 s (`timeout=` up to 600).
 | --- | --- |
 | `@ext.nudge(kind, title, **options, **triggers)` | A checked kind and its check. `triggers` take the same values as the job decorators (`every=`, `at=`, `on_state=`, ...); a kind needs none. The check returns `None`, a `Nudge` or a list |
 | `ext.kind(kind, title, **options)` | A pushed kind, for `ctx.nudge` |
-| `Nudge(about, say, facts={}, level=1, urgent=False, not_before=None, expires=None, actions=None)` | See [Speaking up](#speaking-up) |
+| `Nudge(about, say, facts={}, level=1, urgent=False, not_before=None, expires=None, actions=None, links=[])` | See [Speaking up](#speaking-up) |
 | `@ext.action(title, kinds=None, name=None, tier="act")` | Something you can say back to its nudges, for the kinds listed or all of them; returns a string or dict he reports |
 | `@ext.on_nudge(kinds=None)` | Hears what happens to its nudges |
 
@@ -384,6 +398,7 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.presence.home()`, `.since()` | `bool`, `datetime` |
 | `ctx.llm.ask(prompt, schema=None, max_tokens=500)` | Text, or an instance of the Pydantic model `schema`. The background model is the local brain unless you pick a cloud model; an extension never chooses, so nothing leaves the house unless a setting says so. It waits while a conversation runs (see [How it runs](#how-it-runs)) |
 | `ctx.ext(id).call(tool, **args)` | Another extension's read tool (needs `extensions`) |
+| `ctx.speakers.play(url, title=None)`, `.stop()` | Plays a stream (anything ffmpeg reads, served on 127.0.0.1 or a declared host) on the box of the room last talked in, else on every box, and returns how many play; a new stream replaces what plays, and `stop()` ends only its own. The box turns it down while it listens and while he talks (needs `speakers`) |
 | `ctx.later(when, job, data=None)` | Runs one of its jobs once at a computed `datetime` or after a `timedelta`, kept across restarts; returns a timer with `cancel()`. `ctx.timers()` lists them |
 | `ctx.nudge(kind, nudge)`, `ctx.withdraw(kind, about)` | Pushes a nudge of a pushed kind, or takes one back |
 | `ctx.nudges(kind=None)` | Its nudges now and those ended in the last 7 days, each with `kind`, `about`, `level`, `facts`, `state` (waiting, held, said, dismissed, ended), `said_at`, `held_until` |
@@ -426,6 +441,7 @@ changes, and the error shows on the card.
 | `not_before` | A `datetime` before which it is held (a reminder's time, 15 minutes before a meeting) |
 | `expires` | A `datetime`, or a `timedelta` from when it is first due, for what goes stale (a news story). Default: none |
 | `actions` | Names of its extension's actions that apply; `None` for all its kind's, `[]` for none |
+| `links` | Up to three `Link(title, url)`: buttons on the phone (a tap opens the first), text on Discord, links on the Talk page; never spoken. "Send me the links" is a nudge of a kind with `where="phone"` that carries them |
 
 **`about` names one occurrence of the thing, and stays the same while it is that occurrence**: a
 workout gap by the workout's start time, a plant by its sensor, a story by its link, one time of a
@@ -713,7 +729,9 @@ async def test_rest_after_three_days():
 ```
 
 Fixtures in the repo are made up. A recording of a real account stays in `data/`, like all personal
-data.
+data. `winston ext test` runs the tests in the extension's own environment when it needs packages
+Winston does not have (`python -m winston_sdk test FILE` there); `winston check unit` runs the built-in
+extensions' tests.
 
 ## Commands
 

@@ -267,14 +267,24 @@ function ProblemIcon({ problem }: { problem: string }) {
 }
 
 /** An enum as a dropdown with the schema's labels and icons. */
+const NONE = '__none__'
+
+/** An enum as a dropdown. An optional one (its default is null) has a first item for none, named by
+ * its placeholder, so a choice can be taken back. */
 function EnumWidget({ id, value, disabled, readonly, onChange, schema }: WidgetProps) {
   const choices = enumChoices(schema as Meta)
+  const optional = schema.default === null
   return (
-    <Select value={value ?? ''} disabled={disabled || readonly || choices.length < 2} onValueChange={(v) => onChange(v)}>
+    <Select
+      value={value ?? (optional ? NONE : '')}
+      disabled={disabled || readonly || choices.length + (optional ? 1 : 0) < 2}
+      onValueChange={(v) => onChange(v === NONE ? undefined : v)}
+    >
       <SelectTrigger id={id} className="w-full">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
+        {optional && <SelectItem value={NONE}>{(schema as Meta).placeholder ?? 'None'}</SelectItem>}
         {choices.map((c) => (
           <SelectItem key={c.value} value={c.value}>
             <KindIcon name={c.icon} />

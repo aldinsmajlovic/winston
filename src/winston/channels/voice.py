@@ -336,7 +336,9 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     async def on_client_connected(transport, client):
         nonlocal listener
         logger.info(f"client connected{f' in {room}' if room else ''}")
-        await worker.queue_frames([TTSSpeakFrame(f"{CFG.assistant.name} online.")])
+        # Not in the conversation: a panel that reconnected ten times left ten of these in the room's
+        # history, and the model took "Winston online." for an answer (2026-10-01).
+        await worker.queue_frames([TTSSpeakFrame(f"{CFG.assistant.name} online.", append_to_context=False)])
         warming.add(t := asyncio.create_task(brain.warm())); t.add_done_callback(warming.discard)
         if CFG.announce.enabled:
             listener = asyncio.create_task(announcements())

@@ -20,6 +20,7 @@ from winston.channels.text import TextSession
 from winston.config import load
 from winston.config.schema import WinstonConfig
 from winston.core.announce import nudge_note, subscribe
+from winston.extension_host.client import tools_changed
 
 LIMIT = 2000        # Discord's message length
 
@@ -55,6 +56,10 @@ class DiscordChannel:
 
     async def current(self) -> TextSession:
         async with self._session_lock:
+            if self.session is not None and not self.session.busy and await tools_changed(self.session.brain):
+                logger.info("extension tools changed; a new conversation with them")
+                await self.session.close()
+                self.session = None
             if self.session is None:
                 self.session = await TextSession(self.cfg, channel="discord").start()
                 self.session.notify = self.correction

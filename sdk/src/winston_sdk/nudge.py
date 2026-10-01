@@ -7,6 +7,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class Link(BaseModel):
+    """A link that goes with a nudge: buttons on the phone, text on Discord, links on the Talk page.
+    Never spoken."""
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(min_length=1, max_length=60)
+    url: str = Field(pattern=r"^https?://", max_length=2000)
+
+
 class Nudge(BaseModel):
     """One nudge. `about` names the one occurrence of the thing it is about (a workout gap by the
     workout's start, a plant by its sensor, a story by its link) and must stay the same while it is
@@ -20,6 +28,7 @@ class Nudge(BaseModel):
     not_before: datetime | None = None
     expires: datetime | timedelta | None = None
     actions: list[str] | None = None
+    links: list[Link] = Field(default_factory=list, max_length=3)
 
 
 class NudgeInfo(BaseModel):

@@ -5476,6 +5476,23 @@
               }
             ],
             "title": "Held By"
+          },
+          "links": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Links"
           }
         },
         "type": "object",
@@ -5484,7 +5501,7 @@
           "type"
         ],
         "title": "LiveEvent",
-        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text.\nmic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).\nconfirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then\nok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.\nnudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:\nspeakers, phone, discord, conversation, silent): he spoke up, or would have."
+        "description": "One thing that happened. Which fields are set depends on `type`:\nstate: state. user: text. reply: reply, text (a piece). reply_end: reply.\ntool: call, name, status, label, ms. announcement: text. error: text.\nmic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).\nconfirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then\nok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.\nnudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:\nspeakers, phone, discord, conversation, silent), links (title and url, if it has any): he spoke up,\nor would have."
       },
       "LogLines": {
         "properties": {

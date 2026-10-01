@@ -26,6 +26,11 @@ Announcements and nudges reach the box as announcements it fetches like a reply,
 announcement is said as given, a nudge is worded by the box's brain in its conversation (its plain line
 if that does not come), and after a nudge the box listens on, so an answer needs no wake word.
 
+Music and other streams from extensions (`ctx.speakers`) play on the box's media player, which is not
+the one replies use: this process turns the extension's stream into 48 kHz stereo FLAC (ffmpeg) and
+the box fetches it from here. The box turns media down 20 dB while it listens and while he talks, and
+its echo cancellation takes out what it plays, through its speaker or its jack.
+
 Only one client can hold a box's voice assistant, first come first served (ESPHome's
 voice_assistant.cpp): take the box out of Home Assistant's voice pipeline, or HA wins.
 Turn based for now: the stock firmware stops listening while it plays (docs/voice-pe.md)."""
@@ -40,7 +45,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import soxr
-from aioesphomeapi import APIClient, Event, EventInfo, ReconnectLogic, SelectInfo, VoiceAssistantAudioSettings
+from aioesphomeapi import (APIClient, Event, EventInfo, MediaPlayerCommand, MediaPlayerInfo, ReconnectLogic, SelectInfo,
+                            VoiceAssistantAudioSettings)
 from aioesphomeapi import VoiceAssistantEventType as Ev
 from aiohttp import web
 from loguru import logger
@@ -66,6 +72,7 @@ from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
 from winston.core.speak_up import WORDING_SECS, Mentions
+from winston.extension_host.client import tools_changed
 
 MIC_RATE = 16000                 # what the box streams
 OUT_RATE = 48000                 # what the box's media player is set up for
@@ -259,6 +266,8 @@ class Satellite:
         self._long_press: int | None = None  # key of the box's button event entity
         self._switching: asyncio.Task | None = None
         self._listener: asyncio.Task | None = None          # announcements and nudges while connected
+        self._media_key: int | None = None                  # the box's media player (not the one replies use)
+        self._media: dict | None = None                     # what plays on it now: {"id", "ext", "title"}
 
     async def connect(self):
         self._reconnect = ReconnectLogic(client=self.client, on_connect=self._on_connect,
@@ -307,6 +316,7 @@ class Satellite:
                 logger.info(f"{self.room}: wake word {', '.join(use)}")
         try:
             ents, _ = await self.client.list_entities_services()
+            self._media_key = next((e.key for e in ents if isinstance(e, MediaPlayerInfo)), None)
             self._long_press = next((e.key for e in ents if isinstance(e, EventInfo) and "long_press" in e.event_types),
                                     None)
             if self._long_press is not None:
@@ -375,9 +385,32 @@ class Satellite:
     async def _speak_up(self):
         async for ev in subscribe(self.cfg, "satellite", self.room):
             try:
-                await self.speak(ev)
+                if ev.get("type") == "media":
+                    self.media(ev)                  # never waits behind a reply
+                else:
+                    await self.speak(ev)
             except Exception as e:                                          # noqa: BLE001
                 logger.warning(f"{self.room}: could not deliver {ev.get('type', 'announcement')}: {e}")
+
+    def media(self, ev: dict):
+        """A stream from an extension on the box's media player, or its end. A new stream replaces what
+        plays; an extension stops only its own."""
+        if self._media_key is None:
+            logger.warning(f"{self.room}: the box has no media player; {ev.get('title') or 'the stream'} not played")
+            return
+        if ev["action"] == "play":
+            if self._media:
+                self.audio.stop_media(self._media["id"])
+            self.audio.media[ev["id"]] = ev["url"]
+            self._media = {"id": ev["id"], "ext": ev["ext"], "title": ev.get("title")}
+            url = f"{self.audio.base_url(self.dev.host)}/media/{ev['id']}.flac"
+            self.client.media_player_command(self._media_key, media_url=url, announcement=False)
+            logger.info(f"{self.room}: playing {ev.get('title') or ev['url']} for {ev['ext']}")
+        elif ev["action"] == "stop" and self._media and self._media["ext"] == ev.get("ext"):
+            self.client.media_player_command(self._media_key, command=MediaPlayerCommand.STOP)
+            self.audio.stop_media(self._media["id"])
+            logger.info(f"{self.room}: stopped {self._media.get('title') or 'the stream'} for {ev['ext']}")
+            self._media = None
 
     async def speak(self, ev: dict):
         """An announcement (said as given) or a nudge (worded by the brain, its plain line otherwise) on the
@@ -516,6 +549,9 @@ class Satellite:
         c = self.conversation
         if c and time.monotonic() - c.last_used > self.cfg.channels.satellite.session_idle_mins * 60:
             await c.close(); c = None
+        elif c and await tools_changed(c.brain):
+            logger.info(f"{self.room}: extension tools changed; a new conversation with them")
+            await c.close(); c = None
         if c is None:
             c = self.conversation = await Conversation(self.cfg, self.room, self.feed).start()
         return c
@@ -605,6 +641,41 @@ class AudioServer:
         self.cfg = cfg
         self.runs: dict[str, Run] = {}
         self._chime: bytes | None = None
+        self.media: dict[str, str] = {}                     # media id -> the extension's stream
+        self._encoders: dict[str, set] = {}                 # media id -> its ffmpeg processes
+
+    def stop_media(self, media_id: str):
+        self.media.pop(media_id, None)
+        for enc in self._encoders.pop(media_id, set()):
+            if enc.returncode is None:
+                enc.kill()
+
+    async def media_flac(self, request: web.Request) -> web.StreamResponse:
+        """An extension's stream as the box plays media: 48 kHz stereo FLAC, encoded by ffmpeg from
+        whatever the extension serves, for as long as the box listens or until it is stopped."""
+        media_id = request.match_info["media"]
+        source = self.media.get(media_id)
+        if source is None:
+            raise web.HTTPNotFound()
+        logger.info(f"media {media_id} fetched by {request.remote}")
+        enc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", source, "-ar", str(OUT_RATE), "-ac", "2",
+            "-c:a", "flac", "-compression_level", "0", "-frame_size", "2048", "-flush_packets", "1", "-f", "flac",
+            "pipe:1", stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE)
+        self._encoders.setdefault(media_id, set()).add(enc)
+        resp = web.StreamResponse(headers={"Content-Type": "audio/flac", "Cache-Control": "no-store"})
+        await resp.prepare(request)
+        try:
+            while part := await enc.stdout.read(4096):
+                await resp.write(part)
+        except (ConnectionResetError, asyncio.CancelledError):
+            pass
+        finally:
+            if enc.returncode is None:
+                enc.kill()
+            await enc.wait()
+            self._encoders.get(media_id, set()).discard(enc)
+        return resp
 
     def chime(self) -> bytes:
         """The announcement chime at the box's rate, b"" for none."""
@@ -676,6 +747,7 @@ class AudioServer:
         app.router.add_get("/health", lambda r: web.json_response({"ok": True}))
         app.router.add_get("/reply/{run}.wav", self.reply)
         app.router.add_get("/reply/{run}.flac", self.reply_flac)
+        app.router.add_get("/media/{media}.flac", self.media_flac)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         await web.TCPSite(runner, "0.0.0.0", self.cfg.channels.satellite.http_port).start()

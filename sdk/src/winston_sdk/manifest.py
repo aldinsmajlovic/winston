@@ -25,6 +25,7 @@ class Permissions(BaseModel):
     memory: Literal["read", "write"] | None = None
     presence: bool = False
     llm: bool = False
+    speakers: bool = Field(False, description="Play an audio stream on your speakers (ctx.speakers).")
     extensions: list[str] = Field(default_factory=list, description="Extensions whose read tools it may call.")
 
 
@@ -81,6 +82,9 @@ def read(path: str | Path) -> Manifest:
 def _build(table: dict | None, deps: list[str], source: Path) -> Manifest:
     if not table:
         raise ManifestError(f"{source}: no [tool.winston] table")
+    if "dependencies" in table:
+        raise ManifestError(f"{source}: dependencies go on their own line before [tool.winston] (PEP 723's "
+                            f"`dependencies = [...]`, or [project] dependencies in pyproject.toml), not in it")
     try:
         return Manifest(**table, dependencies=_extra_deps(deps), source=str(source))
     except Exception as e:                       # pydantic's message names the key that is wrong

@@ -2245,7 +2245,8 @@ export interface components {
          *     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
          *     ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
          *     nudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:
-         *     speakers, phone, discord, conversation, silent): he spoke up, or would have.
+         *     speakers, phone, discord, conversation, silent), links (title and url, if it has any): he spoke up,
+         *     or would have.
          */
         LiveEvent: {
             /**
@@ -2285,6 +2286,10 @@ export interface components {
             room?: string | null;
             /** Held By */
             held_by?: string | null;
+            /** Links */
+            links?: {
+                [key: string]: string;
+            }[] | null;
         };
         /** LogLines */
         LogLines: {

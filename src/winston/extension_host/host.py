@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import copy
 import json
-import os
 import re
 import secrets as pysecrets
 import time
@@ -23,6 +22,7 @@ import jsonschema
 from loguru import logger
 from winston_sdk.context import local_zone
 
+from winston.api.secrets import value as secret_value
 from winston.config import resolve
 from winston.config.schema import ExtensionConfig, WinstonConfig
 from winston.extension_host import texts
@@ -84,6 +84,7 @@ class Host:
         self.scheduler = None                                           # set by winstond
         self.nudges = None                                              # set by winstond (nudges.Nudges)
         self.on_pending: Callable[[Pending], None] | None = None        # set by winstond: to your phone too
+        self.speakers = None                                            # set by winstond: play(ext, url, title), stop(ext)
         self._lock = asyncio.Lock()
         # One refresh at a time: two at once (winstond's own at start and another) let the second see
         # nothing new and start an extension whose description the first had not finished, so it got
@@ -110,10 +111,12 @@ class Host:
         return {f: str(saved.get(f) or var) for f, var in d["settings"]["secrets"].items()}
 
     def secret_values(self, ext_id: str) -> dict[str, str]:
-        return {f: os.environ.get(var, "") for f, var in self.secret_fields(ext_id).items()}
+        """The keys, from the environment or data/.env as it is now: one added by hand takes on the
+        extension's next start."""
+        return {f: secret_value(var) for f, var in self.secret_fields(ext_id).items()}
 
     def missing_secrets(self, ext_id: str) -> list[str]:
-        return [var for f, var in self.secret_fields(ext_id).items() if not os.environ.get(var)]
+        return [var for f, var in self.secret_fields(ext_id).items() if not secret_value(var)]
 
     # finding and describing
 
@@ -203,7 +206,7 @@ class Host:
         ec = self.config(ext_id)
         extra_env = {}
         if src.origin == "mcp" and ec.mcp is not None:
-            extra_env = {v: os.environ.get(v, "") for v in ec.mcp.env}
+            extra_env = {v: secret_value(v) for v in ec.mcp.env}
         proc = ExtensionProcess(src, api=self.api, token=token, log_path=self.log_path(ext_id),
                                 memory_mb=lambda i=ext_id: self.config(i).memory_mb, on_ready=self._ready,
                                 extra_env=extra_env, mcp_command=ec.mcp.command if ec.mcp else None,
@@ -277,7 +280,7 @@ class Host:
             loc = ["extensions", ext_id, "settings"]
             proc = self.procs.get(ext_id)
             if proc and proc.state == "running" and not proc.is_mcp_server:
-                secrets_now = {f: os.environ.get(str(ec.settings.get(f) or var), "")
+                secrets_now = {f: secret_value(str(ec.settings.get(f) or var))
                                for f, var in self.described[ext_id]["settings"]["secrets"].items()}
                 try:
                     r = await proc.call("configure", timeout=15, settings=ec.settings, secrets=secrets_now,
@@ -337,7 +340,7 @@ class Host:
                 await self.reconfigure(ext_id)
             ec = self.config(ext_id)
             if ec.mcp and name in ec.mcp.env:
-                self.procs[ext_id].extra_env[name] = os.environ.get(name, "")
+                self.procs[ext_id].extra_env[name] = secret_value(name)
                 await self.procs[ext_id].restart("a key it uses changed")
 
     def graft(self, schema: dict[str, Any]) -> dict[str, Any]:

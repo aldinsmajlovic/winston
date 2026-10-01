@@ -234,34 +234,32 @@ def new(name: str = typer.Argument(..., help="Its id: lowercase letters, digits 
         print(f"\nNext: `winston ext test {name}`; `winston up` will find it, then `winston ext enable {name}`.")
 
 
-def _tests_for(target: Path) -> list[Path]:
-    if target.is_file():
-        beside = target.with_name(f"{target.stem}_test.py")
-        return [beside] if beside.is_file() else []
-    return sorted({*target.rglob("test_*.py"), *target.rglob("*_test.py")})
-
-
 @ext_app.command()
 def test(which: str = typer.Argument(..., metavar="ID_OR_PATH",
                                      help="An extension's id, or a test file or an extension's file or folder.")):
-    """Run an extension's tests with the SDK's harness (no winstond needed)."""
-    from winston_sdk.testing import run_tests
+    """Run an extension's tests with the SDK's harness (no winstond needed), in the environment it runs
+    in: Winston's, or its own made by uv when it needs packages Winston does not have."""
+    import subprocess
 
-    from winston.extension_host.sources import discover
+    from winston_sdk import manifest as manifest_mod
+    from winston_sdk.testing import tests_for
+
+    from winston.extension_host.sources import Source, command, discover
     path = Path(which)
-    if path.exists():
-        files = [path] if path.name.endswith("_test.py") or path.name.startswith("test_") else _tests_for(path)
-    else:
+    if not path.exists():
         src = discover(load()).get(which)
         if src is None or not src.target or ":" in src.target and not Path(src.target).exists():
             print(f"no extension {which} with files to test here")
             raise typer.Exit(1)
-        files = _tests_for(Path(src.target))
-    if not files:
-        print(f"no tests for {which} (a {Path(which).stem}_test.py beside it, or test_*.py in its folder)")
+        path = Path(src.target)
+    if not tests_for(path):
+        print(f"no tests for {which} (a {path.stem}_test.py beside it, or test_*.py in its folder)")
         raise typer.Exit(1)
-    failed = 0
-    for f in files:
-        print(f"=== {f}")
-        failed += run_tests(f)
-    sys.exit(1 if failed else 0)
+    extension = path.with_name(path.name.removesuffix("_test.py") + ".py") if path.name.endswith("_test.py") else path
+    try:
+        m = manifest_mod.read(extension)
+    except (manifest_mod.ManifestError, OSError) as e:
+        print(f"cannot read its manifest: {e}")
+        raise typer.Exit(1)
+    run = command(Source(id=m.id, origin="personal", target=str(extension), manifest=m))
+    sys.exit(subprocess.run([*run, "test", str(path)]).returncode)

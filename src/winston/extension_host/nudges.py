@@ -182,16 +182,18 @@ class Nudges:
         elif isinstance(expires, str):
             expires = datetime.fromisoformat(expires).timestamp()
         rec.update({"level": int(n.get("level") or 1), "say": n["say"], "facts": n.get("facts") or {},
-                    "urgent": bool(n.get("urgent")), "actions": n.get("actions"), "expires": expires,
+                    "urgent": bool(n.get("urgent")), "actions": n.get("actions"), "links": n.get("links") or [],
+                    "expires": expires,
                     "not_before": not_before, "last_seen": now})
         return rec
 
-    def _end(self, rec: dict[str, Any], why: str) -> None:
+    def _end(self, rec: dict[str, Any], why: str, tell: bool = True) -> None:
         if rec["state"] == "ended":
             return
         rec["state"], rec["ended_at"], rec["later"] = "ended", self.clock(), None
         self.log(rec, "ended", why)
-        self._event(rec, "ended")
+        if tell:
+            self._event(rec, "ended")
 
     async def check(self, ext_id: str, kind: str) -> bool:
         """Runs a checked kind's check and takes in what it returns; False when it gave no answer (not
@@ -470,7 +472,8 @@ class Nudges:
         self._event(rec, "said", where=via.split(":")[0])
         if self.feed:
             self.feed({"type": "nudge", "channel": "extensions", "call": rec["id"], "text": rec["say"],
-                       "label": f"{self.ext_name(rec['ext'])}: {spec['title']}", "name": via})
+                       "label": f"{self.ext_name(rec['ext'])}: {spec['title']}", "name": via,
+                       "links": rec.get("links") or None})
         if rec["source"] == "pushed":
             rec["ended_at"] = self.clock()          # done, kept a while for a follow-up; listed as said
 
@@ -483,7 +486,7 @@ class Nudges:
         return {"type": "nudge", "id": rec["id"], "extension": self.ext_name(rec["ext"]), "kind": spec["title"],
                 "say": rec["say"], "facts": rec.get("facts") or {}, "outside": spec.get("outside", True),
                 "reason": rec.get("reason"), "actions": actions, "urgent": bool(rec.get("urgent")),
-                "level": rec["level"], "again": bool(rec.get("said_at"))}
+                "level": rec["level"], "again": bool(rec.get("said_at")), "links": rec.get("links") or []}
 
     # the next conversation and the briefing
 
@@ -592,11 +595,11 @@ class Nudges:
             async with self._lock:
                 rec["later"] = None
                 if rec["source"] == "pushed":
-                    self._end(rec, "dismissed")
+                    self._end(rec, "dismissed", tell=False)     # it heard "dismissed", which ends it
                 else:
                     rec.update({"dismissed_level": rec["level"], "state": "dismissed", "held_why": None})
                     self.log(rec, "dismissed", channel=channel)
-                    self._event(rec, "dismissed")
+                self._event(rec, "dismissed")
                 self._save()
             return {"dismissed": spec["title"]}
         if action == "mute":

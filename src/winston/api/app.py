@@ -4,6 +4,7 @@ behind auth before exposing it."""
 import asyncio
 import json
 import re
+import uuid
 from collections import OrderedDict
 from datetime import date
 import subprocess
@@ -369,17 +370,20 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     # Speaking up: the engine decides (extension_host/nudges.py); here is how a nudge gets out.
 
-    async def to_phone(message: str, tag: str, actions: list[dict[str, str]]) -> bool:
+    async def to_phone(message: str, tag: str, actions: list[dict[str, str]], url: str | None = None) -> bool:
         """A notification through the notify service picked under speaking up (the companion app's),
-        with buttons that come back as mobile_app_notification_action events."""
+        with buttons that come back as mobile_app_notification_action events (or open a link: action
+        URI), and a tap that opens `url`."""
         service = extensions.cfg.speak_up.phone
         if not service:
             return False
+        data: dict = {"tag": tag, "actions": actions}
+        if url:
+            data |= {"url": url, "clickAction": url}           # iOS reads url, Android clickAction
         try:
             async with extension_services._ha_client() as c:
                 r = await c.post(f"/api/services/notify/{service.removeprefix('notify.')}",
-                                 json={"title": extensions.cfg.assistant.name, "message": message,
-                                       "data": {"tag": tag, "actions": actions}})
+                                 json={"title": extensions.cfg.assistant.name, "message": message, "data": data})
             if r.status_code >= 300:
                 logger.warning(f"phone: notify.{service} answered {r.status_code}: {r.text[:200]}")
             return r.status_code < 300
@@ -392,11 +396,17 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             if n := hub.publish_nudge(ev, rooms.recent()):
                 spawn(web.noted(nudge_note(ev), ev["say"]))
                 return f"speakers:{n}"
-        later = "When I'm home" if extensions.cfg.speak_up.home else "In two hours"
-        if await to_phone(ev["say"], ev["id"], [{"action": f"WINSTON_LATER_{ev['id']}", "title": later},
-                                                {"action": f"WINSTON_DISMISS_{ev['id']}", "title": "Done"}]):
+        links = ev.get("links") or []
+        if links:           # its links are its buttons; a tap opens the first
+            buttons = [{"action": "URI", "title": link["title"][:30], "uri": link["url"]} for link in links[:3]]
+        else:
+            later = "When I'm home" if extensions.cfg.speak_up.home else "In two hours"
+            buttons = [{"action": f"WINSTON_LATER_{ev['id']}", "title": later},
+                       {"action": f"WINSTON_DISMISS_{ev['id']}", "title": "Done"}]
+        if await to_phone(ev["say"], ev["id"], buttons, url=links[0]["url"] if links else None):
             return "phone"
-        if hub.publish_discord({"type": "nudge", **ev, "text": ev["say"], "context": {}}):
+        text = "\n".join([ev["say"], *(f"{link['title']}: {link['url']}" for link in links)])
+        if hub.publish_discord({"type": "nudge", **ev, "text": text, "context": {}}):
             return "discord"
         return None
 
@@ -404,6 +414,20 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         if not extensions.cfg.speak_up.home:
             return None
         return bool((await extension_services.presence())["home"])
+
+    class Speakers:
+        """What extensions play on the speakers (ctx.speakers): the satellite box in the room you are in."""
+
+        def play(self, ext_id: str, url: str, title: str | None) -> int:
+            n = hub.publish_media({"type": "media", "action": "play", "id": uuid.uuid4().hex[:12], "ext": ext_id,
+                                   "url": url, "title": title}, rooms.recent())
+            logger.info(f"speakers: {ext_id} plays {title or url} on {n}")
+            return n
+
+        def stop(self, ext_id: str) -> None:
+            hub.publish_media({"type": "media", "action": "stop", "ext": ext_id})
+            logger.info(f"speakers: {ext_id} stops")
+    extensions.speakers = Speakers()
 
     nudges = Nudges(extensions, deliver=deliver_nudge, busy=feed.talking, home=home_now,
                     feed=lambda ev: feed.publish(LiveEvent(**ev)))

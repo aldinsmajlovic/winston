@@ -1,6 +1,7 @@
-"""A throwaway winstond with the docs' example extensions, an MCP server and the fake Home Assistant
-(its made-up home), for looking at the Extensions page and taking its screenshots. Never touches data/
-or the real Home Assistant. Prints the URL; Ctrl-C stops it.
+"""A throwaway winstond with the docs' example extensions, the built-in ones (News reads the public feeds
+of its presets), an MCP server and the fake Home Assistant (its made-up home), for looking at the
+Extensions page and taking its screenshots. Never touches data/ or the real Home Assistant. Prints the
+URL; Ctrl-C stops it.
 
     uv run python tests/extensions_demo.py [--port 8790]
 """
@@ -33,9 +34,11 @@ def free_port() -> int:
 def setup(api_port: int, ha_port: int):
     (DATA / "extensions").mkdir(parents=True)
     doc = (REPO / "docs" / "extensions.md").read_text()
+    builtin = {p.stem for p in (REPO / "src" / "winston" / "extensions").glob("*.py")}
     for block in re.findall(r"```python\n(# /// script.*?)```", doc, re.S):
         ident = re.search(r'^# id = "(\w+)"', block, re.M).group(1)
-        (DATA / "extensions" / f"{ident}.py").write_text(block)
+        if ident not in builtin:                        # the docs' trimmed Hevy is the built-in's example
+            (DATA / "extensions" / f"{ident}.py").write_text(block)
     shutil.copytree(REPO / "examples" / "memory", DATA / "memory")
     shutil.copy(REPO / "examples" / "persona.md", DATA / "persona.md")
     (DATA / ".env").write_text('HA_TOKEN="fake-ha-token"\n')
@@ -51,6 +54,8 @@ def setup(api_port: int, ha_port: int):
                "plants": {"enabled": True, "settings": {"sensor": "sensor.ficus_moisture"}},
                "remind": {"enabled": True},
                "coin": {"enabled": True, "tools": {"flip": {"offer": True}}},
+               "news": {"enabled": True, "settings": {"topics": ["energy prices", "AI"]}},
+               "reminders": {"enabled": True},
                "echo": {"enabled": True, "mcp": {"command": [sys.executable, str(REPO / "tests/fixtures/mcp_echo.py")]},
                         "tools": {"echo": {}}}}}
     (DATA / "config.yaml").write_text(yaml.safe_dump(cfg))

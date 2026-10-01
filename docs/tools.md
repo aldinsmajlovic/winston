@@ -23,6 +23,10 @@ back to metric and a 24-hour clock.
 Only the question text leaves the house for `web_search` and `ask_claude`: no home state, no memory.
 Answers come back marked as information, never instructions.
 
+One request gets at most eight rounds of tool calls; the ninth is asked without tools, so he answers
+with what he has. On 2026-09-29 the 27B once called `GetLiveContext` and `GetDateTime` about 80 times in
+a row for one request.
+
 Keys are pasted into the settings page that uses them (the Gemini key under Tools, Web search, the
 Claude key under Ask Claude, the Home Assistant token on its page, a hosted brain's or voice's API key
 on Brain or Voice, the Discord bot token under Channels) and

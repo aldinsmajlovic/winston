@@ -1,6 +1,9 @@
 """`python -m winston_sdk describe TARGET` prints what an extension offers, as JSON, without secrets,
 a token or the network. `python -m winston_sdk run TARGET` serves it over MCP on stdio; winstond
-starts it that way with WINSTON_API, WINSTON_TOKEN and WINSTON_STATE set."""
+starts it that way with WINSTON_API, WINSTON_TOKEN and WINSTON_STATE set. `python -m winston_sdk test
+TARGET` runs its tests (`<name>_test.py` beside a file, `test_*.py` and `*_test.py` in a folder, or
+the test file given), in whatever environment it is started in: winstond's CLI starts it in the
+extension's own when it needs packages Winston does not have."""
 from __future__ import annotations
 
 import json
@@ -14,14 +17,25 @@ from winston_sdk.manifest import API_MAJOR, ManifestError
 from winston_sdk.runtime import Runtime
 from winston_sdk.services import NoServices, RestServices
 
-USAGE = "usage: python -m winston_sdk describe|run TARGET   (a .py file, a folder, or module:attr)"
+USAGE = "usage: python -m winston_sdk describe|run|test TARGET   (a .py file, a folder, or module:attr)"
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2 or argv[0] not in ("describe", "run"):
+    if len(argv) != 2 or argv[0] not in ("describe", "run", "test"):
         print(USAGE, file=sys.stderr)
         return 2
     command, target = argv
+    if command == "test":
+        from winston_sdk.testing import run_tests, tests_for
+        files = tests_for(target)
+        if not files:
+            print(f"no tests for {target} (a <name>_test.py beside it, or test_*.py in its folder)", file=sys.stderr)
+            return 1
+        failed = 0
+        for f in files:
+            print(f"=== {f}", flush=True)
+            failed += run_tests(f)
+        return 1 if failed else 0
     try:
         ext = load(target)
     except (LoadError, ManifestError, SyntaxError, ImportError, ValueError, TypeError) as e:

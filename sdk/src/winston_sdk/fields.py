@@ -55,9 +55,11 @@ def _ui(level: str, **extra: Any) -> dict[str, Any]:
 
 
 def Field(default: Any = _UNSET, *, title: str | None = None, description: str | None = None,
-          level: str = "basic", **kwargs: Any) -> Any:
-    """Pydantic's Field with `level` ("basic" or "advanced", which puts it behind Advanced)."""
-    return pydantic.Field(default, title=title, description=description, json_schema_extra=_ui(level), **kwargs)
+          level: str = "basic", placeholder: str | None = None, **kwargs: Any) -> Any:
+    """Pydantic's Field with `level` ("basic" or "advanced", which puts it behind Advanced) and
+    `placeholder`, what the form shows while it is empty ("None: every county")."""
+    return pydantic.Field(default, title=title, description=description,
+                          json_schema_extra=_ui(level, placeholder=placeholder), **kwargs)
 
 
 def Secret(var: str, *, title: str | None = "Key variable", description: str | None = None,

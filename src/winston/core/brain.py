@@ -206,6 +206,23 @@ def acted(messages: list) -> bool:
                for cid, content in results)
 
 
+MAX_TOOL_ROUNDS = 8      # rounds of tool calls one request may take before it must answer
+
+
+def tool_rounds(messages: list) -> int:
+    """How many times the model has called tools since the newest user message (the house's notes
+    aside): each assistant message with tool calls is one round."""
+    rounds = 0
+    for m in reversed(messages):
+        if not isinstance(m, dict):
+            continue
+        if m.get("role") == "user" and isinstance(m.get("content"), str) and not guard.is_note(m["content"]):
+            break
+        if m.get("role") == "assistant" and m.get("tool_calls"):
+            rounds += 1
+    return rounds
+
+
 async def _nothing():
     return
     yield
@@ -242,7 +259,10 @@ class WinstonLLM(OpenAILLMService):
     quiet_after, once one of the turn's actions has worked there is no reply at all and `ended` is set,
     so the box does not listen on (his closing "Marvin Gaye is playing" spoiled the scene it set). A
     shortcut script said on its own is called without the model: said a second time, the model answered
-    "Done, sir. The mood is set." from the first time's call in the conversation and ran nothing."""
+    "Done, sir. The mood is set." from the first time's call in the conversation and ran nothing. After
+    MAX_TOOL_ROUNDS rounds of tool calls for one request, the next is asked without its tools, so it
+    answers in words: on 2026-09-29 the 27B called GetLiveContext and GetDateTime about 80 times in one
+    turn and every turn after it waited."""
 
     def __init__(self, *args, home: re.Pattern | None = None, control: str = "none", effort: str = "",
                  own: list[Own] | None = None, assistant: str = "", **kwargs):
@@ -253,6 +273,7 @@ class WinstonLLM(OpenAILLMService):
         self._think = False
         self._line_for: str | None = None       # the user message a line was already said for
         self._lines = 0
+        self._no_tools = False                  # this request has called enough: words now
 
     def bind(self, tools: list[str]):
         """The brain's tools are known: find each shortcut's script tool (script.x is the tool x or y__x)."""
@@ -265,6 +286,10 @@ class WinstonLLM(OpenAILLMService):
 
     async def get_chat_completions(self, context: LLMContext):
         messages = context.get_messages()
+        rounds = tool_rounds(messages)
+        self._no_tools = rounds >= MAX_TOOL_ROUNDS
+        if self._no_tools:
+            logger.warning(f"{rounds} rounds of tool calls for one request: this one answers without tools")
         said = last_said(messages) if self._own or self._home else None
         self._think = bool(said and self._home and self._home.search(said.lower()))
         own = next((o for o in self._own if said and o.pattern.search(said.lower())), None)
@@ -288,10 +313,15 @@ class WinstonLLM(OpenAILLMService):
         try:
             return await super().get_chat_completions(context)
         finally:
-            self._think = False
+            self._think = self._no_tools = False
 
     def build_chat_completion_params(self, params_from_context) -> dict:
         params = super().build_chat_completion_params(params_from_context)
+        if self._no_tools:
+            # Without its tools, not with tool_choice "none": llama.cpp then lets the model write a tool
+            # call as text, which would be spoken.
+            params.pop("tools", None)
+            params.pop("tool_choice", None)
         if self._think:
             body = dict(params.get("extra_body") or {})
             if self._control == "chat_template":
@@ -342,6 +372,7 @@ class Brain:
         self._areas: asyncio.Task | None = None
         # A spoken channel sets this to say a line (an extension tool's filler when it is slow).
         self.on_slow: Callable[[str], Awaitable[None]] | None = None
+        self.tools_signature: str | None = None     # the extension tools it started with (extension_host.client)
 
     async def start(self):
         ha = self.cfg.providers.ha

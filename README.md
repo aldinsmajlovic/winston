@@ -71,9 +71,14 @@ be swapped for a hosted service when that suits you better.
   you are in, on your phone when you are away, at your next conversation or in the morning briefing,
   never in quiet hours or mid-conversation. "I know, remind me after work" puts any of it off to when
   you get home ([speaking up](docs/extensions.md#speaking-up)).
+- **Hevy, news, reminders and Spotify**, built in and off until switched on: a word when you have not
+  trained for three days, breaking stories and crisis alerts for your county with a daily digest from
+  feeds you pick, reminders you ask for, and Spotify on the box's speakers, by voice or from the app
+  ([built-in extensions](docs/built-in-extensions.md)).
 
 **Status: early.** Voice, Home Assistant control, the web UI with its Talk page, memory, web search, `ask_claude` and
-announcements work. A Voice PE room satellite works turn based. Extensions run and speak up (Hevy, news and reminders on them come next). The Discord channel is built but not yet run against
+announcements work. A Voice PE room satellite works turn based. Extensions run and speak up, and Hevy, news, reminders and Spotify are built on them (in their first week of
+real use). The Discord channel is built but not yet run against
 Discord. See [the plan](docs/plan.md).
 
 ## Quickstart
@@ -124,7 +129,8 @@ flowchart LR
 - [Tools](docs/tools.md): memory, web search, `ask_claude`, messaging; keys and limits
 - [Announcements](docs/announcements.md) and [Discord](docs/discord.md)
 - [Architecture](docs/architecture.md): the parts and how they plug together
-- [Extensions](docs/extensions.md): adding tools, jobs, entities and reasons to speak up, with the SDK
+- [Extensions](docs/extensions.md): adding tools, jobs, entities and reasons to speak up, with the SDK;
+  and the [built-in ones](docs/built-in-extensions.md): Hevy, news, reminders, Spotify
 - [UI guide](docs/ui-guide.md) and [identity](docs/identity.md): how the web UI looks, Winston's logo and how it moves
 - [Hardware](docs/hardware.md): profiles and measured budgets
 - [Voices](docs/voices.md), the [voice benchmark](docs/voices.md#benchmark), the [Voice PE satellite](docs/voice-pe.md) and [rooms](docs/rooms.md)

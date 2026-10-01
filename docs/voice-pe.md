@@ -82,6 +82,15 @@ a reply does, the chime first. A nudge goes to the box of the room you last talk
 the box listens on, so "thanks, I know" or "remind me after work" needs no wake word (not in button
 only).
 
+### Music
+
+Extensions play streams on the box's media player, the one replies do not use ([`ctx.speakers`](extensions.md#ctx);
+Spotify is the [built-in one](built-in-extensions.md#spotify)). The satellite channel turns a stream into
+48 kHz 16-bit stereo FLAC with ffmpeg, the box's own output rate, and the box fetches it from the PC on
+TCP 8702 like a reply. The box turns media down 20 dB while it listens and while he talks, and its echo
+cancellation takes out what it plays, through its speaker or its jack, so "Okay Winston" works over the
+music. The stock firmware has no pause on that player, so a pause stops the stream.
+
 ### Ending a conversation, and button only
 
 - **"Stop", "that's all", "never mind"** (or "be quiet", "not you", "nothing") in that listening

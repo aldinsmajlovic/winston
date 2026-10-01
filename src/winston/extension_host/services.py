@@ -154,6 +154,19 @@ class Services:
                 raise BadCall(f"no entity {p['key']!r} declared")
             self.host.set_entity(ext_id, p["key"], p.get("entry"), p.get("value"), p.get("attributes") or {})
             return None
+        if op in ("speakers.play", "speakers.stop"):
+            if not perms.speakers:
+                raise Refused("this extension has no speakers permission")
+            if self.host.speakers is None:
+                raise Failed("this winstond has no speakers to play on")
+            if op == "speakers.stop":
+                self.host.speakers.stop(ext_id)
+                return None
+            url = httpx.URL(str(p["url"]))
+            local = url.host in ("127.0.0.1", "localhost", "::1")
+            if url.scheme not in ("http", "https") or not (local or url.host in perms.network or "*" in perms.network):
+                raise Refused("a stream must be served on this machine (127.0.0.1) or from a host it declares")
+            return {"speakers": self.host.speakers.play(ext_id, str(url), p.get("title"))}
         if op in ("poke", "nudge.push", "nudge.withdraw", "nudge.list"):
             if self.host.nudges is None:
                 raise Failed("speaking up is not running in this winstond; nothing was said")

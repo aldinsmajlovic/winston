@@ -2103,7 +2103,7 @@ requires-dist = [
 
 [[package]]
 name = "winston-sdk"
-version = "1.0.0a1"
+version = "1.0.0a2"
 source = { editable = "sdk" }
 dependencies = [
     { name = "httpx" },
