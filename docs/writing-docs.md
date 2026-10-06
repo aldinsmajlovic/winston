@@ -6,8 +6,11 @@ How the docs are kept current and how they should read. Applies to people and to
 
 A change is not done until the docs say it exists. In the same commit as the code:
 
-- **README**: a new user-visible feature, command, channel, tool or requirement gets a line (or its
-  line changes). The Status paragraph matches `docs/plan.md`.
+- **README**: only when the change alters what Winston is at a glance: a new channel, a new
+  requirement, a quickstart step, a status change. Most features belong on their topic page alone.
+  The feature list stays at about eight short lines; a new feature is folded into an existing line or
+  replaces a weaker one, never appended. Reread the whole README and rewrite it as one page, not as a
+  log of what was added last.
 - **The topic page**: the page that owns the subject gets the detail (see the map below).
 - **`docs/decisions.md`**: one line for any deviation from the plan, as always.
 
@@ -22,7 +25,7 @@ links to it.
 
 | Page | Owns |
 | --- | --- |
-| `README.md` | Pitch, one screenshot, features (one line each), status, quickstart, links |
+| `README.md` | Pitch, one screenshot, about eight features, status in two lines, quickstart, links |
 | `docs/running.md` | Commands, web UI, engines, logs, exposure |
 | `docs/architecture.md` | How the parts fit, the repository, plugin contracts |
 | `docs/hardware.md` | Profiles, GPUs, measured budgets |
