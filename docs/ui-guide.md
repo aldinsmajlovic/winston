@@ -39,8 +39,8 @@ transport), connecting through winstond to the voice channel.
 - His presence is his logo, one component, `Presence`, driven by his state (idle, listening,
   thinking, speaking); see [identity](identity.md). Pages never draw their own version of it.
 - Voice and typing sit side by side at the bottom: a text field and one round talk button.
-- Links to Talk, Memory, Dashboard and Settings are plain text at the top right, not a sidebar, the
-  current one in the text colour. On Talk they follow one speaker icon button that reads typed
+- Links to Talk, Turns, Memory, Dashboard and Settings are plain text at the top right, not a sidebar,
+  the current one in the text colour. On Talk they follow one speaker icon button that reads typed
   replies aloud, and before it the room picker (a house icon and the room's name, "No room" by
   default, plain text in the links' size), shown once a box is set up. `WinstonHeader` draws this for every page on Winston's side.
 - Memory reads like his notes: "How he behaves" first (his rules, with "Only you can change these"
@@ -53,6 +53,16 @@ transport), connecting through winstond to the voice channel.
   the top; a quiet size line at the bottom that counts only what is in his prompt. Forget, remove
   and edit all on "How he behaves" offer Undo in their toast. With memory off, one muted line under the search says he does not use these and
   links to Tools.
+- A line you said aloud (browser or box) gets a flag on its hover once its turn is kept: Misheard (asks
+  what you actually said), Not talking to him, Wrong thing, Too slow; the toast offers Undo. A marked line
+  keeps its flag, in the destructive colour, the mark in its tooltip. `TurnMarkControl` draws it on Talk
+  and Turns alike.
+- Turns is the turn record as a conversation, one day at a time: a muted line per turn with the time,
+  the room (or Browser), how it started and the time to his first word, and a play button for what he
+  heard; then your words in the bubble with the flag, "Heard first as ..." when the hint-word fix
+  changed them, the mark in muted text, the tools and his reply as on Talk, and a muted line when it
+  ended otherwise (Nothing heard, He said nothing). Chevrons step through the days; Marked (n) at the right
+  shows every marked turn instead, each with its day. With turns not kept, one muted line links to System.
 - Dashboard mode shows the logo large as the talk button, one line for his state ("Mic paused while the
   box has it" while its room's box has the mic), the last exchange
   in large type and announcements across the screen; a plain Close link at the top right is its only

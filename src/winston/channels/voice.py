@@ -236,7 +236,9 @@ class LatencyLog(BaseObserver):
 
 CHIME = load_chime()
 FEED = FeedPoster(CFG)          # what this channel hears and says, for the Talk page
-TURNS = TurnLog(CFG, "voice")   # each spoken turn with its audio, when logging.turns is on
+TURNS = TurnLog(CFG, "voice",    # each spoken turn with its audio, when logging.turns is on
+                on_written=lambda t: FEED.put(LiveEvent(channel="voice", type="turn", call=t.id, text=t.heard,
+                                                        room=t.room)))
 
 
 transport_params = {

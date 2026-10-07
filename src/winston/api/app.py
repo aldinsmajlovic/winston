@@ -35,7 +35,7 @@ from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.brain import api_key
 from winston.core import memory, persona, region, speaker, turns, voices
-from winston.core.live import Feed, LiveEvent
+from winston.core.live import Feed, LiveEvent, tool_label
 from winston.core.rooms import MicHold, Rooms, RoomState, SyncRequest, SyncResult
 from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
@@ -148,6 +148,7 @@ class TurnTool(BaseModel):
     args: dict[str, Any] = {}
     ok: bool | None = None
     result: str | None = None
+    label: str = Field("", description="How the live feed words it: \"Turned on Kitchen lights\"")
 
 
 class TurnRecord(BaseModel):
@@ -810,19 +811,24 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     def turn_store() -> turns.TurnStore:
         return turns.TurnStore(app.state.cfg)
 
+    def labelled(rows: list[dict]) -> list[dict]:
+        """Each tool call worded as the live feed words it, for the page."""
+        return [{**t, "tools": [{**c, "label": tool_label(c["name"], c.get("args"), "error" if c.get("ok") is False else "ok")}
+                                for c in t.get("tools", [])]} for t in rows]
+
     @app.get("/api/turns", response_model=TurnDay, summary="A day's spoken turns: heard, done, said, and any mark")
     async def turns_day(day: str | None = Query(None, description="YYYY-MM-DD; the newest day with turns if left out")):
         store = turn_store()
         days = store.days()
         day = day or (days[0] if days else date.today().isoformat())
         try:
-            return TurnDay(enabled=store.enabled, day=day, days=days, turns=store.day(day))
+            return TurnDay(enabled=store.enabled, day=day, days=days, turns=labelled(store.day(day)))
         except ValueError as e:
             raise HTTPException(400, str(e))
 
     @app.get("/api/turns/marked", response_model=list[TurnRecord], summary="Every marked turn, oldest first")
     async def turns_marked():
-        return turn_store().marked()
+        return labelled(turn_store().marked())
 
     @app.get("/api/turns/{turn_id}/audio", response_class=FileResponse,
              responses={200: {"content": {"audio/flac": {}}}}, summary="A turn's audio, as the speech engine heard it")

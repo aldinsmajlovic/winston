@@ -41,11 +41,14 @@ class LiveEvent(BaseModel):
     ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
     nudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:
     speakers, phone, discord, conversation, silent), links (title and url, if it has any): he spoke up,
-    or would have."""
+    or would have.
+    turn: call (the turn's id in the turn record), text (what was heard), room: a spoken turn was kept
+    (core/turns.py); the history gives its id to the channel's latest user line, so the page can mark it."""
     id: str = ""
     ts: float = 0
     channel: str
-    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm", "nudge"]
+    type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm", "nudge",
+                  "turn"]
     state: State | None = None
     text: str | None = None
     reply: str | None = None
@@ -85,6 +88,13 @@ class Feed:
             self._state[ev.channel] = ev
         elif ev.type == "mic":
             self._mic[(ev.room or "").casefold()] = ev
+        elif ev.type == "turn":
+            # The turn's id onto the channel's latest user line that has none yet: what was heard is that line.
+            for stored in reversed(self._history):
+                if stored.type == "user" and stored.channel == ev.channel:
+                    if stored.call is None:
+                        stored.call = ev.call
+                    break
         elif ev.type == "reply" and ev.reply in self._open:
             self._open[ev.reply].text = (self._open[ev.reply].text or "") + (ev.text or "")
         elif ev.type in ("tool", "confirm") and ev.call in self._open:
@@ -132,6 +142,7 @@ _VERBS = {
     "remember": ("Remembering {q}", "Remembered {q}", "Could not remember that"),
     "forget": ("Forgetting {q}", "Forgot {q}", "Could not forget that"),
     "send_message": ("Messaging {t}", "Messaged {t}", "Could not message {t}"),
+    "mark_mistake": ("Marking a mistake", "Marked a mistake", "Could not mark that"),
 }
 
 

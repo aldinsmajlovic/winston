@@ -123,10 +123,11 @@ class Turn:
 class TurnLog:
     """Writes one channel process's turns, off the event loop, never raising into a turn."""
 
-    def __init__(self, cfg: WinstonConfig, channel: str):
+    def __init__(self, cfg: WinstonConfig, channel: str, on_written: Callable[[Turn], object] | None = None):
         t = cfg.logging.turns
         self.enabled, self.keep_days, self.root = t.enabled, t.keep_days, resolve(t.dir)
         self.channel = channel
+        self.on_written = on_written        # on the event loop once a turn is on disk (the live feed's "turn")
         self._day: str | None = None
         self._lock = threading.Lock()                       # a satellite process writes for several boxes
         self._writing: set[asyncio.Task] = set()
@@ -144,8 +145,10 @@ class TurnLog:
         task = asyncio.ensure_future(asyncio.get_running_loop().run_in_executor(self._writer, self.write_now, turn))
         self._writing.add(task)
         task.add_done_callback(self._writing.discard)
+        if self.on_written:
+            task.add_done_callback(lambda done: done.result() and self.on_written(turn))
 
-    def write_now(self, turn: Turn):
+    def write_now(self, turn: Turn) -> bool:
         try:
             day = datetime.fromtimestamp(turn.ts).date().isoformat()
             folder = self.root / day
@@ -160,8 +163,10 @@ class TurnLog:
             if day != self._day:
                 self._day = day
                 self.prune()
+            return True
         except Exception as e:                                              # noqa: BLE001
             logger.warning(f"turn record: could not write turn {turn.id}: {e}")
+            return False
 
     def prune(self, today: date | None = None):
         """Remove the days older than keep_days; anything that is not a day's folder stays."""

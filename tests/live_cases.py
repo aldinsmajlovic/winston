@@ -50,6 +50,15 @@ for i in range(30):                                  # old ids are forgotten wit
     feed.publish(LiveEvent(channel="web", type="reply", reply=f"x{i}", text="hi"))
 check("history bounded", len(feed.backlog()), 11)
 
+# A kept turn's id goes onto the channel's latest user line, and only once.
+feed = Feed(keep=20)
+feed.publish(LiveEvent(channel="satellite", type="user", text="What time is it?"))
+feed.publish(LiveEvent(channel="voice", type="user", text="Hello."))
+feed.publish(LiveEvent(channel="satellite", type="turn", call="aaaaaaaaaaaa", text="What time is it?"))
+feed.publish(LiveEvent(channel="satellite", type="turn", call="bbbbbbbbbbbb", text=""))   # nothing heard: no line
+users = [e for e in feed.backlog() if e.type == "user"]
+check("turn id on its line", [(e.channel, e.call) for e in users], [("satellite", "aaaaaaaaaaaa"), ("voice", None)])
+
 
 async def observer_turn():
     events: list[LiveEvent] = []

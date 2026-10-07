@@ -47,6 +47,8 @@ extension misbehaves (blocks its loop, grows past its memory limit, crashes), in
 2026-09-29, median first audio 892 ms with it quiet and 967 ms while it misbehaved 44 times.
 `uv run python tests/extensions_demo.py` serves the docs' example extensions and an MCP server on
 :8790 against the fake Home Assistant, for looking at the Extensions page; neither touches `data/`.
+`uv run python tests/turns_demo.py` serves a made-up turn record on :8791, for looking at the Turns page and
+its marks; it does not touch `data/` either.
 
 Logs: engine subprocesses write to `data/logs/<engine>.log`; each extension to
 `data/logs/extensions/<id>.log` (what it printed, every failure with its traceback), and keeps its state

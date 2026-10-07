@@ -3,33 +3,27 @@ import {
   ArrowUp,
   Bell,
   BellRing,
-  BookmarkMinus,
-  BookmarkPlus,
   CircleAlert,
   CircleCheck,
   CircleX,
-  Clock,
   House,
-  Lightbulb,
   LoaderCircle,
-  MessageCircleQuestion,
   Mic,
   MicOff,
-  Search,
-  Send,
   ShieldQuestion,
   Volume2,
   VolumeOff,
-  Wrench,
-  type LucideIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { $api, errorText } from '@/api/client'
+import { $api, errorText, type TurnMark } from '@/api/client'
 import { clock, micHolder, presence, useChat, useLive, type Item } from '@/api/live'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ToolLine } from '@/components/tool-line'
+import { TurnMarkControl } from '@/components/turn-mark'
 import { WinstonHeader } from '@/components/winston-header'
 import { Input } from '@/components/ui/input'
+import { useMarks } from '@/hooks/use-marks'
 import { useRoom } from '@/hooks/use-room'
 import { useSpeech } from '@/hooks/use-speech'
 import { useVoice } from '@/hooks/use-voice'
@@ -66,24 +60,6 @@ function RoomPicker({ room, onChange, disabled }: { room: string; onChange: (roo
   )
 }
 
-const TOOL_ICONS: [(base: string) => boolean, LucideIcon][] = [
-  [(b) => b.startsWith('hass'), Lightbulb],
-  [(b) => b === 'getlivecontext' || b === 'get_sensor_readings', House],
-  [(b) => b === 'getdatetime', Clock],
-  [(b) => b === 'web_search', Search],
-  [(b) => b === 'ask_claude', MessageCircleQuestion],
-  [(b) => b === 'remember', BookmarkPlus],
-  [(b) => b === 'forget', BookmarkMinus],
-  [(b) => b === 'send_message', Send],
-]
-
-function ToolIcon({ name, running }: { name: string; running: boolean }) {
-  if (running) return <LoaderCircle className="size-4 shrink-0 animate-spin" />
-  const base = name.split('__').pop()?.toLowerCase() ?? ''
-  const Icon = TOOL_ICONS.find(([match]) => match(base))?.[1] ?? Wrench
-  return <Icon className="size-4 shrink-0" />
-}
-
 /** Where the last finished sentence of a streaming reply ends, so speech can start before the rest
  * arrives; 0 while the first is still coming. */
 function sentencesEnd(text: string): number {
@@ -118,24 +94,25 @@ function Confirm({ item }: { item: Extract<Item, { kind: 'confirm' }> }) {
   )
 }
 
-function Line({ item }: { item: Item }) {
+const SPOKEN = ['voice', 'satellite']
+
+function Line({ item, marks }: { item: Item; marks: Map<string, TurnMark> }) {
   switch (item.kind) {
     case 'user':
+      // A spoken line gets a flag to mark it as his mistake once its turn is kept (the turn record).
       return (
-        <div className="flex max-w-[75%] items-center gap-2 self-end rounded-2xl bg-secondary px-4 py-2.5 text-base">
-          {item.channel === 'voice' && <Mic aria-label="Spoken" className="size-3.5 shrink-0 text-muted-foreground" />}
-          <span className="whitespace-pre-wrap">{item.text}</span>
+        <div className="group flex max-w-[75%] items-center gap-1 self-end">
+          {item.turn && <TurnMarkControl turnId={item.turn} heard={item.text} mark={marks.get(item.turn)} />}
+          <div className="flex min-w-0 items-center gap-2 rounded-2xl bg-secondary px-4 py-2.5 text-base">
+            {SPOKEN.includes(item.channel) && <Mic aria-label="Spoken" className="size-3.5 shrink-0 text-muted-foreground" />}
+            <span className="whitespace-pre-wrap">{item.text}</span>
+          </div>
         </div>
       )
     case 'reply':
       return item.text.trim() ? <p className="max-w-[85%] text-lg/relaxed whitespace-pre-wrap">{item.text.trim()}</p> : null
     case 'tool':
-      return (
-        <div className={cn('flex items-center gap-2 text-sm', item.status === 'error' ? 'text-destructive' : 'text-muted-foreground')}>
-          <ToolIcon name={item.name} running={item.status === 'running'} />
-          <span>{item.label}</span>
-        </div>
-      )
+      return <ToolLine name={item.name} label={item.label} status={item.status} />
     case 'announcement':
       return (
         <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
@@ -190,6 +167,7 @@ const VIA: Record<string, string> = {
  * talk button. */
 export default function TalkPage() {
   const feed = useLive()
+  const marks = useMarks(feed.items.filter((i) => i.kind === 'tool' && i.name === 'mark_mistake' && i.status === 'ok').length)
   const chat = useChat()
   const status = $api.useQuery('get', '/api/status')
   const [text, setText] = useState('')
@@ -264,7 +242,7 @@ export default function TalkPage() {
       <main className="w-full flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 pb-4">
           {feed.items.map((item) => (
-            <Line key={item.id} item={item} />
+            <Line key={item.id} item={item} marks={marks} />
           ))}
           <div ref={end} />
         </div>

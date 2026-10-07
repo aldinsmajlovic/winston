@@ -14,7 +14,7 @@ export const STATE_LABEL: Record<PresenceState, string> = {
 export const clock = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 export type Item =
-  | { kind: 'user'; id: string; text: string; channel: string }
+  | { kind: 'user'; id: string; text: string; channel: string; turn?: string } // turn: its id in the turn record, once kept
   | { kind: 'reply'; id: string; text: string; done: boolean; channel: string }
   | { kind: 'tool'; id: string; name: string; label: string; status: NonNullable<LiveEvent['status']> }
   | { kind: 'announcement'; id: string; text: string; ts: number }
@@ -40,7 +40,17 @@ function apply(feed: Feed, ev: LiveEvent): Feed {
     case 'state':
       return ev.state ? { ...feed, states: { ...feed.states, [ev.channel]: { state: ev.state, ts: ev.ts ?? 0 } } } : feed
     case 'user':
-      return { ...feed, items: [...feed.items, { kind: 'user', id, text: ev.text ?? '', channel: ev.channel }] }
+      return {
+        ...feed,
+        items: [...feed.items, { kind: 'user', id, text: ev.text ?? '', channel: ev.channel, turn: ev.call ?? undefined }],
+      }
+    case 'turn': {
+      // A kept turn: its id goes onto the channel's latest line you said, as the server's history does.
+      const last = feed.items.findLastIndex((item) => item.kind === 'user' && item.channel === ev.channel)
+      const line = feed.items[last]
+      if (last < 0 || line.kind !== 'user' || line.turn) return feed
+      return { ...feed, items: feed.items.map((item, i) => (i === last ? { ...line, turn: ev.call ?? undefined } : item)) }
+    }
     case 'reply': {
       const key = ev.reply ?? id
       if (feed.items.some((item) => item.id === key)) {

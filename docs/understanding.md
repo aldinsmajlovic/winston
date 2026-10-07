@@ -2,8 +2,13 @@
 
 How Winston hears, decides whether he is being spoken to, and knows what a name means. A design,
 proposed 2026-10-07 after the first week of real use. Built so far: part 1 (the turn record, marks by
-voice and from the command line, `winston check turns`), all but the marks on the page. Each part becomes
-the reference for itself as it is built.
+voice, on the page and from the command line, `winston check turns`). Each part becomes the reference for
+itself as it is built.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/turns-dark.png">
+  <img src="images/turns-light.png" alt="The Turns page: a day's spoken turns, two of them marked" width="720">
+</picture>
 
 ## Why
 
@@ -59,15 +64,16 @@ Every turn is kept, so mistakes can be found, marked and used to test the next c
   week above had 798 s of request audio, about 15 MB as FLAC.
 - **Off by default.** Recording a home is personal: `logging.turns.enabled` is off unless switched on
   (Settings, System). Nothing leaves the machine either way.
-- **Marking a mistake** (built, but for the page). By voice: "that's not what I said", "I wasn't talking
+- **Marking a mistake** (built). By voice: "that's not what I said", "I wasn't talking
   to you", "that was the wrong thing", "that took too long" mark his previous turn (`mark_mistake`), with
   what you actually said or wanted when you say it, and he says it is noted in his own words. From the
   command line: `winston turns mark ID KIND`, with `--said`, `--wanted`, and the tools it should and must
   not call as `--expect` and `--forbid` (the brain trials' substrings). The kinds are `misheard`,
   `not_addressed`, `wrong_action` and `too_slow`. A marked turn is copied with its audio into
-  `data/turns/marked/`, kept until unmarked. On the page, still to build: each turn with a mark, its kind
-  and a box for what you actually said. A turn you corrected in the next breath ("no, the living room,
-  not the main room") is offered for marking on its own.
+  `data/turns/marked/`, kept until unmarked. On the page: a flag on the hover of any line you said
+  aloud, on Talk (the box's words show there too now) and on Turns, the turn record a day at a time with
+  what he heard played back and a Marked view across days. Still to come: a turn you corrected in the
+  next breath ("no, the living room, not the main room") offered for marking on its own.
 - **The test** (built). `winston check turns` replays the marked turns through the current setup, or a
   candidate with `--with FILE` (a config file laid over yours: another speech engine, another model,
   another prompt). Each turn's audio goes through the speech engine, then its words through a fresh

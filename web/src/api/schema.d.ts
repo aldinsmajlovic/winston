@@ -2316,6 +2316,8 @@ export interface components {
          *     nudge: call (the nudge's id), label (extension and kind), text (its plain line), name (where it went:
          *     speakers, phone, discord, conversation, silent), links (title and url, if it has any): he spoke up,
          *     or would have.
+         *     turn: call (the turn's id in the turn record), text (what was heard), room: a spoken turn was kept
+         *     (core/turns.py); the history gives its id to the channel's latest user line, so the page can mark it.
          */
         LiveEvent: {
             /**
@@ -2334,7 +2336,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge";
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge" | "turn";
             /** State */
             state?: ("idle" | "listening" | "thinking" | "speaking") | null;
             /** Text */
@@ -3423,6 +3425,12 @@ export interface components {
             ok?: boolean | null;
             /** Result */
             result?: string | null;
+            /**
+             * Label
+             * @description How the live feed words it: "Turned on Kitchen lights"
+             * @default
+             */
+            label?: string;
         };
         /**
          * TurnsConfig

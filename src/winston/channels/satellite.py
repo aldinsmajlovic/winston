@@ -601,6 +601,8 @@ class Satellite:
                     turn.add(heard, got)
                     turn.stt_ms = turn.ms_since_end()
                 logger.info(f"{self.room}: heard {heard!r}")
+                if heard:               # what the box heard, as the browser's words show on the Talk page
+                    self.feed.put(LiveEvent(channel="satellite", type="user", text=heard, room=self.room))
                 if heard and dismissal(heard, self.cfg.assistant.name):
                     logger.info(f"{self.room}: dismissed, the conversation ends")
                     heard = ""
@@ -801,7 +803,8 @@ async def main():
     await audio.start()
     cls = get_adapter("stt", cfg.stt.provider)
     stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
-    turns = TurnLog(cfg, "satellite")
+    turns = TurnLog(cfg, "satellite", on_written=lambda t: feed.put(LiveEvent(channel="satellite", type="turn",
+                                                                              call=t.id, text=t.heard, room=t.room)))
     sats = [Satellite(cfg, room, dev, audio, stt, feed, turns) for room, dev in s.devices.items()]
     for sat in sats:
         await sat.connect()
