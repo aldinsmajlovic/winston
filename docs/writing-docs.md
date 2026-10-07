@@ -30,6 +30,7 @@ links to it.
 | `docs/architecture.md` | How the parts fit, the repository, plugin contracts |
 | `docs/hardware.md` | Profiles, GPUs, measured budgets |
 | `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md` | Their one subject |
+| `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
 | `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
