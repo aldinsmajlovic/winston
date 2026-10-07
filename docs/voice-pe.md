@@ -89,7 +89,9 @@ Spotify is the [built-in one](built-in-extensions.md#spotify)). The satellite ch
 48 kHz 16-bit stereo FLAC with ffmpeg, the box's own output rate, and the box fetches it from the PC on
 TCP 8702 like a reply. The box turns media down 20 dB while it listens and while he talks, and its echo
 cancellation takes out what it plays, through its speaker or its jack, so "Okay Winston" works over the
-music. The stock firmware has no pause on that player, so a pause stops the stream.
+music. The stock firmware has no pause on that player, so a pause stops the stream. A restart of the
+satellite channel cuts the stream; winstond keeps what is playing and hands it to the channel when it is
+back, so the music picks up again and the next song still reaches the box.
 
 ### Ending a conversation, and button only
 

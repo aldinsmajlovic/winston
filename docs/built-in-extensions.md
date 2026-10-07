@@ -9,7 +9,7 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 | **Hevy** (`hevy`) | "Time to train": no workout for 3 days, when you are home; firmer from day 5 | `hevy_get_training` | api.hevyapp.com |
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
-| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, GitHub (once, for the receiver), your library in Home Assistant (read), the speakers |
+| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
 `winston check unit`.
@@ -101,6 +101,15 @@ song", "louder", "what's playing?". It needs Spotify Premium.
 Spotify gives such receivers its 320 kbps stream; the box gets it as 48 kHz 16-bit stereo FLAC
 ([Voice PE](voice-pe.md#music)). Pause, play and skip in the app or by voice, and the box follows: a
 pause stops it at once, and Spotify goes back by what the box had not played yet, so nothing is lost.
+
+**Parties.** The `spotify_party` tool plays a track and runs a Home Assistant light show in time with it:
+the lights start the instant the music does (on go-librespot's own `playing` event, not a guessed delay)
+and the room is put back when it stops. Wire it to a phrase with a [shortcut](home-assistant.md): "party
+time" plays a track on the speakers, the lights hit with the first beat, and when the song ends
+the room returns to how it was. One party runs at a time: a new party, or any song asked for, first ends
+the one going (its light script stops and its restore scene comes on), and a party also ends when its own
+song does, so the next song Spotify plays does not run under a light show. It needs the extension's Home
+Assistant permission set to act, and the light script and restore scene exposed to Winston.
 
 Not Home Assistant's Spotify integration or Music Assistant: the integration is a remote for devices
 that already are Spotify Connect speakers and cannot search, and the box is not one; Music Assistant

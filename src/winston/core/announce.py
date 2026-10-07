@@ -122,11 +122,16 @@ class Hub:
     def __init__(self, cfg: WinstonConfig):
         self.cfg = cfg
         self._subs: dict[str, dict[asyncio.Queue, str | None]] = {}
+        self._media: tuple[dict, set[str | None]] | None = None    # the stream playing, and the rooms that took it
         self._log = resolve(cfg.logging.tool_calls).parent / "announcements.jsonl"
 
     def subscribe(self, channel: str, room: str | None = None) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=50)
-        self._subs.setdefault(channel, {})[q] = " ".join(room.split()).casefold() if room else None
+        k = " ".join(room.split()).casefold() if room else None
+        self._subs.setdefault(channel, {})[q] = k
+        if channel == "satellite" and self._media and k in self._media[1]:
+            # A box's channel back after a restart: the restart cut its stream, the extension still plays.
+            self._send(channel, q, self._media[0])
         return q
 
     def unsubscribe(self, channel: str, q: asyncio.Queue):
@@ -157,11 +162,16 @@ class Hub:
 
     def publish_media(self, ev: dict, room: str | None = None) -> int:
         """A stream to play (or stop) on the satellite boxes: the one in the room you are in, else every
-        box. Returns how many took it."""
+        box. Returns how many took it. The playing stream is kept for a box that subscribes again."""
         k = " ".join(room.split()).casefold() if room else None
         boxes = self._subs.get("satellite", {})
         targets = [q for q, r in boxes.items() if k is None or r in (k, None)] or list(boxes)
-        return sum(self._send("satellite", q, ev) for q in targets)
+        took = [q for q in targets if self._send("satellite", q, ev)]
+        if ev.get("action") == "play":
+            self._media = (ev, {boxes[q] for q in took}) if took else None
+        elif self._media and self._media[0].get("ext") == ev.get("ext"):
+            self._media = None
+        return len(took)
 
     def publish_discord(self, ev: dict) -> int:
         return sum(self._send("discord", q, ev) for q in list(self._subs.get("discord", {})))

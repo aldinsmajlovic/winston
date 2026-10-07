@@ -197,6 +197,44 @@ async def test_the_speakers_follow_spotify_and_a_pause_loses_nothing():
     await h.close()
 
 
+async def test_one_party_at_a_time_and_each_ends_with_its_song():
+    rx, ha = Receiver(), FakeHA()
+    h = Harness(HERE, settings={"run_here": False}, secrets=KEYS, http=httpx.MockTransport(rx.handle), ha=ha)
+    module = h.ext.tools["play"].fn.__globals__
+    handle, ctx = module["handle_event"], h.rt.ctx
+    await h.status()
+
+    def lights() -> list:
+        return [(c["service"], c["target"]["entity_id"]) for c in ha.calls]
+
+    async def starts(uri: str, n: int):                 # the receiver plays it; its lights run off the events loop
+        await handle(ctx, {"type": "metadata", "data": {"uri": uri, "name": "Song"}})
+        await handle(ctx, {"type": "playing", "data": {}})
+        for _ in range(100):
+            if len(ha.calls) >= n:
+                return
+            await asyncio.sleep(0.01)
+
+    await h.tool("party", what="spotify:track:rock", lights="script.rock", restore="scene.before")
+    await starts("spotify:track:rock", 1)
+    assert lights() == [("turn_on", "script.rock")], lights()
+    # another party while the rock show runs: the rock show stops and the room is put back first
+    await h.tool("party", what="spotify:track:slow", lights="script.slow")
+    assert lights()[1:] == [("turn_off", "script.rock"), ("turn_on", "scene.before")], lights()
+    await starts("spotify:track:slow", 4)
+    assert lights()[3:] == [("turn_on", "script.slow")], lights()
+    await handle(ctx, {"type": "metadata", "data": {"uri": "spotify:track:slow", "name": "Song"}})
+    assert len(ha.calls) == 4                           # the same song again is not the end of it
+    await handle(ctx, {"type": "metadata", "data": {"uri": "spotify:track:next", "name": "Next"}})
+    assert lights()[4:] == [("turn_off", "script.slow")], lights()      # its song is over
+    # a song asked for during a party ends it too
+    await h.tool("party", what="spotify:track:rock", lights="script.rock", restore="scene.before")
+    await starts("spotify:track:rock", 6)
+    await h.tool("play", what="daft punk")
+    assert lights()[-2:] == [("turn_off", "script.rock"), ("turn_on", "scene.before")], lights()
+    await h.close()
+
+
 async def test_the_relay_keeps_two_seconds_ahead_of_playback():
     h = harness(Receiver())
     module = h.ext.tools["play"].fn.__globals__

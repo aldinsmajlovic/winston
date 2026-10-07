@@ -676,6 +676,27 @@ class ControlConfig(Model):
                       json_schema_extra=ui("advanced"))
 
 
+class Shortcut(Model):
+    model_config = section("{brains}")
+    phrases: list[str] = Field(default_factory=list, title="Phrases",
+                               description="What you say to run it. Saying just one of these, his name and the "
+                                           "fillers around it aside (\"Okay Winston, party time\"), runs the "
+                                           "tool straight away without the model, the same every time.")
+    tool: str = Field(title="Tool",
+                      description="The tool it runs: an extension tool as \"extension.tool\" (\"spotify.party\"), or a "
+                                  "Home Assistant script as \"script.name\". The tool must be available to the brain.")
+    args: dict[str, Any] = Field(default_factory=dict, title="Arguments",
+                                 description="Fixed arguments passed to the tool every time, e.g. which track a party "
+                                             "plays and which light scene it runs.",
+                                 json_schema_extra=ui("advanced"))
+    say_first: str | None = Field(None, title="Said first",
+                                  description="What he says the instant you say it, before it runs, in place of "
+                                              "\"One moment.\". For a party: \"Here we go, sir.\"")
+    quiet_after: bool = Field(False, title="Quiet after",
+                              description="Once it has worked he says nothing more and the box does not listen on: for "
+                                          "a scene with music that speaks for itself. A failure is still reported.")
+
+
 class WinstonConfig(Model):
     version: int = Field(1, description="Config file format version. Winston sets it.",
                          json_schema_extra=ui("advanced"))
@@ -699,5 +720,10 @@ class WinstonConfig(Model):
                                                                "settings, and your choices for its tools and nudges.",
                                                    json_schema_extra=ui(key_title="Extension"))
     speak_up: SpeakUpConfig = Field(SpeakUpConfig(), title="Speaking up")
+    shortcuts: list[Shortcut] = Field(default_factory=list, title="Shortcuts",
+                                      description="Spoken phrases that run a tool straight away, without the model: a "
+                                                  "scene, a party. Each names a tool and the fixed arguments it runs "
+                                                  "with.",
+                                      json_schema_extra=ui(restarts=["{brains}"]))   # a list: its items' section is not read
     logging: LoggingConfig = LoggingConfig()
     control: ControlConfig = ControlConfig()

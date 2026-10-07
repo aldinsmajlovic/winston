@@ -410,6 +410,21 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 Errors: `NotPermitted` (outside its permissions), `HomeAssistantError` (Home Assistant failed or
 refused), `SettingsError(field, message)` (raised by `@ext.validate`).
 
+### Shortcuts and scenes
+
+Any extension tool can be run as a spoken shortcut, straight away and without the model, through the
+top-level `shortcuts` config: an entry gives the `phrases`, the `tool` (`extension.tool`), the fixed
+`args` to run it with, and optional `say_first` and `quiet_after` (see
+[home-assistant.md](home-assistant.md)). Saying one of the phrases runs the tool the same way every time.
+
+This is how a party scene is built. The Spotify extension's `party(what, lights, restore, volume)` tool
+(it needs `home_assistant = "act"`) plays a track on the speakers and arms a light show; when go-librespot
+reports the track as `playing`, the extension runs the `lights` Home Assistant script so the show starts
+with the sound rather than on a guessed delay, and when the music stops it turns that script off and turns
+on the `restore` scene. The `lights` script and the `restore` scene must be keys in `ha.expose` for the
+`ctx.ha.call` to be allowed. A shortcut then wires a phrase ("party time") to `spotify.party` with
+the track, scene and volume as its `args`.
+
 ## Speaking up
 
 A nudge reaches the core one of two ways. From there every nudge follows the same rules and takes

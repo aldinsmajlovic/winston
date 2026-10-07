@@ -14,7 +14,7 @@ import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -148,15 +148,18 @@ def home_request(cfg: WinstonConfig) -> re.Pattern:
 
 @dataclass
 class Own:
-    """An exposed entity with its own way of being answered: a first line (say_first), no reply once it has
-    worked (quiet_after), run straight away when it is all that was said (shortcut, scripts only)."""
+    """An exposed entity (or a configured shortcut) with its own way of being answered: a first line
+    (say_first), no reply once it has worked (quiet_after), run straight away when it is all that was said
+    (shortcut). A shortcut's entity_id is its target: an HA script (script.x) or an extension tool
+    (extension.tool)."""
     entity_id: str
     pattern: re.Pattern         # its names anywhere in what was said, whole words
     names: set[str]             # its names as plain words, for a request that is only the name
     line: str | None
     quiet: bool
     shortcut: bool
-    tool: str | None = None     # the script's tool, once the brain has its tools (WinstonLLM.bind)
+    tool: str | None = None     # the target's tool, once the brain has its tools (WinstonLLM.bind)
+    args: dict = field(default_factory=dict)   # fixed arguments a shortcut runs its tool with
 
 
 def own_answers(cfg: WinstonConfig) -> list[Own]:
@@ -172,12 +175,22 @@ def own_answers(cfg: WinstonConfig) -> list[Own]:
             pattern = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")\b")
             found.append((max(map(len, names)), Own(entity_id, pattern, {plain_words(n) for n in names}, line,
                                                     e.quiet_after, e.shortcut)))
+    for sc in cfg.shortcuts:
+        names = {p.strip().lower() for p in sc.phrases if p and p.strip()}
+        line = (sc.say_first or "").strip() or None
+        if sc.tool and names:
+            pattern = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")\b")
+            found.append((max(map(len, names)), Own(sc.tool, pattern, {plain_words(n) for n in names}, line,
+                                                    sc.quiet_after, True, args=dict(sc.args))))
     return [own for _, own in sorted(found, key=lambda f: -f[0])]
 
 
-# Around a shortcut's name: "Okay Winston, please make it sexy in here, sir" is still only its name.
-_SHORTCUT_LEAD = {"okay", "ok", "hey", "hi", "yeah", "please", "can", "could", "would", "you", "just", "now"}
+# Around a shortcut's name: "Okay Winston, please movie night in here, sir" is still only its name.
+_SHORTCUT_LEAD = {"okay", "ok", "hey", "hi", "yeah", "please", "can", "could", "would", "you", "just", "now",
+                  "uh", "um", "oh", "so"}
 _SHORTCUT_TAIL = {"please", "sir", "now", "thanks"}
+# A place or who it is for after the name: "movie night in the living room", "party time for us".
+_SHORTCUT_PLACE = re.compile(r"(?: (?:in|for) (?:here|there|me|us|the(?: \w+){1,2}))+$")
 
 
 def only_name(said: str, assistant: str) -> str:
@@ -188,6 +201,12 @@ def only_name(said: str, assistant: str) -> str:
     while words and (words[-1] in _SHORTCUT_TAIL or words[-1] == name):
         words = words[:-1]
     return " ".join(words)
+
+
+def name_forms(bare: str) -> set[str]:
+    """A bare request as said, and without a place after it: either can be a shortcut's name ("movie
+    night in here" is one, "movie night in the living room" is "movie night")."""
+    return {bare, _SHORTCUT_PLACE.sub("", bare)}
 
 
 def acted(messages: list) -> bool:
@@ -228,13 +247,14 @@ async def _nothing():
     yield
 
 
-async def _calling(tool: str):
-    """A completion that only calls tool, for a shortcut: Pipecat runs it as if the model had asked."""
+async def _calling(tool: str, args: dict | None = None):
+    """A completion that only calls tool, for a shortcut: Pipecat runs it as if the model had asked. A
+    shortcut may carry fixed arguments (shortcuts config), so a party plays the same track every time."""
     yield ChatCompletionChunk(
         id=f"shortcut-{uuid.uuid4().hex[:8]}", object="chat.completion.chunk", created=int(time.time()), model="",
         choices=[ChunkChoice(index=0, finish_reason="tool_calls", delta=ChoiceDelta(tool_calls=[ChoiceDeltaToolCall(
             index=0, id=f"call_{uuid.uuid4().hex[:24]}", type="function",
-            function=ChoiceDeltaToolCallFunction(name=tool, arguments="{}"))]))])
+            function=ChoiceDeltaToolCallFunction(name=tool, arguments=json.dumps(args or {})))]))])
 
 
 def last_said(messages: list) -> str | None:
@@ -257,7 +277,7 @@ class WinstonLLM(OpenAILLMService):
     HOME_LINES first (or the named entity's own say_first), pushed straight to the TTS: queued at the
     pipeline's start it would wait behind the thinking it is meant to cover. For an entity with
     quiet_after, once one of the turn's actions has worked there is no reply at all and `ended` is set,
-    so the box does not listen on (his closing "Marvin Gaye is playing" spoiled the scene it set). A
+    so the box does not listen on (his closing words about the song spoiled the scene it set). A
     shortcut script said on its own is called without the model: said a second time, the model answered
     "Done, sir. The mood is set." from the first time's call in the conversation and ran nothing. After
     MAX_TOOL_ROUNDS rounds of tool calls for one request, the next is asked without its tools, so it
@@ -276,13 +296,20 @@ class WinstonLLM(OpenAILLMService):
         self._no_tools = False                  # this request has called enough: words now
 
     def bind(self, tools: list[str]):
-        """The brain's tools are known: find each shortcut's script tool (script.x is the tool x or y__x)."""
+        """The brain's tools are known: find each shortcut's tool. An HA script (script.x) is the MCP tool
+        x or y__x; an extension tool (extension.tool) is its brain name, extension_tool (host.brain_name)."""
         for own in self._own:
-            if own.shortcut and own.entity_id.startswith("script."):
+            if not own.shortcut:
+                continue
+            if own.entity_id.startswith("script."):
                 oid = own.entity_id.split(".", 1)[1]
                 own.tool = next((t for t in tools if t == oid or t.endswith("__" + oid)), None)
-                if own.tool is None:
-                    logger.warning(f"shortcut {own.entity_id}: no tool for it; is it exposed?")
+            else:
+                ext_id, _, name = own.entity_id.partition(".")
+                want = re.sub(r"[^A-Za-z0-9_]", "_", f"{ext_id}_{name}")
+                own.tool = next((t for t in tools if t == want or t == name or t.endswith("_" + name)), None)
+            if own.tool is None:
+                logger.warning(f"shortcut {own.entity_id}: no tool for it; is it exposed?")
 
     async def get_chat_completions(self, context: LLMContext):
         messages = context.get_messages()
@@ -297,12 +324,12 @@ class WinstonLLM(OpenAILLMService):
             self.ended, self._think = True, False
             return _nothing()
         if said and not acted(messages) and (short := next(
-                (o for o in self._own if o.tool and only_name(said, self._assistant) in o.names), None)):
+                (o for o in self._own if o.tool and o.names & name_forms(only_name(said, self._assistant))), None)):
             self._think, self._line_for = False, said
             if short.line:
                 await self.push_frame(TTSSpeakFrame(short.line, append_to_context=False))
             logger.info(f"shortcut: {said!r} runs {short.tool}")
-            return _calling(short.tool)
+            return _calling(short.tool, short.args)
         if self._think and said != self._line_for:
             self._line_for = said
             line = own.line if own else None

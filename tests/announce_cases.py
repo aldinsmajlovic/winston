@@ -58,6 +58,25 @@ async def fan_out():
     r = hub.publish(Announcement(text="Nobody home."), now=datetime(2026, 9, 23, 12, 0))
     expect("no speaker: Discord", r.discord and r.spoken_on == 0, r)
 
+
+async def media_back():
+    hub = Hub(cfg())
+    box = hub.subscribe("satellite", "Main Room")
+    play = {"type": "media", "action": "play", "id": "m1", "ext": "spotify", "url": "http://x", "title": "Song"}
+    expect("a stream goes to the box", hub.publish_media(play, "main room") == 1 and box.get_nowait() == play)
+    hub.unsubscribe("satellite", box)                   # the satellite restarts
+    again = hub.subscribe("satellite", "main room")
+    expect("a box back after a restart gets the stream again", again.qsize() == 1 and again.get_nowait() == play)
+    expect("a box in another room does not", hub.subscribe("satellite", "kitchen").qsize() == 0)
+    hub.publish_media({"type": "media", "action": "stop", "ext": "news"}, "main room")
+    expect("another extension's stop leaves it", hub.subscribe("satellite", "main room").qsize() == 1)
+    hub.publish_media({"type": "media", "action": "stop", "ext": "spotify"}, "main room")
+    expect("once stopped, a new box gets nothing", hub.subscribe("satellite", "main room").qsize() == 0)
+    empty = Hub(cfg())
+    empty.publish_media(play)
+    expect("a stream no box took is not kept", empty.subscribe("satellite", "main room").qsize() == 0)
+
 asyncio.run(fan_out())
+asyncio.run(media_back())
 print(f"\n{'all passed' if not failed else f'{failed} failed'}")
 sys.exit(1 if failed else 0)

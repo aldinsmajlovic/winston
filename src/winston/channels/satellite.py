@@ -290,8 +290,6 @@ class Satellite:
         self._unsub = self.client.subscribe_voice_assistant(
             handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio,
             handle_announcement_finished=self._handle_announcement_finished)
-        if self.cfg.announce.enabled and (self._listener is None or self._listener.done()):
-            self._listener = asyncio.create_task(self._speak_up())
         try:                                     # after subscribing: the box answers only its voice client
             conf = await self.client.get_voice_assistant_configuration(5)
         except Exception as e:                                              # noqa: BLE001
@@ -331,6 +329,10 @@ class Satellite:
                     logger.info(f"{self.room}: wake word sensitivity {want.lower()}")
         except Exception as e:                                              # noqa: BLE001
             logger.warning(f"{self.room}: no button events or sensitivity: {e}")
+        # Last, once the media player is known: winstond sends a stream that was playing before a restart
+        # as soon as this subscribes.
+        if self.cfg.announce.enabled and (self._listener is None or self._listener.done()):
+            self._listener = asyncio.create_task(self._speak_up())
 
     def _on_state(self, state):
         long_press = isinstance(state, Event) and state.key == self._long_press and state.event_type == "long_press"

@@ -5,7 +5,7 @@
 # description = "Spotify on your speakers: a Spotify Connect speaker for the app, and play, pause and skip by voice."
 # icon = "music"
 # api = 1
-# permissions = { network = ["127.0.0.1", "api.spotify.com", "accounts.spotify.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"], home_assistant = "read", speakers = true }
+# permissions = { network = ["127.0.0.1", "api.spotify.com", "accounts.spotify.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"], home_assistant = "act", speakers = true }
 # ///
 """Spotify on the speakers (the satellite box and whatever is plugged into its jack).
 
@@ -91,6 +91,8 @@ class State:
         self.until = 0.0                    # when the last byte sent will have played (monotonic)
         self.fd: int | None = None          # the pipe, for dropping what nobody heard
         self.now: dict = {}                 # the track, from the receiver's metadata
+        self.pending: dict | None = None    # a party armed by party(), to fire when the music starts
+        self.party: dict | None = None      # the running party's lights, to stop and restore when it ends
 
 
 state = State()
@@ -298,15 +300,58 @@ async def relay(ctx):
 
 # the receiver's events: the speakers follow Spotify
 
+async def run_lights(ctx, action: str, script: str | None) -> None:
+    """Run (turn_on) or stop (turn_off) a party's Home Assistant light script, logging a failure rather
+    than breaking playback. The script must be exposed to Winston (ha.expose) for the call to be allowed."""
+    if not script:
+        return
+    try:
+        await ctx.ha.call("script", action, target={"entity_id": script})
+    except Exception as e:                                              # noqa: BLE001
+        ctx.log.warning(f"party lights {action} failed: {e}")
+
+
+async def start_party_lights(ctx, party: dict) -> None:
+    """Run a party's light script `delay` seconds after the receiver started, so the show lands on the
+    sound the box plays, not the receiver's head start. Skips it if the party was stopped while waiting."""
+    await asyncio.sleep(party.get("delay") or 0.0)
+    if state.party is party:        # still the running party, not stopped during the wait
+        await run_lights(ctx, "turn_on", party.get("lights"))
+
+
+async def end_party(ctx) -> None:
+    """Ends the running party: its light script stops and its restore scene puts the room back. Before
+    anything else plays (another party, a song), so two light shows never fight over the same lamps."""
+    if state.party is None:
+        return
+    party, state.party = state.party, None
+    await run_lights(ctx, "turn_off", party.get("lights"))
+    if party.get("restore"):
+        try:
+            await ctx.ha.call("scene", "turn_on", target={"entity_id": party["restore"]})
+        except Exception as e:                                          # noqa: BLE001
+            ctx.log.warning(f"party restore failed: {e}")
+
+
 async def handle_event(ctx, ev: dict) -> None:
     kind, data = ev.get("type"), ev.get("data") or {}
     if kind == "metadata":
         state.now = {"name": data.get("name"), "artists": data.get("artist_names") or [], "album": data.get("album_name")}
+        track = (state.party or {}).get("track")
+        if track and data.get("uri") and data["uri"] != track:     # the party's song is over: the next one plays
+            await end_party(ctx)
     elif kind == "playing":
         if not state.on:
             title = f"{state.now.get('name')} by {', '.join(state.now.get('artists', []))}" if state.now else "Spotify"
             state.on = True                 # before the box connects, so the relay waits for it
             state.on = await ctx.speakers.play(f"http://127.0.0.1:{ctx.settings.stream_port}/stream.wav", title) > 0
+        if state.pending is not None:       # a party is armed: fire its lights only if a box took the sound,
+            pending, state.pending = state.pending, None    # so it never strobes in silence (no box, or no stream)
+            if state.on:
+                state.party = pending
+                asyncio.create_task(start_party_lights(ctx, state.party))    # after its delay, off the events loop
+            else:
+                ctx.log.warning("party: no box took the stream; not starting the lights")
     elif kind in ("paused", "stopped", "inactive") and state.on:    # a skip or the next song is "playing" alone
         state.on = False
         unheard = max(0.0, state.until - time.monotonic()) + flush() / BPS
@@ -318,6 +363,7 @@ async def handle_event(ctx, ev: dict) -> None:
         if kind == "paused" and unheard >= 0.2:
             # The stop dropped what the box had not played: Spotify goes back to where he stopped hearing.
             await call(ctx, "POST", "/player/seek", position=-round(unheard * 1000), relative=True)
+        await end_party(ctx)                # the party's music stopped: end the light show and put the room back
 
 
 @ext.background
@@ -476,12 +522,45 @@ async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playli
         kind: Only when he said which: a track, an artist, an album or a playlist.
     """
     await ready(ctx)
+    state.pending = None                # another song: a party's lights stop with its music
+    await end_party(ctx)
     if re.search(r"\bmy\b", what, re.IGNORECASE) and (own := in_library(ctx, what, kind, exact=False)) is not None:
         await call(ctx, "POST", "/player/play", uri=own["uri"])
         return f"Playing your {own['type']} {own['name']}."
     item = await search(ctx, what, kind)
     await call(ctx, "POST", "/player/play", uri=item["uri"])
     return f"Playing {_describe(item)}."
+
+
+@ext.tool(tier="act", timeout=15)
+async def party(ctx, what: str, lights: str | None = None, restore: str | None = None,
+                volume: int | None = None, delay: float = 0.0) -> str:
+    """Start a party scene: play something on the speakers and run a Home Assistant light show that begins
+    the instant the music does, then put the room back when it stops. Meant for a shortcut (shortcuts
+    config) so one phrase sets the whole scene off the same way every time.
+
+    Args:
+        what: A Spotify URI ("spotify:track:...") to play exactly, or what to play, as said.
+        lights: A Home Assistant light script (entity_id) to run the moment the music starts.
+        restore: A Home Assistant scene (entity_id) to turn on when the music stops.
+        volume: 0 to 100, set before it starts.
+        delay: Seconds to wait after the receiver starts a track before the lights run, so they land on
+            the sound the box actually plays, not the receiver's head start (the relay's ~2 s lead plus
+            the box's buffer). Tune it to taste; around 1.5 cancels the default lead.
+    """
+    await ready(ctx)
+    if what.startswith("spotify:"):
+        uri, desc = what, "the party"
+    else:
+        item = await search(ctx, what, None)
+        uri, desc = item["uri"], _describe(item)
+    if volume is not None:
+        await call(ctx, "POST", "/player/volume", volume=max(0, min(100, volume)))
+    await end_party(ctx)                # a party already going stops and puts the room back first
+    state.pending = {"lights": lights, "restore": restore, "delay": max(0.0, delay),   # fired on "playing"
+                     "track": uri if uri.startswith("spotify:track:") else None}
+    await call(ctx, "POST", "/player/play", uri=uri)
+    return f"Starting {desc}."
 
 
 @ext.tool(tier="act")

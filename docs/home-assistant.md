@@ -30,9 +30,16 @@ flowchart LR
   moment." ("Movie night it is."), and `quiet_after` makes him say nothing once it has worked and keeps
   the box from listening on, so a scene with music is not talked over or answered; a failure is still
   reported. `shortcut` runs a script straight away, without the model, when what was said is only one of
-  its names ("Okay Winston, movie night"), so it does the same every time, twice in a row too; add what
-  the speech recognition makes of the phrase as an alias ("make it six in here"). The Home Assistant
-  page's edit dialog has them as "Said first", "Quiet after" and "Run when named".
+  its names ("Okay Winston, movie night"), so it does the same every time, twice in a row too; fillers
+  before it ("uh, can you") and a place or "for me" after it ("movie night in the living room") still
+  count as only the name. Add what the speech recognition makes of the phrase as an alias ("moving
+  night"). The Home Assistant page's edit dialog has them as "Said first", "Quiet after" and "Run when named".
+- A shortcut can also run an **extension tool**, not only a Home Assistant script, through the top-level
+  `shortcuts` config: a list of entries with `phrases`, a `tool` (`extension.tool`, like `spotify.party`,
+  or `script.name`), the fixed `args` it runs with, `say_first` and `quiet_after`. Saying just one of the
+  phrases runs the tool straight away, without the model, the same every time. This is how a party scene
+  works: one phrase plays music on his own speakers and runs a light show (see the Spotify `party` tool in
+  [extensions.md](extensions.md)), where a script-only shortcut could not reach the speakers.
 - He learns names only from GetLiveContext: each entity's name, its aliases, its area and its state.
 
 ## Aliases matter more than rooms

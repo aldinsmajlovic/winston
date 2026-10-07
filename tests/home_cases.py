@@ -8,7 +8,7 @@ import sys
 from pipecat.processors.aggregators.llm_context import LLMContext
 
 from winston.config.schema import WinstonConfig
-from winston.core.brain import acted, build_llm, home_request, only_name, own_answers
+from winston.core.brain import acted, build_llm, home_request, name_forms, only_name, own_answers
 
 failed = []
 
@@ -64,10 +64,15 @@ check("a failed action is not", acted(turn(("script__movie_night", "Error: no su
 check("a read then an action is", acted(turn(("homeassistant__GetLiveContext", "ok"), ("intent__HassTurnOn", "{}"))), True)
 check("an action before the newest message does not count",
       acted([*turn(("script__movie_night", "{}")), {"role": "user", "content": "[21:01] and now?"}]), False)
-check("only the name is left of a bare request", only_name("Okay Winston, please make it sexy in here, sir.", "Winston"),
-      "make it sexy in here")
+check("only the name is left of a bare request", only_name("Okay Winston, please movie night in here, sir.", "Winston"),
+      "movie night in here")
 check("a longer request is not only the name", only_name("Winston, don't do party time now", "Winston"),
       "don t do party time")
+check("a place after the name is still the name",
+      "movie night" in name_forms(only_name("Uh can you movie night in the living room?", "Winston")), True)
+check("a name that ends in a place keeps it", "movie night in here" in name_forms("movie night in here"), True)
+check("more than a place is not the name", name_forms(only_name("party time in the kitchen and dim it", "Winston")),
+      {"party time in the kitchen and dim it"})
 
 
 async def shortcut():
@@ -84,6 +89,8 @@ async def shortcut():
         return [c.choices[0].delta.tool_calls[0].function.name async for c in stream]
     check("a bare shortcut name calls its script", await first_call("Winston, party time!"), ["script__party"])
     check("with its line first", said, ["Party it is."])
+    check("a filler before and a place after still call it",
+          await first_call("Uh, party time in the living room, please."), ["script__party"])
     ran = [{"role": "user", "content": "[20:59] party time"},
            {"role": "assistant", "tool_calls": [{"id": "c0", "type": "function",
                                                  "function": {"name": "script__party", "arguments": "{}"}}]},
