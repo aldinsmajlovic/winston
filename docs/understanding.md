@@ -1,8 +1,9 @@
 # Understanding
 
 How Winston hears, decides whether he is being spoken to, and knows what a name means. A design,
-proposed 2026-10-07 after the first week of real use. Built so far: the turn record (part 1, without
-marks yet). Each part becomes the reference for itself as it is built.
+proposed 2026-10-07 after the first week of real use. Built so far: part 1 (the turn record, marks by
+voice and from the command line, `winston check turns`), all but the marks on the page. Each part becomes
+the reference for itself as it is built.
 
 ## Why
 
@@ -58,15 +59,26 @@ Every turn is kept, so mistakes can be found, marked and used to test the next c
   week above had 798 s of request audio, about 15 MB as FLAC.
 - **Off by default.** Recording a home is personal: `logging.turns.enabled` is off unless switched on
   (Settings, System). Nothing leaves the machine either way.
-- **Marking a mistake.** By voice: "that's not what I said", "I wasn't talking to you", "that was the
-  wrong song". On the Talk page: each turn gets a mark with the kind (misheard, not for him, wrong thing,
-  too slow) and a box for what you actually said. A turn you corrected in the next breath ("no, the
-  living room, not the main room") is offered for marking on its own.
-- **The test.** `winston check turns` replays the marked turns through the current setup or a
-  candidate (another speech engine, another model, another prompt), with actions stubbed so nothing in
-  the house moves. It scores four things: heard right (word error rate against what you typed), for him
-  right, did the right thing (tool and arguments), and time to the first word. A change ships when it
-  beats the current score. `winston check brain` keeps doing the same for the brain on written requests.
+- **Marking a mistake** (built, but for the page). By voice: "that's not what I said", "I wasn't talking
+  to you", "that was the wrong thing", "that took too long" mark his previous turn (`mark_mistake`), with
+  what you actually said or wanted when you say it, and he says it is noted in his own words. From the
+  command line: `winston turns mark ID KIND`, with `--said`, `--wanted`, and the tools it should and must
+  not call as `--expect` and `--forbid` (the brain trials' substrings). The kinds are `misheard`,
+  `not_addressed`, `wrong_action` and `too_slow`. A marked turn is copied with its audio into
+  `data/turns/marked/`, kept until unmarked. On the page, still to build: each turn with a mark, its kind
+  and a box for what you actually said. A turn you corrected in the next breath ("no, the living room,
+  not the main room") is offered for marking on its own.
+- **The test** (built). `winston check turns` replays the marked turns through the current setup, or a
+  candidate with `--with FILE` (a config file laid over yours: another speech engine, another model,
+  another prompt). Each turn's audio goes through the speech engine, then its words through a fresh
+  conversation with the brain of the channel it came from, in its room. Every tool that acts is stubbed
+  by its tier, whatever it is called, so nothing in the house moves; reads run for real, within their
+  daily caps. The brain runs at temperature 0, so one setup scores the same twice. It scores heard right
+  (word error rate against what you said, else what was heard then), for him right (silent on a turn
+  marked not addressed), the right thing (on a mark with expect or forbid), and the time to the text and
+  the first token. Results go to `data/turns/checks/` with the last run shown beside. A change ships when
+  it beats the current score. `winston check brain` keeps doing the same for the brain on written
+  requests.
 
 ## 2. Directory
 

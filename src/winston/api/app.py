@@ -34,7 +34,7 @@ from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.brain import api_key
-from winston.core import memory, persona, region, speaker, voices
+from winston.core import memory, persona, region, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent
 from winston.core.rooms import MicHold, Rooms, RoomState, SyncRequest, SyncResult
 from winston.core.tools.ask_claude import auth_source
@@ -125,6 +125,59 @@ class SpeakRequest(BaseModel):
         if v is not None and ("\\" in v or "\0" in v or v.startswith("/") or ".." in PurePosixPath(v).parts):
             raise ValueError("a voice is a name under the voices directory: no '..', absolute path, backslash or NUL")
         return v
+
+
+class TurnMarkBody(BaseModel):
+    """A mistake noted on a turn (core/turns.py): its kind, and when known what you actually said, what
+    you wanted done, and the tools it should and must not call (the brain trials' substrings)."""
+    kind: Literal["misheard", "not_addressed", "wrong_action", "too_slow"]
+    said: str | None = None
+    wanted: str | None = None
+    expect: list[str] | None = None
+    forbid: list[str] | None = None
+    note: str | None = None
+
+
+class TurnMark(TurnMarkBody):
+    by: str = "page"
+    ts: float = 0
+
+
+class TurnTool(BaseModel):
+    name: str
+    args: dict[str, Any] = {}
+    ok: bool | None = None
+    result: str | None = None
+
+
+class TurnRecord(BaseModel):
+    """One spoken turn as the record keeps it (docs/understanding.md, part 1)."""
+    model_config = ConfigDict(extra="ignore")
+    id: str
+    ts: float
+    day: str
+    channel: str
+    room: str | None = None
+    start: str
+    secs: float = 0
+    heard: str
+    raw: str | None = None
+    engine: str | None = None
+    stt_ms: int | None = None
+    first_token_ms: int | None = None
+    first_audio_ms: int | None = None
+    tools: list[TurnTool] = []
+    said: str = ""
+    outcome: str
+    audio: str | None = None
+    mark: TurnMark | None = None
+
+
+class TurnDay(BaseModel):
+    enabled: bool = Field(description="Whether turns are being kept (logging.turns.enabled)")
+    day: str
+    days: list[str] = Field(description="Every day with turns, newest first")
+    turns: list[TurnRecord]
 
 
 class ClonedVoice(BaseModel):
@@ -752,6 +805,53 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         if app.state.cfg.tts.voice == c.voice:
             raise HTTPException(409, f"{c.name}'s voice is {app.state.cfg.assistant.name}'s voice now; pick another voice first")
         voices.delete(c.slug)
+        return Ok()
+
+    def turn_store() -> turns.TurnStore:
+        return turns.TurnStore(app.state.cfg)
+
+    @app.get("/api/turns", response_model=TurnDay, summary="A day's spoken turns: heard, done, said, and any mark")
+    async def turns_day(day: str | None = Query(None, description="YYYY-MM-DD; the newest day with turns if left out")):
+        store = turn_store()
+        days = store.days()
+        day = day or (days[0] if days else date.today().isoformat())
+        try:
+            return TurnDay(enabled=store.enabled, day=day, days=days, turns=store.day(day))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.get("/api/turns/marked", response_model=list[TurnRecord], summary="Every marked turn, oldest first")
+    async def turns_marked():
+        return turn_store().marked()
+
+    @app.get("/api/turns/{turn_id}/audio", response_class=FileResponse,
+             responses={200: {"content": {"audio/flac": {}}}}, summary="A turn's audio, as the speech engine heard it")
+    async def turn_audio(turn_id: str):
+        try:
+            path = turn_store().audio(turn_id)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if path is None:
+            raise HTTPException(404, f"no audio for turn {turn_id}")
+        return FileResponse(path, media_type="audio/flac")
+
+    @app.put("/api/turns/{turn_id}/mark", response_model=TurnRecord, summary="Mark a turn as a mistake")
+    async def mark_turn(turn_id: str, body: TurnMarkBody):
+        try:
+            return turn_store().mark(turn_id, body.kind, said=body.said, wanted=body.wanted, expect=body.expect,
+                                     forbid=body.forbid, note=body.note, by="page")
+        except KeyError as e:
+            raise HTTPException(404, str(e.args[0]))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    @app.delete("/api/turns/{turn_id}/mark", response_model=Ok, summary="Take a turn's mark off")
+    async def unmark_turn(turn_id: str):
+        try:
+            if not turn_store().unmark(turn_id):
+                raise HTTPException(404, f"turn {turn_id} has no mark")
+        except ValueError as e:
+            raise HTTPException(400, str(e))
         return Ok()
 
     def memory_call(fn, *args):

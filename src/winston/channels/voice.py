@@ -53,7 +53,7 @@ from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.rooms import MicGate, RoomLink, area, http_sync, mic_events, wake_phrases
 from winston.core.speak_up import WORDING_SECS, Mentions, SpeechWatch
 from winston.core.spoken import SpokenText
-from winston.core.turns import SpokenTurns, TurnLog
+from winston.core.turns import SpokenTurns, TurnLog, make_mark_tool
 
 CFG: WinstonConfig = load()
 _HEARING: Hearing | None = None
@@ -257,6 +257,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     tap = MicTap()                  # lets clone_voice record a friend without it becoming a turn
     for schema, handler in make_voice_tools(CFG, tap, transcribe):
         brain.add_tool(schema, handler)
+    if CFG.logging.turns.enabled:       # "that's not what I said": marks this session's last turn (turns, below)
+        brain.add_tool(*make_mark_tool(CFG, lambda: turns.last_id))
     # Pipecat 1.11 runs the VAD in the user aggregator, not the transport; TransportParams has no
     # vad_analyzer field and silently drops one (the browser test never started a turn because of it).
     vad = SileroVADAnalyzer(params=VADParams(stop_secs=CFG.vad.stop_secs))

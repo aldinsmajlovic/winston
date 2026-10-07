@@ -22,6 +22,8 @@ uv run winston ext call ID TOOL '{"arg": 1}'   # a tool as the brain would call 
 uv run winston ext check ID KIND  # what a kind's check would say now, saying nothing
 uv run winston ext nudges [ID]    # where nudges stand and why each waits; every step is in logs/nudges.jsonl
 uv run winston turns [--day DAY]  # the turn record: each spoken turn, heard, done and said (logging.turns)
+uv run winston turns mark ID KIND # mark one as a mistake (misheard, not_addressed, wrong_action, too_slow); unmark, marked
+uv run winston check turns [--with FILE]  # the marked turns replayed through this setup or a candidate, scored
 ```
 
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on

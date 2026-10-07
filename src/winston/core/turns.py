@@ -17,6 +17,7 @@ gate and is written when the next one starts, the session ends, or his reply is 
 Days older than keep_days are removed when a channel starts and when the day turns."""
 import asyncio
 import json
+import re
 import shutil
 import threading
 import time
@@ -26,10 +27,12 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 from loguru import logger
+from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
@@ -43,9 +46,11 @@ from pipecat.frames.frames import (
     VADUserStoppedSpeakingFrame,
 )
 from pipecat.observers.base_observer import BaseObserver, FramePushed
+from pipecat.services.llm_service import FunctionCallParams
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
+from winston.core import guard
 from winston.core.guard import result_ok
 from winston.core.hints import Heard
 
@@ -94,10 +99,20 @@ class Turn:
     def said(self) -> str:
         return " ".join(s.strip() for s in self.spoken if s.strip())
 
+    @property
+    def ended(self) -> str:
+        """How it ended: as the channel set it, else answered (he spoke or acted) or silent."""
+        return self.outcome or ("answered" if self.said or self.tools else "silent")
+
+    @property
+    def markable(self) -> bool:
+        """A turn he answered or let pass: what "that's not what I said" refers to."""
+        return self.ended in ("answered", "silent")
+
     def line(self) -> dict:
         raw = " ".join(r for r in self.raws if r).strip()
         secs = sum(len(a) for a in self.audio) / self.rate if self.audio else 0.0
-        outcome = self.outcome or ("answered" if self.said or self.tools else "silent")
+        outcome = self.ended
         return {"id": self.id, "ts": round(self.ts, 3), "channel": self.channel, "room": self.room,
                 "start": self.start, "secs": round(secs, 2), "heard": self.heard,
                 **({"raw": raw} if raw and raw != self.heard else {}),
@@ -223,6 +238,7 @@ class SpokenTurns(TurnObserver):
         self._speaking = False
         self._last = 0.0                                    # monotonic time of the last thing that happened
         self._timer: asyncio.TimerHandle | None = None
+        self.last_id: str | None = None                     # the last turn he answered or let pass
 
     async def on_push_frame(self, data: FramePushed):
         if not self.log.enabled:
@@ -293,4 +309,169 @@ class SpokenTurns(TurnObserver):
         if t is not None:
             self._calls.clear()
             self._pending.clear()
+            if t.markable:
+                self.last_id = t.id
             self.log.write(t)
+
+
+# Marks: a mistake noted on a turn, by voice, on the page or from the command line.
+
+KINDS = ("misheard", "not_addressed", "wrong_action", "too_slow")
+_ID = re.compile(r"^[0-9a-f]{12}$")
+
+
+class TurnStore:
+    """Reads the turn record and keeps the marks. A marked turn is copied, line and audio, into
+    <root>/marked/ with its mark, which pruning leaves alone, so it stays until it is unmarked. A mark
+    holds the kind, and when given: what you actually said (said), what you wanted done (wanted), the
+    tools it should call and must not call in the brain trials' terms (expect, forbid), a note."""
+
+    def __init__(self, cfg: WinstonConfig):
+        self.enabled, self.root = cfg.logging.turns.enabled, resolve(cfg.logging.turns.dir)
+        self.marked_dir = self.root / "marked"
+
+    def days(self) -> list[str]:
+        """The days with turns, newest first."""
+        if not self.root.is_dir():
+            return []
+        return sorted((d.name for d in self.root.iterdir() if d.is_dir() and _is_day(d.name)), reverse=True)
+
+    def day(self, day: str) -> list[dict]:
+        """A day's turns from every channel, oldest first, each with its mark if it has one."""
+        if not _is_day(day):
+            raise ValueError(f"not a day: {day!r}")
+        marks = {m["id"]: m["mark"] for m in self.marked()}
+        rows = [{**t, "day": day, **({"mark": marks[t["id"]]} if t["id"] in marks else {})}
+                for t in _read_lines(self.root / day)]
+        return sorted(rows, key=lambda t: t["ts"])
+
+    def marked(self) -> list[dict]:
+        if not self.marked_dir.is_dir():
+            return []
+        rows = []
+        for f in self.marked_dir.glob("*.json"):
+            try:
+                rows.append(json.loads(f.read_text()))
+            except (OSError, ValueError) as e:
+                logger.warning(f"turn record: unreadable mark {f.name}: {e}")
+        return sorted(rows, key=lambda t: t["ts"])
+
+    def find(self, turn_id: str) -> dict | None:
+        """A turn by its id: a marked one first, else the newest day that has it."""
+        _check_id(turn_id)
+        if (f := self.marked_dir / f"{turn_id}.json").is_file():
+            return json.loads(f.read_text())
+        for day in self.days():
+            for t in _read_lines(self.root / day):
+                if t["id"] == turn_id:
+                    return {**t, "day": day}
+        return None
+
+    def audio(self, turn_id: str) -> Path | None:
+        _check_id(turn_id)
+        if (f := self.marked_dir / f"{turn_id}.flac").is_file():
+            return f
+        t = self.find(turn_id)
+        if t and t.get("audio") and (f := self.root / t["day"] / t["audio"]).is_file():
+            return f
+        return None
+
+    def mark(self, turn_id: str, kind: str, *, said: str | None = None, wanted: str | None = None,
+             expect: list[str] | None = None, forbid: list[str] | None = None, note: str | None = None,
+             by: str = "page") -> dict:
+        if kind not in KINDS:
+            raise ValueError(f"kind must be one of {', '.join(KINDS)}")
+        t = self.find(turn_id)
+        if t is None:
+            raise KeyError(f"no turn {turn_id}")
+        mark = {"kind": kind, "by": by, "ts": round(time.time(), 3),
+                **{k: v for k, v in (("said", said), ("wanted", wanted), ("expect", expect), ("forbid", forbid),
+                                     ("note", note)) if v}}
+        self.marked_dir.mkdir(parents=True, exist_ok=True)
+        src = self.audio(turn_id)
+        if src is not None and src.parent != self.marked_dir:
+            shutil.copy2(src, self.marked_dir / f"{turn_id}.flac")
+        record = {**{k: v for k, v in t.items() if k != "mark"}, "mark": mark}
+        (self.marked_dir / f"{turn_id}.json").write_text(json.dumps(record, ensure_ascii=False, indent=1))
+        logger.info(f"turn record: {turn_id} marked {kind} ({by}): {t['heard']!r}")
+        return record
+
+    def unmark(self, turn_id: str) -> bool:
+        _check_id(turn_id)
+        found = False
+        for f in (self.marked_dir / f"{turn_id}.json", self.marked_dir / f"{turn_id}.flac"):
+            if f.is_file():
+                f.unlink()
+                found = True
+        return found
+
+
+def _is_day(name: str) -> bool:
+    try:
+        date.fromisoformat(name)
+        return True
+    except ValueError:
+        return False
+
+
+def _check_id(turn_id: str):
+    if not _ID.match(turn_id or ""):
+        raise ValueError(f"not a turn id: {turn_id!r}")
+
+
+def _read_lines(folder: Path) -> list[dict]:
+    rows = []
+    for f in sorted(folder.glob("*.jsonl")) if folder.is_dir() else []:
+        for line in f.read_text().splitlines():
+            if line.strip():
+                try:
+                    rows.append(json.loads(line))
+                except ValueError:
+                    logger.warning(f"turn record: a broken line in {f}")
+    return rows
+
+
+def make_mark_tool(cfg: WinstonConfig, previous: Callable[[], str | None]):
+    """mark_mistake: you tell him his last turn went wrong ("that's not what I said", "I wasn't talking to
+    you"), and that turn is marked in the record. `previous` gives the id of this conversation's last
+    turn that he answered or let pass, the one before the turn that asks for the mark. He confirms in his
+    own words, from the result."""
+    store = TurnStore(cfg)
+    guard.set_noting("mark_mistake")         # "Noted, sir." is backed by it
+
+    async def mark_mistake(params: FunctionCallParams):
+        a = params.arguments
+        kind = {"not_for_you": "not_addressed", "wrong_thing": "wrong_action"}.get(a.get("kind"), a.get("kind"))
+        if not store.enabled:
+            return await params.result_callback({"error": "turns are not being kept (logging.turns.enabled is "
+                                                          "off), so there is nothing to mark"})
+        turn_id = previous()
+        t = None
+        for _ in range(6):                  # the turn before is written as this one starts; give it a moment
+            if turn_id and (t := store.find(turn_id)):
+                break
+            await asyncio.sleep(0.5)
+            turn_id = turn_id or previous()
+        if not t:
+            return await params.result_callback({"error": "there is no earlier turn in this conversation to mark"})
+        try:
+            store.mark(turn_id, kind, said=_text(a.get("said")), wanted=_text(a.get("wanted")), by="voice")
+        except (KeyError, ValueError) as e:
+            return await params.result_callback({"error": str(e)})
+        await params.result_callback({"marked": kind, "that_turn_heard": t["heard"], "that_turn_said": t["said"]})
+
+    schema = FunctionSchema(
+        name="mark_mistake",
+        description="Mark your previous turn as a mistake, so it can be looked at and used to test fixes. Use it "
+                    "when the user says you misheard them, that they were not talking to you, that you did the "
+                    "wrong thing, or that you were too slow. Then say briefly that it is noted. If they say what "
+                    "they actually said or wanted, pass it.",
+        properties={"kind": {"type": "string", "enum": ["misheard", "not_for_you", "wrong_thing", "too_slow"]},
+                    "said": {"type": "string", "description": "What they actually said, if they told you."},
+                    "wanted": {"type": "string", "description": "What should have happened, if they told you."}},
+        required=["kind"])
+    return schema, mark_mistake
+
+
+def _text(v) -> str | None:
+    return v.strip() if isinstance(v, str) and v.strip() else None

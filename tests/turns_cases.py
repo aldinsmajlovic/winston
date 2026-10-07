@@ -31,7 +31,7 @@ from pipecat.processors.frame_processor import FrameDirection
 from winston.config.schema import WinstonConfig
 from winston.core import turns as turns_mod
 from winston.core.hints import Heard
-from winston.core.turns import SpokenTurns, TurnLog
+from winston.core.turns import SpokenTurns, TurnLog, TurnStore, make_mark_tool
 
 failed = []
 
@@ -176,6 +176,69 @@ def prune(folder: Path):
           ["2026-10-05", "2026-10-07", "marked"])             # today and the two days before
 
 
+def marks(folder: Path):
+    """A marked turn is copied with its audio, outlives its day, and comes off again; ids and kinds are
+    checked, so a request cannot reach outside the folder."""
+    c = cfg(folder)
+    log = TurnLog(c, "satellite")
+    t = log.begin(room="main room", start="wake")
+    t.add("Turn on the lamb.", heard("Turn on the lamb."))
+    log.write_now(t)
+    v = TurnLog(c, "voice")
+    t2 = v.begin(start="speech")
+    t2.add("Hello.", heard("Hello."))
+    v.write_now(t2)
+    store = TurnStore(c)
+    today = date.today().isoformat()
+    check("store: the day merges channels", [x["channel"] for x in store.day(today)], ["satellite", "voice"])
+    rec = store.mark(t.id, "misheard", said="Turn on the lamp.", by="cli")
+    check("mark: kept with what was said", (rec["mark"]["kind"], rec["mark"]["said"]), ("misheard", "Turn on the lamp."))
+    check("mark: shown on its day", store.day(today)[0].get("mark", {}).get("kind"), "misheard")
+    check("mark: audio copied", (store.marked_dir / f"{t.id}.flac").is_file(), True)
+    import shutil
+    shutil.rmtree(folder / today)                        # its day removed by pruning
+    check("mark: outlives its day", (store.find(t.id) or {}).get("heard"), "Turn on the lamb.")
+    check("mark: audio outlives its day", store.audio(t.id) is not None, True)
+    check("mark: listed", [m["id"] for m in store.marked()], [t.id])
+    check("unmark: gone", (store.unmark(t.id), store.find(t.id), store.marked()), (True, None, []))
+    for bad, why in (("../../etc/x", "id"), (t2.id, "kind")):
+        try:
+            store.mark(bad, "misheard" if why == "id" else "rude")
+            failed.append(f"mark: a bad {why} was taken")
+        except ValueError:
+            pass
+
+
+async def voice_mark(folder: Path):
+    """mark_mistake marks the turn before the one that asks, with what was said; off, it says why."""
+    c = cfg(folder)
+    log = TurnLog(c, "voice")
+    t = log.begin(start="speech")
+    t.add("Set a time for ten minutes.", heard("Set a time for ten minutes."))
+    t.spoken.append("I'm not sure what you mean.")
+    log.write_now(t)
+
+    class Params:
+        def __init__(self, arguments):
+            self.arguments, self.result = arguments, None
+
+        async def result_callback(self, r):
+            self.result = r
+
+    _, handler = make_mark_tool(c, lambda: t.id)
+    p1 = Params({"kind": "misheard", "said": "Set a timer for ten minutes."})
+    await handler(p1)
+    check("voice: marked", (p1.result.get("marked"), TurnStore(c).find(t.id)["mark"]["said"], TurnStore(c).find(t.id)["mark"]["by"]),
+          ("misheard", "Set a timer for ten minutes.", "voice"))
+    p2 = Params({"kind": "not_for_you"})
+    await handler(p2)
+    check("voice: the model's word for not addressed", TurnStore(c).find(t.id)["mark"]["kind"], "not_addressed")
+    _, off_handler = make_mark_tool(cfg(folder, enabled=False), lambda: t.id)
+    p3 = Params({"kind": "misheard"})
+    await off_handler(p3)
+    check("voice: off says why", "not being kept" in p3.result.get("error", ""), True)
+
+
 def off(folder: Path):
     log = TurnLog(cfg(folder, enabled=False), "voice")
     turns = SpokenTurns(log)
@@ -194,8 +257,10 @@ with tempfile.TemporaryDirectory() as tmp:
     asyncio.run(browser_turns(root / "browser"))
     asyncio.run(reply_over(root / "over"))
     prune(root / "prune")
+    marks(root / "marks")
+    asyncio.run(voice_mark(root / "voice_mark"))
     off(root / "off")
 
 if failed:
     print("\n".join(failed)); sys.exit(1)
-print("turns: box and browser turns written, a reply over ends a turn, old days removed, off writes nothing")
+print("turns: box and browser turns written, a reply over ends a turn, old days removed, marks kept and checked, off writes nothing")

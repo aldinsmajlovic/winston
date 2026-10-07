@@ -13,7 +13,7 @@ from loguru import logger
 
 from winston import __version__
 from winston.cli.ext import ext_app
-from winston.config import data_dir, load, repo_root, resolve
+from winston.config import data_dir, load, repo_root
 
 app = typer.Typer(help="Winston, a self-hosted voice assistant.", no_args_is_help=True, add_completion=False)
 config_app = typer.Typer(help="Inspect the configuration.")
@@ -159,30 +159,83 @@ def memory():
     print(f"\n({vault(cfg)})")
 
 
-@app.command()
-def turns(day: str = typer.Option(None, help="The day to show, YYYY-MM-DD; today when left out."),
-          last: int = typer.Option(30, help="How many of the day's turns, newest last.")):
-    """The turn record: each spoken turn of a day, what was heard, what he did and said (logging.turns)."""
-    import json
-    from datetime import date, datetime
+turns_app = typer.Typer(help="The turn record: each spoken turn with its audio (logging.turns), and its marks.",
+                        invoke_without_command=True, no_args_is_help=False)
+app.add_typer(turns_app, name="turns")
 
-    cfg = load()
-    folder = resolve(cfg.logging.turns.dir) / (day or date.today().isoformat())
-    rows = sorted((json.loads(x) for f in folder.glob("*.jsonl") for x in f.read_text().splitlines() if x.strip()),
-                  key=lambda t: t["ts"])
-    if not cfg.logging.turns.enabled:
+
+def _turn_line(t: dict) -> str:
+    from datetime import datetime
+    tools = ", ".join(c["name"].split("__")[-1] for c in t["tools"])
+    mark = f"  [{t['mark']['kind']}]" if t.get("mark") else ""
+    return (f"{datetime.fromtimestamp(t['ts']):%H:%M:%S}  {t['id']}  {t['channel']:<9} {t['start']:<9} {t['outcome']:<13} "
+            f"{t['heard']!r}" + (f" [{tools}]" if tools else "") + (f" -> {t['said']!r}" if t["said"] else "") + mark)
+
+
+@turns_app.callback()
+def turns_list(ctx: typer.Context,
+               day: str = typer.Option(None, help="The day to show, YYYY-MM-DD; the newest when left out."),
+               last: int = typer.Option(30, help="How many of the day's turns, newest last.")):
+    """Each spoken turn of a day: what was heard, what he did and said, and any mark."""
+    if ctx.invoked_subcommand:
+        return
+    from winston.core.turns import TurnStore
+    store = TurnStore(load())
+    if not store.enabled:
         print("Turns are not being kept (logging.turns.enabled is off).")
+    days = store.days()
+    day = day or (days[0] if days else None)
+    rows = store.day(day) if day else []
     if not rows:
-        print(f"No turns in {folder}."); return
+        print(f"No turns{f' on {day}' if day else ''} in {store.root}."); return
     for t in rows[-last:]:
-        tools = ", ".join(c["name"].split("__")[-1] for c in t["tools"])
-        print(f"{datetime.fromtimestamp(t['ts']):%H:%M:%S}  {t['channel']:<9} {t['start']:<9} {t['outcome']:<13} "
-              f"{t['heard']!r}" + (f" [{tools}]" if tools else "") + (f" -> {t['said']!r}" if t["said"] else ""))
-    print(f"\n{len(rows)} turns in {folder}")
+        print(_turn_line(t))
+    print(f"\n{len(rows)} turns on {day}; other days: {', '.join(d for d in days if d != day)[:200] or 'none'}")
+
+
+@turns_app.command("mark")
+def turns_mark(turn_id: str,
+               kind: str = typer.Argument(..., help="misheard | not_addressed | wrong_action | too_slow"),
+               said: str = typer.Option(None, help="What you actually said."),
+               wanted: str = typer.Option(None, help="What should have happened."),
+               expect: list[str] = typer.Option(None, help="A tool it should call (substring, a|b for either)."),
+               forbid: list[str] = typer.Option(None, help="A tool it must not call (substring)."),
+               note: str = typer.Option(None)):
+    """Mark a turn as a mistake; it is kept until unmarked and replayed by `winston check turns`."""
+    from winston.core.turns import TurnStore
+    try:
+        t = TurnStore(load()).mark(turn_id, kind, said=said, wanted=wanted, expect=expect, forbid=forbid, note=note,
+                                   by="cli")
+    except (KeyError, ValueError) as e:
+        print(e.args[0] if e.args else e); raise typer.Exit(1)
+    print(_turn_line(t))
+
+
+@turns_app.command("unmark")
+def turns_unmark(turn_id: str):
+    """Take a turn's mark off; it is then removed with its day."""
+    from winston.core.turns import TurnStore
+    try:
+        found = TurnStore(load()).unmark(turn_id)
+    except ValueError as e:
+        print(e); raise typer.Exit(1)
+    print("unmarked" if found else f"turn {turn_id} has no mark")
+
+
+@turns_app.command("marked")
+def turns_marked():
+    """Every marked turn, oldest first."""
+    from winston.core.turns import TurnStore
+    rows = TurnStore(load()).marked()
+    for t in rows:
+        print(f"{t['day']}  {_turn_line(t)}")
+    print(f"{len(rows)} marked")
 
 
 @app.command()
-def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | brain | clone | all")):
+def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | brain | clone | turns | all"),
+          with_: Path = typer.Option(None, "--with", help="turns: a config file laid over the config, a candidate "
+                                                            "setup to score")):
     """Run the checks: unit needs nothing, ui a built web UI (a throwaway winstond on a copy of data/),
     the milestones need the engines up."""
     tests = repo_root() / "tests"
@@ -199,9 +252,10 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
             "m1": [sys.executable, str(tests / "m1_ha.py")],
             "m2": [sys.executable, str(tests / "m2_components.py")],
             "brain": [sys.executable, str(tests / "brain_trials.py")],
-            "clone": [sys.executable, str(tests / "clone_voice_headless.py")]}
-    # brain is a comparison and clone takes a minute and a half; both run on purpose
-    names = [n for n in plan if n not in ("brain", "clone")] if which == "all" else [which]
+            "clone": [sys.executable, str(tests / "clone_voice_headless.py")],
+            "turns": [sys.executable, str(tests / "turns_check.py"), *(["--with", str(with_)] if with_ else [])]}
+    # brain and turns are comparisons and clone takes a minute and a half; they run on purpose
+    names = [n for n in plan if n not in ("brain", "clone", "turns")] if which == "all" else [which]
     failed = []
     for n in names:
         print(f"\n=== {n}")

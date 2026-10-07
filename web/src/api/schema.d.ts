@@ -533,6 +533,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A day's spoken turns: heard, done, said, and any mark */
+        get: operations["turns_day_api_turns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/turns/marked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every marked turn, oldest first */
+        get: operations["turns_marked_api_turns_marked_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/turns/{turn_id}/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A turn's audio, as the speech engine heard it */
+        get: operations["turn_audio_api_turns__turn_id__audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/turns/{turn_id}/mark": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark a turn as a mistake */
+        put: operations["mark_turn_api_turns__turn_id__mark_put"];
+        post?: never;
+        /** Take a turn's mark off */
+        delete: operations["unmark_turn_api_turns__turn_id__mark_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory": {
         parameters: {
             query?: never;
@@ -3222,6 +3291,139 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** TurnDay */
+        TurnDay: {
+            /**
+             * Enabled
+             * @description Whether turns are being kept (logging.turns.enabled)
+             */
+            enabled: boolean;
+            /** Day */
+            day: string;
+            /**
+             * Days
+             * @description Every day with turns, newest first
+             */
+            days: string[];
+            /** Turns */
+            turns: components["schemas"]["TurnRecord"][];
+        };
+        /** TurnMark */
+        TurnMark: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "misheard" | "not_addressed" | "wrong_action" | "too_slow";
+            /** Said */
+            said?: string | null;
+            /** Wanted */
+            wanted?: string | null;
+            /** Expect */
+            expect?: string[] | null;
+            /** Forbid */
+            forbid?: string[] | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * By
+             * @default page
+             */
+            by?: string;
+            /**
+             * Ts
+             * @default 0
+             */
+            ts?: number;
+        };
+        /**
+         * TurnMarkBody
+         * @description A mistake noted on a turn (core/turns.py): its kind, and when known what you actually said, what
+         *     you wanted done, and the tools it should and must not call (the brain trials' substrings).
+         */
+        TurnMarkBody: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "misheard" | "not_addressed" | "wrong_action" | "too_slow";
+            /** Said */
+            said?: string | null;
+            /** Wanted */
+            wanted?: string | null;
+            /** Expect */
+            expect?: string[] | null;
+            /** Forbid */
+            forbid?: string[] | null;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * TurnRecord
+         * @description One spoken turn as the record keeps it (docs/understanding.md, part 1).
+         */
+        TurnRecord: {
+            /** Id */
+            id: string;
+            /** Ts */
+            ts: number;
+            /** Day */
+            day: string;
+            /** Channel */
+            channel: string;
+            /** Room */
+            room?: string | null;
+            /** Start */
+            start: string;
+            /**
+             * Secs
+             * @default 0
+             */
+            secs?: number;
+            /** Heard */
+            heard: string;
+            /** Raw */
+            raw?: string | null;
+            /** Engine */
+            engine?: string | null;
+            /** Stt Ms */
+            stt_ms?: number | null;
+            /** First Token Ms */
+            first_token_ms?: number | null;
+            /** First Audio Ms */
+            first_audio_ms?: number | null;
+            /**
+             * Tools
+             * @default []
+             */
+            tools?: components["schemas"]["TurnTool"][];
+            /**
+             * Said
+             * @default
+             */
+            said?: string;
+            /** Outcome */
+            outcome: string;
+            /** Audio */
+            audio?: string | null;
+            mark?: components["schemas"]["TurnMark"] | null;
+        };
+        /** TurnTool */
+        TurnTool: {
+            /** Name */
+            name: string;
+            /**
+             * Args
+             * @default {}
+             */
+            args?: {
+                [key: string]: unknown;
+            };
+            /** Ok */
+            ok?: boolean | null;
+            /** Result */
+            result?: string | null;
+        };
         /**
          * TurnsConfig
          * @description The turn record (core/turns.py, docs/understanding.md).
@@ -4500,6 +4702,155 @@ export interface operations {
             header?: never;
             path: {
                 slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    turns_day_api_turns_get: {
+        parameters: {
+            query?: {
+                /** @description YYYY-MM-DD; the newest day with turns if left out */
+                day?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnDay"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    turns_marked_api_turns_marked_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRecord"][];
+                };
+            };
+        };
+    };
+    turn_audio_api_turns__turn_id__audio_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/flac": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_turn_api_turns__turn_id__mark_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TurnMarkBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TurnRecord"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unmark_turn_api_turns__turn_id__mark_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                turn_id: string;
             };
             cookie?: never;
         };

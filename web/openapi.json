@@ -1323,6 +1323,197 @@
         }
       }
     },
+    "/api/turns": {
+      "get": {
+        "summary": "A day's spoken turns: heard, done, said, and any mark",
+        "operationId": "turns_day_api_turns_get",
+        "parameters": [
+          {
+            "name": "day",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "YYYY-MM-DD; the newest day with turns if left out",
+              "title": "Day"
+            },
+            "description": "YYYY-MM-DD; the newest day with turns if left out"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnDay"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/turns/marked": {
+      "get": {
+        "summary": "Every marked turn, oldest first",
+        "operationId": "turns_marked_api_turns_marked_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TurnRecord"
+                  },
+                  "type": "array",
+                  "title": "Response Turns Marked Api Turns Marked Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/turns/{turn_id}/audio": {
+      "get": {
+        "summary": "A turn's audio, as the speech engine heard it",
+        "operationId": "turn_audio_api_turns__turn_id__audio_get",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turn Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "audio/flac": {}
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/turns/{turn_id}/mark": {
+      "put": {
+        "summary": "Mark a turn as a mistake",
+        "operationId": "mark_turn_api_turns__turn_id__mark_put",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turn Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnMarkBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnRecord"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Take a turn's mark off",
+        "operationId": "unmark_turn_api_turns__turn_id__mark_delete",
+        "parameters": [
+          {
+            "name": "turn_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turn Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/memory": {
       "get": {
         "summary": "Everything he remembers, by topic, as stored",
@@ -7476,6 +7667,403 @@
           "text"
         ],
         "title": "TopicRestore"
+      },
+      "TurnDay": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether turns are being kept (logging.turns.enabled)"
+          },
+          "day": {
+            "type": "string",
+            "title": "Day"
+          },
+          "days": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Days",
+            "description": "Every day with turns, newest first"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/TurnRecord"
+            },
+            "type": "array",
+            "title": "Turns"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "day",
+          "days",
+          "turns"
+        ],
+        "title": "TurnDay"
+      },
+      "TurnMark": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "misheard",
+              "not_addressed",
+              "wrong_action",
+              "too_slow"
+            ],
+            "title": "Kind"
+          },
+          "said": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Said"
+          },
+          "wanted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wanted"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expect"
+          },
+          "forbid": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forbid"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "by": {
+            "type": "string",
+            "title": "By",
+            "default": "page"
+          },
+          "ts": {
+            "type": "number",
+            "title": "Ts",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "TurnMark"
+      },
+      "TurnMarkBody": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "misheard",
+              "not_addressed",
+              "wrong_action",
+              "too_slow"
+            ],
+            "title": "Kind"
+          },
+          "said": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Said"
+          },
+          "wanted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wanted"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expect"
+          },
+          "forbid": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forbid"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "title": "TurnMarkBody",
+        "description": "A mistake noted on a turn (core/turns.py): its kind, and when known what you actually said, what\nyou wanted done, and the tools it should and must not call (the brain trials' substrings)."
+      },
+      "TurnRecord": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ts": {
+            "type": "number",
+            "title": "Ts"
+          },
+          "day": {
+            "type": "string",
+            "title": "Day"
+          },
+          "channel": {
+            "type": "string",
+            "title": "Channel"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "start": {
+            "type": "string",
+            "title": "Start"
+          },
+          "secs": {
+            "type": "number",
+            "title": "Secs",
+            "default": 0
+          },
+          "heard": {
+            "type": "string",
+            "title": "Heard"
+          },
+          "raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "stt_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stt Ms"
+          },
+          "first_token_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Token Ms"
+          },
+          "first_audio_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Audio Ms"
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/TurnTool"
+            },
+            "type": "array",
+            "title": "Tools",
+            "default": []
+          },
+          "said": {
+            "type": "string",
+            "title": "Said",
+            "default": ""
+          },
+          "outcome": {
+            "type": "string",
+            "title": "Outcome"
+          },
+          "audio": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio"
+          },
+          "mark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TurnMark"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ts",
+          "day",
+          "channel",
+          "start",
+          "heard",
+          "outcome"
+        ],
+        "title": "TurnRecord",
+        "description": "One spoken turn as the record keeps it (docs/understanding.md, part 1)."
+      },
+      "TurnTool": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "args": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Args",
+            "default": {}
+          },
+          "ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ok"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "TurnTool"
       },
       "TurnsConfig": {
         "properties": {

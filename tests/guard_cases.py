@@ -7,9 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from winston.config.schema import HomeAssistantConfig
-from winston.core.guard import judge, set_tier, targets
+from winston.core.guard import judge, set_noting, set_tier, targets
 
 set_tier("follow_up", "act")        # as every brain registers it while an extension can speak up
+set_noting("follow_up")
+set_noting("mark_mistake")         # as core/turns.py declares it
 
 ACT_OK = [("light__HassLightSet", True)]
 ACT_FAILED = [("intent__HassTurnOn", False)]
@@ -82,6 +84,10 @@ CASES = [
     ("Noted.", ACT_OK, "act"),
     ("Noted, sir. I'll remind you tomorrow at seventeen hundred.", [("follow_up", True)], None),  # put off
     ("Noted, sir.", [("follow_up", False)], "act"),                   # the follow-up did not go through
+    ("Noted, sir. I've marked that as misheard.", [("mark_mistake", True)], None),   # a declared noting tool
+    ("I've made a note of that mistake.", [("mark_mistake", True)], None),
+    ("I've made a note of that.", [("light__HassLightSet", True)], "act"),            # a light is no note
+    ("I'll remember that.", [("mark_mistake", True)], "act"),        # a mark is not memory
     ("Very good, noted.", [("remember", True)], None),
     ("Got it, I'll remember that the dentist moved to Friday.", [("remember", True)], None),
     ("I removed the note about the dentist.", [], "act"),

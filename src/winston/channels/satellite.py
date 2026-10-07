@@ -41,6 +41,7 @@ import socket
 import struct
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -72,7 +73,7 @@ from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
 from winston.core.speak_up import WORDING_SECS, Mentions
-from winston.core.turns import Turn, TurnLog, TurnObserver
+from winston.core.turns import Turn, TurnLog, TurnObserver, make_mark_tool
 from winston.extension_host.client import tools_changed
 
 MIC_RATE = 16000                 # what the box streams
@@ -161,8 +162,9 @@ class Conversation:
     """One box's conversation: the brain with its tools, the claim guard and the TTS, kept between
     wake-ups until it idles out."""
 
-    def __init__(self, cfg: WinstonConfig, room: str, feed: FeedPoster):
+    def __init__(self, cfg: WinstonConfig, room: str, feed: FeedPoster, previous: Callable[[], str | None] | None = None):
         self.cfg, self.room, self.feed = cfg, room, feed
+        self.previous = previous            # the box's last turn he answered, for mark_mistake
         self.last_used = time.monotonic()
         self.link = RoomLink(room, f"box:{room}:{uuid.uuid4().hex[:6]}", http_sync(cfg))
 
@@ -170,6 +172,8 @@ class Conversation:
         cfg = self.cfg
         self.brain = Brain(cfg, channel="satellite"); await self.brain.start()
         self.brain.add_tool(*make_use_voice_tool(cfg, channel="satellite"))   # a voice cloned in the browser
+        if self.previous and cfg.logging.turns.enabled:
+            self.brain.add_tool(*make_mark_tool(cfg, self.previous))        # "that's not what I said"
         agg = LLMContextAggregatorPair(self.brain.new_context())
         guard = ClaimGuard(cfg, channel="satellite")
         self.tracker = TurnTracker(guard)             # a reply is not over while the guard retries
@@ -252,6 +256,7 @@ class Satellite:
                  stt: Hearing, feed: FeedPoster, turns: TurnLog | None = None):
         self.cfg, self.room, self.dev, self.audio, self.stt, self.feed = cfg, room, dev, audio, stt, feed
         self.turns = turns                  # the turn record, shared by the process's boxes (core/turns.py)
+        self._last_turn: str | None = None   # the last turn he answered or let pass, for a mark by voice
         key = os.environ.get(dev.key_env, "").strip() if dev.key_env else ""
         if dev.key_env and not key:
             raise RuntimeError(f"{dev.key_env} is not set (data/.env)")
@@ -289,7 +294,7 @@ class Satellite:
         logger.info(f"{self.room}: connected to {info.friendly_name or info.name} ({info.model}, ESPHome "
                     f"{info.esphome_version})")
         if self.conversation is None:            # ready before the first wake word, prompt already read
-            self.conversation = await Conversation(self.cfg, self.room, self.feed).start()
+            self.conversation = await Conversation(self.cfg, self.room, self.feed, lambda: self._last_turn).start()
             await self.conversation.brain.warm()
         self._unsub = self.client.subscribe_voice_assistant(
             handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio,
@@ -555,6 +560,8 @@ class Satellite:
     def _record(self, turn: Turn | None, outcome: str | None = None):
         if turn is not None and self.turns is not None:
             turn.outcome = outcome or turn.outcome
+            if turn.markable:
+                self._last_turn = turn.id
             self.turns.write(turn)
 
     async def _conversation(self) -> Conversation:
@@ -565,7 +572,7 @@ class Satellite:
             logger.info(f"{self.room}: extension tools changed; a new conversation with them")
             await c.close(); c = None
         if c is None:
-            c = self.conversation = await Conversation(self.cfg, self.room, self.feed).start()
+            c = self.conversation = await Conversation(self.cfg, self.room, self.feed, lambda: self._last_turn).start()
         return c
 
     async def _hold(self):

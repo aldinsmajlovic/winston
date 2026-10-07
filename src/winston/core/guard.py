@@ -53,6 +53,15 @@ def set_tier(name: str, tier: str) -> None:
     DECLARED[name] = tier
 
 
+# Tools that note something for later (a reminder put off, a mistake marked), declared where the tool is
+# made, so the guard keeps no list of their names: each backs "Noted." and "I've made a note".
+NOTING: set[str] = set()
+
+
+def set_noting(name: str) -> None:
+    NOTING.add(name)
+
+
 def tool_tier(name: str) -> str:
     """A tool's declared tier when it has one (an extension's); otherwise read tools only look
     (GetLiveContext, GetDateTime, get_sensor_readings, web_search, ask_claude) and everything else acts."""
@@ -81,15 +90,16 @@ _ACT_STRONG = re.compile(
     r"sen[dt]|messag(?:e|ed))\b"
     r"|\b(?:has|have) been (?:set|turned|switched|dimmed|changed|adjusted|booted|sent)\b"
     r"|\b(?:turned|switched) (?:on|off)\b|^(?:(?:it'?s|it is|that'?s|that is|all) )?done\b")
-# "I'll remember that", "I've noted it", "I've forgotten that": a memory claim, backed only by the memory
-# tools (remember, forget). Bare "I remember" is recall from the prompt, not a claim. A bare "Noted." is
-# also what he says to a nudge put off ("Noted, sir. I'll remind you tomorrow."), so follow_up backs it too.
+# "I'll remember that", "I'll keep it in mind", "I've forgotten that": a memory claim, backed only by the
+# memory tools (remember, forget). Bare "I remember" is recall from the prompt, not a claim. "Noted." and
+# "I've made a note" are noting claims: a memory tool backs them, and so does any tool declared as noting
+# (set_noting: follow_up for a nudge put off, "Noted, sir. I'll remind you tomorrow."; mark_mistake).
 MEMORY_TOOLS = {"remember", "forget"}
-_REMEMBER = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? (?:remember|noted?|made a note)\b"
+_REMEMBER = re.compile(r"\bi(?:'ll| will|'ve| have)(?: just)? remember\b"
                        r"|\bi'll keep (?:that|it|this) in mind\b"
                        r"|\bi(?:'ve| have)(?: just)? forgotten\b")
-_NOTED = re.compile(r"^(?:got it, |very good, |very well, )?noted\b")
-NOTING_TOOLS = MEMORY_TOOLS | {"follow_up"}
+_NOTED = re.compile(r"^(?:got it, |very good, |very well, )?noted\b"
+                    r"|\bi(?:'ll| will|'ve| have)(?: just)? (?:noted?|made a note)\b")
 # "I've updated it", "I removed milk from the list", "I've saved that": a change claim that may be about
 # memory or about the home (a to-do list, a voice); any act tool backs it, only a memory tool when the
 # sentence says it is about memory ("I removed the note about the dentist").
@@ -134,7 +144,7 @@ def judge(text: str, tools: list[tuple[str, bool]], names: re.Pattern = _GENERIC
     targets(cfg)."""
     ok = {tool_tier(name) for name, succeeded in tools if succeeded}
     memory_ok = any(succeeded and name.split("__")[-1].lower() in MEMORY_TOOLS for name, succeeded in tools)
-    noted_ok = any(succeeded and name.split("__")[-1].lower() in NOTING_TOOLS for name, succeeded in tools)
+    noted_ok = memory_ok or any(succeeded and name in NOTING for name, succeeded in tools)
     for s in re.split(r"(?<=[.!])\s+", text.lower()):
         if _SKIP.search(s):
             continue

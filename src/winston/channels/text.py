@@ -81,8 +81,9 @@ class TextSession:
         reply = await s.ask("turn on the lights"); await s.close()"""
 
     def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False, observers: list | None = None,
-                 room: RoomLink | None = None, area: str | None = None):
+                 room: RoomLink | None = None, area: str | None = None, brain_channel: str = "text"):
         self.cfg, self.channel, self.echo, self.room, self.area = cfg, channel, echo, room, area
+        self.brain_channel = brain_channel   # whose thinking the brain uses: a replayed spoken turn's own channel
         self._extra = observers or []
         self.last_used = time.monotonic()
         self._lock = asyncio.Lock()          # one question at a time; a second waits its turn
@@ -92,7 +93,7 @@ class TextSession:
 
     async def start(self):
         cfg = self.cfg
-        self.brain = Brain(cfg, channel="text"); await self.brain.start()
+        self.brain = Brain(cfg, channel=self.brain_channel); await self.brain.start()
         self.brain.verifier.channel = self.channel          # its log says web or discord, not text
         agg = LLMContextAggregatorPair(self.brain.new_context())
         guard = ClaimGuard(cfg, channel=self.channel, spoken=False)

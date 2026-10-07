@@ -18,6 +18,7 @@ back to metric and a 24-hour clock.
 | `send_message` | A Discord DM to a listed contact or you | `DISCORD_BOT_TOKEN`, `channels.discord.contacts` | Listed names only |
 | `clone_voice` | Records a friend who agrees out loud and speaks in their voice ([voices](voices.md#cloned-voices)) | The voice channel | Spoken consent, checked for the words and for the same voice as the sample; typed channels only say to ask by voice |
 | `use_voice` | Switches to a cloned voice or back to his own, optionally kept in config | The voice channel or a Voice PE box | Cloned voices only |
+| `mark_mistake` | Marks his previous turn as a mistake when you say so ("that's not what I said", "I wasn't talking to you", "that was the wrong thing", "too slow"), with what you actually said or wanted if you say it ([understanding](understanding.md#1-turn-record-and-marks)) | `logging.turns.enabled`, a spoken channel | The turn before the one that asks |
 | `follow_up` | Answers a nudge he spoke up with: later (with when and your reason), dismiss, mute its kind, why, or the extension's own action ([speaking up](extensions.md#speaking-up)) | An extension switched on that declares a kind | Times are read by code and said back as set; a restricted action waits for your confirmation |
 
 Only the question text leaves the house for `web_search` and `ask_claude`: no home state, no memory.
