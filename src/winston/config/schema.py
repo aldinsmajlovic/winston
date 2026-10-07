@@ -655,8 +655,24 @@ class SpeakUpConfig(Model):
         json_schema_extra=ui("advanced", key_title="Part", value_title="Time"))
 
 
+class TurnsConfig(Model):
+    """The turn record (core/turns.py, docs/understanding.md)."""
+    model_config = section("voice", "satellite")
+    enabled: bool = Field(False, title="Keep turns",
+                          description="Keep each spoken turn: the audio of what you said, what he heard, what he did "
+                                      "and said, and how long each step took. Used to find and mark his mistakes and "
+                                      "to test changes on them. Stays on this machine.")
+    keep_days: int = Field(14, ge=1, le=365, title="Keep for (days)",
+                           description="Days a turn is kept; older days are removed.")
+    dir: str = Field("turns", title="Folder",
+                     description="Where turns are kept, relative to the data directory.",
+                     json_schema_extra=ui("advanced"))
+
+
 class LoggingConfig(Model):
     model_config = section("{brains}")
+    turns: TurnsConfig = Field(default_factory=TurnsConfig, title="Turns",
+                               description="Each spoken turn kept with its audio, to find his mistakes and test changes.")
     tool_calls: str = Field("logs/tool_calls.jsonl", title="Tool calls",
                             description="Every tool call with its arguments and result, one JSON line each, "
                                         "relative to the data directory.",

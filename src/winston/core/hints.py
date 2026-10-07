@@ -262,18 +262,47 @@ class Hearing:
         """The words for an engine that takes them in advance; None for one that cannot (Parakeet)."""
         return self.words(extra) if getattr(self.adapter, "supports_hints", False) else None
 
-    def finish(self, text: str, secs: float, ms: float, label: str = "STT",
-               extra: list[str] | tuple[str, ...] = ()) -> str:
-        """Correct what the engine heard and log it: "STT 2.1s audio -> 'Hey Winson.' -> 'Hey Winston.' in 190 ms"."""
+    @property
+    def engine(self) -> str:
+        """Which engine heard: "parakeet/nemo-parakeet-tdt-0.6b-v3", kept with each turn."""
+        return f"{self.cfg.stt.provider}/{self.cfg.stt.model}"
+
+    def heard(self, text: str, secs: float, ms: float, label: str = "STT", extra: list[str] | tuple[str, ...] = (),
+              audio: np.ndarray | None = None, rate: int = 0) -> "Heard":
+        """Correct what the engine heard and log it: "STT 2.1s audio -> 'Hey Winson.' -> 'Hey Winston.' in 190 ms".
+        The audio, when given, travels with the result so the turn record can keep it (core/turns.py)."""
         text = (text or "").strip()
         fixed, changes = correct(text, self.words(extra)) if self.cfg.stt.fix_misspellings else (text, [])
         shown = f"{text!r} -> {fixed!r} (" + ", ".join(f"{a} -> {b}" for a, b in changes) + ")" if changes else repr(text)
         logger.info(f"{label} {secs:.2f}s audio -> {shown} in {ms:.0f} ms")
-        return fixed
+        return Heard(fixed, text, changes, secs, round(ms), self.engine, audio, rate)
 
-    async def transcribe(self, pcm: np.ndarray, rate: int, label: str = "STT",
-                         extra: list[str] | tuple[str, ...] = ()) -> str:
+    def finish(self, text: str, secs: float, ms: float, label: str = "STT",
+               extra: list[str] | tuple[str, ...] = ()) -> str:
+        return self.heard(text, secs, ms, label, extra).text
+
+    async def hear(self, pcm: np.ndarray, rate: int, label: str = "STT",
+                   extra: list[str] | tuple[str, ...] = ()) -> "Heard":
         """int16 audio to corrected text, off the event loop, with the adapter's static transcribe."""
         t0 = time.perf_counter()
         text = await asyncio.to_thread(self.adapter.transcribe, self.model, pcm, rate, self.engine_hints(extra))
-        return self.finish(text, len(pcm) / rate, (time.perf_counter() - t0) * 1000, label, extra)
+        return self.heard(text, len(pcm) / rate, (time.perf_counter() - t0) * 1000, label, extra, pcm, rate)
+
+    async def transcribe(self, pcm: np.ndarray, rate: int, label: str = "STT",
+                         extra: list[str] | tuple[str, ...] = ()) -> str:
+        return (await self.hear(pcm, rate, label, extra)).text
+
+
+@dataclass
+class Heard:
+    """What the engine made of one utterance: the corrected text, what the engine said before the
+    correction, each change (heard, hint word), seconds of audio, milliseconds it took, which engine, and
+    the int16 audio itself when the caller passed it."""
+    text: str
+    raw: str
+    changes: list[tuple[str, str]]
+    secs: float
+    ms: int
+    engine: str
+    audio: np.ndarray | None = None
+    rate: int = 0

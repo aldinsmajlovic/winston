@@ -67,11 +67,12 @@ from winston.config.registry import get as get_adapter
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.brain import Brain, Clock, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
-from winston.core.hints import Hearing
+from winston.core.hints import Heard, Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
 from winston.core.speak_up import WORDING_SECS, Mentions
+from winston.core.turns import Turn, TurnLog, TurnObserver
 from winston.extension_host.client import tools_changed
 
 MIC_RATE = 16000                 # what the box streams
@@ -116,6 +117,7 @@ class Run:
     audio_secs: float = 0.0                                 # reply audio sent to the box so far
     audio_start: float = 0.0                                # perf_counter() of the first of it
     follow_up: bool = False                                 # started by the box after a reply, no wake word
+    start: str = "wake"                                     # wake, follow_up or button, for the turn record
     start_timeout: float = START_TIMEOUT_SECS               # no speech this long after the start: give up
 
     def playing_for(self) -> float:
@@ -173,6 +175,7 @@ class Conversation:
         self.tracker = TurnTracker(guard)             # a reply is not over while the guard retries
         self.speaker = Speaker(cfg.tts.sample_rate)
         self.latency = LatencyLog(cfg, "satellite")
+        self.turns = TurnObserver()                   # fills in the open turn record
         self.worker = PipelineWorker(
             Pipeline([agg.user(), Clock(area(cfg, self.room)), Mentions(cfg), self.link.before, self.brain.llm, guard,
                       build_tts(cfg),
@@ -180,7 +183,7 @@ class Conversation:
             params=PipelineParams(enable_metrics=False), idle_timeout_secs=None,
             observers=[guard.observer, self.brain.verifier.observer, self.tracker,
                        ToolCallLogObserver(cfg, channel="satellite"),
-                       LiveObserver("satellite", self.feed.put, spoken=True), self.latency])
+                       LiveObserver("satellite", self.feed.put, spoken=True), self.latency, self.turns])
         self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self.worker))
         self.brain.verifier.deliver = self.correct
         self.brain.on_slow = lambda text: self.worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
@@ -246,8 +249,9 @@ class Satellite:
     """One box: the API connection, its voice assistant subscription and its runs."""
 
     def __init__(self, cfg: WinstonConfig, room: str, dev: SatelliteDevice, audio: "AudioServer",
-                 stt: Hearing, feed: FeedPoster):
+                 stt: Hearing, feed: FeedPoster, turns: TurnLog | None = None):
         self.cfg, self.room, self.dev, self.audio, self.stt, self.feed = cfg, room, dev, audio, stt, feed
+        self.turns = turns                  # the turn record, shared by the process's boxes (core/turns.py)
         key = os.environ.get(dev.key_env, "").strip() if dev.key_env else ""
         if dev.key_env and not key:
             raise RuntimeError(f"{dev.key_env} is not set (data/.env)")
@@ -495,6 +499,7 @@ class Satellite:
         # The box listening on after a reply; it names the last wake word then too, so only the time tells.
         if time.monotonic() < self._follow_until:
             self.run.follow_up, self.run.start_timeout = True, self._follow_secs
+        self.run.start = "follow_up" if self.run.follow_up else "wake" if wake_word else "button"
         self._follow_until = 0.0
         self.mic.hold(HOLD_SECS)                # a browser in the room stops listening before the request
         self.audio.runs[self.run.id] = self.run
@@ -544,8 +549,13 @@ class Satellite:
         run.speech_end = time.time() - (len(buf) - (last + 1) * VAD_FRAME) / MIC_RATE
         return buf
 
-    async def _transcribe(self, pcm: np.ndarray) -> str:
-        return await self.stt.transcribe(pcm, MIC_RATE, label=f"{self.room}: STT")
+    async def _transcribe(self, pcm: np.ndarray) -> Heard:
+        return await self.stt.hear(pcm, MIC_RATE, label=f"{self.room}: STT")
+
+    def _record(self, turn: Turn | None, outcome: str | None = None):
+        if turn is not None and self.turns is not None:
+            turn.outcome = outcome or turn.outcome
+            self.turns.write(turn)
 
     async def _conversation(self) -> Conversation:
         c = self.conversation
@@ -567,6 +577,8 @@ class Satellite:
         url = f"{self.audio.base_url(self.dev.host)}/reply/{run.id}.flac"
         holding = asyncio.create_task(self._hold())
         follow_up = False
+        turn: Turn | None = None
+        conv: Conversation | None = None
         try:
             async with self._lock:
                 self._event(Ev.VOICE_ASSISTANT_RUN_START, {"url": url})
@@ -574,15 +586,24 @@ class Satellite:
                 self.feed.put(LiveEvent(channel="satellite", type="state", state="listening"))
                 pcm = await self._listen(run)
                 self._event(Ev.VOICE_ASSISTANT_STT_VAD_END)          # the box stops its mic and waits
-                heard = await self._transcribe(pcm) if pcm is not None else ""
+                got = await self._transcribe(pcm) if pcm is not None else None
+                heard = got.text if got else ""
                 t_heard = time.perf_counter()
+                if got is not None and self.turns is not None:
+                    turn = self.turns.begin(room=self.room, start=run.start, ts=run.speech_end)
+                    turn.add(heard, got)
+                    turn.stt_ms = turn.ms_since_end()
                 logger.info(f"{self.room}: heard {heard!r}")
                 if heard and dismissal(heard, self.cfg.assistant.name):
                     logger.info(f"{self.room}: dismissed, the conversation ends")
                     heard = ""
+                    if turn:
+                        turn.outcome = "dismissed"
                 elif not heard and run.follow_up:
                     logger.info(f"{self.room}: follow-up closed, nothing said")
                 if not heard:
+                    if turn and not turn.outcome:
+                        turn.outcome = "nothing_heard"
                     # Always this error, which the firmware shows and plays nothing for: it is what takes the
                     # box back to idle. RUN_END alone arrives while the mic is still stopping and is ignored,
                     # leaving the box waiting for a reply (blinking) until it restarts.
@@ -603,6 +624,7 @@ class Satellite:
                                 f"the transcript")
                 progress = asyncio.create_task(stream_when_ready())
                 conv.brain.llm.ended = False
+                conv.turns.turn = turn
                 said = await conv.reply(heard, run)
                 conv.latency.flush()
                 progress.cancel()
@@ -623,14 +645,21 @@ class Satellite:
                 logger.info(f"{self.room}: said {said!r}")
         except asyncio.CancelledError:
             run.out.put_nowait(None)
+            if turn:
+                turn.outcome = "cut_short"
             raise
         except Exception as e:                                              # noqa: BLE001
             logger.exception(f"{self.room}: run failed")
+            if turn:
+                turn.outcome = "failed"
             run.out.put_nowait(None)
             self._event(Ev.VOICE_ASSISTANT_ERROR, {"code": "winston-error", "message": str(e)[:200]})
             self._event(Ev.VOICE_ASSISTANT_RUN_END)
         finally:
             holding.cancel()
+            if conv is not None and conv.turns.turn is turn:
+                conv.turns.turn = None
+            self._record(turn)
             if self.run is run:                 # a run cut short by a new wake word leaves the lease to that one
                 self.mic.hold(run.playing_for() + (FOLLOW_UP_SECS if follow_up else TAIL_SECS))
             self.audio.forget(run.id, after=120)
@@ -765,7 +794,8 @@ async def main():
     await audio.start()
     cls = get_adapter("stt", cfg.stt.provider)
     stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
-    sats = [Satellite(cfg, room, dev, audio, stt, feed) for room, dev in s.devices.items()]
+    turns = TurnLog(cfg, "satellite")
+    sats = [Satellite(cfg, room, dev, audio, stt, feed, turns) for room, dev in s.devices.items()]
     for sat in sats:
         await sat.connect()
     logger.info(f"satellites: {', '.join(s.devices)}; replies served on :{s.http_port}")

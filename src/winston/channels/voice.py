@@ -32,9 +32,12 @@ from pipecat.processors.aggregators.llm_response_universal import (LLMContextAgg
                                                                     LLMUserAggregatorParams)
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
+from pipecat.services.settings import STTSettings
+from pipecat.services.stt_service import SegmentedSTTService
 from pipecat.services.openai.tts import VALID_VOICES, OpenAITTSService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.turns.user_stop import TurnAnalyzerUserTurnStopStrategy
+from pipecat.utils.time import time_now_iso8601
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
@@ -50,6 +53,7 @@ from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.rooms import MicGate, RoomLink, area, http_sync, mic_events, wake_phrases
 from winston.core.speak_up import WORDING_SECS, Mentions, SpeechWatch
 from winston.core.spoken import SpokenText
+from winston.core.turns import SpokenTurns, TurnLog
 
 CFG: WinstonConfig = load()
 _HEARING: Hearing | None = None
@@ -64,10 +68,37 @@ def hearing(cfg: WinstonConfig = CFG) -> Hearing:
     return _HEARING
 
 
-def build_stt(cfg: WinstonConfig = CFG):
-    """The pipeline's STT service from the registry, on the shared model and hint words."""
-    h = hearing(cfg)
-    return h.adapter(model=h.model, model_name=cfg.stt.model, hearing=h)
+class HearingSTT(SegmentedSTTService):
+    """The pipeline's speech to text, for any engine. Pipecat cuts the utterance (the VAD); the shared
+    Hearing transcribes it with the configured adapter, corrects hint words and logs the STT line; the
+    Heard, audio included, rides on the TranscriptionFrame (result) so the turn record keeps this
+    session's audio with its words. An adapter only turns audio into text."""
+
+    def __init__(self, hearing: Hearing, sample_rate: int | None = None, **kwargs):
+        super().__init__(sample_rate=sample_rate, settings=STTSettings(model=hearing.cfg.stt.model, language=None),
+                         **kwargs)
+        self._hearing = hearing
+
+    @property
+    def wants_wav_segments(self) -> bool:
+        return False  # run_stt gets raw int16 PCM, not a WAV container
+
+    def can_generate_metrics(self) -> bool:
+        return True
+
+    async def run_stt(self, audio: bytes):
+        await self.start_processing_metrics()
+        await self.start_ttfb_metrics()
+        heard = await self._hearing.hear(np.frombuffer(audio, dtype=np.int16), self.sample_rate)
+        await self.stop_ttfb_metrics()
+        await self.stop_processing_metrics()
+        if heard.text:
+            yield TranscriptionFrame(heard.text, self._user_id, time_now_iso8601(), result=heard)
+
+
+def build_stt(cfg: WinstonConfig = CFG) -> HearingSTT:
+    """The pipeline's STT service, on the shared model and hint words."""
+    return HearingSTT(hearing(cfg))
 
 
 async def transcribe(pcm: np.ndarray, extra: list[str]) -> str:
@@ -205,6 +236,7 @@ class LatencyLog(BaseObserver):
 
 CHIME = load_chime()
 FEED = FeedPoster(CFG)          # what this channel hears and says, for the Talk page
+TURNS = TurnLog(CFG, "voice")   # each spoken turn with its audio, when logging.turns is on
 
 
 transport_params = {
@@ -236,6 +268,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         user_turn_strategies=UserTurnStrategies(stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_end)]),
     ))
     guard = ClaimGuard(CFG, channel="voice")
+    turns = SpokenTurns(TURNS, room, busy=lambda: guard.retrying or not brain.verifier.idle)
     latency = LatencyLog(CFG, "voice")
     watch = SpeechWatch()
     link = RoomLink(room, f"voice:{uuid.uuid4().hex[:8]}", http_sync(CFG)) if room else None
@@ -272,7 +305,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
         observers=[guard.observer, brain.verifier.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
                    ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), latency,
-                   watch],
+                   watch, turns],
         idle_timeout_secs=None,
     )
 
@@ -352,6 +385,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             follower.cancel()
         FEED.put(LiveEvent(channel="voice", type="state", state="idle"))
         latency.flush()
+        turns.flush()
         await worker.cancel()
         await brain.close()
 

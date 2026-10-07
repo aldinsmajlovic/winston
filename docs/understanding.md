@@ -1,8 +1,8 @@
 # Understanding
 
 How Winston hears, decides whether he is being spoken to, and knows what a name means. A design,
-proposed 2026-10-07 after the first week of real use; not built yet. When it is built, this page
-becomes the reference for it.
+proposed 2026-10-07 after the first week of real use. Built so far: the turn record (part 1, without
+marks yet). Each part becomes the reference for itself as it is built.
 
 ## Why
 
@@ -42,15 +42,22 @@ Four parts, built in this order.
 
 Every turn is kept, so mistakes can be found, marked and used to test the next change.
 
-- **What is kept.** One folder per day under `data/turns/`. Per turn: the audio (FLAC, 16 kHz), and a
-  JSON line with the channel and room, wake word or follow-up, what was heard and by which engine, the
-  "for him?" decision with its signals, the tool calls with arguments and results, what he said, and
-  the time each stage took. Today this is spread over `satellite.log`, `voice.log`, `tool_calls.jsonl`
-  and `latency.jsonl`, without the audio.
-- **How long.** `turns.keep_days`, 14 by default; a marked turn is kept until unmarked. The week above
-  had 798 s of request audio, about 15 MB as FLAC.
-- **Off by default for others.** Recording a home is personal. The setting is off in `examples/` and
-  the first-run page asks; nothing leaves the machine either way.
+- **What is kept** (built). One folder per day under `data/turns/`: per turn the audio as the speech
+  engine heard it (FLAC), and a line in `<channel>.jsonl` with the channel and room, how it started
+  (wake word, follow-up or button on a box, speech in a browser), what was heard, what the engine said
+  before the hint-word fix when that differs, which engine, the tool calls with arguments and results,
+  what he said (fillers and corrections included), how it ended (answered, silent, dismissed, nothing
+  heard, cut short, failed) and the milliseconds from the end of speech to the text, the first token
+  and the first audio. The "for him?" decision joins it with part 4. `winston turns` lists a day.
+- **For any engine.** The engine only turns audio into text; the audio reaches the record through
+  Winston's shared hearing, so a new engine, local or hosted, is recorded the same way with no code of
+  its own. A browser turn ends when the next one starts, the session ends, or his reply is over (no
+  tool running, done speaking, no retry or state check pending), so a slow model or tool keeps its turn
+  open instead of being cut off.
+- **How long.** `logging.turns.keep_days`, 14 by default; a marked turn is kept until unmarked. The
+  week above had 798 s of request audio, about 15 MB as FLAC.
+- **Off by default.** Recording a home is personal: `logging.turns.enabled` is off unless switched on
+  (Settings, System). Nothing leaves the machine either way.
 - **Marking a mistake.** By voice: "that's not what I said", "I wasn't talking to you", "that was the
   wrong song". On the Talk page: each turn gets a mark with the kind (misheard, not for him, wrong thing,
   too slow) and a box for what you actually said. A turn you corrected in the next breath ("no, the
@@ -172,5 +179,5 @@ Every turn gets a decision before the brain sees it: for him, not for him, or un
 
 ## Settled defaults
 
-- A mark by voice is confirmed with a short line ("Noted, sir."), so you know it was taken.
+- A mark by voice is confirmed in his own words, as the persona speaks, so you know it was taken.
 - Turns are kept from every channel with a microphone: the boxes, the browser and the wall panel.

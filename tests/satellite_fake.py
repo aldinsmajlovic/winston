@@ -14,9 +14,12 @@ Then: "that's all" there ends the conversation without a reply; a nudge (speakin
 announcement with the chime first and his own wording after it, and the box listens on, so an answer
 needs no wake word; a long press switches the box to button only (no wake word, a spoken line, a press
 gets a reply without a follow-up), a reconnect finds it still button only, and a second long press
-switches the wake word back on."""
+switches the wake word back on. Every turn is kept in a turn record in a temporary folder, with its
+audio, how it started (wake word, follow-up, button) and how it ended."""
 import asyncio
+import json
 import sys
+import tempfile
 import time
 import uuid
 from pathlib import Path
@@ -37,6 +40,7 @@ from winston.config.registry import get as get_adapter  # noqa: E402
 from winston.config.schema import SatelliteDevice  # noqa: E402
 from winston.core import brain as brain_mod  # noqa: E402
 from winston.core.hints import Hearing  # noqa: E402
+from winston.core.turns import TurnLog  # noqa: E402
 
 from loguru import logger  # noqa: E402
 
@@ -221,6 +225,9 @@ async def main() -> int:
     room = f"test room {uuid.uuid4().hex[:6]}"          # its own conversation, not a leftover of the last run
     cfg.channels.satellite.devices = {room: SatelliteDevice(host="127.0.0.1", port=PORT, wake_word="hey_jarvis")}
     cfg.channels.satellite.http_port, cfg.channels.satellite.public_host = HTTP_PORT, "127.0.0.1"
+    turns_dir = Path(tempfile.mkdtemp(prefix="winston-turns-"))      # never the real data/turns
+    cfg.logging.turns.enabled, cfg.logging.turns.dir = True, str(turns_dir)
+    turns = TurnLog(cfg, "satellite")
 
     start = brain_mod.Brain.start
 
@@ -241,7 +248,7 @@ async def main() -> int:
     audio = sat.AudioServer(cfg); await audio.start()
     cls = get_adapter("stt", cfg.stt.provider)
     stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
-    satellite = sat.Satellite(cfg, room, cfg.channels.satellite.devices[room], audio, stt, NoFeed())
+    satellite = sat.Satellite(cfg, room, cfg.channels.satellite.devices[room], audio, stt, NoFeed(), turns)
     await satellite.connect()
     await asyncio.wait_for(box.subscribed.wait(), 15)
     for _ in range(50):                  # the wake word is set just after subscribing
@@ -333,8 +340,34 @@ async def main() -> int:
 
     await satellite.stop()
     server.close()
+    ok &= recorded(turns_dir)
     print("\nPASS" if ok else "\nFAIL")
     return 0 if ok else 1
+
+
+
+def recorded(folder: Path) -> bool:
+    """The turn record: one line per request that had speech in it, each with its audio and timings,
+    started and ended the way the run did."""
+    lines = [json.loads(x) for f in sorted(folder.glob("*/satellite.jsonl")) for x in f.read_text().splitlines()]
+    print(f"\n> (turn record, {len(lines)} turns in {folder})")
+    for t in lines:
+        print(f"  {t['start']:<9} {t['outcome']:<13} {t['secs']:>4.1f} s  {t['heard']!r} -> {t['said'][:50]!r}"
+              f"  tools {[c['name'] for c in t['tools']]}  stt {t['stt_ms']} ms, first audio {t['first_audio_ms']} ms")
+
+    def has(words: str, start: str, outcome: str) -> bool:
+        return any(words in t["heard"].lower() and t["start"] == start and t["outcome"] == outcome for t in lines)
+    audio_ok = bool(lines) and all(t.get("audio") and next(folder.glob(f"*/{t['audio']}"), None) for t in lines)
+    ok = audio_ok and has("what time", "wake", "answered") and has("that's all", "follow_up", "dismissed") \
+        and has("i know", "follow_up", "answered")
+    if any("warm" in t["heard"].lower() for t in lines):    # asked only when he answered with a question
+        ok &= has("warm", "follow_up", "answered")
+    lamp = next((t for t in lines if "shelf lamp" in t["heard"].lower()), {})
+    ok &= any(c.get("ok") for c in lamp.get("tools", []))                     # the stubbed action, with its result
+    ok &= any(t["start"] == "button" and t["said"] for t in lines)
+    ok &= all(t["first_audio_ms"] for t in lines if t["outcome"] == "answered" and t["said"])
+    print(f"  {'ok' if ok else 'NOT as expected'}")
+    return ok
 
 
 if __name__ == "__main__":

@@ -153,12 +153,13 @@ data/               your instance; gitignored
 ## Plugin contract
 
 An adapter is a class with a small contract and a settings model. For STT: a static `load_model(name,
-quantization)` returning a reusable model object, a constructor taking it as `model=` so one load
-serves every connection, and a static `transcribe(model, pcm, rate, hints=None)` for audio outside a
-pipeline. `supports_hints` says whether the engine can be told words in advance; one that can maps
-`hints` to its own setting (Whisper's initial prompt or hotwords, a cloud engine's keyterms). Parakeet
-cannot. The constructor's `hearing=` is the shared `core.hints.Hearing`, which corrects close
-misspellings of the hint words and logs the STT line; see [voices](voices.md#hint-words). Contracts
+quantization)` returning a reusable model object, so one load serves every connection, and a static
+`transcribe(model, pcm, rate, hints=None)` that turns int16 audio into text. `supports_hints` says
+whether the engine can be told words in advance; one that can maps `hints` to its own setting
+(Whisper's initial prompt or hotwords, a cloud engine's keyterms). Parakeet cannot. That is all an
+engine does: the shared `core.hints.Hearing` corrects close misspellings of the hint words, logs the
+STT line and hands the audio to the turn record, and in the voice pipeline one service for every
+engine (`HearingSTT`) cuts the utterances; see [voices](voices.md#hint-words). Contracts
 stay tiny on purpose; that is what keeps extension cheap and versioning sane.
 
 Extensions have their own, larger contract: [extensions](extensions.md).

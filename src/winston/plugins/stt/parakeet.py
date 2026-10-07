@@ -1,33 +1,22 @@
-"""STT adapter: NVIDIA Parakeet TDT 0.6B (ONNX, INT8, CPU) via onnx-asr, as a Pipecat
-segmented STT service. Pipecat buffers audio while the VAD says the user is speaking
-and hands the whole utterance to run_stt() once they stop; Parakeet then transcribes
-it in well under a second on the CPU, keeping the GPU for the LLM and TTS.
-"""
-import asyncio
+"""STT adapter: NVIDIA Parakeet TDT 0.6B (ONNX, INT8, CPU) via onnx-asr. It transcribes an utterance
+in well under a second on the CPU, keeping the GPU for the LLM and TTS."""
 import time
-from collections.abc import AsyncGenerator
 
 import numpy as np
 import onnx_asr
 from loguru import logger
-from pipecat.frames.frames import Frame, TranscriptionFrame
-from pipecat.services.settings import STTSettings
-from pipecat.services.stt_service import SegmentedSTTService
-from pipecat.transcriptions.language import Language
-from pipecat.utils.time import time_now_iso8601
 
 
-class ParakeetSTTService(SegmentedSTTService):
-    """Adapter contract for STT plugins: `load_model(name, quantization)` returns a reusable model
-    object, the constructor takes it as `model=` so one load serves every connection, and
-    `transcribe(model, pcm, rate, hints=None)` turns int16 audio into text outside a pipeline
-    (satellites, clone consent).
+class Parakeet:
+    """The STT adapter contract (docs/architecture.md): `load_model(name, quantization)` returns a
+    reusable model object, `transcribe(model, pcm, rate, hints=None)` turns int16 audio into text, and
+    `supports_hints` says whether the engine can be told words in advance; one that can maps `hints` (a
+    list of words, or None) to its own setting: Whisper's initial prompt or hotwords, a cloud engine's
+    keyterms.
 
-    Hint words (core/hints.py): `supports_hints` says whether the engine can be told words in advance;
-    one that can maps `hints` (a list of words, or None) to its own setting: Whisper's initial prompt or
-    hotwords, a cloud engine's keyterms. The constructor's `hearing=` is the shared `Hearing`: run_stt
-    hands it what the engine heard (`hearing.finish`), which corrects close misspellings and logs the
-    STT line, and asks it for the words (`hearing.engine_hints()`) when the engine takes them."""
+    That is all an engine does. Cutting utterances in the voice pipeline, the hint-word correction, the
+    STT log line and the turn record are Winston's own and the same for every engine (core/hints.py:
+    Hearing; channels/voice.py: HearingSTT)."""
 
     supports_hints = False          # greedy decoding in onnx-asr has no biasing hook
 
@@ -42,34 +31,3 @@ class ParakeetSTTService(SegmentedSTTService):
     @staticmethod
     def transcribe(model, pcm: np.ndarray, rate: int, hints: list[str] | None = None) -> str:
         return (model.recognize(pcm.astype(np.float32) / 32768.0, sample_rate=rate) or "").strip()
-
-    def __init__(self, *, model=None, model_name: str = "nemo-parakeet-tdt-0.6b-v3",
-                 quantization: str | None = "int8", sample_rate: int | None = None, hearing=None, **kwargs):
-        super().__init__(sample_rate=sample_rate,
-                         settings=STTSettings(model=model_name, language=Language.EN), **kwargs)
-        self._model = model if model is not None else self.load_model(model_name, quantization)
-        self._hearing = hearing
-
-    @property
-    def wants_wav_segments(self) -> bool:
-        return False  # run_stt gets raw int16 PCM, not a WAV container
-
-    def can_generate_metrics(self) -> bool:
-        return True
-
-    async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame | None, None]:
-        await self.start_processing_metrics()
-        await self.start_ttfb_metrics()
-        pcm = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
-        t0 = time.perf_counter()
-        text = await asyncio.to_thread(self._model.recognize, pcm, sample_rate=self.sample_rate)
-        await self.stop_ttfb_metrics()
-        await self.stop_processing_metrics()
-        secs, ms = len(pcm) / self.sample_rate, (time.perf_counter() - t0) * 1000
-        if self._hearing is not None:
-            text = self._hearing.finish(text, secs, ms)
-        else:
-            text = (text or "").strip()
-            logger.info(f"STT {secs:.2f}s audio -> {text!r} in {ms:.0f} ms")
-        if text:
-            yield TranscriptionFrame(text, self._user_id, time_now_iso8601(), "en")

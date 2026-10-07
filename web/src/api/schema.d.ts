@@ -2299,6 +2299,11 @@ export interface components {
         /** LoggingConfig */
         LoggingConfig: {
             /**
+             * Turns
+             * @description Each spoken turn kept with its audio, to find his mistakes and test changes.
+             */
+            turns?: components["schemas"]["TurnsConfig"];
+            /**
              * Tool calls
              * @description Every tool call with its arguments and result, one JSON line each, relative to the data directory.
              * @default logs/tool_calls.jsonl
@@ -2846,6 +2851,37 @@ export interface components {
              */
             state?: string | null;
         };
+        /** Shortcut */
+        Shortcut: {
+            /**
+             * Phrases
+             * @description What you say to run it. Saying just one of these, his name and the fillers around it aside ("Okay Winston, party time"), runs the tool straight away without the model, the same every time.
+             */
+            phrases?: string[];
+            /**
+             * Tool
+             * @description The tool it runs: an extension tool as "extension.tool" ("spotify.party"), or a Home Assistant script as "script.name". The tool must be available to the brain.
+             */
+            tool: string;
+            /**
+             * Arguments
+             * @description Fixed arguments passed to the tool every time, e.g. which track a party plays and which light scene it runs.
+             */
+            args?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Said first
+             * @description What he says the instant you say it, before it runs, in place of "One moment.". For a party: "Here we go, sir."
+             */
+            say_first?: string | null;
+            /**
+             * Quiet after
+             * @description Once it has worked he says nothing more and the box does not listen on: for a scene with music that speaks for itself. A failure is still reported.
+             * @default false
+             */
+            quiet_after?: boolean;
+        };
         /** SpeakRequest */
         SpeakRequest: {
             /** Text */
@@ -3186,6 +3222,30 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * TurnsConfig
+         * @description The turn record (core/turns.py, docs/understanding.md).
+         */
+        TurnsConfig: {
+            /**
+             * Keep turns
+             * @description Keep each spoken turn: the audio of what you said, what he heard, what he did and said, and how long each step took. Used to find and mark his mistakes and to test changes on them. Stays on this machine.
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Keep for (days)
+             * @description Days a turn is kept; older days are removed.
+             * @default 14
+             */
+            keep_days?: number;
+            /**
+             * Folder
+             * @description Where turns are kept, relative to the data directory.
+             * @default turns
+             */
+            dir?: string;
+        };
         /** VADConfig */
         VADConfig: {
             /**
@@ -3470,7 +3530,17 @@ export interface components {
              */
             speak_up?: components["schemas"]["SpeakUpConfig"];
             /**
+             * Shortcuts
+             * @description Spoken phrases that run a tool straight away, without the model: a scene, a party. Each names a tool and the fixed arguments it runs with.
+             */
+            shortcuts?: components["schemas"]["Shortcut"][];
+            /**
              * @default {
+             *       "turns": {
+             *         "dir": "turns",
+             *         "enabled": false,
+             *         "keep_days": 14
+             *       },
              *       "tool_calls": "logs/tool_calls.jsonl",
              *       "latency": "logs/latency.jsonl"
              *     }

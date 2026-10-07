@@ -18,7 +18,7 @@ from aiortc import MediaStreamTrack, RTCPeerConnection, RTCSessionDescription
 from av import AudioFrame
 
 from winston.config import load
-from winston.plugins.stt.parakeet import ParakeetSTTService
+from winston.plugins.stt.parakeet import Parakeet
 
 CFG = load()
 VOICE = f"http://{CFG.channels.voice.host}:{CFG.channels.voice.port}"
@@ -98,7 +98,7 @@ def chime_first(a: np.ndarray) -> bool:
 
 
 async def main():
-    stt = ParakeetSTTService.load_model(CFG.stt.model, CFG.stt.quantization)
+    stt = Parakeet.load_model(CFG.stt.model, CFG.stt.quantization)
     hear = lambda a: stt.recognize(a, sample_rate=16000).strip()   # noqa: E731
     question = speech("How long did it run?")
     mic, ear = Mic(), Ear()

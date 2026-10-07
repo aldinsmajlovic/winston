@@ -21,6 +21,7 @@ uv run winston ext test NAME   # its tests, no winstond needed; then `winston ex
 uv run winston ext call ID TOOL '{"arg": 1}'   # a tool as the brain would call it; also run, logs, restart, disable
 uv run winston ext check ID KIND  # what a kind's check would say now, saying nothing
 uv run winston ext nudges [ID]    # where nudges stand and why each waits; every step is in logs/nudges.jsonl
+uv run winston turns [--day DAY]  # the turn record: each spoken turn, heard, done and said (logging.turns)
 ```
 
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
@@ -52,7 +53,10 @@ in `data/state/extensions/<id>/`; every step of speaking up (a nudge held, said,
 `docker logs winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
 one line per spoken turn to `data/logs/latency.jsonl` (`logging.latency`; empty turns it off): time
 from the end of your speech to the transcript (`stt_ms`), the first token (`first_token_ms`) and the
-first audio (`first_audio_ms`), and the tools the turn called.
+first audio (`first_audio_ms`), and the tools the turn called. With `logging.turns.enabled` (off by
+default) they also keep each spoken turn whole in `data/turns/<day>/`: its audio and what was heard,
+done and said, for 14 days (`logging.turns.keep_days`); `uv run winston turns` lists a day
+([understanding](understanding.md#1-turn-record-and-marks)).
 
 ## Status and errors
 

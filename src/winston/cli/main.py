@@ -160,13 +160,35 @@ def memory():
 
 
 @app.command()
+def turns(day: str = typer.Option(None, help="The day to show, YYYY-MM-DD; today when left out."),
+          last: int = typer.Option(30, help="How many of the day's turns, newest last.")):
+    """The turn record: each spoken turn of a day, what was heard, what he did and said (logging.turns)."""
+    import json
+    from datetime import date, datetime
+
+    cfg = load()
+    folder = resolve(cfg.logging.turns.dir) / (day or date.today().isoformat())
+    rows = sorted((json.loads(x) for f in folder.glob("*.jsonl") for x in f.read_text().splitlines() if x.strip()),
+                  key=lambda t: t["ts"])
+    if not cfg.logging.turns.enabled:
+        print("Turns are not being kept (logging.turns.enabled is off).")
+    if not rows:
+        print(f"No turns in {folder}."); return
+    for t in rows[-last:]:
+        tools = ", ".join(c["name"].split("__")[-1] for c in t["tools"])
+        print(f"{datetime.fromtimestamp(t['ts']):%H:%M:%S}  {t['channel']:<9} {t['start']:<9} {t['outcome']:<13} "
+              f"{t['heard']!r}" + (f" [{tools}]" if tools else "") + (f" -> {t['said']!r}" if t["said"] else ""))
+    print(f"\n{len(rows)} turns in {folder}")
+
+
+@app.command()
 def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | brain | clone | all")):
     """Run the checks: unit needs nothing, ui a built web UI (a throwaway winstond on a copy of data/),
     the milestones need the engines up."""
     tests = repo_root() / "tests"
     unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py",
             "verify_cases.py", "hints_cases.py", "consent_cases.py", "rooms_cases.py", "home_cases.py", "profiles_load.py",
-            "extensions_cases.py", "nudges_cases.py"]
+            "extensions_cases.py", "nudges_cases.py", "turns_cases.py"]
     unit_paths = [tests / t for t in unit] + [repo_root() / "sdk" / "tests" / "sdk_cases.py"]
     builtin = sorted(p.name.removesuffix("_test.py") for p in (repo_root() / "src" / "winston" / "extensions").glob("*_test.py"))
     unit_steps = [f"{sys.executable} {t}" for t in unit_paths] + \
