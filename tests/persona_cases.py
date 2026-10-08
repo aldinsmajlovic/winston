@@ -4,23 +4,16 @@ Runs on a scratch file, no hardware needed.
 
     uv run python tests/persona_cases.py
 """
-import sys
 import tempfile
 from pathlib import Path
+
+from harness import expect, finish
 
 from winston.config.schema import WinstonConfig
 from winston.core import persona
 
 scratch = Path(tempfile.mkdtemp(prefix="winston-persona-")) / "persona.md"
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}, "assistant": {"persona": str(scratch)}})
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail}")
-
 
 scratch.write_text("# Winston\n\nYou are Winston.\n\n- Keep replies short.\n- Call GetDateTime for the time.\n")
 p = persona.read(cfg)
@@ -76,5 +69,4 @@ except persona.PersonaError as e:
 p = persona.write(cfg, [], ["Never store passwords, codes or keys; say you cannot keep those."])
 expect("talking about secrets is fine", p["instructions"] == ["Never store passwords, codes or keys; say you cannot keep those."])
 
-print(f"\n{'all passed' if not failed else f'{failed} failed'}")
-sys.exit(1 if failed else 0)
+finish()

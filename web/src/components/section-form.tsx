@@ -5,17 +5,7 @@ import { SchemaForm, type FormContext } from '@/components/schema-form'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import type { SettingsState } from '@/hooks/use-settings'
 import { Adornments } from '@/lib/adornments'
-import { applyForm, EXTRA_SUFFIX, getIn, prune, section, setIn, type JsonSchema, type Path } from '@/lib/schema'
-
-/** A row a page adds to a section's form that is not a config field (what Ask Claude signs in with,
- * its key): drawn with the same label and (i) as the fields, after the field `after`. */
-export type ExtraRow = {
-  key: string
-  title: string
-  description?: string
-  after?: string
-  render: (id: string) => ReactNode
-}
+import { applyForm, getIn, prune, section, setIn, type JsonSchema, type Path } from '@/lib/schema'
 
 type Props = {
   page: SettingsState
@@ -27,60 +17,20 @@ type Props = {
   icon?: string
   /** Beside the card title, e.g. the channel's state icon. */
   status?: ReactNode
-  extras?: ExtraRow[]
+  /** Rows after the form that are not config fields (what Ask Claude signs in with, its key). */
+  children?: ReactNode
   /** Controls beside a field or on a nested section's heading (a play button), by the dotted path
    * from this section: `{ voice: <Play/> }`. Shown only while the form shows that field. */
   adornments?: Record<string, ReactNode>
 }
 
-/** Put the page's extra rows into the pruned schema as virtual fields (see ExtraWidget). */
-function withExtras(schema: JsonSchema, extras: Omit<ExtraRow, 'render'>[]): JsonSchema {
-  if (!extras.length || !schema.properties) return schema
-  const dimmed = Object.values(schema.properties).some((p) => p.dimmed === true)
-  const rows = new Map(
-    extras.map((x) => [
-      x,
-      {
-        type: 'string',
-        title: x.title,
-        description: x.description,
-        widget: 'extra',
-        extra: x.key,
-        virtual: true,
-        ...(dimmed ? { dimmed: true } : {}),
-      } as JsonSchema,
-    ]),
-  )
-  const properties: Record<string, JsonSchema> = {}
-  const placed = new Set<Omit<ExtraRow, 'render'>>()
-  // A row goes after the field or the other row it names; one whose field is not shown goes last.
-  const follow = (key: string) => {
-    for (const x of extras) {
-      if (x.after === key && !placed.has(x)) {
-        properties[x.key + EXTRA_SUFFIX] = rows.get(x)!
-        placed.add(x)
-        follow(x.key)
-      }
-    }
-  }
-  for (const [key, field] of Object.entries(schema.properties)) {
-    properties[key] = field
-    follow(key)
-  }
-  for (const x of extras) if (!placed.has(x)) properties[x.key + EXTRA_SUFFIX] = rows.get(x)!
-  return { ...schema, properties }
-}
-
 /** One section of the config as a form, at the page's current level (basic or advanced). What the form
  * shows follows the draft: fields whose `when` fails are left out, a switched-off feature greys the
  * rest of its section, and errors from a refused save sit beside their fields. */
-export function SectionForm({ page, path, title, omit, driver, icon: iconName, status, extras, adornments }: Props) {
+export function SectionForm({ page, path, title, omit, driver, icon: iconName, status, children, adornments }: Props) {
   const { schema, advanced, value } = page
   // Pruned on every change of the draft, but handed to rjsf as the same object while it reads the same.
-  const extraSpecs = (extras ?? []).map(({ key, title, description, after }) => ({ key, title, description, after }))
-  const pruned = JSON.stringify(
-    withExtras(prune(section(schema, path), schema, { advanced, omit, driver, config: value, path }), extraSpecs),
-  )
+  const pruned = JSON.stringify(prune(section(schema, path), schema, { advanced, omit, driver, config: value, path }))
   const formSchema = useMemo(() => JSON.parse(pruned) as JsonSchema, [pruned])
   const isObject = useCallback(
     (rel: Path) => {
@@ -98,9 +48,8 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
     () => ({
       setAt: (at, next) => page.update((c) => setIn(c, at, next)),
       titleErrors: errors.byTitle,
-      extras: Object.fromEntries((extras ?? []).map((x) => [x.key, x.render])),
     }),
-    [page, errors.byTitle, extras],
+    [page, errors.byTitle],
   )
   const byId = Object.fromEntries(Object.entries(adornments ?? {}).map(([key, node]) => [fieldId([...path, ...key.split('.')]), node]))
   const own = errors.own.map((msg) => (
@@ -132,6 +81,7 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
       <div id={fieldId(path)} className="flex flex-col gap-2">
         {own}
         {form}
+        {children}
       </div>
     )
   }
@@ -145,7 +95,10 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
           {own}
         </CardTitle>
       </CardHeader>
-      <CardContent>{form}</CardContent>
+      <CardContent>
+        {form}
+        {children}
+      </CardContent>
     </Card>
   )
 }

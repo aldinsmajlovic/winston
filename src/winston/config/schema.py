@@ -202,17 +202,34 @@ class LLMConfig(Model):
                                            "Better answers to hard requests, at the cost of time.")
 
 
+TRANSCRIPTION = {"stt.provider": ["openai_transcription"]}     # speech to text on a server
+
+
 class STTConfig(Model):
     model_config = section("voice", "satellite", slot="stt")
     provider: str = Field("parakeet",
-                          description="Speech-to-text adapter.", json_schema_extra=ui(options="stt_adapters"))
+                          description="Speech-to-text adapter. parakeet runs inside Winston on the CPU; "
+                                      "openai_transcription sends the audio to a server (Qwen3-ASR on vLLM, a "
+                                      "hosted one). Presets set it.",
+                          json_schema_extra=ui("advanced", options="stt_adapters"))
+    base_url: str | None = Field(None, title="Base URL",
+                                 description="Where the speech-to-text server's OpenAI transcription API answers, "
+                                             "ending in /v1. Presets set it.",
+                                 json_schema_extra=ui("advanced", when=TRANSCRIPTION))
+    api_key_env: str | None = Field(None, title="Key variable",
+                                    description="The variable in data/.env that holds the API key. Unset for local "
+                                                "servers.",
+                                    json_schema_extra=ui("advanced", when={**TRANSCRIPTION, **HOSTED},
+                                                         secret=secret("STT_API_KEY", "API key")))
     model: str = Field("nemo-parakeet-tdt-0.6b-v3",
-                       description="Speech-to-text model. Parakeet TDT 0.6B v3 is multilingual; v2 is English only.",
+                       description="Speech-to-text model: for Parakeet an onnx-asr model (v3 is multilingual, v2 "
+                                   "English only), for a server the model name it knows.",
                        json_schema_extra=ui("advanced", options="stt_models"))
     quantization: str | None = Field("int8",
                                      description="Weight precision. int8 is faster on the CPU at no audible "
                                                  "accuracy cost; empty for full precision.",
-                                     json_schema_extra=ui("advanced", empty_means_off=True))
+                                     json_schema_extra=ui("advanced", empty_means_off=True,
+                                                          when={"stt.provider": ["parakeet", None]}))
     hint_words: list[str] = Field(default_factory=list, title="Hint words",
                                   description="Names and words he should hear right. His name, cloned voices, "
                                               "Discord contacts and names from the Home Assistant list are added by "
@@ -690,6 +707,12 @@ class ControlConfig(Model):
                       json_schema_extra=ui("advanced"))
     port: int = Field(8700, description="Port for the API and the web UI.",
                       json_schema_extra=ui("advanced"))
+
+    @property
+    def url(self) -> str:
+        """winstond's address for a client on this machine: one listening on every address is reached at 127.0.0.1."""
+        host = self.host if self.host not in ("0.0.0.0", "::", "") else "127.0.0.1"
+        return f"http://{host}:{self.port}"
 
 
 class Shortcut(Model):

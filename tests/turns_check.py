@@ -36,7 +36,6 @@ from loguru import logger
 
 from winston.channels.text import TextSession
 from winston.config import load
-from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
 from winston.core.guard import READ, tool_tier
 from winston.core.hints import Hearing
@@ -160,8 +159,7 @@ async def main() -> int:
     if not marked:
         print(f"No marked turns in {store.marked_dir}. Mark some with `winston turns mark`, by voice or on the page.")
         return 0
-    cls = get_adapter("stt", cfg.stt.provider)
-    hearing = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+    hearing = Hearing.load(cfg)
     print(f"{len(marked)} marked turns through {name}: {cfg.stt.provider}/{cfg.stt.model}, {cfg.llm.model}\n")
     rows = []
     for t in marked:

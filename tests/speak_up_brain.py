@@ -16,31 +16,21 @@ import json
 import os
 import re
 import shutil
-import socket
 import sys
-import tempfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DATA = Path(tempfile.mkdtemp(prefix="winston-speak-up-brain-"))
+from harness import REPO, free_port, scratch_data, serve, winstond_data
+
 REAL = Path(os.environ.get("WINSTON_DATA") or Path(__file__).resolve().parent.parent / "data")
-os.environ["WINSTON_DATA"] = str(DATA)
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tests"))
+DATA = scratch_data("winston-speak-up-brain-")
 
 import httpx  # noqa: E402
-import uvicorn  # noqa: E402
 import yaml  # noqa: E402
 from fake_ha import FakeHA  # noqa: E402
 
 WORK_FACT = "- The user finishes work at 17:00 on weekdays. (noted 2026-09-20)\n"
-
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def setup(api_port: int, ha_port: int):
@@ -52,13 +42,7 @@ def setup(api_port: int, ha_port: int):
            "control": {"port": api_port, "host": "127.0.0.1"},
            "speak_up": {"home": "person.someone"},
            "extensions": {"trainer": {"enabled": True}}}
-    (DATA / "config.yaml").write_text(yaml.safe_dump(cfg))
-    shutil.copy(REAL / "persona.md", DATA / "persona.md")          # his real instructions
-    shutil.copytree(REPO / "examples" / "memory", DATA / "memory")
-    (DATA / "extensions").mkdir()
-    shutil.copy(REPO / "tests" / "fixtures" / "extensions" / "trainer.py", DATA / "extensions" / "trainer.py")
-    (DATA / ".env").write_text('HA_TOKEN="fake-ha-token"\n')
-    os.chmod(DATA / ".env", 0o600)
+    winstond_data(DATA, cfg, REAL / "persona.md", ("trainer.py",))   # his real instructions
 
 
 def calls(since: float) -> list[dict]:
@@ -152,10 +136,7 @@ async def main(trials: int) -> bool:
     ok = True
     async with FakeHA(ha_port, seed="home"):
         app = create_app(load(), autostart=False)
-        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=api_port, log_level="warning"))
-        serving = asyncio.create_task(server.serve())
-        while not server.started:
-            await asyncio.sleep(0.1)
+        stop_server = await serve(app, api_port)
         host = app.state.extensions
         await host.start()
         api = httpx.AsyncClient(base_url=f"http://127.0.0.1:{api_port}", timeout=60)
@@ -180,8 +161,7 @@ async def main(trials: int) -> bool:
             print(f"{'with' if work_fact else 'without'} a memory fact about work: {passed}/{trials}")
             ok = ok and passed == trials
         await host.stop_all()
-        server.should_exit = True
-        await serving
+        await stop_server()
         await api.aclose()
     return ok
 

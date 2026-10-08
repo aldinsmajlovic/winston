@@ -3,8 +3,6 @@ third-party package adds one by declaring `[project.entry-points."winston.<kind>
 from importlib import import_module
 from importlib.metadata import entry_points
 
-KINDS = ("stt", "tts", "llm", "wake", "channel", "tool")
-
 
 def available(kind: str) -> dict[str, str]:
     """name -> 'module:attr' for every registered adapter of a kind."""

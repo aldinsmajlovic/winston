@@ -8,7 +8,7 @@
     "build": "pnpm check && tsc -b && vite build",
     "check": "node scripts/check.mjs && eslint .",
     "lint": "eslint .",
-    "api": "uv run --project .. winston api schema > openapi.json && openapi-typescript openapi.json -o src/api/schema.d.ts --default-non-nullable=false",
+    "api": "uv run --project .. winston api schema | openapi-typescript -o src/api/schema.d.ts --default-non-nullable=false",
     "preview": "vite preview",
     "smoke": "bash scripts/smoke.sh"
   },

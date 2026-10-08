@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, CircleDashed, CircleHelp, Trash2 } from 'lucide-react'
-import { StatusTip } from '@/components/ha-connection'
+import { StatusTip } from '@/components/status-tip'
 import { IconButton } from '@/components/icon-button'
 import { KindIcon } from '@/components/kind-icon'
 import { Badge } from '@/components/ui/badge'

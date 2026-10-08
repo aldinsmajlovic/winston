@@ -4,22 +4,14 @@ sentences, and the observer turns a typed turn into events. No hardware needed.
     uv run python tests/live_cases.py
 """
 import asyncio
-import sys
 
+from harness import check, finish_checks
 from pipecat.frames.frames import (FunctionCallFromLLM, FunctionCallResultFrame, FunctionCallsStartedFrame,
                                    LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame)
 from pipecat.observers.base_observer import FramePushed
 from pipecat.processors.frame_processor import FrameDirection
 
 from winston.core.live import Feed, LiveEvent, LiveObserver, tool_label
-
-failed = []
-
-
-def check(name, got, want):
-    if got != want:
-        failed.append(f"{name}: got {got!r}, want {want!r}")
-
 
 LABELS = [
     ("intent__HassTurnOn", {"name": "Kitchen lights"}, "ok", "Turned on Kitchen lights"),
@@ -86,6 +78,4 @@ check("observer events", [(e.type, e.state or e.status or e.text) for e in ev], 
     ("state", "thinking"), ("tool", "running"), ("tool", "ok"), ("state", "thinking"),
     ("reply", "It is"), ("reply", " Oslo."), ("reply_end", None), ("state", "idle")])
 
-if failed:
-    print("\n".join(failed)); sys.exit(1)
-print(f"live: {len(LABELS)} labels, history and observer ok")
+finish_checks(f"live: {len(LABELS)} labels, history and observer ok")

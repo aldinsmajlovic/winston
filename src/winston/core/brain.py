@@ -37,6 +37,7 @@ from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import
 from winston.config.schema import WinstonConfig
 from winston.core import persona as persona_file
 from winston.core import guard, region
+from winston.core.common import Once, entity_names, key, log_event, rewrap, words_pattern
 from winston.core.memory import make_memory_tools, prompt_block
 from winston.core.rooms import device_areas, plain_words, scoped_by_name
 from winston.core.tools.ask_claude import make_ask_claude_tool
@@ -164,24 +165,21 @@ class Own:
 
 def own_answers(cfg: WinstonConfig) -> list[Own]:
     """The exposed entities with their own way of being answered, the one with the longest name first. The
-    names are its object id, name and aliases, as guard.targets reads them."""
+    names are the ones it answers to (common.entity_names), as guard.targets reads them."""
     ha = cfg.providers.home_assistant
     found = []
     for entity_id, e in (ha.expose if ha else {}).items():
-        names = {n.strip().lower() for n in (entity_id.split(".", 1)[-1].replace("_", " "), e.name, *e.aliases)
-                 if n and n.strip()}
+        names = entity_names(entity_id, e)
         line = (e.say_first or "").strip() or None
         if (line or e.quiet_after or e.shortcut) and names:
-            pattern = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")\b")
-            found.append((max(map(len, names)), Own(entity_id, pattern, {plain_words(n) for n in names}, line,
-                                                    e.quiet_after, e.shortcut)))
+            found.append((max(map(len, names)), Own(entity_id, words_pattern(names), {plain_words(n) for n in names},
+                                                    line, e.quiet_after, e.shortcut)))
     for sc in cfg.shortcuts:
-        names = {p.strip().lower() for p in sc.phrases if p and p.strip()}
+        names = [k for p in sc.phrases if p and (k := key(p))]
         line = (sc.say_first or "").strip() or None
         if sc.tool and names:
-            pattern = re.compile(r"\b(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")\b")
-            found.append((max(map(len, names)), Own(sc.tool, pattern, {plain_words(n) for n in names}, line,
-                                                    sc.quiet_after, True, args=dict(sc.args))))
+            found.append((max(map(len, names)), Own(sc.tool, words_pattern(names), {plain_words(n) for n in names},
+                                                    line, sc.quiet_after, True, args=dict(sc.args))))
     return [own for _, own in sorted(found, key=lambda f: -f[0])]
 
 
@@ -318,8 +316,8 @@ class WinstonLLM(OpenAILLMService):
         if self._no_tools:
             logger.warning(f"{rounds} rounds of tool calls for one request: this one answers without tools")
         said = last_said(messages) if self._own or self._home else None
-        self._think = bool(said and self._home and self._home.search(said.lower()))
-        own = next((o for o in self._own if said and o.pattern.search(said.lower())), None)
+        self._think = bool(said and self._home and self._home.search(key(said)))
+        own = next((o for o in self._own if said and o.pattern.search(key(said))), None)
         if own and own.quiet and acted(messages):
             self.ended, self._think = True, False
             return _nothing()
@@ -436,23 +434,20 @@ class Brain:
         before they arrive go out unchanged."""
         self._areas = asyncio.create_task(device_areas(self.cfg))
         for t in self.tools.standard_tools:
-            if not {"name", "area"} <= set(t.properties or {}) or (item := self.llm._functions.get(t.name)) is None:
-                continue
-            original = item.handler
+            if {"name", "area"} <= set(t.properties or {}):
+                rewrap(self.llm, t.name, self._scoped)
 
-            async def handler(params, _original=original):
-                areas = self._areas.result() if self._areas.done() and not self._areas.cancelled() else {}
-                if isinstance(params.arguments, dict):
-                    scoped = scoped_by_name(params.arguments, areas)
-                    if scoped is not params.arguments:
-                        logger.info(f"{params.function_name}: {params.arguments['name']!r} is not in "
-                                    f"{params.arguments['area']!r}, area left out")
-                        params.arguments = scoped
-                await _original(params)
-            if cleanup := getattr(original, "_pipecat_cleanup", None):
-                handler._pipecat_cleanup = cleanup
-            self.llm.register_function(t.name, handler, cancel_on_interruption=item.cancel_on_interruption,
-                                       timeout_secs=item.timeout_secs)
+    def _scoped(self, original):
+        async def handler(params):
+            areas = self._areas.result() if self._areas.done() and not self._areas.cancelled() else {}
+            if isinstance(params.arguments, dict):
+                scoped = scoped_by_name(params.arguments, areas)
+                if scoped is not params.arguments:
+                    logger.info(f"{params.function_name}: {params.arguments['name']!r} is not in "
+                                f"{params.arguments['area']!r}, area left out")
+                    params.arguments = scoped
+            await original(params)
+        return handler
 
     def add_tool(self, schema, handler):
         """A channel's own tool, registered before the first new_context()."""
@@ -487,27 +482,21 @@ class ToolCallLogObserver(BaseObserver):
     def __init__(self, cfg: WinstonConfig, channel: str = "?"):
         super().__init__()
         self._path: Path = resolve(cfg.logging.tool_calls)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
         self._channel = channel
-        self._seen: set[tuple[str, str]] = set()   # observers see a frame once per pipeline hop
-
-    def _write(self, **rec):
-        with self._path.open("a") as f:
-            f.write(json.dumps({"ts": time.time(), "channel": self._channel, **rec}, default=str) + "\n")
+        self._first = Once()
 
     async def on_push_frame(self, data: FramePushed):
         f = data.frame
         if isinstance(f, FunctionCallsStartedFrame):
             for c in f.function_calls:
-                if ("call", c.tool_call_id) in self._seen:
-                    continue
-                self._seen.add(("call", c.tool_call_id))
-                self._write(event="call", tool=c.function_name, id=c.tool_call_id, args=c.arguments)
-                logger.info(f"tool call {c.function_name}({json.dumps(c.arguments)})")
+                if self._first(("call", c.tool_call_id)):
+                    log_event(self._path, self._channel, event="call", tool=c.function_name, id=c.tool_call_id,
+                              args=c.arguments)
+                    logger.info(f"tool call {c.function_name}({json.dumps(c.arguments)})")
         elif isinstance(f, FunctionCallResultFrame):
-            if ("result", f.tool_call_id) in self._seen:
+            if not self._first(("result", f.tool_call_id)):
                 return
-            self._seen.add(("result", f.tool_call_id))
             res = f.result if isinstance(f.result, str) else json.dumps(f.result, default=str)
-            self._write(event="result", tool=f.function_name, id=f.tool_call_id, result=res[:2000])
+            log_event(self._path, self._channel, event="result", tool=f.function_name, id=f.tool_call_id,
+                      result=res[:2000])
             logger.info(f"tool result {f.function_name}: {res[:200]}")

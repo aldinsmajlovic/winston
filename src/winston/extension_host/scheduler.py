@@ -13,6 +13,8 @@ move one clock, missed runs are caught up in one place, and the card shows the n
   as a job named `check:<kind>:<trigger>`.
 - Speaking up hears the person entity arrive and leave, and the phone's notification buttons
   (`mobile_app_notification_action`).
+- Announcements from Home Assistant (`announce.ha_event`) come over the same connection, extensions or
+  not; HA lets only an admin token subscribe to a custom event.
 A job never runs twice at once; a run still going when the next is due is skipped and logged."""
 from __future__ import annotations
 
@@ -27,7 +29,7 @@ import websockets
 from loguru import logger
 from winston_sdk.context import local_zone
 
-from winston.extension_host.sources import state_dir
+from winston.extension_host.sources import read_json, state_dir, write_json
 
 TIME_KINDS = ("every", "at", "cron")
 PHONE_EVENT = "mobile_app_notification_action"
@@ -121,19 +123,28 @@ class Scheduler:
         self._ran_since_start: dict[str, float] = {}      # extension -> the start its "every" jobs ran for
         self._states: dict[str, str] = {}                  # entity -> its latest state, from the events
         self._ha_wants: tuple | None = None
+        self._jobs = False                                 # the extensions' clock and triggers run
         self.on_phone_action = None                        # set by winstond: a notification button pressed
+        self.announce_event: str | None = None             # set by winstond: Home Assistant's event to announce
+        self.on_announce = None                            # and what to do with one
 
     def now(self) -> datetime:
         return datetime.now(self.zone)
 
-    def start(self) -> None:
-        self._tasks = [asyncio.create_task(self._loop(), name="extension scheduler"),
-                       asyncio.create_task(self._ha_loop(), name="extension triggers")]
+    def start(self, jobs: bool = True) -> None:
+        """Home Assistant's events for announcements, and with jobs the extensions' clock and triggers.
+        Called again with jobs, it adds those."""
+        if not self._tasks:
+            self._tasks.append(asyncio.create_task(self._ha_loop(), name="Home Assistant events"))
+        if jobs and not self._jobs:
+            self._jobs = True
+            self._tasks.append(asyncio.create_task(self._loop(), name="extension scheduler"))
 
     async def stop(self) -> None:
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks, self._jobs = [], False
 
     def wake(self) -> None:
         self._wake.set()
@@ -144,18 +155,10 @@ class Scheduler:
     # state kept per extension: when each job last ran
 
     def _last(self, ext_id: str) -> dict[str, float]:
-        try:
-            return json.loads((state_dir(ext_id) / "schedule.json").read_text()).get("last", {})
-        except (OSError, ValueError):
-            return {}
+        return read_json(state_dir(ext_id) / "schedule.json", {}).get("last", {})
 
     def _ran(self, ext_id: str, job: str, at: float) -> None:
-        path = state_dir(ext_id) / "schedule.json"
-        last = self._last(ext_id) | {job: at}
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps({"last": last}))
-        tmp.replace(path)
+        write_json(state_dir(ext_id) / "schedule.json", {"last": self._last(ext_id) | {job: at}})
 
     def setting(self, ext_id: str, name: str) -> Any:
         """A setting as saved, else its described default."""
@@ -278,10 +281,10 @@ class Scheduler:
     def _wants(self) -> tuple[bool, tuple[str, ...]]:
         """Whether any running extension needs state changes, and which custom events. Speaking up
         needs the person entity's changes while any running extension has kinds, and the phone's
-        buttons while a phone is set."""
-        states, events = False, set()
+        buttons while a phone is set; announcements need their event always."""
+        states, events = False, {self.announce_event} - {None}
         cfg = self.host.cfg
-        for ext_id, proc in self.host.procs.items():
+        for ext_id, proc in self.host.procs.items() if self._jobs else ():
             if proc.state != "running":
                 continue
             if self.host.described.get(ext_id, {}).get("kinds"):
@@ -310,14 +313,13 @@ class Scheduler:
                     await ws.recv()
                     await ws.send(json.dumps({"type": "auth", "access_token": os.environ.get(ha.token_env, "")}))
                     if json.loads(await ws.recv()).get("type") != "auth_ok":
-                        logger.error("extension triggers: Home Assistant refused the token")
+                        logger.error("Home Assistant events: the token was refused; trying again in a minute")
                         await asyncio.sleep(60)
                         continue
-                    msg_id = 0
-                    for event_type in (["state_changed"] if wants[0] else []) + list(wants[1]):
-                        msg_id += 1
+                    subs = dict(enumerate((["state_changed"] if wants[0] else []) + list(wants[1]), 1))
+                    for msg_id, event_type in subs.items():
                         await ws.send(json.dumps({"id": msg_id, "type": "subscribe_events", "event_type": event_type}))
-                    logger.info(f"extension triggers: listening for {'state changes, ' if wants[0] else ''}"
+                    logger.info(f"Home Assistant events: listening for {'state changes, ' if wants[0] else ''}"
                                 f"{', '.join(wants[1]) or 'no events'}")
                     delay = 2.0
                     while self._wants() == wants:
@@ -327,11 +329,13 @@ class Scheduler:
                             continue
                         msg = json.loads(raw)
                         if msg.get("type") == "result" and not msg.get("success"):
-                            logger.warning(f"extension triggers: a subscription was refused: {msg.get('error')}")
+                            logger.warning(f"Home Assistant events: cannot subscribe to "
+                                           f"{subs.get(msg.get('id'), 'an event')} (a non-admin token?): "
+                                           f"{msg.get('error')}")
                         if msg.get("type") == "event":
                             self.dispatch(msg["event"])
             except (OSError, websockets.WebSocketException, ValueError) as e:
-                logger.warning(f"extension triggers: {e}; reconnecting in {delay:.0f} s")
+                logger.warning(f"Home Assistant events: {e}; reconnecting in {delay:.0f} s")
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, 60)
 
@@ -380,6 +384,8 @@ class Scheduler:
         else:
             if etype == PHONE_EVENT and self.on_phone_action is not None:
                 self.on_phone_action(data)
+            if etype == self.announce_event and self.on_announce is not None:
+                self.on_announce(data)
             for ext_id, proc in self.host.procs.items():
                 if proc.state != "running":
                     continue

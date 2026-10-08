@@ -8,6 +8,7 @@ import { InfoTip } from '@/components/info-tip'
 import { PageSkeleton } from '@/components/page'
 import { SectionForm } from '@/components/section-form'
 import { StateIcon } from '@/components/state-icon'
+import { StatusTip } from '@/components/status-tip'
 import { SettingsPage } from '@/components/templates/settings-page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,8 +19,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
+import { capitalize } from '@/lib/format'
 import { getIn, section, setIn } from '@/lib/schema'
 
 const SPEAK_UP = ['speak_up']
@@ -58,7 +59,7 @@ const PER_LEVEL = 'per_level'
 function standing(n: NonNullable<ExtensionView['nudges']>[number]): string {
   if (n.put_off) return `Put off until ${n.put_off}`
   if (n.state === 'held') return `Held: ${n.why ?? 'waiting'}`
-  if (n.state === 'waiting') return n.why ? n.why.charAt(0).toUpperCase() + n.why.slice(1) : 'Waiting'
+  if (n.state === 'waiting') return n.why ? capitalize(n.why) : 'Waiting'
   if (n.state === 'said') return `Said ${n.via === 'conversation' ? 'in a conversation' : n.via === 'silent' ? 'silently' : `on the ${(n.via ?? '').split(':')[0]}`}`
   if (n.state === 'dismissed') return 'Dismissed'
   return 'Ended'
@@ -293,14 +294,11 @@ function ExtensionCard({ e, page }: Props) {
           {e.name}
           <StateIcon state={STATE[e.state as keyof typeof STATE] ?? 'stopped'} detail={e.problem || e.detail || e.state} />
           {e.origin !== 'built-in' && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex" tabIndex={0}>
-                  <ShieldAlert className="size-4 text-muted-foreground" aria-label="Not built in" />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Not built in. It runs as you, not in a sandbox; switch on only ones you trust.</TooltipContent>
-            </Tooltip>
+            <StatusTip
+              icon={ShieldAlert}
+              className="text-muted-foreground"
+              label="Not built in. It runs as you, not in a sandbox; switch on only ones you trust."
+            />
           )}
           <span className="ml-auto flex items-center gap-1">
             <IconButton label="Log" onClick={() => setLog(true)}>

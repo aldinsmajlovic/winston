@@ -17,7 +17,6 @@ through. Shall I do it now?").
 The observer keeps the tool bookkeeping because the function-call frames never travel downstream
 past the LLM; the processor sees the reply text. A channel that closes a reply on silence waits
 while guard.retrying is set."""
-import json
 import re
 import time
 from pathlib import Path
@@ -32,6 +31,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
+from winston.core.common import Once, entity_names, log_event, words_pattern
 
 READ, ACT = "read", "act"
 
@@ -123,15 +123,11 @@ GENERIC_TARGETS = ("light", "lights", "lamp", "lamps", "brightness")
 
 
 def targets(cfg: WinstonConfig | None = None) -> re.Pattern:
-    """The things a loose claim must name: the generic words plus every exposed Home Assistant
-    entity's name, aliases and object id ("light.shelf_lamp" is "shelf lamp"), lowercased."""
-    names = set(GENERIC_TARGETS)
+    """The things a loose claim must name: the generic words plus every name an exposed Home Assistant
+    entity answers to (common.entity_names)."""
     ha = cfg.providers.home_assistant if cfg else None
-    for entity_id, e in (ha.expose if ha else {}).items():
-        names.add(entity_id.split(".", 1)[-1].replace("_", " "))
-        names.update(n for n in [e.name, *e.aliases] if n)
-    names = {n.strip().lower() for n in names if n.strip()}
-    return re.compile(r"\b(?:" + "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True)) + r")\b")
+    return words_pattern([*GENERIC_TARGETS, *(n for eid, e in (ha.expose if ha else {}).items()
+                                              for n in entity_names(eid, e))])
 
 
 _GENERIC = targets()
@@ -145,7 +141,7 @@ def judge(text: str, tools: list[tuple[str, bool]], names: re.Pattern = _GENERIC
     ok = {tool_tier(name) for name, succeeded in tools if succeeded}
     memory_ok = any(succeeded and name.split("__")[-1].lower() in MEMORY_TOOLS for name, succeeded in tools)
     noted_ok = memory_ok or any(succeeded and name in NOTING for name, succeeded in tools)
-    for s in re.split(r"(?<=[.!])\s+", text.lower()):
+    for s in re.split(r"(?<=[.!])\s+", text.casefold()):
         if _SKIP.search(s):
             continue
         named = bool(names.search(s))
@@ -194,8 +190,9 @@ NOTE_MARK = "not said by the user"
 
 
 def is_note(text: str) -> bool:
-    """A user-role message the house wrote, not the user: an announcement or a guard retry."""
-    return text.lstrip().startswith("[") and NOTE_MARK in text[:80]
+    """A user-role message the house wrote, not the user: an announcement or a guard retry. The mark comes
+    near the start, after the clock's stamp when it has one ("[06:22, room: Main Room] [Home notification, ...")."""
+    return text.lstrip().startswith("[") and NOTE_MARK in text[:160]
 
 
 def retry_note(verdict: str, said: str) -> str:
@@ -226,7 +223,7 @@ class ToolTurnObserver(BaseObserver):
         self.responses: dict[int, list[str]] = {}   # response end frame id -> calls started in it
         self._response_start = 0
         self._new_turn = True
-        self._seen: set[tuple[str, str]] = set()   # observers see a frame once per pipeline hop
+        self._first = Once()
         self._last_reset: int | None = None
 
     def current(self) -> list[tuple[str, bool]]:
@@ -242,31 +239,26 @@ class ToolTurnObserver(BaseObserver):
         f = data.frame
         if isinstance(f, FunctionCallsStartedFrame):
             for c in f.function_calls:
-                if ("call", c.tool_call_id) not in self._seen:
-                    self._seen.add(("call", c.tool_call_id))
+                if self._first(("call", c.tool_call_id)):
                     self.pending.add(c.tool_call_id)
                     self.running[c.tool_call_id] = c.function_name
                     self.started.append(c.function_name)
         elif isinstance(f, FunctionCallResultFrame):
-            if ("result", f.tool_call_id) in self._seen:
+            if not self._first(("result", f.tool_call_id)):
                 return
-            self._seen.add(("result", f.tool_call_id))
             self.pending.discard(f.tool_call_id)
             self.running.pop(f.tool_call_id, None)
             self.calls.append((f.function_name, result_ok(f.result)))
         elif isinstance(f, LLMFullResponseStartFrame):
-            if ("start", f.id) not in self._seen:
-                self._seen.add(("start", f.id))
+            if self._first(("start", f.id)):
                 self._response_start = len(self.started)
         elif isinstance(f, LLMFullResponseEndFrame):
-            if ("end", f.id) not in self._seen:     # seen before the guard processes it
-                self._seen.add(("end", f.id))
+            if self._first(("end", f.id)):         # seen before the guard processes it
                 self.responses[f.id] = self.started[self._response_start:]
                 self._response_start = len(self.started)
         elif isinstance(f, TranscriptionFrame):
-            if ("heard", f.id) in self._seen:
+            if not self._first(("heard", f.id)):
                 return
-            self._seen.add(("heard", f.id))
             self.heard = f.text if self._new_turn else f"{self.heard} {f.text}"
             self._new_turn = False
         elif isinstance(f, UserStartedSpeakingFrame) or (
@@ -303,6 +295,11 @@ def _content(message) -> str:
 # break. "10.6 million" does not end one; the last sentence ends with the response.
 _SENTENCE_END = re.compile(r"[.!?][\"')\]]*\s+|\n+")
 _THINK_TAG = re.compile(r"</?think>")         # with thinking off the model sometimes writes one
+_CLOSE_THINK = "</think>"
+
+
+def _words(text: str) -> str:
+    return " ".join(re.sub(r"\W+", " ", text).split()).casefold()
 
 
 class ClaimGuard(FrameProcessor):
@@ -320,6 +317,11 @@ class ClaimGuard(FrameProcessor):
         self._names = targets(cfg)
         self._log: Path = resolve(cfg.logging.tool_calls)
         self._buf = ""                             # text since the last sentence end
+        # The last finished sentence waits for what follows it, and what came before a stray </think>
+        # waits for the first sentence after it: the model sometimes answers, closes a think block it
+        # never opened, and answers again ("Oslo, Sir. </think> Oslo, Sir."); said once, not twice.
+        self._last: str | None = None
+        self._before_tag: str | None = None
         self._held: list[str] = []                 # sentences held back in this response, in order
         self._released: list[str] = []            # what this response let through
         self._retried_turn = -1                    # the user turn whose retry is used up
@@ -328,9 +330,13 @@ class ClaimGuard(FrameProcessor):
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, LLMFullResponseStartFrame):
-            self._buf, self._held, self._released = "", [], []
+            self._buf, self._held, self._released, self._last, self._before_tag = "", [], [], None, None
         elif isinstance(frame, LLMTextFrame) and direction == FrameDirection.DOWNSTREAM:
             self._buf += frame.text
+            while _CLOSE_THINK in self._buf:
+                before, self._buf = self._buf.split(_CLOSE_THINK, 1)
+                self._before_tag = (self._before_tag or "") + (self._last or "") + _THINK_TAG.sub("", before)
+                self._last = None
             await self._sentences()
             return
         elif isinstance(frame, InterruptionFrame):
@@ -341,10 +347,41 @@ class ClaimGuard(FrameProcessor):
         await self.push_frame(frame, direction)
 
     async def _sentences(self):
-        """Judges and passes on every finished sentence in the buffer; the rest waits."""
+        """Judges and passes on every finished sentence in the buffer; the rest waits. The last one goes
+        once more text follows that is not a </think>."""
         while m := _SENTENCE_END.search(self._buf):
             sentence, self._buf = self._buf[:m.end()], self._buf[m.end():]
-            await self._one(_THINK_TAG.sub("", sentence))
+            sentence = _THINK_TAG.sub("", sentence)
+            if not sentence.strip():                # spacing stays with what it follows
+                if self._last is not None:
+                    self._last += sentence
+                elif self._before_tag is not None:
+                    self._before_tag += sentence
+                else:
+                    await self._one(sentence)
+                continue
+            await self._after_tag(sentence)
+            await self._settle_last()
+            self._last = sentence
+        rest = self._buf.strip()
+        if rest and not _CLOSE_THINK.startswith(rest):
+            await self._settle_last()
+
+    async def _settle_last(self):
+        if self._last is not None:
+            s, self._last = self._last, None
+            await self._one(s)
+
+    async def _after_tag(self, first: str):
+        """What came before a stray </think>, now that the first sentence after it is known: dropped when
+        that sentence says it again, otherwise passed on."""
+        if self._before_tag is None:
+            return
+        before, self._before_tag = self._before_tag, None
+        if _words(before) and _words(before) in _words(first):
+            logger.info(f"claim guard: said once, not again after a stray </think>: {before.strip()!r}")
+        elif before.strip():
+            await self._one(before)
 
     async def _one(self, sentence: str):
         # A claim or a promise waits for the end of the response, where the calls it made are known
@@ -367,6 +404,8 @@ class ClaimGuard(FrameProcessor):
         final = not calls                          # after a call the LLM runs again on its result
         last = _THINK_TAG.sub("", self._buf)
         self._buf = ""
+        await self._after_tag(last)
+        await self._settle_last()
         if last.strip():
             self._held.append(last)
         tools = obs.backing()
@@ -432,7 +471,7 @@ class ClaimGuard(FrameProcessor):
 
     def _interrupted(self):
         """The user talked over him: what was held goes, and an open retry is abandoned."""
-        self._buf, self._held = "", []
+        self._buf, self._held, self._last, self._before_tag = "", [], None, None
         if self._retry:
             r = self._retry
             self._record(r["verdict"], r["text"], retried=True, retry_backed=False, fallback=False,
@@ -441,8 +480,5 @@ class ClaimGuard(FrameProcessor):
 
     def _record(self, verdict: str, text: str, **fields):
         obs = self.observer
-        self._log.parent.mkdir(parents=True, exist_ok=True)
-        with self._log.open("a") as f:
-            f.write(json.dumps({"ts": time.time(), "channel": self._channel, "event": "guard",
-                                "verdict": verdict, "text": text, "heard": obs.heard[:200],
-                                "tools": obs.calls, "previous": obs.previous, **fields}) + "\n")
+        log_event(self._log, self._channel, event="guard", verdict=verdict, text=text, heard=obs.heard[:200],
+                  tools=obs.calls, previous=obs.previous, **fields)

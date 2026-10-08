@@ -1,4 +1,4 @@
-import { useEffect, useState, type ClipboardEvent, type FormEvent, type ReactNode } from 'react'
+import { useState, type ClipboardEvent, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { ChevronRight, ListCollapse, Lock, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -15,17 +15,23 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useNow } from '@/hooks/use-now'
 import { cn } from '@/lib/utils'
 
 const SAVED = 'Saved. He knows it from his next conversation.'
 const SAVED_OFF = 'Saved. He does not use it while memory is off.'
-// Every action here shows its own errors, in place or as a toast.
+// Actions that show their own errors, in place or as a toast.
 const OWN_ERRORS = { meta: { showsErrors: true } }
 /** A fold's toggle: its text lines up with the column, and an open fold does not look pressed. */
 const FOLD = '-ml-3 text-muted-foreground aria-expanded:bg-transparent aria-expanded:text-muted-foreground'
 
 /** What a save returns: why it was refused, or null. */
 type Result = Promise<string | null>
+
+/** A toast saying what was done, with Undo running `restore`. */
+function undoToast(text: string, restore: () => void) {
+  toast(text, { action: { label: 'Undo', onClick: restore } })
+}
 
 async function attempt(run: () => Promise<unknown>): Result {
   try {
@@ -375,23 +381,21 @@ function Behaviour({ query }: { query: string }) {
     return why
   }
   // Undo puts the text from before back; kept here, so it works until the page reloads.
-  const undo = (key: 'behaviour' | 'instructions', before: string[]) => ({
-    label: 'Undo',
-    onClick: () => void save({ [key]: before }).then((why) => why && toast.error(why)),
-  })
+  const restore = (key: 'behaviour' | 'instructions', before: string[]) => () =>
+    void save({ [key]: before }).then((why) => why && toast.error(why))
   const replace = (list: string[], at: number, text: string | null) =>
     text === null ? list.filter((_, i) => i !== at) : list.map((l, i) => (i === at ? text : l))
   const remove = (key: 'behaviour' | 'instructions', at: number) => {
     const before = p[key]
     void write({ [key]: replace(before, at, null) }).then((why) => {
       if (why) return toast.error(why)
-      toast(`Removed: ${before[at]}`, { action: undo(key, before) })
+      undoToast(`Removed: ${before[at]}`, restore(key, before))
     })
   }
   const saveAll = async (key: 'behaviour' | 'instructions', lines: string[]): Result => {
     const before = p[key]
     const why = await write({ [key]: lines })
-    if (!why) toast(SAVED, { action: undo(key, before) })
+    if (!why) undoToast(SAVED, restore(key, before))
     return why
   }
 
@@ -662,21 +666,16 @@ export default function MemoryPage() {
   const memory = $api.useQuery('get', '/api/memory')
   const add = $api.useMutation('post', '/api/memory/{topic}', OWN_ERRORS)
   const edit = $api.useMutation('put', '/api/memory/{topic}', OWN_ERRORS)
-  const forget = $api.useMutation('delete', '/api/memory/{topic}', OWN_ERRORS)
+  const forget = $api.useMutation('delete', '/api/memory/{topic}')
   const all = $api.useMutation('put', '/api/memory/{topic}/all', OWN_ERRORS)
   const addTopic = $api.useMutation('post', '/api/memory/topics', OWN_ERRORS)
   const renameTopic = $api.useMutation('put', '/api/memory/topics/{topic}', OWN_ERRORS)
-  const deleteTopic = $api.useMutation('delete', '/api/memory/topics/{topic}', OWN_ERRORS)
-  const restoreTopic = $api.useMutation('post', '/api/memory/topics/{topic}/restore', OWN_ERRORS)
-  const clearExpired = $api.useMutation('post', '/api/memory/expired/clear', OWN_ERRORS)
+  const deleteTopic = $api.useMutation('delete', '/api/memory/topics/{topic}')
+  const restoreTopic = $api.useMutation('post', '/api/memory/topics/{topic}/restore')
+  const clearExpired = $api.useMutation('post', '/api/memory/expired/clear')
   const [search, setSearch] = useState('')
-  const [now, setNow] = useState(() => Date.now())
+  const now = useNow(10_000)
   const query = search.trim().toLowerCase()
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10_000)
-    return () => clearInterval(timer)
-  }, [])
 
   const refresh = () => void memory.refetch()
   const saved = (run: () => Promise<unknown>): Result =>
@@ -701,22 +700,17 @@ export default function MemoryPage() {
       forget.mutate(
         { params: { path: { topic }, query: { id: fact.id } } },
         {
-          onError: (error) => toast.error(errorText(error)),
           onSuccess: ({ index }) => {
             refresh()
-            toast(`Forgot: ${fact.text}`, {
-              action: {
-                label: 'Undo',
-                onClick: () =>
-                  add.mutate(
-                    {
-                      params: { path: { topic } },
-                      body: { fact: fact.text, index, noted: fact.noted, until: fact.until },
-                    },
-                    { onSuccess: refresh, onError: (error) => toast.error(errorText(error)) },
-                  ),
-              },
-            })
+            undoToast(`Forgot: ${fact.text}`, () =>
+              add.mutate(
+                {
+                  params: { path: { topic } },
+                  body: { fact: fact.text, index, noted: fact.noted, until: fact.until },
+                },
+                { onSuccess: refresh, onError: (error) => toast.error(errorText(error)) },
+              ),
+            )
           },
         },
       ),
@@ -735,19 +729,11 @@ export default function MemoryPage() {
       deleteTopic.mutate(
         { params: { path: { topic: topic.name } } },
         {
-          onError: (error) => toast.error(errorText(error)),
           onSuccess: ({ text }) => {
             refresh()
-            toast(`Deleted ${topic.title}`, {
-              action: {
-                label: 'Undo',
-                onClick: () =>
-                  restoreTopic.mutate(
-                    { params: { path: { topic: topic.name } }, body: { text } },
-                    { onSuccess: refresh, onError: (error) => toast.error(errorText(error)) },
-                  ),
-              },
-            })
+            undoToast(`Deleted ${topic.title}`, () =>
+              restoreTopic.mutate({ params: { path: { topic: topic.name } }, body: { text } }, { onSuccess: refresh }),
+            )
           },
         },
       )
@@ -763,26 +749,21 @@ export default function MemoryPage() {
     clearExpired.mutate(
       {},
       {
-        onError: (error) => toast.error(errorText(error)),
         onSuccess: (gone) => {
           refresh()
-          toast(gone.length === 1 ? 'Cleared 1 expired fact' : `Cleared ${gone.length} expired facts`, {
-            action: {
-              label: 'Undo',
-              onClick: () =>
-                void (async () => {
-                  // One at a time, in order, so each goes back to its place.
-                  for (const g of gone) {
-                    await add.mutateAsync({
-                      params: { path: { topic: g.topic } },
-                      body: { fact: g.text, index: g.index, noted: g.noted, until: g.until },
-                    })
-                  }
-                })()
-                  .catch((error) => toast.error(errorText(error)))
-                  .finally(refresh),
-            },
-          })
+          undoToast(gone.length === 1 ? 'Cleared 1 expired fact' : `Cleared ${gone.length} expired facts`, () =>
+            void (async () => {
+              // One at a time, in order, so each goes back to its place.
+              for (const g of gone) {
+                await add.mutateAsync({
+                  params: { path: { topic: g.topic } },
+                  body: { fact: g.text, index: g.index, noted: g.noted, until: g.until },
+                })
+              }
+            })()
+              .catch((error) => toast.error(errorText(error)))
+              .finally(refresh),
+          )
         },
       },
     )

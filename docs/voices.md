@@ -4,7 +4,9 @@
 
 `services/tts-chatterbox/` is a small FastAPI app exposing OpenAI's `/v1/audio/speech` on port 8880,
 returning 24 kHz mono PCM (or WAV). It has its own Python 3.11 venv because Chatterbox pins
-torch 2.6. Start it from this directory:
+torch 2.6. The protocol, the voice cache and the warm-up are `services/speech_server.py`, which the
+Pocket server (`services/tts-pocket/`) shares; each server only adds its engine. Start it from this
+directory:
 
 ```sh
 cd services/tts-chatterbox
@@ -21,11 +23,40 @@ request only: `stream` (true or false), `first_secs`, `chunk_secs` and `lookahea
 leaves out keep the startup values, and a look-ahead not shorter than the first chunk is refused
 with a 422, as it is at startup. The server warms up the streaming path at startup even with
 `--stream false`, so a streamed request to it is not slow the first time. Its answer says which way
-it rendered in an `X-Streaming: on` or `off` header. The Pocket server ignores these fields, since
-it always streams.
+it rendered in an `X-Streaming: on` or `off` header. The Pocket server takes `stream` too (false
+sends each sentence whole) and ignores the other three.
 
 Preparing a clip the server has not used yet takes a moment on the GPU. It runs off the event loop,
 so audio already being sent keeps flowing meanwhile.
+
+## Other engines
+
+Each is a preset on the Voice page, a small engine on the same shared server in its own venv, on
+port 8880 in Chatterbox's place:
+
+| Preset | Where | Clones from | Out | Notes |
+| --- | --- | --- | --- | --- |
+| Pocket TTS (`services/tts-pocket`) | CPU | 26 built-in voices, or a clip with Kyutai's gated weights | 24 kHz | No GPU at all |
+| Qwen3-TTS 1.7B (`services/tts-qwen3`) | GPU, about 6.5 GB | a clip and its words | 24 kHz | Slower than real time on a 3090 beside the 27B brain |
+| VoxCPM2 (`services/tts-voxcpm2`) | GPU, about 6.9 GB | a clip and its words | 48 kHz | Nearly fills a 24 GB card beside the 27B brain |
+| Gepard 1.1 (`services/tts-gepard`) | GPU, about 2.2 GB | a clip alone | 22.05 kHz | Fastest to start, but drops and garbles more words |
+
+Only one GPU voice fits beside the brain, so picking one stops the other. Qwen3-TTS and VoxCPM2 clone
+from the clip's words as well: a `.txt` beside the clip if there is one, otherwise Parakeet
+transcribes it once. How they compare is under [Benchmark](#benchmark).
+
+VoxCPM2 takes `--denoise` (add it to the engine's command): each reference clip is cleaned once with
+the package's ZipEnhancer before the voice is built, and the file on disk is left alone. It is for a
+clip with steady noise in it. Measured 2026-10-08 on `vctk/p254_023`, five lines each:
+
+| Reference clip | Without | With `--denoise` |
+| --- | --- | --- |
+| Clean | voice match 0.87, 3% word errors | 0.82, 0% |
+| A fan-like hum 10 dB under the voice | 0.73, 0%, the hum copied into his voice | 0.73, 0%, no hum |
+| Four other men talking 10 dB under it, and the hum | 0.63, 8%, the room copied in | 0.62, 41% |
+
+So it removes a hum or a hiss, garbles a clip with other voices in it, and blurs a clean one a
+little; the preset leaves it off.
 
 ## Trying a voice before saving
 
@@ -179,6 +210,37 @@ that a missing model stores the clone as not checked.
 `winston check clone` runs the whole exchange headless with two VCTK voices as the user and the
 friend. Recording from a satellite's far-field mic waits for M3.
 
+## Hearing engines
+
+Speech to text is a slot like the brain and the voice: the Hearing card on the Voice page picks a preset.
+
+| Preset | Where it runs | Takes hint words | Notes |
+| --- | --- | --- | --- |
+| Parakeet (built in, CPU) | inside the voice process, onnx-asr | no, fixed afterwards | The default; no GPU |
+| Qwen3-ASR 0.6B on GPU | `services/stt-qwen3-asr` on port 8001 | yes, as its context | About 2.2 GB of VRAM; fits beside the 27B brain and Chatterbox |
+| Qwen3-ASR 1.7B on GPU | the same service | yes | About 5 GB: beside the 27B brain it needs Pocket TTS instead of Chatterbox |
+| Hosted | any server speaking OpenAI's transcription API | as its prompt | `STT_API_KEY` in `.env`; your speech leaves the LAN |
+
+The Qwen3-ASR service has its own venv: run `uv sync` in `services/stt-qwen3-asr` once; the model
+downloads on its first start. The presets after Parakeet use the `openai_transcription` adapter, which
+sends each utterance to `stt.base_url` with the hint words as the request's `prompt`. Any server that
+speaks the protocol works without code; vLLM's stock image lacks the audio libraries it needs for it.
+
+Measured 2026-10-08 on six requests in three VCTK voices, the brain and Chatterbox running, with a
+made-up scene name ("Zephyrine") as a hint word:
+
+| | Parakeet | Qwen3-ASR 0.6B |
+| --- | --- | --- |
+| Clean | 3.0% word errors (1.6% after the misspelling fix) | 2.2% |
+| Four other men talking 10 dB under the voice | 18.3% (15.5%) | 6.3% |
+| A fan-like hum 5 dB under it | 13.8% (12.4%) | 4.5% |
+| The hint word right | 6 of 9 | 9 of 9 |
+| Time per request | about 0.2 s | about 0.29 s |
+
+The box transcribes during the pause that ends a request, so the extra 0.09 s is not heard there. On
+published benchmarks the 0.6B matches Parakeet on English overall and is weaker on Swedish (FLEURS);
+the 1.7B is ahead on both.
+
 ## Hint words
 
 Speech to text gets names wrong: Parakeet wrote "Hey Winson.", "Windsun" and "They win some." for
@@ -190,7 +252,7 @@ give nothing). `stt.hint_words` adds the rest, such as room names in Swedish. Wh
 cloned, the friend's name is added for the consent recording.
 
 An engine that can be told words in advance (`supports_hints` in the adapter contract) gets the list:
-Whisper as its initial prompt or hotwords, a cloud engine as keyterms. Parakeet cannot, so with
+Qwen3-ASR as its context, a Whisper-style server as its prompt. Parakeet cannot, so with
 `stt.fix_misspellings` on (the default) Winston corrects close misspellings afterwards, in
 `core/hints.py`, for the voice channel, the satellites and the clone consent alike:
 
@@ -220,9 +282,9 @@ corrections and 200 ordinary English sentences that must come through unchanged.
 
 A voice to replace or sit beside Chatterbox-Turbo has to sound more human, start talking as soon,
 and fit on the card next to the 27B brain: about 6.3 GB once Chatterbox (3.6 GB) is stopped, since
-the brain keeps 16.9 GB and 2.8 GB is free while both run. `tests/tts_bench/` measures the candidates
-on Winston's own lines in the same three voices and builds a blind A/B listening page against Turbo;
-[its README](../tests/tts_bench/README.md) is the run procedure.
+the brain keeps 16.9 GB and 2.8 GB is free while both run. `tests/tts_bench/` measures any speech
+server on Winston's own lines in the same three voices and builds a blind A/B listening page against
+Turbo; [its README](../tests/tts_bench/README.md) is the run procedure.
 
 The candidates, checked on 2026-09-24:
 
@@ -233,12 +295,9 @@ The candidates, checked on 2026-09-24:
 | Gepard 1.1 and 1.0 (nineninesix) | Apache-2.0, codec under NVIDIA's Open Model License | 1.1 GB each, codec 0.4 GB | a clip alone | frame by frame, hooked in the server | 22.05 kHz |
 | Pocket TTS (`services/tts-pocket`) | MIT code, CC BY 4.0 weights | 0.4 GB | a clip, with Kyutai's gated weights | yes | 24 kHz, CPU |
 
-Each runs in its own venv under `services/tts-candidates/<name>/` behind the same protocol as the
-Chatterbox server (`speech_server.py` there): `/v1/audio/speech` with raw PCM streamed or WAV, a
-voice being a clip under `--voices-dir` prepared on first use and cached, a per-request `stream`,
-and `/health` with the default and built-in voices. So any of them can be tried in Winston by
-pointing `tts.base_url` at it, with `tts.sample_rate` set to its rate. The engines that clone from
-the words take them from a `.txt` beside the clip, or transcribe the clip once with Parakeet.
+Each new candidate runs in its own venv as a small engine on the shared speech server
+(`services/speech_server.py`), and is a Voice preset as well ([other engines](#other-engines));
+`tests/tts_bench/candidate.sh` runs one at a time for the benchmark.
 
 - Qwen3-TTS's package returns audio only at the end; the server takes each 80 ms frame from the
   model as it is made and decodes as it goes, with the clip's own frames as left context. It has no
@@ -256,6 +315,25 @@ On the CPU (a 5800X, while the live engines held the GPU) all three new servers 
 `vctk/p254_023` and spoke streamed and whole, and Parakeet heard the words back: Gepard at a
 real-time factor of about 1.1 with the first audio after 0.75 s, Qwen3-TTS at about 6 and VoxCPM2 at
 about 20. These prove the servers, not the GPU speed the benchmark is for.
+
+### Clarity in noise, by reference voice
+
+Measured 2026-10-08 with Chatterbox-Turbo streamed: ten of Winston's lines in each clip in
+`vctk/` and `librivox/`, then mixed with four other men talking (10 and 5 dB under the voice) and a
+fan-like hum (5 and 0 dB), with Parakeet as the listener. Word errors averaged over the four mixes,
+21 voices:
+
+| Voice | In noise | Clean |
+| --- | --- | --- |
+| `vctk/p232_023` | 16.6% | 3.3% |
+| `librivox/barnes_jekyll` | 18.6% | 4.2% |
+| `librivox/yearsley_sussex` | 19.4% | 2.5% |
+| `vctk/p254_023` (the presets' default) | 19.6% | 2.5% |
+| `librivox/clifton_fatherbrown` | 27.9% (ninth) | 2.6% |
+| `librivox/yearsley_ghost` (last) | 52.1% | 0.0% |
+
+Every voice is clear in quiet; noise is where they part. Ten lines per voice is a leaning: a gap under
+about five points is noise.
 
 ### Results, 24 September
 

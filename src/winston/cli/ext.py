@@ -71,21 +71,17 @@ async def test_hello():
 '''
 
 
-def _api() -> str:
-    cfg = load()
-    host = cfg.control.host if cfg.control.host not in ("0.0.0.0", "::", "") else "127.0.0.1"
-    return f"http://{host}:{cfg.control.port}"
-
-
 def _call(method: str, path: str, **kw) -> httpx.Response:
+    """A call to winstond; when it is not running, says so and exits."""
     try:
-        return httpx.request(method, f"{_api()}{path}", timeout=kw.pop("timeout", 30), **kw)
+        return httpx.request(method, load().control.url + path, timeout=kw.pop("timeout", 30), **kw)
     except httpx.HTTPError:
         print("winstond is not running (start it with `winston up`)")
         raise typer.Exit(1)
 
 
 def _ok(r: httpx.Response) -> dict | list:
+    """Its JSON; an error's detail is printed and exits."""
     if r.status_code >= 400:
         try:
             detail = r.json().get("detail", r.text)
@@ -228,7 +224,7 @@ def new(name: str = typer.Argument(..., help="Its id: lowercase letters, digits 
     test.write_text(TEST_TEMPLATE.format(id=name, name=title))
     print(f"create {path}\ncreate {test}")
     try:
-        httpx.post(f"{_api()}/api/extensions/refresh", timeout=60).raise_for_status()
+        httpx.post(load().control.url + "/api/extensions/refresh", timeout=60).raise_for_status()
         print(f"\nwinstond found it. Next: `winston ext test {name}`, then `winston ext enable {name}`.")
     except Exception:                                                   # noqa: BLE001  (not running, no config yet)
         print(f"\nNext: `winston ext test {name}`; `winston up` will find it, then `winston ext enable {name}`.")

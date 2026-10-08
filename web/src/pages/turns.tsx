@@ -10,6 +10,8 @@ import { ToolLine } from '@/components/tool-line'
 import { WinstonHeader } from '@/components/winston-header'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useNow } from '@/hooks/use-now'
+import { capitalize } from '@/lib/format'
 import { markText } from '@/lib/marks'
 import { cn } from '@/lib/utils'
 
@@ -23,8 +25,6 @@ const OUTCOME: Record<string, string> = {
   cut_short: 'Cut short',
   failed: 'Failed',
 }
-
-const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 /** "Tue 7 Oct" for a YYYY-MM-DD day, in the browser's language. */
 function dayLabel(day: string): string {
@@ -51,7 +51,7 @@ function usePlayer() {
 
 function Turn({ turn, showDay, player }: { turn: TurnRecord; showDay: boolean; player: ReturnType<typeof usePlayer> }) {
   const time = new Date(turn.ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const where = turn.room ? capital(turn.room) : turn.channel === 'voice' ? 'Browser' : capital(turn.channel)
+  const where = turn.room ? capitalize(turn.room) : turn.channel === 'voice' ? 'Browser' : capitalize(turn.channel)
   const meta = [showDay ? `${dayLabel(turn.day)}, ${time}` : time, where, START[turn.start] ?? turn.start]
   if (turn.first_audio_ms) meta.push(`first word ${(turn.first_audio_ms / 1000).toFixed(1)} s`)
   const outcome = turn.outcome !== 'answered' ? OUTCOME[turn.outcome] ?? turn.outcome : null
@@ -97,12 +97,7 @@ export default function TurnsPage() {
   const turns = $api.useQuery('get', '/api/turns', { params: { query: { day } } })
   const marked = $api.useQuery('get', '/api/turns/marked')
   const player = usePlayer()
-  const [now, setNow] = useState(() => Date.now())
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10_000)
-    return () => clearInterval(timer)
-  }, [])
+  const now = useNow(10_000)
   // A turn kept while the page is open shows up: the live feed says when one was.
   const kept = feed.items.filter((i) => i.kind === 'user' && i.turn).length
   const { refetch } = turns

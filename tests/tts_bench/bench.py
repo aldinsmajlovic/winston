@@ -4,9 +4,9 @@
     uv run python tests/tts_bench/bench.py qwen3=http://127.0.0.1:8891 voxcpm2=http://127.0.0.1:8892
     uv run python tests/tts_bench/bench.py pocket=http://127.0.0.1:8895#george     # a built-in voice
 
-Each NAME=URL is a server speaking the protocol of services/tts-chatterbox/server.py. For every
+Each NAME=URL is a server speaking the protocol of services/speech_server.py. For every
 reference clip (copied read-only from data/voices into work/voices, with Parakeet's transcript
-beside it for the models that clone from the words) and every line of sentences.txt it measures:
+beside it for engines that clone from the words) and every line of sentences.txt it measures:
 
 - ttfa_ms: request sent to the first audio byte back, total_ms: to the last, rtf: total / audio length
 - sound_ms: when a listener hears the first sound (leading silence played out, late chunks waited for)
@@ -19,8 +19,8 @@ the first clip, so that pair compares the voice as well as the engine.
 - peak VRAM: nvidia-smi sampled every 0.2 s, for the server's own process (by /health pid or the
   port's listener) and the whole card
 
-Results merge into work/results.json by name, so candidates can run one at a time (only one fits
-beside the brain); audio goes to work/audio/NAME/. listen.py turns them into the blind listening page.
+Results merge into work/results.json by name, so servers can run one at a time (only one GPU engine
+fits beside the brain); audio goes to work/audio/NAME/. listen.py turns them into the blind listening page.
 Servers are only spoken to; nothing is started, stopped or written outside tests/tts_bench/work.
 """
 import argparse

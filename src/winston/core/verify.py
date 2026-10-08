@@ -19,9 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
-from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -36,7 +34,9 @@ from pipecat.observers.base_observer import BaseObserver, FramePushed
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
+from winston.core.common import Once, entity_names, key, log_event, rewrap
 from winston.core.guard import ACT, result_ok, tool_tier
+from winston.providers.home_assistant import HomeAssistant
 
 CHECKED_TOOLS = {"hassturnon": "on", "hassturnoff": "off", "hasslightset": "on"}
 CHECKED_DOMAINS = {"light", "switch", "fan", "input_boolean"}    # on/off is the whole story for these
@@ -48,6 +48,7 @@ SETTLE_SECS = 0.4                    # quiet this long after his reply before a 
 REPLY_DUE_SECS = 2.5                 # after the user stops speaking, his reply is due this long
 QUIET_LIMIT_SECS = 60                # a correction still unsaid after this is stale and dropped
 DEAD = {"unavailable", "unknown"}
+UNREAD = (aiohttp.ClientError, TimeoutError, ValueError, RuntimeError)     # a state not read is no claim
 
 Deliver = Callable[[str], Awaitable[None]]
 
@@ -257,18 +258,16 @@ def spoken_name(cfg: WinstonConfig, eid: str, state: dict | None, said: str | No
 
 
 def resolve_names(cfg: WinstonConfig, names: list[str], states: list[dict]) -> dict[str, str]:
-    """name -> entity_id for results without ids: his list's names and aliases, then friendly names."""
-    fold = lambda s: " ".join(str(s).split()).casefold()                    # noqa: E731
+    """name -> entity_id for results without ids: the names on his list (common.entity_names), then friendly names."""
     index: dict[str, str] = {}
     for s in states:
         if n := (s.get("attributes") or {}).get("friendly_name"):
-            index.setdefault(fold(n), s["entity_id"])
+            index.setdefault(key(str(n)), s["entity_id"])
     ha = cfg.providers.home_assistant
     for eid, ent in (ha.expose.items() if ha else ()):
-        for n in [ent.name, *ent.aliases]:
-            if n:
-                index[fold(n)] = eid
-    return {n: index[fold(n)] for n in names if fold(n) in index}
+        for n in entity_names(eid, ent):
+            index[n] = eid
+    return {n: index[key(n)] for n in names if key(n) in index}
 
 
 # ---------------------------------------------------------------- the check
@@ -297,8 +296,6 @@ class Verifier:
         self.wait_secs = ha.verify.wait_secs if ha else 3.0
         self.deliver: Deliver | None = None
         self.observer = QuietObserver(self)
-        self._url = ha.url.rstrip("/") if ha else ""
-        self._token_env = ha.token_env if ha else ""
         self._log: Path = resolve(cfg.logging.tool_calls)
         self._seq = 0
         self._owner: dict[str, int] = {}             # entity -> the newest check that targets it
@@ -315,28 +312,19 @@ class Verifier:
         check after it has gone to the model. Returns the wrapped names."""
         if not self.enabled:
             return []
-        wrapped = []
-        for name in names:
-            item = llm._functions.get(name)
-            if item is None or expectation(name, {}) is None:
-                continue
-            original = item.handler
+        return [name for name in names if expectation(name, {}) is not None and rewrap(llm, name, self._checked)]
 
-            async def handler(params, _original=original):
-                deliver = params.result_callback
+    def _checked(self, original):
+        async def handler(params):
+            deliver = params.result_callback
 
-                async def result_callback(result, *, properties=None):
-                    await deliver(result, properties=properties)     # the model gets it first, unchanged
-                    if properties is None or getattr(properties, "is_final", True):
-                        self.after(params.function_name, params.tool_call_id, params.arguments, result)
-                params.result_callback = result_callback
-                await _original(params)
-            if cleanup := getattr(original, "_pipecat_cleanup", None):
-                handler._pipecat_cleanup = cleanup
-            llm.register_function(name, handler, cancel_on_interruption=item.cancel_on_interruption,
-                                  timeout_secs=item.timeout_secs)
-            wrapped.append(name)
-        return wrapped
+            async def result_callback(result, *, properties=None):
+                await deliver(result, properties=properties)     # the model gets it first, unchanged
+                if properties is None or getattr(properties, "is_final", True):
+                    self.after(params.function_name, params.tool_call_id, params.arguments, result)
+            params.result_callback = result_callback
+            await original(params)
+        return handler
 
     def after(self, tool: str, call_id: str, args: dict | None, result: Any) -> Check | None:
         """A tool result has gone to the model: start its check, if it gets one."""
@@ -385,12 +373,11 @@ class Verifier:
 
     # -------------------------------------------------- reading Home Assistant
 
-    async def _states(self, http: aiohttp.ClientSession, ids: list[str]) -> dict[str, dict | None]:
+    async def _states(self, ha: HomeAssistant, ids: list[str]) -> dict[str, dict | None]:
         async def one(eid):
             try:
-                async with http.get(f"{self._url}/api/states/{eid}") as r:
-                    return eid, (await r.json() if r.status == 200 else None)
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
+                return eid, await ha.get(f"/api/states/{eid}", READ_TIMEOUT)
+            except UNREAD:
                 return eid, None
         return dict(await asyncio.gather(*(one(e) for e in ids)))
 
@@ -409,51 +396,48 @@ class Verifier:
                     self._sender = self._spawn(self._send())
 
     async def _run(self, c: Check):
-        token = os.environ.get(self._token_env, "")
-        headers = {"Authorization": f"Bearer {token}"}
-        async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=READ_TIMEOUT)) as http:
-            ids = [eid for eid, _ in c.targets if eid]
-            said = {eid: name for eid, name in c.targets if eid}
-            unnamed = [name for eid, name in c.targets if not eid and name]
-            if unnamed:
-                try:
-                    async with http.get(f"{self._url}/api/states") as r:
-                        everything = await r.json() if r.status == 200 else []
-                except (aiohttp.ClientError, asyncio.TimeoutError, ValueError):
-                    everything = []
-                for name, eid in resolve_names(self.cfg, unnamed, everything).items():
-                    if eid not in said:
-                        ids.append(eid)
-                        said[eid] = name
+        ha = HomeAssistant(self.cfg)
+        ids = [eid for eid, _ in c.targets if eid]
+        said = {eid: name for eid, name in c.targets if eid}
+        unnamed = [name for eid, name in c.targets if not eid and name]
+        if unnamed:
+            try:
+                everything = await ha.get("/api/states", READ_TIMEOUT)
+            except UNREAD:
+                everything = []
+            for name, eid in resolve_names(self.cfg, unnamed, everything).items():
+                if eid not in said:
+                    ids.append(eid)
+                    said[eid] = name
+                    self._own(eid, c.seq)
+        reads = sorted({t for t in FIRST_READS if t < self.wait_secs} | {self.wait_secs})
+        expanded = False
+        states: dict[str, dict | None] = {}
+        for at in reads:
+            await asyncio.sleep(max(0.0, c.t0 + at - time.monotonic()))
+            if c.interrupted:
+                for eid in ids:
+                    self._write(event="verify", tool=c.tool, id=c.call_id, entity=eid,
+                                expected=c.expect.as_dict(), observed=None, ok=None, stopped="interrupted",
+                                ms=round((time.monotonic() - c.t0) * 1000))
+                return
+            states = await self._states(ha, ids)
+            if not expanded:                        # a light group: check its members
+                expanded = True
+                members = []
+                for eid in list(ids):
+                    m = ((states.get(eid) or {}).get("attributes") or {}).get("entity_id")
+                    if isinstance(m, list) and m:
+                        ids.remove(eid)
+                        members += [x for x in m if isinstance(x, str) and x not in ids]
+                if members:
+                    ids += members
+                    for eid in members:
                         self._own(eid, c.seq)
-            reads = sorted({t for t in FIRST_READS if t < self.wait_secs} | {self.wait_secs})
-            expanded = False
-            states: dict[str, dict | None] = {}
-            for at in reads:
-                await asyncio.sleep(max(0.0, c.t0 + at - time.monotonic()))
-                if c.interrupted:
-                    for eid in ids:
-                        self._write(event="verify", tool=c.tool, id=c.call_id, entity=eid,
-                                    expected=c.expect.as_dict(), observed=None, ok=None, stopped="interrupted",
-                                    ms=round((time.monotonic() - c.t0) * 1000))
-                    return
-                states = await self._states(http, ids)
-                if not expanded:                        # a light group: check its members
-                    expanded = True
-                    members = []
-                    for eid in list(ids):
-                        m = ((states.get(eid) or {}).get("attributes") or {}).get("entity_id")
-                        if isinstance(m, list) and m:
-                            ids.remove(eid)
-                            members += [x for x in m if isinstance(x, str) and x not in ids]
-                    if members:
-                        ids += members
-                        for eid in members:
-                            self._own(eid, c.seq)
-                        states = await self._states(http, ids)
-                ids = [eid for eid in ids if eid.split(".")[0] in CHECKED_DOMAINS]
-                if not ids or all(mismatch(c.expect, states.get(eid)) is None for eid in ids):
-                    break
+                    states = await self._states(ha, ids)
+            ids = [eid for eid in ids if eid.split(".")[0] in CHECKED_DOMAINS]
+            if not ids or all(mismatch(c.expect, states.get(eid)) is None for eid in ids):
+                break
         ms = round((time.monotonic() - c.t0) * 1000)
         for eid in ids:
             s = states.get(eid)
@@ -505,13 +489,7 @@ class Verifier:
                 self._delivering = False
 
     def _write(self, **rec):
-        try:
-            self._log.parent.mkdir(parents=True, exist_ok=True)
-            with self._log.open("a") as f:
-                f.write(json.dumps({"ts": time.time(), "channel": self.channel, **rec}, default=str,
-                                   ensure_ascii=False) + "\n")
-        except OSError as e:
-            logger.warning(f"tool-call log: {e}")
+        log_event(self._log, self.channel, **rec)
 
 
 class QuietObserver(BaseObserver):
@@ -523,7 +501,7 @@ class QuietObserver(BaseObserver):
         self._v = verifier
         self._llm = self._tts = self._bot = self._user = False
         self._pending: set[str] = set()
-        self._done: deque[str] = deque(maxlen=256)     # observers see a frame once per pipeline hop
+        self._started = Once(256)        # observers see a frame once per pipeline hop
         self._since = 0.0                # monotonic time of the last change of any of the above
         self._heard = 0.0                # the user stopped speaking and his reply has not begun yet
 
@@ -572,12 +550,10 @@ class QuietObserver(BaseObserver):
             self._set("_bot", False)
         elif isinstance(f, FunctionCallsStartedFrame):
             for c in f.function_calls:
-                if c.tool_call_id not in self._pending and c.tool_call_id not in self._done:
+                if self._started(c.tool_call_id):      # its first sighting comes before its result
                     self._pending.add(c.tool_call_id)
                     self._since = time.monotonic()
         elif isinstance(f, (FunctionCallResultFrame, FunctionCallCancelFrame)):     # or cancelled
-            if f.tool_call_id not in self._done:
-                self._done.append(f.tool_call_id)
             if f.tool_call_id in self._pending:
                 self._pending.discard(f.tool_call_id)
                 self._since = time.monotonic()

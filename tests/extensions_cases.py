@@ -10,30 +10,18 @@ import asyncio
 import os
 import re
 import shutil
-import socket
 import sys
-import tempfile
 import time
 from pathlib import Path
 
-DATA = Path(tempfile.mkdtemp(prefix="winston-extensions-"))
-os.environ["WINSTON_DATA"] = str(DATA)
-REPO = Path(__file__).resolve().parent.parent
+import harness
+from harness import REPO, expect, finish, free_port, scratch_data, serve, until, winstond_data
+
+DATA = scratch_data("winston-extensions-")
+harness.detail_on_pass = False
 
 import httpx  # noqa: E402
-import uvicorn  # noqa: E402
-import yaml  # noqa: E402
-
-sys.path.insert(0, str(REPO / "tests"))
 from fake_ha import FakeHA  # noqa: E402
-
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail if not ok else ''}")
 
 
 def scheduling():
@@ -74,24 +62,7 @@ def scheduling():
            and dst.utcoffset().total_seconds() == 3600, dst)
 
 
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def setup(ha_port: int, api_port: int, llm_port: int):
-    (DATA / "extensions").mkdir(parents=True)
-    doc = (REPO / "docs" / "extensions.md").read_text()
-    coin = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if 'id = "coin"' in b)
-    (DATA / "extensions" / "coin.py").write_text(coin)
-    for name in ("probe.py", "friend.py", "clock.py"):
-        shutil.copy(REPO / "tests" / "fixtures" / "extensions" / name, DATA / "extensions" / name)
-    shutil.copytree(REPO / "examples" / "memory", DATA / "memory")
-    shutil.copy(REPO / "examples" / "persona.md", DATA / "persona.md")
-    (DATA / ".env").write_text('HA_TOKEN="fake-ha-token"\nPROBE_KEY="secret-one"\nOTHER_KEY="not-yours"\n'
-                               'ECHO_KEY="for-echo"\n')
-    os.chmod(DATA / ".env", 0o600)
     cfg = {"llm": {"model": "fake", "base_url": f"http://127.0.0.1:{llm_port}/v1"},
            "channels": {"voice": {"enabled": False}, "satellite": {"enabled": False}, "discord": {"enabled": False}},
            "providers": {"home_assistant": {"url": f"http://127.0.0.1:{ha_port}", "token_env": "HA_TOKEN",
@@ -104,16 +75,11 @@ def setup(ha_port: int, api_port: int, llm_port: int):
                                                                         str(REPO / "tests/fixtures/mcp_echo.py")],
                                                             "env": ["ECHO_KEY"]},
                                    "tools": {"echo": {"offer": True}, "delete_all": {}, "env": {}}}}}
-    (DATA / "config.yaml").write_text(yaml.safe_dump(cfg))
-
-
-async def until(pred, timeout: float, every: float = 0.1):
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if await pred():
-            return True
-        await asyncio.sleep(every)
-    return False
+    winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py", "clock.py"),
+                  env='PROBE_KEY="secret-one"\nOTHER_KEY="not-yours"\nECHO_KEY="for-echo"\n')
+    doc = (REPO / "docs" / "extensions.md").read_text()
+    coin = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if 'id = "coin"' in b)
+    (DATA / "extensions" / "coin.py").write_text(coin)
 
 
 async def fake_llm(port: int):
@@ -146,9 +112,7 @@ async def main():
 
     async with FakeHA(ha_port) as fake:
         app = create_app(load(), autostart=False)
-        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=api_port, log_level="warning"))
-        serving = asyncio.create_task(server.serve())
-        await until(lambda: asyncio.sleep(0, result=server.started), 20)
+        stop_server = await serve(app, api_port)
         host = app.state.extensions
         t0 = time.perf_counter()
         await host.start()
@@ -438,8 +402,7 @@ async def main():
 
         await host.stop_all()
         await llm_runner.cleanup()
-        server.should_exit = True
-        await serving
+        await stop_server()
         await api.aclose()
         alive = [p for p in pids if Path(f"/proc/{p}").exists() and "Z" not in
                  Path(f"/proc/{p}/status").read_text().split("State:")[1][:4]]
@@ -452,5 +415,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     finally:
         shutil.rmtree(DATA, ignore_errors=True)
-    print(f"\n{'all passed' if not failed else f'{failed} failed'}")
-    sys.exit(1 if failed else 0)
+    finish()

@@ -27,6 +27,7 @@ from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pydantic import BaseModel
 
 from winston.config.schema import WinstonConfig
+from winston.core.common import Once, key
 from winston.core.guard import ClaimGuard, result_ok
 
 State = Literal["idle", "listening", "thinking", "speaking"]
@@ -87,7 +88,7 @@ class Feed:
         if ev.type == "state":
             self._state[ev.channel] = ev
         elif ev.type == "mic":
-            self._mic[(ev.room or "").casefold()] = ev
+            self._mic[key(ev.room or "")] = ev
         elif ev.type == "turn":
             # The turn's id onto the channel's latest user line that has none yet: what was heard is that line.
             for stored in reversed(self._history):
@@ -167,11 +168,11 @@ class LiveObserver(BaseObserver):
     def __init__(self, channel: str, sink: Callable[[LiveEvent], object], spoken: bool = False):
         super().__init__()
         self.channel, self._sink, self._spoken = channel, sink, spoken
-        self._seen: deque[int] = deque(maxlen=256)     # observers see a frame once per pipeline hop
+        self._first = Once(256)                         # observers see a frame once per pipeline hop
         self._heard: list[str] = []
         self._reply: str | None = None
         self._calls: dict[str, tuple[float, str, dict]] = {}
-        self._called: deque[tuple[str, str]] = deque(maxlen=256)   # call frames go both ways as two frames
+        self._called = Once(256)                        # call frames go both ways as two frames
 
     def _emit(self, type_: str, **fields):
         self._sink(LiveEvent(channel=self.channel, type=type_, **fields))
@@ -193,9 +194,8 @@ class LiveObserver(BaseObserver):
         # Speech counts once past a gate that may drop it (core/rooms.py), not on its way in.
         if isinstance(f, TranscriptionFrame) and getattr(data.destination, "may_drop_speech", False):
             return
-        if f.id in self._seen:
+        if not self._first(f.id):
             return
-        self._seen.append(f.id)
         if isinstance(f, UserStartedSpeakingFrame):
             self._state("listening")
         elif isinstance(f, UserStoppedSpeakingFrame):
@@ -219,17 +219,15 @@ class LiveObserver(BaseObserver):
         elif isinstance(f, FunctionCallsStartedFrame):
             self._end_reply()
             for c in f.function_calls:
-                if ("call", c.tool_call_id) in self._called:
+                if not self._called(("call", c.tool_call_id)):
                     continue
-                self._called.append(("call", c.tool_call_id))
                 args = c.arguments if isinstance(c.arguments, dict) else {}
                 self._calls[c.tool_call_id] = (time.perf_counter(), c.function_name, args)
                 self._emit("tool", call=c.tool_call_id, name=c.function_name, status="running",
                            label=tool_label(c.function_name, args, "running"))
         elif isinstance(f, FunctionCallResultFrame):
-            if ("result", f.tool_call_id) in self._called:
+            if not self._called(("result", f.tool_call_id)):
                 return
-            self._called.append(("result", f.tool_call_id))
             t0, name, args = self._calls.pop(f.tool_call_id, (time.perf_counter(), f.function_name, {}))
             status = "ok" if result_ok(f.result) and not f.error else "error"
             self._emit("tool", call=f.tool_call_id, name=name, status=status, label=tool_label(name, args, status),
@@ -245,7 +243,7 @@ class FeedPoster:
     winstond is not there; the feed is for watching, not a record (the tool log is the record)."""
 
     def __init__(self, cfg: WinstonConfig):
-        self._url = f"http://{cfg.control.host}:{cfg.control.port}/api/live"
+        self._url = cfg.control.url + "/api/live"
         self._q: asyncio.Queue[LiveEvent] = asyncio.Queue(maxsize=1000)
         self._task: asyncio.Task | None = None
 

@@ -1,4 +1,4 @@
-import { useContext, type ReactNode } from 'react'
+import { useContext } from 'react'
 import { getDefaultRegistry } from '@rjsf/core'
 import Form, { Widgets } from '@rjsf/shadcn'
 import validator from '@rjsf/validator-ajv8'
@@ -28,9 +28,10 @@ import { KindIcon } from '@/components/kind-icon'
 import { HintWordsField } from '@/components/hint-words-field'
 import { KeyedMapField } from '@/components/keyed-map-field'
 import { SecretField } from '@/components/secret-field'
+import { StatusTip } from '@/components/status-tip'
 import { Separator } from '@/components/ui/separator'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Adornments } from '@/lib/adornments'
+import { humanize } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useOptions } from '@/hooks/use-options'
 import { isKeyedMap, type JsonSchema, type Path, type SecretField as SecretMeta } from '@/lib/schema'
@@ -46,8 +47,6 @@ export type FormContext = {
   setAt?: (path: Path, value: unknown) => void
   /** Errors about a nested object, by the id of its title, shown beside the title. */
   titleErrors?: Record<string, string[]>
-  /** Rows the page draws inside the form (SectionForm `extras`), by key. */
-  extras?: Record<string, (id: string) => ReactNode>
 }
 
 type Meta = JsonSchema & {
@@ -58,14 +57,7 @@ type Meta = JsonSchema & {
   widget?: string
   dimmed?: boolean
   secret_field?: SecretMeta
-  extra?: string
   placeholder?: string // what an empty picker means
-}
-
-/** "reasoning_effort" -> "Reasoning effort", for enum values the schema gives no label. */
-function humanize(value: string): string {
-  const s = value.replaceAll('_', ' ')
-  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 function enumChoices(schema: Meta): Choice[] {
@@ -233,7 +225,7 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
           disabled={disabled || readonly}
           onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
         />
-        <ProblemIcon problem={problem} />
+        <StatusTip icon={CircleAlert} className="text-warning" label={problem} />
       </div>
     )
   }
@@ -250,19 +242,6 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
       onClear={schema.default === null ? () => onChange(undefined) : undefined}
       placeholder={meta.placeholder}
     />
-  )
-}
-
-function ProblemIcon({ problem }: { problem: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <CircleAlert className="size-4 text-warning" aria-label={problem} />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{problem}</TooltipContent>
-    </Tooltip>
   )
 }
 
@@ -367,20 +346,13 @@ function SecretWidget({ id, disabled, readonly, schema, registry }: WidgetProps)
   )
 }
 
-/** A row the page draws itself (SectionForm `extras`), under the form's label and (i). */
-function ExtraWidget({ id, schema, registry }: WidgetProps) {
-  const key = (schema as Meta).extra
-  const render = key ? (registry.formContext as FormContext | undefined)?.extras?.[key] : undefined
-  return render ? <>{render(id)}</> : null
-}
-
 /** Every text and number field comes through here and is routed by what its schema says. */
 function TextWidget(props: WidgetProps) {
   const schema = props.schema as Meta
-  if (schema.widget === 'extra') return <ExtraWidget {...props} />
   if (schema.widget === 'secret') return <SecretWidget {...props} />
   if (schema.options) return <OptionsWidget {...props} />
   if (schema.widget === 'time_range') return <TimeRangeWidget {...props} />
+  if (schema.widget === 'time') return <PlainInput {...props} type="time" />
   if (schema.const !== undefined) return <EnumWidget {...props} />
   const numeric = schema.type === 'number' || schema.type === 'integer'
   if (numeric && schema.minimum !== undefined && schema.maximum !== undefined) return <RangeWidget {...props} />

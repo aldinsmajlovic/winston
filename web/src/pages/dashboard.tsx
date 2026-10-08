@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Bell } from 'lucide-react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { STATE_LABEL, clock, lastChange, micHolder, presence, useLive, type Item } from '@/api/live'
 import { Presence } from '@/components/presence'
+import { useNow } from '@/hooks/use-now'
 import { useRoom } from '@/hooks/use-room'
 import { useVoice } from '@/hooks/use-voice'
 import { useWakeLock } from '@/hooks/use-wake-lock'
@@ -30,17 +31,12 @@ const tail = (text: string) => (text.length > TAIL ? `...${text.slice(-TAIL).rep
  * line for his state, his words while he speaks, announcements taking the screen. */
 export default function DashboardPage() {
   const feed = useLive()
-  const [now, setNow] = useState(() => Date.now())
+  const now = useNow(1000)
   const [dismissed, setDismissed] = useState('')
   const onVoiceError = useCallback((message: string) => toast.error(message), [])
   const [room] = useRoom() // ?room=main room: a wall panel and its room's box share one conversation
   const { status: voice, start, stop } = useVoice(onVoiceError, room)
   useWakeLock()
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [])
 
   const state = presence(feed, now)
   const seconds = now / 1000

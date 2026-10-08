@@ -73,8 +73,6 @@ class SpotifySettings(Settings):
                           description="go-librespot's API, on 127.0.0.1 only.")
     stream_port: int = Field(3679, ge=1024, le=65535, level="advanced", title="Stream port",
                              description="Where the speakers fetch the audio, on 127.0.0.1 only.")
-    run_here: bool = Field(True, level="advanced", title="Run the receiver",
-                           description="Off: nothing runs; for testing the tools against a receiver elsewhere.")
 
 
 ext.settings(SpotifySettings)
@@ -151,8 +149,6 @@ def config(ctx) -> dict:
 @ext.background
 async def receiver(ctx):
     """go-librespot, started again if it ends; its config (JSON is YAML) written from the settings."""
-    if not ctx.settings.run_here:
-        return
     exe = await binary(ctx)
     conf = ctx.folder / "go-librespot"
     conf.mkdir(exist_ok=True)
@@ -260,8 +256,6 @@ def flush() -> int:
 
 @ext.background
 async def relay(ctx):
-    if not ctx.settings.run_here:
-        return
     path = fifo(ctx)
     # Opened for reading and writing, so the pipe never reads as closed while the receiver has it shut.
     fd = os.open(path, os.O_RDWR | os.O_NONBLOCK)
@@ -368,8 +362,6 @@ async def handle_event(ctx, ev: dict) -> None:
 
 @ext.background
 async def events(ctx):
-    if not ctx.settings.run_here:
-        return
     from websockets.asyncio.client import connect
     await asyncio.sleep(2)
     async with connect(f"ws://127.0.0.1:{ctx.settings.api_port}/events") as ws:
@@ -620,8 +612,6 @@ async def now_playing(ctx) -> dict:
 
 @ext.status
 async def status(ctx) -> str:
-    if not ctx.settings.run_here:
-        return "Not running the receiver"
     if (sign_in := await pairing(ctx)) is not None:
         return sign_in
     try:

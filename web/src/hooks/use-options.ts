@@ -7,6 +7,7 @@ function baseUrl(name: string, config: Config | undefined): string | undefined {
   if (!config) return undefined
   if (name === 'llm_models') return config.llm.base_url
   if (name === 'voices') return config.tts?.base_url
+  if (name === 'stt_models') return config.stt?.provider === 'openai_transcription' ? config.stt?.base_url ?? undefined : undefined
   if (name === 'ha_entities' || name === 'ha_domains') {
     const ha = config.providers?.home_assistant
     return ha && ha.enabled !== false ? ha.url : undefined      // switched off: the server says so

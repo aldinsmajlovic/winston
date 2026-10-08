@@ -3,20 +3,12 @@
     uv run python tests/home_cases.py
 """
 import asyncio
-import sys
 
+from harness import check, finish_checks
 from pipecat.processors.aggregators.llm_context import LLMContext
 
 from winston.config.schema import WinstonConfig
 from winston.core.brain import acted, build_llm, home_request, name_forms, only_name, own_answers
-
-failed = []
-
-
-def check(name, got, want):
-    if got != want:
-        failed.append(f"{name}: got {got!r}, want {want!r}")
-
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}, "providers": {"home_assistant": {
     "url": "http://ha.invalid:8123", "expose": {
@@ -102,6 +94,4 @@ async def shortcut():
 
 asyncio.run(shortcut())
 
-if failed:
-    print("\n".join(failed)); sys.exit(1)
-print("home: home requests, first lines, quiet after and shortcuts ok")
+finish_checks("home: home requests, first lines, quiet after and shortcuts ok")

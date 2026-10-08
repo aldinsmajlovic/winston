@@ -19,7 +19,7 @@ lights" means that room's lights. A screen with no room works as before.
   used. The settings pages list Home Assistant's areas for it (`/api/options/ha_areas`).
 - **A screen** gets its room from the address, `/dashboard?room=main room` (a wall panel's bookmark), or
   from the room picker at the top of the Talk page. The browser remembers it. Names match without regard
-  to case; the picker offers the boxes' rooms.
+  to case or spacing; the picker offers the boxes' rooms.
 
 ## What a room does
 

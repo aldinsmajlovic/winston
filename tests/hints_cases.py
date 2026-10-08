@@ -5,14 +5,13 @@ speech to text. Runs against a scratch data directory, no hardware needed.
 
 Precision: 200 ordinary English sentences, full of words near the hint words (win, wind, Wilson,
 winter, Erica's cousins), must come through unchanged."""
-import os
 import sys
-import tempfile
 import wave
-from pathlib import Path
 
-scratch = Path(tempfile.mkdtemp(prefix="winston-hints-"))
-os.environ["WINSTON_DATA"] = str(scratch)
+import harness
+from harness import expect, scratch_data
+
+scratch = scratch_data("winston-hints-")
 friends = scratch / "voices" / "friends"
 friends.mkdir(parents=True)
 (friends / "maria.json").write_text('{"slug": "maria", "name": "Maria", "created": 0, "consent_text": "", "seconds": 1}')
@@ -22,14 +21,6 @@ with wave.open(str(friends / "maria.wav"), "wb") as w:
 from loguru import logger  # noqa: E402
 from winston.config.schema import WinstonConfig  # noqa: E402  (after WINSTON_DATA is set)
 from winston.core.hints import Hearing, correct, hints  # noqa: E402
-
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail}")
 
 
 cfg = WinstonConfig.model_validate({
@@ -311,5 +302,5 @@ expect("200 ordinary sentences", len(SENTENCES) == 200, len(SENTENCES))
 false = [(s, correct(s, W)) for s in SENTENCES if correct(s, W)[0] != s]
 expect("no false corrections in ordinary English", not false, false)
 
-print(f"\n{'FAILED ' + str(failed) if failed else 'all passed'}")
-sys.exit(1 if failed else 0)
+print(f"\n{'FAILED ' + str(harness.failed) if harness.failed else 'all passed'}")
+sys.exit(1 if harness.failed else 0)

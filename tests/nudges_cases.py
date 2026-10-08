@@ -16,26 +16,20 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
-DATA = Path(tempfile.mkdtemp(prefix="winston-nudges-"))
-os.environ["WINSTON_DATA"] = str(DATA)
+import harness
+from harness import expect, finish, free_port, scratch_data, serve, until, winstond_data
+
+DATA = scratch_data("winston-nudges-")
 os.environ["TZ"] = "Europe/Stockholm"
+harness.detail_on_pass = False
 
 from winston.config.schema import ExtensionConfig, WinstonConfig  # noqa: E402
 from winston.extension_host.nudges import Nudges, nudge_id  # noqa: E402
 
 Z = ZoneInfo("Europe/Stockholm")
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail if not ok else ''}")
 
 
 def at(text: str) -> float:
@@ -450,38 +444,9 @@ def times():
            "tomorrow at 18:30")
 
 
-def free_port() -> int:
-    import socket
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
-async def until(pred, timeout: float, every: float = 0.1):
-    import time
-    end = time.monotonic() + timeout
-    while time.monotonic() < end:
-        if await pred():
-            return True
-        await asyncio.sleep(every)
-    return False
-
-
 def setup_winstond(ha_port: int, api_port: int):
     import re
-    import yaml
-    repo = Path(__file__).resolve().parent.parent
     (DATA / "state" / "nudges.json").unlink(missing_ok=True)
-    (DATA / "extensions").mkdir(parents=True, exist_ok=True)
-    doc = (repo / "docs" / "extensions.md").read_text()
-    for ext_id in ("plants", "remind"):
-        block = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if f'id = "{ext_id}"' in b)
-        (DATA / "extensions" / f"{ext_id}.py").write_text(block)
-    shutil.copy(repo / "tests" / "fixtures" / "extensions" / "trainer.py", DATA / "extensions" / "trainer.py")
-    shutil.copytree(repo / "examples" / "memory", DATA / "memory", dirs_exist_ok=True)
-    shutil.copy(repo / "examples" / "persona.md", DATA / "persona.md")
-    (DATA / ".env").write_text('HA_TOKEN="fake-ha-token"\n')
-    os.chmod(DATA / ".env", 0o600)
     cfg = {"llm": {"model": "fake", "base_url": "http://127.0.0.1:9/v1"},
            "channels": {"voice": {"enabled": False}, "satellite": {"enabled": False}, "discord": {"enabled": False}},
            "providers": {"home_assistant": {"url": f"http://127.0.0.1:{ha_port}", "token_env": "HA_TOKEN",
@@ -490,14 +455,16 @@ def setup_winstond(ha_port: int, api_port: int):
            "speak_up": {"home": "person.someone", "phone": "notify.mobile_app_test_phone"},
            "extensions": {"plants": {"enabled": True, "settings": {"sensor": "sensor.ficus_moisture"}},
                           "remind": {"enabled": True}, "trainer": {"enabled": True}}}
-    (DATA / "config.yaml").write_text(yaml.safe_dump(cfg))
+    winstond_data(DATA, cfg, fixtures=("trainer.py",))
+    doc = (harness.REPO / "docs" / "extensions.md").read_text()
+    for ext_id in ("plants", "remind"):
+        block = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if f'id = "{ext_id}"' in b)
+        (DATA / "extensions" / f"{ext_id}.py").write_text(block)
 
 
 async def through_winstond():
     import time
     import httpx
-    import uvicorn
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from fake_ha import FakeHA
     ha_port, api_port = free_port(), free_port()
     setup_winstond(ha_port, api_port)
@@ -508,9 +475,7 @@ async def through_winstond():
 
     async with FakeHA(ha_port, seed="home") as fake:
         app = create_app(load(), autostart=False)
-        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=api_port, log_level="warning"))
-        serving = asyncio.create_task(server.serve())
-        await until(lambda: asyncio.sleep(0, result=server.started), 20)
+        stop_server = await serve(app, api_port)
         host = app.state.extensions
         nudges = host.nudges
         offset = [0.0]
@@ -673,8 +638,7 @@ async def through_winstond():
         await nudges.stop()
         await host.scheduler.stop()
         await host.stop_all()
-        server.should_exit = True
-        await serving
+        await stop_server()
 
 
 async def main():
@@ -688,5 +652,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     finally:
         shutil.rmtree(DATA, ignore_errors=True)
-    print(f"\n{'all passed' if not failed else f'{failed} failed'}")
-    sys.exit(1 if failed else 0)
+    finish()

@@ -7,10 +7,10 @@ import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
 import { ItemDialog } from '@/components/item-dialog'
 import { KindIcon } from '@/components/kind-icon'
+import { StatusTip } from '@/components/status-tip'
 import { DataTable, type Column } from '@/components/templates/list-page'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useOptions } from '@/hooks/use-options'
 import { isRecord, type JsonSchema } from '@/lib/schema'
 
@@ -70,22 +70,8 @@ function LookedUp({ name, value }: { name: string; value: string }) {
   return (
     <div className="flex items-center gap-2">
       <span className="break-all">{value}</span>
-      <Problem text={found.problem ?? 'Not found'} />
+      <StatusTip icon={CircleAlert} className="text-warning" label={found.problem ?? 'Not found'} />
     </div>
-  )
-}
-
-/** Why a list or a lookup came back empty: a warning icon, the reason in its tooltip. */
-function Problem({ text }: { text: string }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <CircleAlert className="size-4 text-warning" aria-label={text} />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{text}</TooltipContent>
-    </Tooltip>
   )
 }
 
@@ -282,7 +268,7 @@ function MapTable({
                   aria-invalid={badValue}
                   onChange={(e) => setEditing((x) => x && { ...x, value: e.target.value })}
                 />
-                {listed && valueOptions.problem ? <Problem text={valueOptions.problem} /> : null}
+                {listed && valueOptions.problem ? <StatusTip icon={CircleAlert} className="text-warning" label={valueOptions.problem} /> : null}
               </div>
             )}
             {badValue ? <span className="text-sm text-destructive">Not a valid {valueTitle.toLowerCase()}</span> : null}

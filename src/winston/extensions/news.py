@@ -423,7 +423,6 @@ async def crisis(ctx) -> None:
             headline = clean(it.get("headline", ""), 150)
             links = [{"title": "Krisinformation", "url": it["web"]}] if it.get("web") else []
             about = f"krisinformation:{iid}"
-            remember_links(ctx, about, links)
             await ctx.nudge("crisis", Nudge(
                 about=about, level=2 if vma else 1, urgent=vma, expires=timedelta(hours=12),
                 say=("An important public announcement: " if vma else "From Krisinformation: ")
@@ -431,14 +430,6 @@ async def crisis(ctx) -> None:
                 facts={"headline": headline, "text": clean(it.get("preamble") or it.get("bodyText") or ""),
                        "areas": [a.get("description") for a in areas], "vma": vma},
                 links=links))
-
-
-def remember_links(ctx, about: str, links: list[dict]) -> None:
-    """A nudge's links, kept for "send me the links" (an action sees the nudge's facts, not its links)."""
-    kept = ctx.store.setdefault("links", {})
-    kept[about] = links
-    for old in list(kept)[:-50]:
-        del kept[old]
 
 
 async def breaking(ctx) -> None:
@@ -470,7 +461,6 @@ async def breaking(ctx) -> None:
         told["n"] += 1
         about = f"story:{c['story']}:{c['items'][0]['url'] or c['headline']}"
         links = [{"title": i["source"], "url": i["url"]} for i in c["items"] if i["url"]][:3]
-        remember_links(ctx, about, links)
         await ctx.nudge("breaking", Nudge(
             about=about, expires=timedelta(hours=6),
             say=(f"Breaking news: {c['english'][:230]}." if c["english"] else
@@ -614,17 +604,17 @@ async def more(ctx, event):
 async def send_links(ctx, event):
     """The story's links to your phone (or Discord), as buttons."""
     facts = event.nudge.facts
-    links = ctx.store.get("links", {}).get(event.nudge.about, [])
+    links = event.nudge.links
     if "stories" in facts:                                   # the digest: one link per story
         found = await ctx.run_sync(stories, ctx.folder, ctx.now().timestamp() - 86400, None, [], {}, 50)
         heads = {s["headline"]: s for s in found}
-        links = [{"title": s["headline"][:60], "url": heads[s["headline"]]["links"][0]["url"]}
+        links = [Link(title=s["headline"][:60], url=heads[s["headline"]]["links"][0]["url"])
                  for s in facts["stories"] if heads.get(s["headline"], {}).get("links")][:3]
     if not links:
         return "There are no links for that one."
     title = facts.get("headline") or "the morning's stories"
     await ctx.nudge("links", Nudge(about=f"links:{event.nudge.about}", say=f"The links: {title}"[:299],
-                                   links=[Link(**link) for link in links[:3]]))
+                                   links=links[:3]))
     return "They are on their way to your phone."
 
 

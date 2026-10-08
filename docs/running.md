@@ -12,6 +12,7 @@ uv run winston down            # stop engines and channel; winstond keeps servin
 uv run winston talk            # text chat, same brain and tools
 uv run winston ha expose       # apply the Home Assistant list (Save on the page does it too); --list shows the plan
 uv run winston check           # unit (no hardware), ui, then the m0, m1, m2 acceptance checks on real hardware
+uv run winston check unit      # the no-hardware checks, each file run even when one fails; FAILED names each
 uv run winston check ui        # the settings smoke test in Chromium on a throwaway winstond (needs pnpm build)
 uv run winston check brain     # the configured brain on the trial requests: tool calls and speed
 uv run winston check clone     # clone a synthetic friend's voice headless and switch back (about 90 s)
@@ -55,11 +56,13 @@ Logs: engine subprocesses write to `data/logs/<engine>.log`; each extension to
 in `data/state/extensions/<id>/`; every step of speaking up (a nudge held, said, put off, and why) to
 `data/logs/nudges.jsonl`, with the nudges themselves in `data/state/nudges.json`; the LLM container to
 `docker logs winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
-one line per spoken turn to `data/logs/latency.jsonl` (`logging.latency`; empty turns it off): time
-from the end of your speech to the transcript (`stt_ms`), the first token (`first_token_ms`) and the
-first audio (`first_audio_ms`), and the tools the turn called. With `logging.turns.enabled` (off by
-default) they also keep each spoken turn whole in `data/turns/<day>/`: its audio and what was heard,
-done and said, for 14 days (`logging.turns.keep_days`); `uv run winston turns` lists a day
+one line per spoken turn, once his reply is over, to `data/logs/latency.jsonl` (`logging.latency`; empty
+turns it off): time from the end of your speech to the transcript (`stt_ms`), the first token
+(`first_token_ms`) and the first audio (`first_audio_ms`), and the names of the tools the turn called;
+no words, no audio. A request that never reached him (nothing heard, "that's all") gets no line. The
+times are the turn record's. With `logging.turns.enabled` (off by default) they also keep each spoken
+turn whole in `data/turns/<day>/`: its audio and what was heard, done and said, for 14 days
+(`logging.turns.keep_days`); `uv run winston turns` lists a day
 ([understanding](understanding.md#1-turn-record-and-marks)).
 
 ## Status and errors

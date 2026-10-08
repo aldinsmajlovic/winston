@@ -115,6 +115,27 @@ TTS: list[Fragment] = [
         "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
                              "voice": "george", "sample_rate": 24000}},
     },
+    *({
+        "id": id_, "icon": "huggingface", "title": title, "needs": ["cuda"], "hint": hint,
+        "engine": {
+            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
+            "cwd": f"{{repo}}/services/tts-{id_}",
+            "cmd": [f"{{repo}}/services/tts-{id_}/.venv/bin/python", "server.py",
+                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880"],
+        },
+        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
+                             "voice": "vctk/p254_023", "sample_rate": rate}},
+    } for id_, title, rate, hint in (
+        ("qwen3", "Qwen3-TTS 1.7B on GPU", 24000,
+         ("Clones from a clip and its words. About 6.5 GB of VRAM; first sound 0.9 s, slower than real time on a "
+          "3090 beside the 27B brain.")),
+        ("voxcpm2", "VoxCPM2 on GPU", 48000,
+         ("Clones from a clip and its words, 48 kHz. About 6.9 GB of VRAM, which nearly fills a 24 GB card beside "
+          "the 27B brain; first sound 0.9 s.")),
+        ("gepard", "Gepard 1.1 on GPU", 22050,
+         ("Clones from a clip alone. About 2.2 GB of VRAM and first sound in 0.5 s, but it drops and garbles more "
+          "words than the others.")),
+    )),
     {
         "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI speech URL)", "needs": ["internet"],
         "hint": "Any server speaking the OpenAI speech protocol. The key goes in .env. Speech leaves the LAN.",
@@ -138,17 +159,53 @@ PROFILES: list[Fragment] = [
 ]
 
 
-STT_HINTS = {
-    "parakeet": "NVIDIA Parakeet TDT 0.6B on the CPU through onnx-asr: about 0.2 s per sentence, keeps the GPU "
-                "free. v3 understands 25 European languages, v2 English only.",
-}
+def _qwen3_asr(size: str, hint: str) -> Fragment:
+    """Qwen3-ASR in services/stt-qwen3-asr (its own venv: `uv sync` there once), on port 8001."""
+    return {
+        "id": f"qwen3-asr-{size.lower()}", "icon": "huggingface", "title": f"Qwen3-ASR {size} on GPU",
+        "needs": ["cuda"], "hint": hint,
+        "engine": {
+            "driver": "subprocess", "port": 8001, "health": "/health", "startup_timeout": 300,
+            "cwd": "{repo}/services/stt-qwen3-asr",
+            "cmd": ["{repo}/services/stt-qwen3-asr/.venv/bin/python", "server.py", "--model", "{stt.model}",
+                    "--port", "8001"],
+        },
+        "settings": {"stt": {"provider": "openai_transcription", "base_url": "http://127.0.0.1:8001/v1",
+                             "api_key_env": None, "model": f"Qwen/Qwen3-ASR-{size}", "quantization": None}},
+    }
+
+
+STT: list[Fragment] = [
+    {
+        "id": "parakeet", "icon": "parakeet", "title": "Parakeet (built in, CPU)", "needs": [],
+        "hint": "NVIDIA Parakeet TDT 0.6B on the CPU through onnx-asr: about 0.2 s per sentence, keeps the GPU "
+                "free. Understands 25 European languages; takes no hint words in advance.",
+        "engine": None,
+        "settings": {"stt": {"provider": "parakeet", "base_url": None, "api_key_env": None,
+                             "model": "nemo-parakeet-tdt-0.6b-v3", "quantization": "int8"}},
+    },
+    _qwen3_asr("0.6B", "Hears with the house's names given up front, and tells English from other languages. "
+                       "About 2.2 GB of VRAM; in a noisy room a third of Parakeet's errors, weaker on Swedish."),
+    _qwen3_asr("1.7B", "The more accurate Qwen3-ASR, also with accents and in noisy rooms, with the same names "
+                       "up front. About 5 GB of VRAM: beside the 27B brain it needs Pocket TTS instead of "
+                       "Chatterbox, or a bigger card."),
+    {
+        "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI transcription URL)", "needs": ["internet"],
+        "hint": "Any server speaking OpenAI's transcription API. The key goes in .env. Your speech leaves the LAN.",
+        "engine": {"driver": "external", "url": "https://api.openai.com", "port": 443, "health": "",
+                   "startup_timeout": 10},
+        "settings": {"stt": {"provider": "openai_transcription", "base_url": "https://api.openai.com/v1",
+                             "api_key_env": "STT_API_KEY", "model": "whisper-1", "quantization": None}},
+    },
+]
 
 
 def stt_presets() -> list[Fragment]:
-    """STT adapters come from the registry; each is a preset with no engine (they run in-process)."""
-    return [{"id": name, "icon": name, "title": name.capitalize(), "needs": [],
-             "hint": STT_HINTS.get(name, f"Adapter {path}"), "engine": None,
-             "settings": {"stt": {"provider": name}}} for name, path in sorted(available("stt").items())]
+    """The presets above, and a plain one for any other adapter a package registers (it runs in-process)."""
+    known = {"parakeet", "openai_transcription"}
+    return STT + [{"id": name, "icon": name, "title": name.capitalize(), "needs": [], "hint": f"Adapter {path}",
+                   "engine": None, "settings": {"stt": {"provider": name}}}
+                  for name, path in sorted(available("stt").items()) if name not in known]
 
 
 def presets(kind: str) -> list[Fragment]:

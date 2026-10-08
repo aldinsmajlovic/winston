@@ -1,10 +1,10 @@
 [project]
-name = "winston-tts-voxcpm2"
+name = "winston-tts-qwen3"
 version = "0.1.0"
-description = "Benchmark candidate: OpenAI-compatible /v1/audio/speech server for VoxCPM2"
+description = "Winston TTS engine: OpenAI-compatible /v1/audio/speech server for Qwen3-TTS 1.7B Base"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "voxcpm==2.0.3",
+    "qwen-tts==0.1.1",          # pins transformers 4.57.3 and accelerate 1.12.0
     "torch>=2.8",               # listed directly so the CUDA index below applies
     "torchaudio>=2.8",
     "fastapi>=0.115",

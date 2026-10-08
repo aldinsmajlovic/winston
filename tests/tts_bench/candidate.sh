@@ -18,7 +18,7 @@ default="$voices/librivox/clifton_fatherbrown.wav"   # the voice Winston speaks 
 gpu=1
 bench_name="$name"
 case "$name" in
-  qwen3)      dir=qwen3-tts; port=8891; args=() ;;
+  qwen3)      dir=qwen3;     port=8891; args=() ;;
   voxcpm2)    dir=voxcpm2;   port=8892; args=() ;;
   gepard)     dir=gepard;    port=8893; args=() ;;
   gepard-1.0) dir=gepard;    port=8894; args=(--checkpoint nineninesix/gepard-1.0) ;;
@@ -55,7 +55,7 @@ if [ "$name" = pocket ]; then
     url="http://127.0.0.1:$port"
   fi
 else
-  cd "$repo/services/tts-candidates/$dir"
+  cd "$repo/services/tts-$dir"
   .venv/bin/python server.py --voice "$default" --voices-dir "$voices" --port "$port" "${args[@]}" >"$log" 2>&1 &
   pid=$!
   url="http://127.0.0.1:$port"

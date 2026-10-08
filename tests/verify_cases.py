@@ -7,16 +7,15 @@ process; never the real one. No hardware and no winstond needed.
 import asyncio
 import json
 import os
-import socket
-import sys
-import tempfile
 import time
-from pathlib import Path
 from types import SimpleNamespace
 
-os.environ["WINSTON_DATA"] = tempfile.mkdtemp(prefix="winston-verify-")
+import harness
+from harness import expect, finish, free_port, scratch_data
+
+scratch_data("winston-verify-")
 os.environ["WINSTON_VERIFY_TEST_TOKEN"] = "fake-ha-token"
-sys.path.insert(0, str(Path(__file__).parent))
+harness.detail_on_pass = False
 
 from fake_ha import FakeHA  # noqa: E402
 from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame,  # noqa: E402
@@ -31,19 +30,6 @@ from winston.core.verify import (Expect, Outcome, Verifier, compose, expectation
                                  number_words)
 
 WAIT = 2.0          # the last read; the default is 3.0, shorter here to keep the check quick
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail if not ok else ''}")
-
-
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
 
 
 def cfg(url: str, **verify) -> WinstonConfig:
@@ -299,5 +285,4 @@ async def main():
 
 
 asyncio.run(main())
-print(f"\n{'all passed' if not failed else f'{failed} failed'}")
-sys.exit(1 if failed else 0)
+finish()

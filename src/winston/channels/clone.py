@@ -145,7 +145,7 @@ async def keep_voice(cfg: WinstonConfig, voice: str, channel: str = "voice") -> 
     """Save the voice as tts.voice through winstond, so the UI and the next session agree. Error or None.
     A patch of that one field, so a settings page saved meanwhile is not overwritten; the channel asking
     already speaks in it, so it is not marked for a restart (the other voice channels still are)."""
-    url = f"http://{cfg.control.host}:{cfg.control.port}/api/config"
+    url = cfg.control.url + "/api/config"
     try:
         async with httpx.AsyncClient(timeout=10) as c:
             r = await c.patch(url, params={"applied": channel},

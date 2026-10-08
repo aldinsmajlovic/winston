@@ -836,31 +836,13 @@ export interface paths {
         };
         /** Get Config */
         get: operations["get_config_api_config_get"];
-        /** Validate and save a whole config; dry_run only reports which engines a change restarts. With If-Match, refused while the saved file is another version */
-        put: operations["put_config_api_config_put"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
         /** Change some fields of the saved config: each change sets one path (null removes it). Applied to the config on disk, so saves from elsewhere are kept. With If-Match, a path that was also changed since that version is a conflict (409); without it the changes win */
         patch: operations["patch_config_api_config_patch"];
-        trace?: never;
-    };
-    "/api/config/version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The saved config's version, the same as GET /api/config's ETag */
-        get: operations["get_config_version_api_config_version_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/config/schema": {
@@ -956,7 +938,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, memory_topics, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -1382,11 +1364,6 @@ export interface components {
             version: string;
             ha_apply?: components["schemas"]["HAApply"] | null;
             persona_rename?: components["schemas"]["PersonaRename"] | null;
-        };
-        /** ConfigVersion */
-        ConfigVersion: {
-            /** Version */
-            version: string;
         };
         /** Confirmation */
         Confirmation: {
@@ -2748,13 +2725,23 @@ export interface components {
         STTConfig: {
             /**
              * Provider
-             * @description Speech-to-text adapter.
+             * @description Speech-to-text adapter. parakeet runs inside Winston on the CPU; openai_transcription sends the audio to a server (Qwen3-ASR on vLLM, a hosted one). Presets set it.
              * @default parakeet
              */
             provider?: string;
             /**
+             * Base URL
+             * @description Where the speech-to-text server's OpenAI transcription API answers, ending in /v1. Presets set it.
+             */
+            base_url?: string | null;
+            /**
+             * Key variable
+             * @description The variable in data/.env that holds the API key. Unset for local servers.
+             */
+            api_key_env?: string | null;
+            /**
              * Model
-             * @description Speech-to-text model. Parakeet TDT 0.6B v3 is multilingual; v2 is English only.
+             * @description Speech-to-text model: for Parakeet an onnx-asr model (v3 is multilingual, v2 English only), for a server the model name it knows.
              * @default nemo-parakeet-tdt-0.6b-v3
              */
             model?: string;
@@ -5405,52 +5392,6 @@ export interface operations {
             };
         };
     };
-    put_config_api_config_put: {
-        parameters: {
-            query?: {
-                dry_run?: boolean;
-                /** @description When the change renames him: also rewrite the old name as a whole word in his persona file (persona_rename in the dry run lists where), keeping persona.md.bak */
-                rename_persona?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WinstonConfig"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConfigResult"];
-                };
-            };
-            /** @description Changed on disk since the If-Match version */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConfigConflict"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     patch_config_api_config_patch: {
         parameters: {
             query?: {
@@ -5495,26 +5436,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_config_version_api_config_version_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConfigVersion"];
                 };
             };
         };

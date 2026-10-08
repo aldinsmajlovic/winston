@@ -30,11 +30,6 @@ MENTIONS_TIMEOUT = 0.5          # a turn never waits longer than this for winsto
 WORDING_SECS = 12.0             # a nudge he has not started saying by then gets its plain line
 
 
-def api_base(cfg: WinstonConfig) -> str:
-    host = cfg.control.host if cfg.control.host not in ("0.0.0.0", "::", "") else "127.0.0.1"
-    return f"http://{host}:{cfg.control.port}"
-
-
 def _unstamped(text: str) -> str:
     """Without the clock's stamp, which goes in front of notes too."""
     return re.sub(r"^\[\d\d:\d\d(, room: [^\]]+)?\] ", "", text)
@@ -46,7 +41,7 @@ class Mentions(FrameProcessor):
 
     def __init__(self, cfg: WinstonConfig):
         super().__init__()
-        self._url = api_base(cfg) + "/api/nudges/mentions"
+        self._url = cfg.control.url + "/api/nudges/mentions"
         self._client: httpx.AsyncClient | None = None
         self._seen: set[int] = set()
 
@@ -110,7 +105,7 @@ FOLLOW_UP = FunctionSchema(
 
 
 def make_follow_up_tool(cfg: WinstonConfig, channel: str):
-    base = api_base(cfg)
+    base = cfg.control.url
 
     async def follow_up(params: FunctionCallParams):
         a = params.arguments if isinstance(params.arguments, dict) else {}
@@ -131,7 +126,7 @@ def make_follow_up_tool(cfg: WinstonConfig, channel: str):
 async def speaking_up(cfg: WinstonConfig) -> bool:
     """Whether any running extension has kinds of nudges, so the brain gets follow_up."""
     try:
-        async with httpx.AsyncClient(base_url=api_base(cfg), timeout=3) as c:
+        async with httpx.AsyncClient(base_url=cfg.control.url, timeout=3) as c:
             r = await c.get("/api/nudges/kinds")
             return r.status_code == 200 and r.json().get("kinds", 0) > 0
     except (httpx.HTTPError, ValueError):

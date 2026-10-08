@@ -3,7 +3,7 @@ import { CircleAlert } from 'lucide-react'
 import { $api, type Config } from '@/api/client'
 import { useConfig } from '@/api/config'
 import { PreviewButton } from '@/components/preview-button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { StatusTip } from '@/components/status-tip'
 import { usePreview } from '@/hooks/use-preview'
 import type { SettingsState } from '@/hooks/use-settings'
 import { deepEqual, section } from '@/lib/schema'
@@ -78,16 +78,7 @@ export function useVoicePreviews(page: SettingsState): Record<string, ReactNode>
     streaming: (
       <span className="flex items-center gap-2">
         {heard ? <span className="text-sm font-normal text-muted-foreground">{`${(heard.ms / 1000).toFixed(2)} s to first sound`}</span> : null}
-        {heard?.streaming === 'ignored' ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="inline-flex">
-                <CircleAlert className="size-4 text-warning" aria-label={IGNORED} />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{IGNORED}</TooltipContent>
-          </Tooltip>
-        ) : null}
+        {heard?.streaming === 'ignored' ? <StatusTip icon={CircleAlert} className="text-warning" label={IGNORED} /> : null}
         <PreviewButton
           label="Play a sample"
           text

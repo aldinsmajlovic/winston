@@ -5,9 +5,9 @@ room in the time stamp. No hardware needed.
 """
 import asyncio
 import re
-import sys
 import time
 
+from harness import check, finish_checks
 from pipecat.frames.frames import InputAudioRawFrame, LLMContextFrame, TranscriptionFrame
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection
@@ -16,14 +16,6 @@ from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.brain import _STAMP, Clock
 from winston.core.rooms import (MicGate, RoomLink, Rooms, area, dismissal, local_sync, scoped_by_name,
                                 wake_phrases)
-
-failed = []
-
-
-def check(name, got, want):
-    if got != want:
-        failed.append(f"{name}: got {got!r}, want {want!r}")
-
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}})
 cfg.channels.satellite.devices = {"main room": SatelliteDevice(host="10.0.0.5", area="Main Room"),
@@ -207,6 +199,5 @@ asyncio.run(conversation())
 asyncio.run(mic())
 asyncio.run(gate())
 asyncio.run(stamp())
-if failed:
-    print("\n".join(failed)); sys.exit(1)
-print(f"rooms: dismissals, named devices, conversation, mic lease, gate and stamp ok ({time.perf_counter() - t0:.1f} s)")
+finish_checks(f"rooms: dismissals, named devices, conversation, mic lease, gate and stamp ok "
+              f"({time.perf_counter() - t0:.1f} s)")

@@ -11,8 +11,7 @@ from collections import deque
 
 from loguru import logger
 
-from winston.channels.text import TextSession
-from winston.extension_host.client import tools_changed
+from winston.channels.text import TextSession, stale
 from winston.core.announce import note
 from winston.config.schema import WinstonConfig
 from winston.core.live import Feed, LiveEvent, LiveObserver
@@ -24,7 +23,6 @@ class WebChat:
         self.cfg, self.feed, self.rooms = cfg, feed, rooms
         self.sessions: dict[str | None, TextSession] = {}       # by room key; None is the household's
         self._lock = asyncio.Lock()
-        self._reaper: asyncio.Task | None = None
         self._recent: deque[tuple[float, str, str]] = deque(maxlen=10)     # (at, note, said), for a new conversation
 
     @property
@@ -36,8 +34,7 @@ class WebChat:
         k = key(room) if room and self.rooms else None
         async with self._lock:
             s = self.sessions.get(k)
-            if s is not None and not s.busy and await tools_changed(s.brain):
-                logger.info("web chat: extension tools changed; a new conversation with them")
+            if s is not None and await stale(s, self.cfg.channels.web.session_idle_mins * 60):
                 await self.sessions.pop(k).close()
                 s = None
             if s is None:
@@ -51,7 +48,6 @@ class WebChat:
                     if time.monotonic() - at < window:
                         await s.noted(house_note, said)
                 logger.info(f"web chat: new conversation{f' in {room}' if k else ''}")
-                self._reaper = self._reaper or asyncio.create_task(self._reap())
             return s
 
     async def ask(self, text: str, room: str | None = None):
@@ -89,18 +85,5 @@ class WebChat:
         for s in closing:
             await s.close()
 
-    async def _reap(self):
-        while True:
-            await asyncio.sleep(60)
-            window = self.cfg.channels.web.session_idle_mins * 60
-            async with self._lock:
-                idle = [k for k, s in self.sessions.items() if not s.busy and time.monotonic() - s.last_used > window]
-                closing = [self.sessions.pop(k) for k in idle]
-            for s in closing:
-                await s.close()
-                logger.info("web chat: conversation closed after idling")
-
     async def close(self):
-        if self._reaper:
-            self._reaper.cancel()
         await self.reset()

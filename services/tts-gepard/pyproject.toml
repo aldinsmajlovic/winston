@@ -1,7 +1,7 @@
 [project]
 name = "winston-tts-gepard"
 version = "0.1.0"
-description = "Benchmark candidate: OpenAI-compatible /v1/audio/speech server for Gepard 1.1 (nineninesix)"
+description = "Winston TTS engine: OpenAI-compatible /v1/audio/speech server for Gepard 1.1 (nineninesix)"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     # the reference inference package (Apache-2.0), pinned to a commit: it is not on PyPI

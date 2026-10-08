@@ -9,21 +9,19 @@ pauses its mic while the room's box has it (core/rooms.py).
 
 Every model sits behind an adapter chosen in config (plan §6, rule 1)."""
 import asyncio
-import json
 import time
 import uuid
 import wave
 
 import numpy as np
+import soxr
 from loguru import logger
 from pipecat.audio.turn.smart_turn.base_smart_turn import SmartTurnParams
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.frames.frames import (ErrorFrame, FunctionCallResultFrame, FunctionCallsStartedFrame,
-                                   LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame, OutputAudioRawFrame,
-                                   TranscriptionFrame, TTSAudioRawFrame, TTSSpeakFrame, VADUserStoppedSpeakingFrame)
-from pipecat.observers.base_observer import BaseObserver, FramePushed
+from pipecat.frames.frames import (ErrorFrame, LLMMessagesAppendFrame, OutputAudioRawFrame, TranscriptionFrame,
+                                   TTSAudioRawFrame, TTSSpeakFrame)
 from pipecat.observers.loggers.transcription_log_observer import TranscriptionLogObserver
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
@@ -42,7 +40,6 @@ from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat.workers.runner import WorkerRunner
 
 from winston.config import load, resolve
-from winston.config.registry import get as get_adapter
 from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, Clock, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
@@ -63,8 +60,7 @@ def hearing(cfg: WinstonConfig = CFG) -> Hearing:
     """The process's one STT model with the hint words; the model loads once (about 10 s)."""
     global _HEARING
     if _HEARING is None:
-        cls = get_adapter("stt", cfg.stt.provider)
-        _HEARING = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+        _HEARING = Hearing.load(cfg)
     return _HEARING
 
 
@@ -132,8 +128,6 @@ class SpeechTTS(OpenAITTSService):
 
 def build_tts(cfg: WinstonConfig = CFG):
     c = cfg.tts
-    if c.provider != "openai_speech":
-        raise ValueError(f"unsupported tts provider {c.provider}")
     return SpeechTTS(api_key=api_key(c.api_key_env), base_url=c.base_url, sample_rate=c.sample_rate,
                      settings=SpeechTTS.Settings(model="winston-tts", voice=c.voice),
                      text_filters=[SpokenText(cfg)])      # times in the region's clock, in words
@@ -147,96 +141,21 @@ def load_chime(cfg: WinstonConfig = CFG) -> bytes:
         with wave.open(str(resolve(cfg.announce.chime))) as w:
             if w.getsampwidth() != 2:
                 raise ValueError("chime must be 16-bit PCM")
-            x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(np.float32)
+            x = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
             if w.getnchannels() > 1:
-                x = x.reshape(-1, w.getnchannels()).mean(axis=1)
+                x = x.reshape(-1, w.getnchannels()).mean(axis=1).astype("<i2")
             rate = w.getframerate()
     except (OSError, ValueError, wave.Error) as e:
         logger.warning(f"no announcement chime: {e}")
         return b""
-    if rate != cfg.tts.sample_rate:                  # linear resampling is plenty for a chime
-        n = int(len(x) * cfg.tts.sample_rate / rate)
-        x = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x)
+    if rate != cfg.tts.sample_rate:
+        x = soxr.resample(x, rate, cfg.tts.sample_rate)     # int16 in and out, so it clips instead of wrapping
     return x.astype("<i2").tobytes()
-
-
-class LatencyLog(BaseObserver):
-    """One JSON line per turn in logging.latency: milliseconds from the end of speech to the transcript
-    (stt_ms), the first LLM token and the first audio out, and the tools the turn called. The end of
-    speech is the VAD's decision minus its stop_secs, the moment the user actually went quiet. A turn
-    is written once it has spoken and no tool call is left, or when the next one starts."""
-
-    def __init__(self, cfg: WinstonConfig, channel: str):
-        super().__init__()
-        self._path = resolve(cfg.logging.latency) if cfg.logging.latency else None
-        self._channel = channel
-        self._turn: dict | None = None
-        self._pending: set[str] = set()       # tool calls still running
-        self._calls: set[str] = set()         # every call this turn, so a later hop of the frame is not a new one
-        self._stt_frame: int | None = None
-        self._done = False
-
-    def begin(self, speech_end: float, stt_ms: float | None = None):
-        """A new turn whose speech ended at speech_end (time.time()); a channel without STT frames
-        passes its own transcript time."""
-        self.flush()
-        self._turn = {"ts": speech_end, "stt_ms": stt_ms, "first_token_ms": None, "first_audio_ms": None, "tools": []}
-        self._pending, self._calls, self._done = set(), set(), False
-
-    def _ms(self) -> int:
-        return round((time.time() - self._turn["ts"]) * 1000)
-
-    def flush(self):
-        t, self._turn = self._turn, None
-        if not self._path or not t or (t["stt_ms"] is None and t["first_token_ms"] is None):
-            return
-        try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            with self._path.open("a") as f:
-                f.write(json.dumps({"ts": round(t["ts"], 3), "channel": self._channel, **{k: v for k, v in t.items()
-                                                                                          if k != "ts"}}) + "\n")
-        except OSError as e:
-            logger.warning(f"latency log: {e}")
-
-    async def on_push_frame(self, data: FramePushed):
-        if not self._path:
-            return
-        f, t = data.frame, self._turn
-        if isinstance(f, VADUserStoppedSpeakingFrame):
-            # a pause inside one request stops the VAD too; it is a new turn only once the reply began
-            if t is None or t["first_token_ms"] is not None:
-                self.begin(f.timestamp - f.stop_secs)
-            else:
-                t["ts"] = f.timestamp - f.stop_secs
-        elif t is None:
-            return
-        elif isinstance(f, TranscriptionFrame) and t["first_token_ms"] is None and f.id != self._stt_frame:
-            self._stt_frame = f.id          # observers see a frame once per hop; the first sighting counts
-            t["stt_ms"] = self._ms()
-        elif isinstance(f, LLMTextFrame) and t["first_token_ms"] is None:
-            t["first_token_ms"] = self._ms()
-        elif isinstance(f, TTSAudioRawFrame) and t["first_audio_ms"] is None:
-            t["first_audio_ms"] = self._ms()
-            if self._done and not self._pending:
-                self.flush()
-        elif isinstance(f, FunctionCallsStartedFrame):
-            for c in f.function_calls:
-                if c.tool_call_id not in self._calls:
-                    self._calls.add(c.tool_call_id); self._pending.add(c.tool_call_id)
-                    t["tools"].append(c.function_name)
-                    self._done = False
-        elif isinstance(f, FunctionCallResultFrame):
-            self._pending.discard(f.tool_call_id)
-            self._done = False                  # a result starts another LLM hop, which may call more tools
-        elif isinstance(f, LLMFullResponseEndFrame):
-            self._done = True
-            if not self._pending and t["first_audio_ms"] is not None:
-                self.flush()
 
 
 CHIME = load_chime()
 FEED = FeedPoster(CFG)          # what this channel hears and says, for the Talk page
-TURNS = TurnLog(CFG, "voice",    # each spoken turn with its audio, when logging.turns is on
+TURNS = TurnLog(CFG, "voice",    # each spoken turn: its timings, and with logging.turns all of it
                 on_written=lambda t: FEED.put(LiveEvent(channel="voice", type="turn", call=t.id, text=t.heard,
                                                         room=t.room)))
 
@@ -273,7 +192,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     ))
     guard = ClaimGuard(CFG, channel="voice")
     turns = SpokenTurns(TURNS, room, busy=lambda: guard.retrying or not brain.verifier.idle)
-    latency = LatencyLog(CFG, "voice")
     watch = SpeechWatch()
     link = RoomLink(room, f"voice:{uuid.uuid4().hex[:8]}", http_sync(CFG)) if room else None
     gate = MicGate(wake_phrases(CFG) if room else None)
@@ -308,8 +226,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
         observers=[guard.observer, brain.verifier.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
-                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), latency,
-                   watch, turns],
+                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), watch,
+                   turns],
         idle_timeout_secs=None,
     )
 
@@ -388,7 +306,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         if follower:
             follower.cancel()
         FEED.put(LiveEvent(channel="voice", type="state", state="idle"))
-        latency.flush()
         turns.flush()
         await worker.cancel()
         await brain.close()

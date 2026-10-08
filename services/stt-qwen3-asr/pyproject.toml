@@ -1,17 +1,16 @@
 [project]
-name = "winston-tts-qwen3"
+name = "winston-stt-qwen3-asr"
 version = "0.1.0"
-description = "Benchmark candidate: OpenAI-compatible /v1/audio/speech server for Qwen3-TTS 1.7B Base"
+description = "Winston STT engine: OpenAI-compatible /v1/audio/transcriptions server for Qwen3-ASR"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "qwen-tts==0.1.1",          # pins transformers 4.57.3 and accelerate 1.12.0
+    "qwen-asr",                 # Qwen's own runner (transformers backend)
     "torch>=2.8",               # listed directly so the CUDA index below applies
-    "torchaudio>=2.8",
     "fastapi>=0.115",
+    "python-multipart>=0.0.9",  # FastAPI's form uploads
     "uvicorn>=0.30",
     "numpy",
     "soundfile",
-    "onnx-asr[cpu,hub]>=0.12.0", # transcribes a reference clip once, for cloning with its words
 ]
 
 [tool.uv]
@@ -19,7 +18,6 @@ package = false
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
-torchaudio = { index = "pytorch-cu128" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"

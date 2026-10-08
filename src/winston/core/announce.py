@@ -25,12 +25,13 @@ from datetime import datetime
 from datetime import time as dtime
 from typing import Any, AsyncIterator
 
-import httpx
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
+from winston.core.common import key, sse
+from winston.core.guard import NOTE_MARK
 
 MAX_TEXT = 300
 SPEAKERS = ("voice", "satellite")
@@ -70,7 +71,7 @@ def route(cfg: WinstonConfig, speakers: int, now: dtime) -> tuple[bool, bool, bo
 def note(text: str, context: dict) -> str:
     """What goes into a conversation before the spoken announcement, so a reply has context."""
     details = f" Details: {json.dumps(context, ensure_ascii=False)}." if context else ""
-    return (f"[Home notification, not said by the user. You announced: \"{text}\".{details} "
+    return (f"[Home notification, {NOTE_MARK}. You announced: \"{text}\".{details} "
             f"Answer follow-up questions about it from these details.]")
 
 
@@ -94,7 +95,7 @@ def nudge_note(ev: dict, follow_up: bool = True) -> str:
     reason = f" When he put it off he said: \"{ev['reason']}\"; bring that back." if ev.get("reason") else ""
     after = _nudge_followups(ev) if follow_up else ("This conversation cannot put it off or dismiss it; if he "
                                                     "asks, say he can do that in a new conversation.")
-    return (f"[Speaking up, not said by the user: {ev['extension']} has something for you to tell him "
+    return (f"[Speaking up, {NOTE_MARK}: {ev['extension']} has something for you to tell him "
             f"({ev['kind']}). Plain line: \"{ev['say']}\". {_nudge_facts(ev)}{reason} Say it now in your own "
             f"words, one or two short sentences, then stop; do not call a tool for it. {after}]")
 
@@ -127,7 +128,7 @@ class Hub:
 
     def subscribe(self, channel: str, room: str | None = None) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=50)
-        k = " ".join(room.split()).casefold() if room else None
+        k = key(room) if room else None
         self._subs.setdefault(channel, {})[q] = k
         if channel == "satellite" and self._media and k in self._media[1]:
             # A box's channel back after a restart: the restart cut its stream, the extension still plays.
@@ -154,7 +155,7 @@ class Hub:
     def publish_nudge(self, ev: dict, room: str | None = None) -> int:
         """A nudge to the speakers of the room you are in (and those in no room), or every speaker when
         that room has none or no room is known. Returns how many took it."""
-        k = " ".join(room.split()).casefold() if room else None
+        k = key(room) if room else None
         targets = [(c, q) for c in SPEAKERS for q, r in self._subs.get(c, {}).items()]
         if k is not None and any(r == k for c in SPEAKERS for r in self._subs.get(c, {}).values()):
             targets = [(c, q) for c, q in targets if self._subs[c][q] in (k, None)]
@@ -163,7 +164,7 @@ class Hub:
     def publish_media(self, ev: dict, room: str | None = None) -> int:
         """A stream to play (or stop) on the satellite boxes: the one in the room you are in, else every
         box. Returns how many took it. The playing stream is kept for a box that subscribes again."""
-        k = " ".join(room.split()).casefold() if room else None
+        k = key(room) if room else None
         boxes = self._subs.get("satellite", {})
         targets = [q for q, r in boxes.items() if k is None or r in (k, None)] or list(boxes)
         took = [q for q in targets if self._send("satellite", q, ev)]
@@ -197,18 +198,6 @@ class Hub:
 async def subscribe(cfg: WinstonConfig, channel: str, room: str | None = None) -> AsyncIterator[dict]:
     """Announcements and nudges for this channel from winstond, reconnecting for as long as the caller
     iterates. A channel started without winstond simply never gets any."""
-    url = f"http://{cfg.control.host}:{cfg.control.port}/api/events"
-    delay = 1.0
-    while True:
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(10, read=None)) as c:
-                async with c.stream("GET", url, params={"channel": channel, **({"room": room} if room else {})}) as r:
-                    r.raise_for_status()
-                    delay = 1.0
-                    async for line in r.aiter_lines():
-                        if line.startswith("data: "):
-                            yield json.loads(line[6:])
-        except (httpx.HTTPError, ValueError) as e:
-            logger.debug(f"announcement stream: {e}; retrying in {delay:.0f} s")
-        await asyncio.sleep(delay)
-        delay = min(delay * 2, 30)
+    async for ev in sse(cfg.control.url + "/api/events", {"channel": channel, **({"room": room} if room else {})}):
+        if ev is not None:
+            yield ev

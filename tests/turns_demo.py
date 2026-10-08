@@ -6,17 +6,13 @@ data/. Prints the URL; Ctrl-C stops it.
 """
 import argparse
 import asyncio
-import os
 import shutil
-import tempfile
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import numpy as np
+from harness import REPO, scratch_data
 
-DATA = Path(tempfile.mkdtemp(prefix="winston-turns-demo-"))
-os.environ["WINSTON_DATA"] = str(DATA)
-REPO = Path(__file__).resolve().parent.parent
+DATA = scratch_data("winston-turns-demo-")
 
 import uvicorn  # noqa: E402
 import yaml  # noqa: E402

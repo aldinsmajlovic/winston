@@ -8,7 +8,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 // docs/ui-guide.md, enforced: no inline styles, no custom CSS classes, no em dashes.
-// The regex source is an escape so this file holds no em dash itself.
+// scripts/check.mjs finds a typed em dash on any line; these find one written as an escape ('\u2014')
+// or an entity (&mdash;). The regex source is an escape so this file holds no em dash itself.
 const noEmDash = 'No em dashes (docs/ui-guide.md)'
 const noStyle = [{ propName: 'style', message: 'No inline styles (docs/ui-guide.md)' }]
 
@@ -37,7 +38,6 @@ export default defineConfig([
       'no-restricted-syntax': [
         'error',
         { selector: 'Literal[value=/\\u2014/]', message: noEmDash },
-        { selector: 'TemplateElement[value.raw=/\\u2014/]', message: noEmDash },
         { selector: 'JSXText[value=/\\u2014/]', message: noEmDash },
       ],
     },

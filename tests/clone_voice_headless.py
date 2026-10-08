@@ -21,17 +21,13 @@ from pathlib import Path
 
 import numpy as np
 from loguru import logger
-from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame, Frame, StartFrame, TranscriptionFrame,
-                                   TTSAudioRawFrame, TTSStoppedFrame, UserAudioRawFrame, UserStartedSpeakingFrame,
-                                   UserStoppedSpeakingFrame, VADUserStartedSpeakingFrame, VADUserStoppedSpeakingFrame)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.workers.runner import WorkerRunner
 
 sys.path.insert(0, str(Path(__file__).parent))
-from m2_headless_roundtrip import CHUNK, SR, synth_user_audio, write_wav  # noqa: E402
+from m2_headless_roundtrip import Heard, Mic, Speaker, synth_user_audio, write_wav  # noqa: E402
 from winston.channels import voice as vp  # noqa: E402
 from winston.channels.clone import CONSENT_LINE, MicTap, make_voice_tools  # noqa: E402
 from winston.config import resolve  # noqa: E402
@@ -43,95 +39,6 @@ PASSAGE = ("Well, today started slowly. I made coffee, read the news for a while
            "harbour, where the wind was cold but the light was lovely. After lunch I fixed the bike, which took "
            "far longer than it should have, and tonight I am cooking pasta for a few friends. Oh, and I still need to "
            "buy bread on the way home, the good sourdough from the corner bakery, if they have any left.")
-
-
-class Mic(FrameProcessor):
-    """A microphone that never stops: 20 ms frames of silence, or of whatever say() queued. A user
-    turn is framed by VAD frames like the aggregator's analyzer would; the friend's is audio only."""
-
-    def __init__(self):
-        super().__init__()
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self.idle = asyncio.Event(); self.idle.set()
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        await self.push_frame(frame, direction)
-        if isinstance(frame, StartFrame):
-            asyncio.get_running_loop().create_task(self._run())
-
-    def say(self, audio: np.ndarray, turn: bool):
-        self.idle.clear(); self._queue.put_nowait((audio, turn))
-
-    async def _run(self):
-        silence = np.zeros(CHUNK, np.int16).tobytes()
-        while True:
-            try:
-                audio, turn = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                self.idle.set()
-                await self.push_frame(UserAudioRawFrame(silence, SR, 1)); await asyncio.sleep(0.02)
-                continue
-            if turn:
-                await self.push_frame(VADUserStartedSpeakingFrame()); await self.push_frame(UserStartedSpeakingFrame())
-            for i in range(0, len(audio), CHUNK):
-                chunk = audio[i:i + CHUNK]
-                if len(chunk) < CHUNK:
-                    chunk = np.pad(chunk, (0, CHUNK - len(chunk)))
-                await self.push_frame(UserAudioRawFrame(chunk.tobytes(), SR, 1)); await asyncio.sleep(0.02)
-            if turn:
-                await self.push_frame(VADUserStoppedSpeakingFrame()); await self.push_frame(UserStoppedSpeakingFrame())
-
-
-class Speaker(FrameProcessor):
-    """Where the transport output would be: plays TTS audio in real time and sends Bot started and
-    stopped speaking upstream, which the mic tap waits on."""
-
-    def __init__(self):
-        super().__init__()
-        self.until = 0.0
-        self.speaking = False
-        self.audio = bytearray()
-        self.first_audio_after: float | None = None
-        self.mark = 0.0
-        self._stop_task: asyncio.Task | None = None
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TTSAudioRawFrame):
-            now = time.perf_counter()
-            if self.mark and self.first_audio_after is None:
-                self.first_audio_after = now
-            if not self.speaking:
-                self.speaking = True
-                await self.push_frame(BotStartedSpeakingFrame(), FrameDirection.UPSTREAM)
-            self.until = max(self.until, now) + len(frame.audio) / 2 / frame.sample_rate
-            self.audio += frame.audio
-        elif isinstance(frame, TTSStoppedFrame) and self.speaking:
-            if self._stop_task:
-                self._stop_task.cancel()
-            self._stop_task = asyncio.get_running_loop().create_task(self._stopped())
-        await self.push_frame(frame, direction)
-
-    async def _stopped(self):
-        while (left := self.until - time.perf_counter()) > 0:
-            await asyncio.sleep(left)
-        self.speaking = False
-        await self.push_frame(BotStoppedSpeakingFrame(), FrameDirection.UPSTREAM)
-
-
-class Heard(FrameProcessor):
-    """What the STT passed on as the user's words, with when."""
-
-    def __init__(self):
-        super().__init__()
-        self.texts: list[tuple[float, str]] = []
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TranscriptionFrame):
-            self.texts.append((time.perf_counter(), frame.text))
-        await self.push_frame(frame, direction)
 
 
 async def wait_for(cond, timeout: float, what: str):
@@ -194,9 +101,9 @@ async def run(keep: bool, save_dir: Path | None) -> int:
         logger.info("test: friend talks")
         mic.say(talk, turn=False)
         await wait_for(lambda: tap._rec is None, 60, "the talking recording never ended")
-        speaker.mark = time.perf_counter()
-        await wait_for(lambda: speaker.first_audio_after is not None, 10, "no speech after the recording")
-        first = (speaker.first_audio_after - speaker.mark) * 1000
+        mark, speaker.first_audio = time.perf_counter(), None
+        await wait_for(lambda: speaker.first_audio is not None, 10, "no speech after the recording")
+        first = (speaker.first_audio - mark) * 1000
         named = next((c["args"]["name"] for c in tool_calls(t_start) if c["tool"] == "clone_voice"), FRIEND)
         clone = voices.find(named)                  # the name as the STT heard it
         print(f"\nclone stored: {clone}\nfirst audio after the recording ended: {first:.0f} ms")
@@ -205,7 +112,7 @@ async def run(keep: bool, save_dir: Path | None) -> int:
         ok &= clone is not None and same_voice.same_voice(clone.consent_score) is True
         await wait_for(lambda: not speaker.speaking and not tap.muted, 30, "Winston kept talking")
         await asyncio.sleep(1)
-        leaked = [t for at, t in heard.texts if at > speaker.mark]
+        leaked = [t for at, t in heard.texts if at > mark]
         print(f"turns taken from the friend after the recording: {leaked or 'none'}")
         ok &= not leaked
         mic.say(back, turn=True)

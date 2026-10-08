@@ -54,31 +54,24 @@ from loguru import logger
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (Frame, LLMMessagesAppendFrame, TTSAudioRawFrame, TTSSpeakFrame, TTSStartedFrame,
                                    TTSStoppedFrame, TTSTextFrame)
-from pipecat.pipeline.pipeline import Pipeline
-from pipecat.pipeline.worker import PipelineParams, PipelineWorker
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
-from pipecat.workers.runner import WorkerRunner
 
 from winston.channels.clone import make_use_voice_tool
-from winston.channels.text import TurnTracker
-from winston.channels.voice import LatencyLog, build_tts, load_chime
+from winston.channels.text import TextSession, stale
+from winston.channels.voice import build_tts, load_chime
 from winston.config import load
-from winston.config.registry import get as get_adapter
 from winston.config.schema import SatelliteDevice, WinstonConfig
-from winston.core.brain import Brain, Clock, ToolCallLogObserver
-from winston.core.guard import ClaimGuard
 from winston.core.hints import Heard, Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
-from winston.core.speak_up import WORDING_SECS, Mentions
+from winston.core.speak_up import WORDING_SECS
 from winston.core.turns import Turn, TurnLog, TurnObserver, make_mark_tool
-from winston.extension_host.client import tools_changed
 
 MIC_RATE = 16000                 # what the box streams
 OUT_RATE = 48000                 # what the box's media player is set up for
 VAD_FRAME = 512                  # Silero's window at 16 kHz
+GUESS_SECS = 0.3                 # a pause this long starts transcribing, in case it is the end
 START_TIMEOUT_SECS = 8.0         # no speech after the wake word: give up (also the least after a question)
 FOLLOW_WAIT_SECS = 20.0          # a follow-up run must start this soon after the reply has played
 MAX_REQUEST_SECS = 20.0
@@ -158,42 +151,28 @@ class Speaker(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
-class Conversation:
-    """One box's conversation: the brain with its tools, the claim guard and the TTS, kept between
-    wake-ups until it idles out."""
+class Conversation(TextSession):
+    """One box's conversation: a TextSession that speaks, through the TTS and the Speaker after the claim
+    guard, kept between wake-ups until it goes stale (text.stale)."""
 
     def __init__(self, cfg: WinstonConfig, room: str, feed: FeedPoster, previous: Callable[[], str | None] | None = None):
-        self.cfg, self.room, self.feed = cfg, room, feed
-        self.previous = previous            # the box's last turn he answered, for mark_mistake
-        self.last_used = time.monotonic()
-        self.link = RoomLink(room, f"box:{room}:{uuid.uuid4().hex[:6]}", http_sync(cfg))
+        self.feed = feed
+        self.speaker = Speaker(cfg.tts.sample_rate)
+        self.turns = TurnObserver()                   # fills in the open turn record
+        tools = [make_use_voice_tool(cfg, channel="satellite")]     # a voice cloned in the browser
+        if previous and cfg.logging.turns.enabled:
+            tools.append(make_mark_tool(cfg, previous))   # "that's not what I said"
+        super().__init__(cfg, channel="satellite", brain_channel="satellite", spoken=True, tools=tools,
+                         room=RoomLink(room, f"box:{room}:{uuid.uuid4().hex[:6]}", http_sync(cfg)),
+                         area=area(cfg, room), outputs=[build_tts(cfg), self.speaker],
+                         observers=[LiveObserver("satellite", feed.put, spoken=True), self.turns])
 
     async def start(self):
-        cfg = self.cfg
-        self.brain = Brain(cfg, channel="satellite"); await self.brain.start()
-        self.brain.add_tool(*make_use_voice_tool(cfg, channel="satellite"))   # a voice cloned in the browser
-        if self.previous and cfg.logging.turns.enabled:
-            self.brain.add_tool(*make_mark_tool(cfg, self.previous))        # "that's not what I said"
-        agg = LLMContextAggregatorPair(self.brain.new_context())
-        guard = ClaimGuard(cfg, channel="satellite")
-        self.tracker = TurnTracker(guard)             # a reply is not over while the guard retries
-        self.speaker = Speaker(cfg.tts.sample_rate)
-        self.latency = LatencyLog(cfg, "satellite")
-        self.turns = TurnObserver()                   # fills in the open turn record
-        self.worker = PipelineWorker(
-            Pipeline([agg.user(), Clock(area(cfg, self.room)), Mentions(cfg), self.link.before, self.brain.llm, guard,
-                      build_tts(cfg),
-                      self.speaker, agg.assistant(), self.link.after]),
-            params=PipelineParams(enable_metrics=False), idle_timeout_secs=None,
-            observers=[guard.observer, self.brain.verifier.observer, self.tracker,
-                       ToolCallLogObserver(cfg, channel="satellite"),
-                       LiveObserver("satellite", self.feed.put, spoken=True), self.latency, self.turns])
-        self._task = asyncio.create_task(WorkerRunner(handle_sigint=False).run(self.worker))
-        self.brain.verifier.deliver = self.correct
-        self.brain.on_slow = lambda text: self.worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
+        await super().start()
+        self.brain.on_slow = lambda text: self._worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
         return self
 
-    async def correct(self, text: str):
+    async def _correct(self, text: str):
         """A state check found a device that did not do what he said (core/verify.py). Spoken into the
         reply that is still open, after what he said, without a chime. Without a transport the spoken
         text never reaches the context, so it goes in as his own words."""
@@ -201,8 +180,8 @@ class Conversation:
         self.feed.put(LiveEvent(channel="satellite", type="reply", reply=rid, text=text))
         self.feed.put(LiveEvent(channel="satellite", type="reply_end", reply=rid))
         if self.speaker.run is None:
-            logger.warning(f"{self.room}: correction after the reply closed, not spoken: {text!r}")
-        await self.worker.queue_frames([
+            logger.warning(f"{self.room.room}: correction after the reply closed, not spoken: {text!r}")
+        await self._worker.queue_frames([
             TTSSpeakFrame(text, append_to_context=False),
             LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": text}], run_llm=False)])
         t0 = time.perf_counter()
@@ -213,16 +192,8 @@ class Conversation:
 
     async def reply(self, text: str, run: Run, timeout: float = 90) -> str:
         """Speak the reply to text into run.out; returns what was said once the turn is over."""
-        self.last_used = time.monotonic()
         self.speaker.begin(run)
-        self.tracker.last_end = None
-        await self.worker.queue_frames([LLMMessagesAppendFrame(
-            messages=[{"role": "user", "content": text}], run_llm=True)])
-        t0 = time.perf_counter()
-        while time.perf_counter() - t0 < timeout:
-            await asyncio.sleep(0.1)
-            if self.tracker.over:
-                break
+        await self.ask(text, timeout)
         t1 = time.perf_counter()
         while self.speaker.busy and time.perf_counter() - t1 < 30:     # the last sentence is still being spoken
             await asyncio.sleep(0.05)
@@ -244,9 +215,6 @@ class Conversation:
                 run.out.put_nowait(silence)
                 run.audio_secs += 0.1
             await asyncio.sleep(0.1)
-
-    async def close(self):
-        await self.worker.cancel(); await self._task; await self.brain.close()
 
 
 class Satellite:
@@ -297,8 +265,7 @@ class Satellite:
             self.conversation = await Conversation(self.cfg, self.room, self.feed, lambda: self._last_turn).start()
             await self.conversation.brain.warm()
         self._unsub = self.client.subscribe_voice_assistant(
-            handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio,
-            handle_announcement_finished=self._handle_announcement_finished)
+            handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio)
         try:                                     # after subscribing: the box answers only its voice client
             conf = await self.client.get_voice_assistant_configuration(5)
         except Exception as e:                                              # noqa: BLE001
@@ -363,35 +330,8 @@ class Satellite:
             return
         logger.info(f"{self.room}: long press, " + ("button only" if self.button_only else
                                                     f"wake word {', '.join(self._wake_words)} on"))
-        await self.say(BUTTON_ONLY_LINE if self.button_only else WAKE_WORD_LINE)
-
-    async def say(self, text: str):
-        """Speak a line on the box outside a request, as an announcement it fetches like a reply. Kept out of
-        the conversation."""
-        async with self._lock:
-            run = Run()
-            self.audio.runs[run.id] = run
-            url = f"{self.audio.base_url(self.dev.host)}/reply/{run.id}.flac"
-            self.mic.hold(HOLD_SECS)
-            try:
-                conv = await self._conversation()
-                conv.speaker.begin(run)
-                await conv.worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
-                await asyncio.wait_for(run.first_audio.wait(), 15)
-                played = asyncio.create_task(self.client.send_voice_assistant_announcement_await_response(
-                    url, 30, text=text))
-                t0 = time.perf_counter()
-                while conv.speaker.busy and time.perf_counter() - t0 < 20:
-                    await asyncio.sleep(0.05)
-                conv.speaker.run = None
-                run.out.put_nowait(None)
-                await played
-            except Exception as e:                                          # noqa: BLE001
-                logger.warning(f"{self.room}: could not say {text!r}: {e}")
-                run.out.put_nowait(None)
-            finally:
-                self.mic.hold(run.playing_for() + TAIL_SECS)
-                self.audio.forget(run.id, after=120)
+        await self.speak({"type": "line", "text": BUTTON_ONLY_LINE if self.button_only else WAKE_WORD_LINE},
+                         chime=False)
 
     async def _speak_up(self):
         async for ev in subscribe(self.cfg, "satellite", self.room):
@@ -423,9 +363,10 @@ class Satellite:
             logger.info(f"{self.room}: stopped {self._media.get('title') or 'the stream'} for {ev['ext']}")
             self._media = None
 
-    async def speak(self, ev: dict):
+    async def speak(self, ev: dict, chime: bool = True):
         """An announcement (said as given) or a nudge (worded by the brain, its plain line otherwise) on the
-        box, after the chime, as an announcement it fetches like a reply. After a nudge the box listens on."""
+        box, after the chime, as an announcement it fetches like a reply. After a nudge the box listens on.
+        A line of his own (type "line", a long press) is said as given and kept out of the conversation."""
         nudge = ev.get("type") == "nudge"
         text = ev["say"] if nudge else ev["text"]
         async with self._lock:
@@ -435,10 +376,9 @@ class Satellite:
             self.mic.hold(HOLD_SECS)
             try:
                 conv = await self._conversation()
-                chime = self.audio.chime()
-                if chime:
-                    run.out.put_nowait(chime)
-                    run.audio_secs += len(chime) / 2 / OUT_RATE
+                if chime and (sound := self.audio.chime()):
+                    run.out.put_nowait(sound)
+                    run.audio_secs += len(sound) / 2 / OUT_RATE
                 if nudge:
                     logger.info(f"{self.room}: nudge {ev['id']}: {text!r}")
                     can = any(t.name == "follow_up" for t in conv.brain.tools.standard_tools)
@@ -447,17 +387,19 @@ class Satellite:
                         await asyncio.wait_for(run.first_audio.wait(), WORDING_SECS)
                     except TimeoutError:
                         logger.warning(f"{self.room}: nudge not worded within {WORDING_SECS:g} s; the plain line")
-                        await conv.worker.queue_frames([
+                        await conv._worker.queue_frames([
                             TTSSpeakFrame(text, append_to_context=False),
                             LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": text}], run_llm=False)])
                         await asyncio.wait_for(run.first_audio.wait(), 15)
                 else:
-                    logger.info(f"{self.room}: announcement {text!r}")
+                    logger.info(f"{self.room}: {ev.get('type', 'announcement')} {text!r}")
                     conv.speaker.begin(run)
-                    await conv.worker.queue_frames([
-                        LLMMessagesAppendFrame(messages=[{"role": "user", "content": note(text, ev.get("context") or {})},
-                                                         {"role": "assistant", "content": text}], run_llm=False),
-                        TTSSpeakFrame(text, append_to_context=False)])
+                    frames = [TTSSpeakFrame(text, append_to_context=False)]
+                    if ev.get("type") != "line":
+                        frames.insert(0, LLMMessagesAppendFrame(messages=[
+                            {"role": "user", "content": note(text, ev.get("context") or {})},
+                            {"role": "assistant", "content": text}], run_llm=False))
+                    await conv._worker.queue_frames(frames)
                     await asyncio.wait_for(run.first_audio.wait(), 15)
                 listen = nudge and not self.button_only and self.cfg.channels.satellite.follow_up_secs > 0
                 played = asyncio.create_task(self.client.send_voice_assistant_announcement_await_response(
@@ -523,36 +465,50 @@ class Satellite:
         elif self.run:
             self.run.mic.put_nowait(None)
 
-    async def _handle_announcement_finished(self, finished):
-        pass
-
-    async def _listen(self, run: Run) -> np.ndarray | None:
-        """Microphone audio until the request is over: end_silence_secs of quiet after speech."""
+    async def _listen(self, run: Run) -> tuple[np.ndarray, asyncio.Task | None] | None:
+        """Microphone audio until the request is over: end_silence_secs of quiet after speech. At the first
+        GUESS_SECS of a pause the audio so far is transcribed, so the text is ready if the pause turns out
+        to be the end; speech after it throws that away. Returns the audio and that transcription."""
         buf, voiced = np.zeros(0, np.int16), []
         end = int(self.cfg.channels.satellite.end_silence_secs * MIC_RATE / VAD_FRAME)
+        guess_at = int(GUESS_SECS * MIC_RATE / VAD_FRAME)
+        guess: asyncio.Task | None = None
         t0 = time.perf_counter()
-        while True:
-            # The box streams silence too, so the limit is checked on every chunk, not only when none comes.
-            timeout = (run.start_timeout if not any(voiced) else MAX_REQUEST_SECS) - (time.perf_counter() - t0)
-            if timeout <= 0:
-                break
-            try:
-                chunk = await asyncio.wait_for(run.mic.get(), timeout)
-            except TimeoutError:
-                chunk = None
-            if chunk is None:
-                break
-            buf = np.concatenate([buf, chunk])
-            while (len(voiced) + 1) * VAD_FRAME <= len(buf):
-                i = len(voiced) * VAD_FRAME
-                voiced.append(self._vad.voice_confidence(buf[i:i + VAD_FRAME].tobytes()) >= 0.5)
-            if any(voiced) and len(voiced) - 1 - max(i for i, v in enumerate(voiced) if v) >= end:
-                break
+        try:
+            while True:
+                # The box streams silence too, so the limit is checked on every chunk, not only when none comes.
+                timeout = (run.start_timeout if not any(voiced) else MAX_REQUEST_SECS) - (time.perf_counter() - t0)
+                if timeout <= 0:
+                    break
+                try:
+                    chunk = await asyncio.wait_for(run.mic.get(), timeout)
+                except TimeoutError:
+                    chunk = None
+                if chunk is None:
+                    break
+                buf = np.concatenate([buf, chunk])
+                while (len(voiced) + 1) * VAD_FRAME <= len(buf):
+                    i = len(voiced) * VAD_FRAME
+                    voiced.append(self._vad.voice_confidence(buf[i:i + VAD_FRAME].tobytes()) >= 0.5)
+                    if voiced[-1] and guess:            # more speech: the guess was not the whole request
+                        guess.cancel(); guess = None
+                if any(voiced):
+                    quiet = len(voiced) - 1 - max(i for i, v in enumerate(voiced) if v)
+                    if quiet >= end:
+                        break
+                    if quiet >= guess_at and guess is None:
+                        guess = asyncio.create_task(self._transcribe(buf[:len(voiced) * VAD_FRAME].copy()))
+        except BaseException:               # the run was stopped: nobody will use the guess
+            if guess:
+                guess.cancel()
+            raise
         if sum(voiced) * VAD_FRAME / MIC_RATE < 0.25:
+            if guess:
+                guess.cancel()
             return None
         last = max(i for i, v in enumerate(voiced) if v)
         run.speech_end = time.time() - (len(buf) - (last + 1) * VAD_FRAME) / MIC_RATE
-        return buf
+        return buf, guess
 
     async def _transcribe(self, pcm: np.ndarray) -> Heard:
         return await self.stt.hear(pcm, MIC_RATE, label=f"{self.room}: STT")
@@ -566,10 +522,7 @@ class Satellite:
 
     async def _conversation(self) -> Conversation:
         c = self.conversation
-        if c and time.monotonic() - c.last_used > self.cfg.channels.satellite.session_idle_mins * 60:
-            await c.close(); c = None
-        elif c and await tools_changed(c.brain):
-            logger.info(f"{self.room}: extension tools changed; a new conversation with them")
+        if c and await stale(c, self.cfg.channels.satellite.session_idle_mins * 60):
             await c.close(); c = None
         if c is None:
             c = self.conversation = await Conversation(self.cfg, self.room, self.feed, lambda: self._last_turn).start()
@@ -591,9 +544,10 @@ class Satellite:
                 self._event(Ev.VOICE_ASSISTANT_RUN_START, {"url": url})
                 self._event(Ev.VOICE_ASSISTANT_STT_START)
                 self.feed.put(LiveEvent(channel="satellite", type="state", state="listening"))
-                pcm = await self._listen(run)
+                listened = await self._listen(run)
                 self._event(Ev.VOICE_ASSISTANT_STT_VAD_END)          # the box stops its mic and waits
-                got = await self._transcribe(pcm) if pcm is not None else None
+                pcm, guess = listened or (None, None)
+                got = (await guess if guess else await self._transcribe(pcm)) if pcm is not None else None
                 heard = got.text if got else ""
                 t_heard = time.perf_counter()
                 if got is not None and self.turns is not None:
@@ -624,7 +578,6 @@ class Satellite:
                 self._event(Ev.VOICE_ASSISTANT_STT_END, {"text": heard})
                 self._event(Ev.VOICE_ASSISTANT_INTENT_START)
                 conv = await self._conversation()
-                conv.latency.begin(run.speech_end, round((time.time() - run.speech_end) * 1000))
 
                 async def stream_when_ready():
                     await run.first_audio.wait()
@@ -635,7 +588,6 @@ class Satellite:
                 conv.brain.llm.ended = False
                 conv.turns.turn = turn
                 said = await conv.reply(heard, run)
-                conv.latency.flush()
                 progress.cancel()
                 run.out.put_nowait(None)
                 question = said.rstrip().endswith("?")
@@ -698,11 +650,22 @@ class AudioServer:
         if source is None:
             raise web.HTTPNotFound()
         logger.info(f"media {media_id} fetched by {request.remote}")
+        return await self._flac(request, ["-i", source, "-ar", str(OUT_RATE), "-ac", "2"],
+                                encoders=self._encoders.setdefault(media_id, set()))
+
+    @staticmethod
+    async def _flac(request: web.Request, input_args: list[str], feed: Callable | None = None,
+                    encoders: set | None = None) -> web.StreamResponse:
+        """ffmpeg's FLAC of input_args, streamed as it comes until the input ends or the box hangs up.
+        feed(stdin) writes the input when it is a pipe; encoders holds the process while it runs, for
+        stop_media."""
         enc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", source, "-ar", str(OUT_RATE), "-ac", "2",
-            "-c:a", "flac", "-compression_level", "0", "-frame_size", "2048", "-flush_packets", "1", "-f", "flac",
-            "pipe:1", stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE)
-        self._encoders.setdefault(media_id, set()).add(enc)
+            "ffmpeg", "-hide_banner", "-loglevel", "error", *input_args, "-c:a", "flac", "-compression_level", "0",
+            "-frame_size", "2048", "-flush_packets", "1", "-f", "flac", "pipe:1",
+            stdin=asyncio.subprocess.PIPE if feed else asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE)
+        feeder = asyncio.create_task(feed(enc.stdin)) if feed else None
+        if encoders is not None:
+            encoders.add(enc)
         resp = web.StreamResponse(headers={"Content-Type": "audio/flac", "Cache-Control": "no-store"})
         await resp.prepare(request)
         try:
@@ -711,10 +674,13 @@ class AudioServer:
         except (ConnectionResetError, asyncio.CancelledError):
             pass
         finally:
+            if feeder:
+                feeder.cancel()
             if enc.returncode is None:
                 enc.kill()
             await enc.wait()
-            self._encoders.get(media_id, set()).discard(enc)
+            if encoders is not None:
+                encoders.discard(enc)
         return resp
 
     def chime(self) -> bytes:
@@ -754,33 +720,17 @@ class AudioServer:
         if run is None:
             raise web.HTTPNotFound()
         logger.info(f"reply {run.id} fetched by {request.remote} (flac)")
-        enc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "s16le", "-ar", str(OUT_RATE), "-ac", "1",
-            "-i", "pipe:0", "-c:a", "flac", "-compression_level", "0", "-frame_size", "2048",
-            "-flush_packets", "1", "-f", "flac", "pipe:1",
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
 
-        async def feed():
+        async def feed(stdin):
             try:
                 while (chunk := await run.out.get()) is not None:
-                    enc.stdin.write(chunk)
-                    await enc.stdin.drain()
+                    stdin.write(chunk)
+                    await stdin.drain()
                 run.out.put_nowait(None)   # a second fetch of the same URL ends too
             finally:
-                enc.stdin.close()
+                stdin.close()
 
-        feeder = asyncio.create_task(feed())
-        resp = web.StreamResponse(headers={"Content-Type": "audio/flac", "Cache-Control": "no-store"})
-        await resp.prepare(request)
-        try:
-            while part := await enc.stdout.read(4096):
-                await resp.write(part)
-        finally:
-            feeder.cancel()
-            if enc.returncode is None:
-                enc.kill()
-            await enc.wait()
-        return resp
+        return await self._flac(request, ["-f", "s16le", "-ar", str(OUT_RATE), "-ac", "1", "-i", "pipe:0"], feed)
 
     async def start(self):
         app = web.Application()
@@ -801,8 +751,7 @@ async def main():
     feed = FeedPoster(cfg)
     audio = AudioServer(cfg)
     await audio.start()
-    cls = get_adapter("stt", cfg.stt.provider)
-    stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+    stt = Hearing.load(cfg)
     turns = TurnLog(cfg, "satellite", on_written=lambda t: feed.put(LiveEvent(channel="satellite", type="turn",
                                                                               call=t.id, text=t.heard, room=t.room)))
     sats = [Satellite(cfg, room, dev, audio, stt, feed, turns) for room, dev in s.devices.items()]

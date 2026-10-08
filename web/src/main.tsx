@@ -21,8 +21,6 @@ const mutationCache = new MutationCache({
   },
 })
 const queryClient = new QueryClient({ mutationCache, defaultOptions: { queries: { retry: 1 } } })
-// Callers in api/ that show their own errors: the settings save flow and the Talk page's chat.
-queryClient.setMutationDefaults(['post', '/api/chat'], { meta: { showsErrors: true } })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -19,6 +19,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from winston.config.schema import ExposedEntity, HomeAssistantConfig, WinstonConfig
+from winston.core.common import key
 
 TIMEOUT = 5             # seconds for one read; a save waits at most APPLY_TIMEOUT for the whole apply
 APPLY_TIMEOUT = 5
@@ -29,10 +30,6 @@ class HAError(RuntimeError):
     def __init__(self, command: str, error: dict | None):
         self.code = (error or {}).get("code", "")
         super().__init__(f"{command}: {(error or {}).get('message') or self.code or 'failed'}")
-
-
-def _fold(s: str) -> str:
-    return " ".join(s.split()).casefold()
 
 
 # ---------------------------------------------------------------- what Home Assistant has now
@@ -103,10 +100,10 @@ def wanted_aliases(ent: ExposedEntity | None, ha_name: str | None) -> list[str]:
     aliases, without repeats and without Home Assistant's own name, which Assist matches anyway."""
     if ent is None:
         return []
-    out, seen = [], {_fold(ha_name)} if ha_name else set()
+    out, seen = [], {key(ha_name)} if ha_name else set()
     for a in [ent.name, *ent.aliases]:
-        if a and a.strip() and _fold(a) not in seen:
-            seen.add(_fold(a))
+        if a and a.strip() and key(a) not in seen:
+            seen.add(key(a))
             out.append(a.strip())
     return out
 
@@ -144,10 +141,10 @@ def plan(new: HomeAssistantConfig, old: HomeAssistantConfig | None, snap: Snapsh
         ha_name = snap.display_name(eid)
         want = wanted_aliases(new.expose.get(eid), ha_name)
         had = wanted_aliases(old.expose.get(eid), ha_name) if old else []
-        have = {_fold(a) for a in snap.aliases(eid)}
-        add = [a for a in want if _fold(a) not in have]
-        keep = {_fold(a) for a in want}
-        remove = [a for a in snap.aliases(eid) if _fold(a) in {_fold(h) for h in had} and _fold(a) not in keep]
+        have = {key(a) for a in snap.aliases(eid)}
+        add = [a for a in want if key(a) not in have]
+        keep = {key(a) for a in want}
+        remove = [a for a in snap.aliases(eid) if key(a) in {key(h) for h in had} and key(a) not in keep]
         if (add or remove) and eid not in snap.registry:
             if add:
                 p.no_registry.append(eid)
@@ -256,21 +253,26 @@ _tools_cache: dict[tuple[str, str], tuple[float, list[HATool]]] = {}
 
 
 class HomeAssistant:
-    def __init__(self, cfg: WinstonConfig):
-        ha = cfg.providers.ha
-        if ha is None:
+    """Home Assistant as Winston reaches it: REST reads, the websocket API and the MCP server's tools, with
+    the token from the variable config names. `url` is an address to try instead of the saved one (a
+    draft on the settings page); it is tried with Home Assistant switched off too."""
+
+    def __init__(self, cfg: WinstonConfig, url: str | None = None):
+        ha, saved = cfg.providers.ha, cfg.providers.home_assistant
+        if ha is None and not url:
             raise RuntimeError("providers.home_assistant is not configured or is switched off")
+        env = saved.token_env if saved else "HA_TOKEN"
         self.cfg, self.ha = cfg, ha
-        self.url, self.token = ha.url.rstrip("/"), os.environ.get(ha.token_env, "")
+        self.url, self.token = (url or ha.url).rstrip("/"), os.environ.get(env, "")
         if not self.token:
-            raise RuntimeError(f"{ha.token_env} is not set")
+            raise RuntimeError(f"{env} is not set")
 
     @property
     def _headers(self):
         return {"Authorization": f"Bearer {self.token}"}
 
-    def _session(self) -> aiohttp.ClientSession:
-        return aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=TIMEOUT * 3, sock_connect=TIMEOUT))
+    def _session(self, timeout: float = TIMEOUT * 3) -> aiohttp.ClientSession:
+        return aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout, sock_connect=min(timeout, TIMEOUT)))
 
     async def _get(self, s: aiohttp.ClientSession, path: str):
         r = await s.get(f"{self.url}{path}", headers=self._headers)
@@ -279,15 +281,16 @@ class HomeAssistant:
         r.raise_for_status()
         return await r.json()
 
-    async def states(self) -> list[dict]:
-        async with self._session() as s:
-            return await self._get(s, "/api/states")
+    async def get(self, path: str, timeout: float = TIMEOUT * 3):
+        """One REST read as JSON: "/api/states", "/api/states/<entity_id>", "/api/services". A refused token
+        raises RuntimeError("Token rejected"), anything else aiohttp's error."""
+        async with self._session(timeout) as s:
+            return await self._get(s, path)
 
     async def ping(self) -> dict:
-        async with self._session() as s:
-            j = await self._get(s, "/api/config")
-            return {"version": j.get("version"), "location": j.get("location_name"),
-                    "mcp_server": "mcp_server" in j.get("components", [])}
+        j = await self.get("/api/config")
+        return {"version": j.get("version"), "location": j.get("location_name"),
+                "mcp_server": "mcp_server" in j.get("components", [])}
 
     async def snapshot(self, ids: list[str] | None = None) -> Snapshot:
         """Read Home Assistant: states, exposure, areas, devices and the registry entries of ids (None: of
@@ -352,9 +355,9 @@ class HomeAssistant:
                 if out.exposed or out.unexposed:        # the MCP server's tools follow the exposed domains
                     _tools_cache.pop((self.url, self.ha.mcp_path), None)
                 for eid in dict.fromkeys([*p.aliases_add, *p.aliases_remove]):
-                    add, rm = p.aliases_add.get(eid, []), {_fold(a) for a in p.aliases_remove.get(eid, [])}
+                    add, rm = p.aliases_add.get(eid, []), {key(a) for a in p.aliases_remove.get(eid, [])}
                     current = snap.registry[eid].get("aliases") or []
-                    kept = [a for a in current if not (isinstance(a, str) and _fold(a) in rm)]
+                    kept = [a for a in current if not (isinstance(a, str) and key(a) in rm)]
                     # aliases only: "name" is never sent, so Home Assistant's own name stays
                     await ws.call("config/entity_registry/update", entity_id=eid, aliases=kept + add)
                     if add:
@@ -368,8 +371,8 @@ class HomeAssistant:
 
     async def tools(self) -> list[HATool]:
         """The tools Home Assistant's MCP server offers now, one row per job. Cached for a minute."""
-        key = (self.url, self.ha.mcp_path)
-        if (hit := _tools_cache.get(key)) and time.monotonic() - hit[0] < TOOLS_TTL:
+        cached = (self.url, self.ha.mcp_path)
+        if (hit := _tools_cache.get(cached)) and time.monotonic() - hit[0] < TOOLS_TTL:
             return hit[1]
         import mcp
         from mcp.client.streamable_http import streamable_http_client
@@ -394,7 +397,7 @@ class HomeAssistant:
                                      source=TOOL_SOURCES.get(domain, domain.replace("_", " ").capitalize() or "Assist"),
                                      description=(t.description or "").split("\n")[0][:200])
         out = list(rows.values())
-        _tools_cache[key] = (time.monotonic(), out)
+        _tools_cache[cached] = (time.monotonic(), out)
         return out
 
 

@@ -5,15 +5,7 @@ and /set; subscribe_events) and the MCP server's Streamable HTTP endpoint (initi
 tools follow the exposed domains as the real one's do.
 
 Every write is recorded, so a test can check exactly what Winston sent (for example that it never sent
-a "name"). Control endpoints for tests:
-
-    GET  /fake/log             the writes so far, in order
-    GET  /fake/entity/<id>     one entity's registry entry and exposure
-    POST /fake/reset           back to the seed, log cleared
-    POST /fake/admin?on=0      the token is not an admin: registry and exposure commands are refused
-    POST /fake/delay?s=10      every answer waits s seconds (Home Assistant hanging)
-    POST /fake/state?entity_id=light.x&state=on   change a state and send state_changed to subscribers
-    POST /fake/event?event_type=x  (JSON body: its data)   send an event to subscribers
+a "name"). GET /fake/log returns the writes so far, in order.
 
 Run it alone:  .venv/bin/python tests/fake_ha.py [--port 18123] [--token fake-ha-token] [--seed test|home]
 Or in-process: `async with FakeHA(port) as ha: ...` (ha.url, ha.writes, ha.reset(), await ha.change(...),
@@ -102,10 +94,6 @@ TOOLS_BY_DOMAIN = {"light": [("light__HassLightSet", "Sets the brightness percen
                             ("todo__HassListCompleteItem", "Complete item on a todo list")],
                    "media_player": [("media_player__HassMediaPause", "Pauses a media player")]}
 
-ADMIN_ONLY = {"config/entity_registry/list", "config/entity_registry/get_entries", "config/entity_registry/update",
-              "config/area_registry/list", "config/device_registry/list", "homeassistant/expose_entity",
-              "homeassistant/expose_entity/list", "homeassistant/expose_new_entities/get",
-              "homeassistant/expose_new_entities/set"}
 WRITES = {"config/entity_registry/update", "homeassistant/expose_entity", "homeassistant/expose_new_entities/set"}
 UPDATE_KEYS = {"aliases", "name", "area_id", "icon", "new_entity_id", "disabled_by", "hidden_by"}
 
@@ -122,10 +110,7 @@ class FakeHA:
             web.get("/api/services", self.get_services), web.post("/api/services/{domain}/{service}", self.call_service),
             web.get("/api/history/period/{since}", self.get_history),
             web.post("/api/mcp", self.mcp), web.get("/api/mcp", self.mcp_get), web.delete("/api/mcp", self.mcp_delete),
-            web.get("/fake/log", self.fake_log), web.get("/fake/entity/{eid}", self.fake_entity),
-            web.post("/fake/reset", self.fake_reset), web.post("/fake/admin", self.fake_admin),
-            web.post("/fake/delay", self.fake_delay), web.post("/fake/state", self.fake_state),
-            web.post("/fake/event", self.fake_event),
+            web.get("/fake/log", self.fake_log),
         ])
         self.subscribers: dict[web.WebSocketResponse, dict[int, str]] = {}
         self.runner: web.AppRunner | None = None
@@ -142,18 +127,12 @@ class FakeHA:
                          for i, (eid, fn, _, _, reg, _) in enumerate(self.entities) if reg is not None}
         self.exposed = {eid for eid, *_, ex in self.entities if ex}
         self.expose_new = True
-        self.admin, self.delay = True, 0.0
         self.writes: list[dict] = []
 
     # ------------------------------------------------------------ REST
 
-    def _authed(self, request: web.Request) -> bool:
-        return request.headers.get("Authorization") == f"Bearer {self.token}"
-
     async def _gate(self, request: web.Request):
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        if not self._authed(request):
+        if request.headers.get("Authorization") != f"Bearer {self.token}":
             raise web.HTTPUnauthorized()
 
     async def api_root(self, request):
@@ -220,8 +199,6 @@ class FakeHA:
 
     def _command(self, msg: dict):
         t = msg.get("type")
-        if t in ADMIN_ONLY and not self.admin:
-            raise PermissionError
         if t in WRITES:
             self.writes.append({k: v for k, v in msg.items() if k != "id"})
         if t == "config/entity_registry/list":
@@ -285,13 +262,9 @@ class FakeHA:
             msg = json.loads(m.data)
             if msg.get("type") == "subscribe_events":
                 self.subscribers[ws][msg["id"]] = msg.get("event_type") or "*"
-            if self.delay:
-                await asyncio.sleep(self.delay)
             out = {"id": msg.get("id"), "type": "result"}
             try:
                 out |= {"success": True, "result": self._command(msg)}
-            except PermissionError:
-                out |= {"success": False, "error": {"code": "unauthorized", "message": "Unauthorized"}}
             except LookupError as e:
                 out |= {"success": False, "error": {"code": "not_found", "message": str(e).strip("'")}}
             except KeyError as e:
@@ -314,15 +287,6 @@ class FakeHA:
                "last_changed": "2026-09-24T07:05:00+00:00"}
         self.states[entity_id] = new
         await self.fire("state_changed", {"entity_id": entity_id, "old_state": old, "new_state": new})
-
-    async def fake_state(self, request):
-        await self.change(request.query["entity_id"], request.query["state"])
-        return web.json_response(self.states[request.query["entity_id"]])
-
-    async def fake_event(self, request):
-        data = await request.json() if request.can_read_body else {}
-        await self.fire(request.query["event_type"], data)
-        return web.json_response({"ok": True})
 
     # ------------------------------------------------------------ MCP (Streamable HTTP, JSON answers)
 
@@ -361,23 +325,6 @@ class FakeHA:
 
     async def fake_log(self, request):
         return web.json_response(self.writes)
-
-    async def fake_entity(self, request):
-        eid = request.match_info["eid"]
-        return web.json_response({"registry": self._entry(eid) if eid in self.registry else None,
-                                  "state": self.states.get(eid), "exposed": eid in self.exposed})
-
-    async def fake_reset(self, request):
-        self.reset()
-        return web.json_response({"ok": True})
-
-    async def fake_admin(self, request):
-        self.admin = request.query.get("on", "1") not in ("0", "false")
-        return web.json_response({"admin": self.admin})
-
-    async def fake_delay(self, request):
-        self.delay = float(request.query.get("s", "0"))
-        return web.json_response({"delay": self.delay})
 
     # ------------------------------------------------------------ running
 

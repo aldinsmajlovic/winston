@@ -1,18 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { CircleCheck, CircleX, Trash2 } from 'lucide-react'
 import { $api, type ClaudeAuth, type SensorPair } from '@/api/client'
 import type { Choice } from '@/components/combobox'
 import { IconButton } from '@/components/icon-button'
+import { InfoTip } from '@/components/info-tip'
 import { ItemDialog } from '@/components/item-dialog'
 import { PageSkeleton } from '@/components/page'
 import { SecretField } from '@/components/secret-field'
-import { SectionForm, type ExtraRow } from '@/components/section-form'
+import { SectionForm } from '@/components/section-form'
+import { StatusTip } from '@/components/status-tip'
 import { ListPage, type Column } from '@/components/templates/list-page'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useOptions } from '@/hooks/use-options'
 import { useSettings } from '@/hooks/use-settings'
 import { prune, section } from '@/lib/schema'
+import { cn } from '@/lib/utils'
 
 const SENSORS = ['tools', 'sensors']
 const WEB = ['tools', 'web_search']
@@ -62,51 +64,63 @@ function SignsInWith({ id }: { id: string }) {
   const auth = $api.useQuery('get', '/api/tools/ask_claude/auth')
   if (!auth.data) return <span id={id} className="text-sm text-muted-foreground">Checking</span>
   const found = auth.data.source !== 'none'
-  const Icon = found ? CircleCheck : CircleX
   return (
     <div id={id} className="flex items-center gap-2 py-1 text-sm">
       <span>{auth.data.label}</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex">
-            <Icon className={found ? 'size-4 text-success' : 'size-4 text-destructive'} aria-label={SOURCES[auth.data.source]} />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{SOURCES[auth.data.source]}</TooltipContent>
-      </Tooltip>
+      <StatusTip icon={found ? CircleCheck : CircleX} className={found ? 'text-success' : 'text-destructive'} label={SOURCES[auth.data.source]} />
     </div>
   )
 }
 
-const CLAUDE_EXTRAS: ExtraRow[] = [
-  {
-    key: 'signs_in_with',
-    title: 'Signs in with',
-    description:
-      'What the Claude CLI uses, first found wins: an API key (ANTHROPIC_API_KEY), a token from claude setup-token ' +
-      '(CLAUDE_CODE_OAUTH_TOKEN), then the Claude Code login on this machine.',
-    after: 'enabled',
-    render: (id) => <SignsInWith id={id} />,
-  },
-  {
-    key: 'key',
-    title: 'Key',
-    description:
-      "A token from claude setup-token (sk-ant-oat...) uses your Claude plan's credit; an API key (sk-ant-api...) " +
-      'is billed per question. Kept in data/.env on this machine and never shown again.',
-    after: 'signs_in_with',
-    render: (id) => (
-      <SecretField
-        id={id}
-        names={CLAUDE_NAMES}
-        resolve={claudeName}
-        label="Key"
-        placeholder="Paste a token from claude setup-token, or an API key"
-        optional
-      />
-    ),
-  },
-]
+/** A row in a form that is not a config field, with the same label and (i) as the fields. */
+function Row({ id, title, description, children }: { id: string; title: string; description: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-1.5">
+        <label htmlFor={id} className="text-sm leading-none font-medium">
+          {title}
+        </label>
+        <InfoTip text={description} />
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/** What Ask Claude signs in with and its key, after its form; greyed with the form while it is off. */
+function ClaudeSignIn({ off }: { off: boolean }) {
+  return (
+    <div className={cn('mt-2 flex flex-col gap-2', off && 'opacity-50')}>
+      <Row
+        id="claude-signs-in-with"
+        title="Signs in with"
+        description={
+          'What the Claude CLI uses, first found wins: an API key (ANTHROPIC_API_KEY), a token from claude setup-token ' +
+          '(CLAUDE_CODE_OAUTH_TOKEN), then the Claude Code login on this machine.'
+        }
+      >
+        <SignsInWith id="claude-signs-in-with" />
+      </Row>
+      <Row
+        id="claude-key"
+        title="Key"
+        description={
+          "A token from claude setup-token (sk-ant-oat...) uses your Claude plan's credit; an API key (sk-ant-api...) " +
+          'is billed per question. Kept in data/.env on this machine and never shown again.'
+        }
+      >
+        <SecretField
+          id="claude-key"
+          names={CLAUDE_NAMES}
+          resolve={claudeName}
+          label="Key"
+          placeholder="Paste a token from claude setup-token, or an API key"
+          optional
+        />
+      </Row>
+    </div>
+  )
+}
 
 export default function ToolsPage() {
   const s = useSettings([WEB, CLAUDE, MEMORY])
@@ -164,7 +178,9 @@ export default function ToolsPage() {
       )}
     >
       <SectionForm page={page} path={WEB} title="Web search" />
-      <SectionForm page={page} path={CLAUDE} title="Ask Claude" icon="anthropic" extras={CLAUDE_EXTRAS} />
+      <SectionForm page={page} path={CLAUDE} title="Ask Claude" icon="anthropic">
+        <ClaudeSignIn off={!page.value.tools?.ask_claude?.enabled} />
+      </SectionForm>
       <SectionForm page={page} path={MEMORY} title="Memory" />
       <ItemDialog
         open={editing !== null}

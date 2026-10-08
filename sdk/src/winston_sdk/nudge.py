@@ -37,6 +37,7 @@ class NudgeInfo(BaseModel):
     about: str
     level: int = 1
     facts: dict[str, Any] = Field(default_factory=dict)
+    links: list[Link] = Field(default_factory=list)
 
 
 class NudgeState(NudgeInfo):

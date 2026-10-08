@@ -76,11 +76,13 @@ transport), connecting through winstond to the voice channel.
   without one is a gap to fill.
 - Never ask for what a machine already knows. A field whose answers can be listed (models, voices,
   entities, env variables) names its list in the schema (`options`) and renders as a searchable
-  dropdown that still takes a typed value. Enums carry `labels`; bounded numbers are sliders.
+  dropdown that still takes a typed value. Enums carry `labels`; bounded numbers are sliders; a time
+  of day (`widget: time`) is the browser's time field.
 - Each setting lives on one page. Brain owns the model, Voice owns speaking and hearing.
 - Makers' logos (Simple Icons) mark engines and services, drawn in the text colour like any icon.
   Home Assistant entities get a lucide icon for their domain.
-- Icons for actions and state. A status is an icon plus a colour, never a sentence.
+- Icons for actions and state. A status is an icon plus a colour, never a sentence: `StatusTip`, its
+  words in the tooltip.
 - Basic first, Advanced behind a toggle on every page. The schema decides which is which.
 - Destructive or slow actions confirm once, say what they cost ("restarts the brain, about 3 minutes").
 - A cleared field saves what it shows where empty means something. A field marked `empty_means_off`
@@ -118,7 +120,7 @@ transport), connecting through winstond to the voice channel.
   icon whose tooltip gives the reason; a value the list does not hold is looked up by itself when the
   list works, and shown with a warning icon when it is not found.
 - Something a section needs that is not a config field (what Ask Claude signs in with, its key) is a
-  row in that section's form (`SectionForm` `extras`), with the same label and (i) as the fields.
+  row after that section's form (`SectionForm`'s children), with the same label and (i) as the fields.
 - A control that acts on a field without being one (a play button beside Voice, "Play a sample" on the
   Streaming heading) is an adornment: the page passes `SectionForm` `adornments`, keyed by the dotted
   path from the section (`voice`, `streaming`). A field's sits right of its control, a nested

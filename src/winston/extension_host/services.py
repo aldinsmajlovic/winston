@@ -20,11 +20,12 @@ from typing import Any
 import httpx
 from loguru import logger
 from openai import AsyncOpenAI
+from winston_sdk.manifest import refusal
 
 from winston.config.schema import WinstonConfig
 from winston.core import memory
 from winston.core.brain import api_key, thinking_body
-from winston.extension_host.sources import state_dir
+from winston.extension_host.sources import read_json, state_dir, write_json
 
 
 ASK_BUDGET = 45.0      # seconds a background call may wait for conversations; the SDK gives up at 60
@@ -109,34 +110,23 @@ class Services:
         return result
 
     async def _dispatch(self, ext_id: str, perms, op: str, p: dict[str, Any]) -> Any:
+        if (why := refusal(perms, op, p)) is not None:
+            raise Refused(why)
         if op.startswith("ha."):
-            if perms.home_assistant is None:
-                raise Refused("this extension has no home_assistant permission")
-            return await self._ha(ext_id, perms.home_assistant, op, p)
-        if op.startswith("memory."):
-            if perms.memory is None:
-                raise Refused("this extension has no memory permission")
-            if op == "memory.facts":
-                return self._facts(p.get("topic"))
-            if op == "memory.remember":
-                if perms.memory != "write":
-                    raise Refused("remembering needs memory = \"write\"")
-                r = memory.remember(self.cfg, p["topic"], p["text"], until=p.get("until"))
-                if "error" in r:
-                    raise BadCall(r["error"])
-                return f"Remembered: {r['stored']}"
+            return await self._ha(ext_id, op, p)
+        if op == "memory.facts":
+            return self._facts(p.get("topic"))
+        if op == "memory.remember":
+            r = memory.remember(self.cfg, p["topic"], p["text"], until=p.get("until"))
+            if "error" in r:
+                raise BadCall(r["error"])
+            return f"Remembered: {r['stored']}"
         if op == "presence":
-            if not perms.presence:
-                raise Refused("this extension has no presence permission")
             return await self.presence()
         if op == "llm.ask":
-            if not perms.llm:
-                raise Refused("this extension has no llm permission")
             return await self._ask(p["prompt"], p.get("schema"), int(p.get("max_tokens") or 500))
         if op == "ext.call":
             other = p["extension"]
-            if other not in perms.extensions:
-                raise Refused(f"this extension may not call {other}")
             tool = next((t for t in self.host.described.get(other, {}).get("tools", []) if t["name"] == p["tool"]), None)
             if tool is None or tool["tier"] != "read":
                 raise Refused(f"{other} has no read tool {p['tool']}")
@@ -155,8 +145,6 @@ class Services:
             self.host.set_entity(ext_id, p["key"], p.get("entry"), p.get("value"), p.get("attributes") or {})
             return None
         if op in ("speakers.play", "speakers.stop"):
-            if not perms.speakers:
-                raise Refused("this extension has no speakers permission")
             if self.host.speakers is None:
                 raise Failed("this winstond has no speakers to play on")
             if op == "speakers.stop":
@@ -204,7 +192,7 @@ class Services:
         if entity_id not in ids and entity_id.split(".")[0] not in domains:
             raise Refused(f"{entity_id} is neither exposed to Winston nor picked in this extension's settings")
 
-    async def _ha(self, ext_id: str, level: str, op: str, p: dict[str, Any]) -> Any:
+    async def _ha(self, ext_id: str, op: str, p: dict[str, Any]) -> Any:
         async with self._ha_client() as c:
             try:
                 if op == "ha.state":
@@ -223,7 +211,7 @@ class Services:
                     rows = self._json(r)
                     return rows[0] if rows else []
                 if op in ("ha.query", "ha.call"):
-                    return await self._service(ext_id, level, op, p, c)
+                    return await self._service(ext_id, op, p, c)
             except httpx.HTTPError as e:
                 raise Failed(f"Home Assistant did not answer: {e}") from e
         raise BadCall(f"unknown operation {op}")
@@ -244,7 +232,7 @@ class Services:
         spec = self._ha_services[1].get(domain, {}).get(service)
         return bool(spec and isinstance(spec.get("response"), dict) and spec["response"].get("optional") is False)
 
-    async def _service(self, ext_id: str, level: str, op: str, p: dict[str, Any], c: httpx.AsyncClient) -> Any:
+    async def _service(self, ext_id: str, op: str, p: dict[str, Any], c: httpx.AsyncClient) -> Any:
         domain, service = p["domain"], p["service"]
         data, target = dict(p.get("data") or {}), dict(p.get("target") or {})
         if any(k in target or k in data for k in ("area_id", "device_id", "floor_id", "label_id")):
@@ -254,12 +242,9 @@ class Services:
             raise Refused("a Home Assistant call from an extension names its entities (entity_id)")
         for e in entities:
             self._check_entity(ext_id, e)
-        if op == "ha.query":
-            if not await self._response_only(c, domain, service):
-                raise Refused(f"{domain}.{service} can change things; read permission covers only services "
-                              "that just return data")
-        elif level != "act":
-            raise Refused("calling services needs home_assistant = \"act\"")
+        if op == "ha.query" and not await self._response_only(c, domain, service):
+            raise Refused(f"{domain}.{service} can change things; read permission covers only services "
+                          "that just return data")
         body = {**data, "entity_id": entities}
         query = "?return_response" if op == "ha.query" else ""
         r = await c.post(f"/api/services/{domain}/{service}{query}", json=body)
@@ -359,23 +344,11 @@ class Services:
     def _file(self, ext_id: str, name: str) -> Path:
         return state_dir(ext_id) / name
 
-    def _read(self, path: Path, default: Any) -> Any:
-        try:
-            return json.loads(path.read_text())
-        except (OSError, ValueError):
-            return default
-
-    def _write(self, path: Path, value: Any) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(value))
-        tmp.replace(path)
-
     def timers(self, ext_id: str) -> list[dict[str, Any]]:
-        return self._read(self._file(ext_id, "timers.json"), [])
+        return read_json(self._file(ext_id, "timers.json"), [])
 
     def set_timers(self, ext_id: str, rows: list[dict[str, Any]]) -> None:
-        self._write(self._file(ext_id, "timers.json"), rows)
+        write_json(self._file(ext_id, "timers.json"), rows)
 
     def _timers(self, ext_id: str, op: str, p: dict[str, Any]) -> Any:
         rows = self.timers(ext_id)
@@ -399,11 +372,11 @@ class Services:
     def _quota(self, ext_id: str, name: str, per_day: int) -> bool:
         path = self._file(ext_id, "quota.json")
         today = date.today().isoformat()
-        counts = self._read(path, {})
+        counts = read_json(path, {})
         counts = {today: counts.get(today, {})}
         used = counts[today].get(name, 0)
         if used >= per_day:
             return False
         counts[today][name] = used + 1
-        self._write(path, counts)
+        write_json(path, counts)
         return True

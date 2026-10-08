@@ -136,6 +136,10 @@ keeps what the box has.
   the transcript, speech recognition about 0.2 s for 2.5 s of speech.
 - Measured against the fake box: first audio 1.8 to 2.3 s after the end of speech, of which 0.8 s
   is the silence that ends a request (`end_silence_secs`). The browser path measures about 1.3 s.
+- Since 2026-10-08 the box starts transcribing at the first 0.3 s of a pause and throws that away if
+  you go on, so the text is ready when the 0.8 s are up: end of speech to text 0.80 to 0.83 s against
+  0.97 to 1.1 s before, on the fake box. Ending at the first pause instead cut people off (see
+  [understanding](understanding.md#3-hearing)).
 
 ## Winston's firmware: "Okay Winston"
 
@@ -182,7 +186,9 @@ calibration, is `okay_winston_eval.json`.
    likely, not certain. With it: barge-in, and the full browser experience in a room. Offer the
    configuration upstream to ESPHome rather than keeping it Winston-only.
 3. **Fallback** if step two is blocked: the plan's original satellite (Pi plus a speakerphone), where
-   barge-in is the same as the browser path.
+   barge-in is the same as the browser path. Its wake word is ready: `assets/wake/hey_winston.onnx`,
+   "Hey Winston" for openWakeWord. The trainer that made it is in git history at commit 746e994
+   (`services/wakeword/`).
 
 Expected cost over the browser path: a tenth to a fifth of a second of latency from chunked audio
 over the LAN in both directions.

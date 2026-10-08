@@ -27,20 +27,29 @@ function applyPreset(config: Config, kind: Kind, preset: Preset): Config {
   return merge({ ...config, engines }, preset.settings) as Config
 }
 
-/** Which preset the draft currently matches, by the fields that identify an engine. */
+/** The settings a preset writes into its own section (llm, tts, stt). */
+function slotSettings(p: Preset, kind: Kind): Record<string, unknown> {
+  const s = isRecord(p.settings) ? p.settings[kind] : undefined
+  return isRecord(s) ? s : {}
+}
+
+/** Which preset the draft currently matches, by the fields that identify an engine. Hearing also needs its
+ * adapter to match (Parakeet runs in-process, with no engine), and two presets on one engine (Qwen3-ASR's
+ * sizes) are told apart by the model. */
 function matchPreset(kind: Kind, config: Config, presets: Preset[]): string {
-  if (kind === 'stt') return presets.find((p) => p.id === config.stt?.provider)?.id ?? CUSTOM
   const engine = config.engines?.[kind]
-  if (!engine) return CUSTOM
-  const hit = presets.find((p) => {
+  const slot: Record<string, unknown> = isRecord(config[kind]) ? config[kind] : {}
+  const hits = presets.filter((p) => {
     const e = p.engine as Partial<EngineConfig> | null
-    if (!e || e.driver !== engine.driver) return false
+    if (kind === 'stt' && slotSettings(p, kind).provider !== slot.provider) return false
+    if (!e) return kind === 'stt' && !engine
+    if (!engine || e.driver !== engine.driver) return false
     if (e.image && e.image !== engine.image) return false
     if (e.url && e.url !== engine.url) return false
     if (e.cwd && e.cwd !== engine.cwd) return false
     return true
   })
-  return hit?.id ?? CUSTOM
+  return (hits.find((p) => slotSettings(p, kind).model === slot.model) ?? hits[0])?.id ?? CUSTOM
 }
 
 type Props = { page: SettingsState; kind: Kind; title: string; presets: Preset[]; children?: ReactNode }
@@ -58,7 +67,7 @@ export function SlotCard({ page, kind, title, presets, children }: Props) {
       <CardContent className="grid gap-4">
         <div className="grid gap-2">
           <div className="flex items-center gap-1.5">
-            <Label htmlFor={`${kind}-engine`}>{kind === 'stt' ? 'Adapter' : 'Engine'}</Label>
+            <Label htmlFor={`${kind}-engine`}>Engine</Label>
             <InfoTip text={preset?.hint ?? 'Your own engine block; edit it under Advanced.'} />
           </div>
           <Select

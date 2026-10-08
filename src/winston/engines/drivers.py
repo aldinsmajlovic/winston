@@ -87,10 +87,6 @@ class DockerDriver:
     def log_path(self) -> Path | None:
         return None   # `docker logs winston-<name>`
 
-    def logs(self, tail: int = 50) -> str:
-        c = self._get()
-        return c.logs(tail=tail).decode(errors="replace") if c else ""
-
 
 class SubprocessDriver:
     def __init__(self, name: str, cfg: EngineConfig, cmd: list[str] | None = None):

@@ -12,8 +12,8 @@ and whether the words come out right; Aldin's ears decide what sounds human, bli
 | `listen.py` | the blind listening page, `work/listen.html`: one file, audio inside, no network |
 | `work/` | copied clips, audio, results, logs and the page (gitignored) |
 
-The candidates live in `services/tts-candidates/` (one venv each, weights already in the Hugging
-Face cache); [docs/voices.md](../../docs/voices.md#benchmark) says why these.
+The candidates live in `services/tts-qwen3/`, `tts-voxcpm2/` and `tts-gepard/` (one venv each, weights
+already in the Hugging Face cache), and are Voice presets too; [docs/voices.md](../../docs/voices.md#benchmark) says why these.
 
 | Name | Engine | Port | Where it runs |
 | --- | --- | --- | --- |

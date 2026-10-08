@@ -1,6 +1,6 @@
-"""Benchmark candidate: Qwen3-TTS 1.7B Base behind the OpenAI speech protocol (../speech_server.py).
+"""Winston TTS engine: Qwen3-TTS 1.7B Base behind the OpenAI speech protocol (../speech_server.py).
 
-    .venv/bin/python server.py --voice ../../../tests/tts_bench/work/voices/vctk/p254_023.wav --port 8891
+    .venv/bin/python server.py --voice /path/voices/vctk/p254_023.wav --voices-dir /path/voices --port 8880
 
 Qwen3-TTS-12Hz-1.7B-Base (Apache-2.0, Alibaba Qwen) clones from a clip and its words (ICL): the
 clip is encoded to 12.5 Hz codec frames and transcribed once (../speech_server.py:transcript), and
@@ -25,7 +25,6 @@ log = ss.log
 
 
 class Qwen3Engine:
-    streams = True
     builtin_voices: tuple[str, ...] = ()
 
     def __init__(self, model_id: str, device: str, language: str, first: int, step: int):
@@ -41,6 +40,9 @@ class Qwen3Engine:
         words = ss.transcript(clip)
         with torch.inference_mode():
             return self.tts.create_voice_clone_prompt(ref_audio=str(clip), ref_text=words, x_vector_only_mode=False)
+
+    def stream_for(self, req: ss.SpeechRequest, on: bool) -> bool:
+        return on
 
     def _decode(self, frames: list) -> np.ndarray:
         codes = torch.stack(frames).to(self.tts.device)            # (T, 16)
@@ -83,6 +85,7 @@ class Qwen3Engine:
 
 def main():
     ap = ss.arg_parser(__doc__.splitlines()[0])
+    ap.add_argument("--device", default="cuda", help="cuda or cpu")
     ap.add_argument("--model", default="Qwen/Qwen3-TTS-12Hz-1.7B-Base", help="Hugging Face id or local dir")
     ap.add_argument("--language", default="English", help="English, or Auto to let the model tell")
     ap.add_argument("--first-frames", type=int, default=4, help="frames (80 ms each) before the first chunk")

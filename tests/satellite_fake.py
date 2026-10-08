@@ -36,7 +36,6 @@ from conversations import ACT_STUBS, stub  # noqa: E402
 from m2_headless_roundtrip import synth_user_audio  # noqa: E402
 from winston.channels import satellite as sat  # noqa: E402
 from winston.config import load  # noqa: E402
-from winston.config.registry import get as get_adapter  # noqa: E402
 from winston.config.schema import SatelliteDevice  # noqa: E402
 from winston.core import brain as brain_mod  # noqa: E402
 from winston.core.hints import Hearing  # noqa: E402
@@ -227,6 +226,8 @@ async def main() -> int:
     cfg.channels.satellite.http_port, cfg.channels.satellite.public_host = HTTP_PORT, "127.0.0.1"
     turns_dir = Path(tempfile.mkdtemp(prefix="winston-turns-"))      # never the real data/turns
     cfg.logging.turns.enabled, cfg.logging.turns.dir = True, str(turns_dir)
+    cfg.logging.latency = str(turns_dir / "latency.jsonl")             # never the real data/logs
+    cfg.logging.tool_calls = str(turns_dir / "tool_calls.jsonl")       # nor its tool-call log
     turns = TurnLog(cfg, "satellite")
 
     start = brain_mod.Brain.start
@@ -246,8 +247,7 @@ async def main() -> int:
     box.active_wake_words = ["okay_nabu"]                  # the stock box's choice before Winston sets his
     server = await asyncio.start_server(box.serve, "127.0.0.1", PORT)
     audio = sat.AudioServer(cfg); await audio.start()
-    cls = get_adapter("stt", cfg.stt.provider)
-    stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+    stt = Hearing.load(cfg)
     satellite = sat.Satellite(cfg, room, cfg.channels.satellite.devices[room], audio, stt, NoFeed(), turns)
     await satellite.connect()
     await asyncio.wait_for(box.subscribed.wait(), 15)

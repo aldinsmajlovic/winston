@@ -18,10 +18,10 @@ from pathlib import Path
 import httpx
 import numpy as np
 from loguru import logger
-from pipecat.frames.frames import (Frame, LLMFullResponseEndFrame, LLMTextFrame, StartFrame,
-                                   TranscriptionFrame, TTSAudioRawFrame, TTSStoppedFrame,
-                                   UserAudioRawFrame, UserStartedSpeakingFrame,
-                                   UserStoppedSpeakingFrame, VADUserStartedSpeakingFrame,
+from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame, Frame, InterruptionFrame,
+                                   LLMFullResponseEndFrame, LLMTextFrame, StartFrame, TranscriptionFrame,
+                                   TTSAudioRawFrame, TTSStoppedFrame, TTSTextFrame, UserAudioRawFrame,
+                                   UserStartedSpeakingFrame, UserStoppedSpeakingFrame, VADUserStartedSpeakingFrame,
                                    VADUserStoppedSpeakingFrame)
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.workers.runner import WorkerRunner
@@ -56,7 +56,7 @@ def write_wav(path: Path, pcm: np.ndarray, sr: int = 24000):
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr); w.writeframes(pcm.astype(np.int16).tobytes())
 
 
-class Speaker(FrameProcessor):
+class Utterance(FrameProcessor):
     """Injects one utterance as if the transport's VAD had segmented it."""
     def __init__(self, audio: np.ndarray):
         super().__init__(); self._audio = audio; self.t_stop = None
@@ -116,9 +116,107 @@ class Listener(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+# The pieces of a longer headless conversation (tests/conversations.py, tests/clone_voice_headless.py):
+# a mic that keeps sending, where the transport output would be, and what the STT heard.
+class Mic(FrameProcessor):
+    """A microphone that never stops: 20 ms frames of silence, or of whatever say() queued. A turn is
+    framed by VAD frames like the aggregator's analyzer would; turn=False sends audio only, as a real mic
+    under the mic tap does. t_end is when the last one's audio ended."""
+
+    def __init__(self):
+        super().__init__()
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self.t_end = 0.0
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        await self.push_frame(frame, direction)
+        if isinstance(frame, StartFrame):
+            asyncio.get_running_loop().create_task(self._run())
+
+    def say(self, audio: np.ndarray, turn: bool = True):
+        self._queue.put_nowait((audio, turn))
+
+    async def _run(self):
+        silence = np.zeros(CHUNK, np.int16).tobytes()
+        while True:
+            try:
+                audio, turn = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                await self.push_frame(UserAudioRawFrame(silence, SR, 1)); await asyncio.sleep(0.02)
+                continue
+            if turn:
+                await self.push_frame(VADUserStartedSpeakingFrame()); await self.push_frame(UserStartedSpeakingFrame())
+            for i in range(0, len(audio), CHUNK):
+                chunk = audio[i:i + CHUNK]
+                chunk = np.pad(chunk, (0, CHUNK - len(chunk))) if len(chunk) < CHUNK else chunk
+                await self.push_frame(UserAudioRawFrame(chunk.tobytes(), SR, 1)); await asyncio.sleep(0.02)
+            self.t_end = time.perf_counter()
+            if turn:
+                await self.push_frame(VADUserStoppedSpeakingFrame()); await self.push_frame(UserStoppedSpeakingFrame())
+
+
+class Speaker(FrameProcessor):
+    """Where the transport output would be: plays TTS audio in real time, sends bot started and stopped
+    speaking upstream (the mic tap waits on them), and on an interruption drops the rest of the audio.
+    Keeps what was said: the audio, when the first of it came (set first_audio to None to time the next
+    reply), and, given a log, the words and interruptions."""
+
+    def __init__(self, log=None):
+        super().__init__()
+        self.log = log or (lambda *a, **kw: None)
+        self.until, self.speaking, self.first_audio = 0.0, False, None
+        self.audio = bytearray()
+        self._task: asyncio.Task | None = None
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, InterruptionFrame):
+            self.until = time.perf_counter()
+            if self.speaking:
+                self.log("   [interrupted]")
+        elif isinstance(frame, TTSAudioRawFrame):
+            now = time.perf_counter()
+            self.first_audio = self.first_audio or now
+            if not self.speaking:
+                self.speaking = True
+                await self.push_frame(BotStartedSpeakingFrame(), FrameDirection.UPSTREAM)
+            self.until = max(self.until, now) + len(frame.audio) / 2 / frame.sample_rate
+            self.audio += frame.audio
+        elif isinstance(frame, TTSTextFrame):
+            self.log(f"   W: {frame.text}", inline=True)
+        if isinstance(frame, (TTSStoppedFrame, InterruptionFrame)) and self.speaking:
+            if self._task:
+                self._task.cancel()
+            self._task = asyncio.get_running_loop().create_task(self._stopped())
+        await self.push_frame(frame, direction)
+
+    async def _stopped(self):
+        while (left := self.until - time.perf_counter()) > 0:
+            await asyncio.sleep(left)
+        self.speaking = False
+        await self.push_frame(BotStoppedSpeakingFrame(), FrameDirection.UPSTREAM)
+
+
+class Heard(FrameProcessor):
+    """What the STT passed on as the user's words, with when; logged too, given a log."""
+
+    def __init__(self, log=None):
+        super().__init__()
+        self.log = log or (lambda *a, **kw: None)
+        self.texts: list[tuple[float, str]] = []
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TranscriptionFrame):
+            self.texts.append((time.perf_counter(), frame.text))
+            self.log(f"   heard: {frame.text!r}")
+        await self.push_frame(frame, direction)
+
+
 async def one_turn(utterance: str) -> dict:
     audio, user24 = synth_user_audio(utterance)
-    speaker, done = Speaker(audio), asyncio.Event()
+    speaker, done = Utterance(audio), asyncio.Event()
     stt_tap, llm_tap, listener = Tap(TranscriptionFrame), Tap(LLMTextFrame), Listener(done)
     brain = Brain(vp.CFG, channel="voice"); await brain.start()   # same brain as the real pipeline, tools included
     agg = LLMContextAggregatorPair(brain.new_context())

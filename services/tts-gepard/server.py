@@ -1,6 +1,6 @@
-"""Benchmark candidate: Gepard (nineninesix) behind the OpenAI speech protocol (../speech_server.py).
+"""Winston TTS engine: Gepard (nineninesix) behind the OpenAI speech protocol (../speech_server.py).
 
-    .venv/bin/python server.py --voice ../../../tests/tts_bench/work/voices/vctk/p254_023.wav --port 8893
+    .venv/bin/python server.py --voice /path/voices/vctk/p254_023.wav --voices-dir /path/voices --port 8880
     .venv/bin/python server.py --checkpoint nineninesix/gepard-1.0 ...   # the 1.0 weights instead of 1.1
 
 Gepard 1.1 (Apache-2.0 weights; the NVIDIA NanoCodec it decodes with is under the NVIDIA Open
@@ -29,7 +29,6 @@ log = ss.log
 
 
 class GepardEngine:
-    streams = True
     builtin_voices: tuple[str, ...] = ()
 
     def __init__(self, checkpoint: str, device: str, temperature: float, first: int, step: int, hold: int):
@@ -43,6 +42,9 @@ class GepardEngine:
 
     def prepare(self, clip: Path):
         return self.player.encode_reference(str(clip))
+
+    def stream_for(self, req: ss.SpeechRequest, on: bool) -> bool:
+        return on
 
     def _decode(self, frames: list) -> np.ndarray:
         return self.player.decode(torch.stack(frames).T.contiguous())[1]
@@ -75,6 +77,7 @@ class GepardEngine:
 
 def main():
     ap = ss.arg_parser(__doc__.splitlines()[0])
+    ap.add_argument("--device", default="cuda", help="cuda or cpu")
     ap.add_argument("--checkpoint", default="nineninesix/gepard-1.1", help="Hugging Face id or local dir")
     ap.add_argument("--temperature", type=float, default=0.3, help="upstream's default")
     ap.add_argument("--first-frames", type=int, default=8, help="frames (46 ms each) before the first chunk")

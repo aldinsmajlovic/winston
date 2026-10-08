@@ -9,18 +9,15 @@ import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirm } from '@/hooks/use-confirm'
 import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
+import { capitalize, humanize, joinNames } from '@/lib/format'
 import { type JsonSchema } from '@/lib/schema'
-
-const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
-const joinNames = (names: string[]) =>
-  names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 
 /** "Announce", "Home assistant" or a variable name: what only the next winston up applies. */
 function controlLabel(name: string, root: JsonSchema | undefined): string {
   if (/^[A-Z0-9_]+$/.test(name)) return name
   // A section's own title only; its model's title is a class name ("AnnounceConfig").
   const title = root?.properties?.[name]?.title
-  return typeof title === 'string' ? title : capitalize(name.replace(/_/g, ' '))
+  return typeof title === 'string' ? title : humanize(name)
 }
 
 /** Saved settings that wait for a restart: the changed icon, its tooltip naming each process and its

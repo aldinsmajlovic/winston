@@ -11,12 +11,13 @@ const TTS = ['tts']
 const STT = ['stt']
 const VAD = ['vad']
 const ENGINE = ['engines', 'tts']
+const STT_ENGINE = ['engines', 'stt']
 // The Hearing card's engine picker sets the adapter; the field would repeat it.
 const PROVIDER = ['provider']
 
-/** How Winston speaks and hears: the speech engine and voice, the speech-to-text adapter, turn taking. */
+/** How Winston speaks and hears: the speech engine and voice, the speech-to-text engine, turn taking. */
 export default function VoicePage() {
-  const s = useSettings([TTS, STT, VAD, ENGINE])
+  const s = useSettings([TTS, STT, VAD, ENGINE, STT_ENGINE])
   const presets = $api.useQuery('get', '/api/presets')
   if (s.loading || !presets.data) return <PageSkeleton title="Voice" />
   return <Voice page={s.page} presets={presets.data} />
@@ -25,6 +26,7 @@ export default function VoicePage() {
 function Voice({ page, presets }: { page: SettingsState; presets: Presets }) {
   const previews = useVoicePreviews(page)
   const engine = page.value.engines?.tts
+  const hearing = page.value.engines?.stt
   return (
     <SettingsPage title="Voice" page={page}>
       <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts}>
@@ -36,6 +38,7 @@ function Voice({ page, presets }: { page: SettingsState; presets: Presets }) {
       </SlotCard>
       {page.advanced ? <SectionForm page={page} path={VAD} title="Turn taking" /> : null}
       {page.advanced && engine ? <SectionForm page={page} path={ENGINE} title="Speech engine" /> : null}
+      {page.advanced && hearing ? <SectionForm page={page} path={STT_ENGINE} title="Hearing engine" /> : null}
     </SettingsPage>
   )
 }

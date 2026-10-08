@@ -191,5 +191,5 @@ async def test_status_and_hint_words():
     assert await h.status() == "Not read from Hevy yet"
     await h.run("poll")
     assert await h.status() == "Last workout: Push day, 3 days ago"
-    assert await h.rt.hint_words() == ["Bench Press", "Pull Up"]
+    assert await h.hint_words() == ["Bench Press", "Pull Up"]
     await h.close()

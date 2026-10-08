@@ -22,8 +22,9 @@ sequenceDiagram
   Note over V: "How long did it run?" is answered from the context
 ```
 
-From a Home Assistant automation, fire an event (winstond is subscribed over HA's websocket, so
-nothing listens on the LAN; the token must belong to an admin user to subscribe to custom events):
+From a Home Assistant automation, fire an event (winstond is subscribed over HA's websocket, the one
+connection its extension triggers use too, so nothing listens on the LAN; the token must belong to an
+admin user to subscribe to custom events, and a refused subscription is logged with the event's name):
 
 ```yaml
 actions:

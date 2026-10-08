@@ -8,3 +8,18 @@ export function duration(seconds: number): string {
 export function since(epochSeconds: number): string {
   return duration(Date.now() / 1000 - epochSeconds)
 }
+
+/** "living room" -> "Living room". */
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** "reasoning_effort" -> "Reasoning effort", for a key the schema gives no title. */
+export function humanize(key: string): string {
+  return capitalize(key.replaceAll('_', ' '))
+}
+
+/** "Brain, Voice and Hearing". */
+export function joinNames(names: string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}

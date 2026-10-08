@@ -38,13 +38,11 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pydantic import BaseModel, Field
 
 from winston.config.schema import WinstonConfig
+from winston.core.common import entity_names, key, sse
+from winston.core.guard import is_note
 
 SHARED_ROLES = ("user", "assistant", "tool")
 MAX_HOLD_SECS = 120.0
-
-
-def key(room: str) -> str:
-    return " ".join(room.split()).casefold()
 
 
 def area(cfg: WinstonConfig, room: str) -> str:
@@ -66,7 +64,7 @@ _device_areas_at = -DEVICE_AREAS_SECS
 
 
 async def device_areas(cfg: WinstonConfig) -> dict[str, str]:
-    """Every name an exposed device answers to (its Home Assistant name, the config name, the aliases), folded,
+    """Every name an exposed device answers to (its Home Assistant name and aliases, common.entity_names), folded,
     mapped to the Home Assistant area it is in. Read from Home Assistant's registry at most every ten
     minutes; empty when it cannot be read (no admin token, Home Assistant away)."""
     global _device_areas, _device_areas_at
@@ -83,7 +81,7 @@ async def device_areas(cfg: WinstonConfig) -> dict[str, str]:
     found = {}
     for eid, ent in ha.expose.items():
         if where := snap.area(eid)[1]:
-            for n in (snap.display_name(eid), ent.name, *ent.aliases, *snap.aliases(eid)):
+            for n in (snap.display_name(eid), *entity_names(eid, ent), *snap.aliases(eid)):
                 if n:
                     found[key(n)] = where
     _device_areas = found
@@ -256,7 +254,7 @@ Sync = Callable[[str, SyncRequest], Awaitable[SyncResult | None]]
 def http_sync(cfg: WinstonConfig) -> Sync:
     """For channel processes: sync through winstond. Returns None when winstond is not there, and the
     session carries on with its own context."""
-    base = f"http://{cfg.control.host}:{cfg.control.port}/api/rooms"
+    base = cfg.control.url + "/api/rooms"
     client = httpx.AsyncClient(timeout=1.5)
 
     async def call(room: str, req: SyncRequest) -> SyncResult | None:
@@ -291,7 +289,7 @@ def _shared(m: Any) -> bool:
 def _note(m: dict) -> bool:
     """An announcement or check note every session in the room adds for itself."""
     c = m.get("content")
-    return m.get("role") == "user" and isinstance(c, str) and c.startswith("[") and "not said by the user" in c
+    return m.get("role") == "user" and isinstance(c, str) and is_note(c)
 
 
 class RoomLink:
@@ -449,29 +447,15 @@ class _Deafener(FrameProcessor):
 async def mic_events(cfg: WinstonConfig, room: str) -> AsyncIterator[dict]:
     """The room's mic holder from winstond ({room, held_by}), the current one first, reconnecting for
     as long as the caller iterates."""
-    url = f"http://{cfg.control.host}:{cfg.control.port}/api/rooms/{quote(room, safe='')}/mic"
-    delay = 1.0
-    while True:
-        try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as c:
-                async with c.stream("GET", url) as r:
-                    r.raise_for_status()
-                    delay = 1.0
-                    async for line in r.aiter_lines():
-                        if line.startswith("data: "):
-                            yield json.loads(line[6:])
-        except (httpx.HTTPError, ValueError) as e:
-            logger.debug(f"{room}: mic stream: {e}; retrying in {delay:.0f} s")
-            yield {"room": room, "held_by": None}          # never stay deaf because winstond went away
-        await asyncio.sleep(delay)
-        delay = min(delay * 2, 30)
+    async for ev in sse(f"{cfg.control.url}/api/rooms/{quote(room, safe='')}/mic"):
+        yield ev or {"room": room, "held_by": None}        # never stay deaf because winstond went away
 
 
 class MicLease:
     """For a box: hold its room's mic through winstond. Calls never wait on the box's turn."""
 
     def __init__(self, cfg: WinstonConfig, room: str, by: str = "box"):
-        self._url = f"http://{cfg.control.host}:{cfg.control.port}/api/rooms/{quote(room, safe='')}/mic"
+        self._url = f"{cfg.control.url}/api/rooms/{quote(room, safe='')}/mic"
         self.room, self.by = room, by
         self._client = httpx.AsyncClient(timeout=1.5)
         self._last: asyncio.Task | None = None

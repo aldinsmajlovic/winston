@@ -22,7 +22,6 @@ import shutil
 import threading
 import time
 import uuid
-from collections import deque
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -51,6 +50,7 @@ from pipecat.services.llm_service import FunctionCallParams
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
 from winston.core import guard
+from winston.core.common import Once
 from winston.core.guard import result_ok
 from winston.core.hints import Heard
 
@@ -121,11 +121,14 @@ class Turn:
 
 
 class TurnLog:
-    """Writes one channel process's turns, off the event loop, never raising into a turn."""
+    """Writes one channel process's turns, off the event loop, never raising into a turn. Each turn's
+    timings and tool names go to logging.latency (when set) whether or not the turn record is on; the
+    whole turn and its audio only when it is."""
 
     def __init__(self, cfg: WinstonConfig, channel: str, on_written: Callable[[Turn], object] | None = None):
         t = cfg.logging.turns
         self.enabled, self.keep_days, self.root = t.enabled, t.keep_days, resolve(t.dir)
+        self.latency = resolve(cfg.logging.latency) if cfg.logging.latency else None
         self.channel = channel
         self.on_written = on_written        # on the event loop once a turn is on disk (the live feed's "turn")
         self._day: str | None = None
@@ -135,11 +138,16 @@ class TurnLog:
         if self.enabled:
             self.prune()
 
+    @property
+    def active(self) -> bool:
+        """Anything to keep from a turn: the whole of it, or its timings."""
+        return self.enabled or self.latency is not None
+
     def begin(self, **fields) -> Turn:
         return Turn(channel=self.channel, **fields)
 
     def write(self, turn: Turn):
-        if not self.enabled:
+        if not self.active:
             return
         # One writer thread: the lines land in the order the turns ended.
         task = asyncio.ensure_future(asyncio.get_running_loop().run_in_executor(self._writer, self.write_now, turn))
@@ -149,6 +157,10 @@ class TurnLog:
             task.add_done_callback(lambda done: done.result() and self.on_written(turn))
 
     def write_now(self, turn: Turn) -> bool:
+        """The turn's timings, then the turn itself when the record is on; True once the turn is on disk."""
+        self.timings(turn)
+        if not self.enabled:
+            return False
         try:
             day = datetime.fromtimestamp(turn.ts).date().isoformat()
             folder = self.root / day
@@ -167,6 +179,23 @@ class TurnLog:
         except Exception as e:                                              # noqa: BLE001
             logger.warning(f"turn record: could not write turn {turn.id}: {e}")
             return False
+
+    def timings(self, turn: Turn):
+        """One line in logging.latency: milliseconds from the end of speech to the text (stt_ms), the first
+        token and the first audio, and the names of the tools called. No words, no audio. A request that
+        never reached the brain (nothing heard, dismissed) or has no time at all has none."""
+        if (not self.latency or turn.outcome in ("nothing_heard", "dismissed")
+                or (turn.stt_ms is None and turn.first_token_ms is None)):
+            return
+        line = {"ts": round(turn.ts, 3), "channel": self.channel, "stt_ms": turn.stt_ms,
+                "first_token_ms": turn.first_token_ms, "first_audio_ms": turn.first_audio_ms,
+                "tools": [c["name"] for c in turn.tools]}
+        try:
+            self.latency.parent.mkdir(parents=True, exist_ok=True)
+            with self.latency.open("a") as f:
+                f.write(json.dumps(line) + "\n")
+        except OSError as e:
+            logger.warning(f"latency log: {e}")
 
     def prune(self, today: date | None = None):
         """Remove the days older than keep_days; anything that is not a day's folder stays."""
@@ -190,14 +219,8 @@ class TurnObserver(BaseObserver):
     def __init__(self):
         super().__init__()
         self.turn: Turn | None = None
-        self._seen: deque = deque(maxlen=512)               # observers see a frame once per pipeline hop
+        self._first = Once()                                # observers see a frame once per pipeline hop
         self._calls: dict[str, dict] = {}
-
-    def _first(self, key) -> bool:
-        if key in self._seen:
-            return False
-        self._seen.append(key)
-        return True
 
     async def on_push_frame(self, data: FramePushed):
         f, t = data.frame, self.turn
@@ -231,7 +254,8 @@ class SpokenTurns(TurnObserver):
     A turn is written when the next one starts, when the session ends, or once his reply is over: the
     last response has ended, no tool call is running, he has stopped speaking, and `busy` (the claim
     guard retrying, a state check still reading) is false, with nothing new for SETTLE_SECS. Nothing
-    here depends on how long a model or a tool takes; a slow one keeps its turn open."""
+    here depends on how long a model or a tool takes; a slow one keeps its turn open. It runs while the
+    log keeps anything (`TurnLog.active`); the audio is held only when the turn record is on."""
 
     def __init__(self, log: TurnLog, room: str | None = None, busy: Callable[[], bool] | None = None):
         super().__init__()
@@ -246,7 +270,7 @@ class SpokenTurns(TurnObserver):
         self.last_id: str | None = None                     # the last turn he answered or let pass
 
     async def on_push_frame(self, data: FramePushed):
-        if not self.log.enabled:
+        if not self.log.active:
             return
         f = data.frame
         if isinstance(f, VADUserStoppedSpeakingFrame):
@@ -263,7 +287,8 @@ class SpokenTurns(TurnObserver):
             if self.turn is None:
                 self.turn = self.log.begin(room=self.room, ts=self._speech_end or time.time())
                 self._replied, self._pending, self._ended = False, set(), False
-            self.turn.add(f.text.strip(), f.result if isinstance(f.result, Heard) else None)
+            heard = f.result if self.log.enabled and isinstance(f.result, Heard) else None  # audio only when kept
+            self.turn.add(f.text.strip(), heard)
             self.turn.stt_ms = self.turn.ms_since_end()
             self._touch()
             return

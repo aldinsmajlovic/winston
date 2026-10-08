@@ -1,8 +1,8 @@
 import { toast } from 'sonner'
 import { CircleAlert, CircleCheck, X } from 'lucide-react'
 import { IconButton } from '@/components/icon-button'
+import { StatusTip } from '@/components/status-tip'
 import { Input } from '@/components/ui/input'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
 
@@ -89,16 +89,9 @@ export function SecretField({ id, names, resolve, label, placeholder = 'Paste a 
 /** Set or not set: an icon plus a colour, the words in its tooltip. */
 function SecretState({ set, loading }: { set: boolean; loading: boolean }) {
   if (loading) return null
-  const Icon = set ? CircleCheck : CircleAlert
-  const text = set ? 'Set' : 'Not set'
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex">
-          <Icon className={set ? 'size-4 text-success' : 'size-4 text-warning'} aria-label={text} />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>{text}</TooltipContent>
-    </Tooltip>
+  return set ? (
+    <StatusTip icon={CircleCheck} className="text-success" label="Set" />
+  ) : (
+    <StatusTip icon={CircleAlert} className="text-warning" label="Not set" />
   )
 }

@@ -11,7 +11,8 @@ import { useDraft } from '@/hooks/use-draft'
 import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
 import { refreshHomeAssistant, toastSaved, type HAApply } from '@/hooks/use-home-assistant'
 import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
-import { deepEqual, deref, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
+import { capitalize, humanize, joinNames } from '@/lib/format'
+import { deepEqual, deref, getIn, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
 
 type Edits = { changes: ConfigChange[]; version: string | undefined }
 
@@ -41,16 +42,7 @@ function useDraftStore(): DraftStore {
 
 const same = (a: unknown, b: unknown) => (a == null && b == null) || deepEqual(a, b)
 
-export function getPath(value: unknown, path: Path): unknown {
-  let current = value
-  for (const step of path) {
-    if (Array.isArray(current) && typeof step === 'number') current = current[step]
-    else if (isRecord(current)) current = current[String(step)]
-    else return undefined
-  }
-  return current
-}
-
+/** setIn from lib/schema, except that null removes the key. */
 function setPath(value: unknown, path: Path, next: unknown): unknown {
   if (path.length === 0) return next
   const [head, ...rest] = path
@@ -81,7 +73,7 @@ export function applyChanges<T>(value: T, changes: ConfigChange[]): T {
 }
 
 export function effectiveChanges(saved: unknown, changes: ConfigChange[]): ConfigChange[] {
-  return changes.filter((c) => !same(getPath(saved, c.path), c.value))
+  return changes.filter((c) => !same(getIn(saved, c.path), c.value))
 }
 
 const startsWith = (path: Path, prefix: Path) => prefix.every((step, i) => path[i] === step)
@@ -108,11 +100,6 @@ export function pagesOf(path: Path): SettingsPageInfo[] {
 }
 
 const pageAt = (pathname: string) => settingsPages.find((p) => pathname.startsWith(p.to))
-
-const humanize = (key: string) => {
-  const words = key.replace(/_/g, ' ')
-  return words.charAt(0).toUpperCase() + words.slice(1)
-}
 
 /** A field's name for a person, from the schema titles: "Voice", "Contacts: Mom", "llm: Args". */
 export function fieldLabel(root: JsonSchema, path: Path): string {
@@ -182,11 +169,6 @@ function summary(root: JsonSchema, edits: ConfigChange[], keys: string[], byName
   }
   return [...groups].map(([page, labels]) => `${page}: ${[...labels].join(', ')}`)
 }
-
-const joinNames = (names: string[]) =>
-  names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-
-const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 
 /** The pages with unsaved edits or pasted keys, for the sidebar's dots. */
 export function useDirtyPages(): Set<string> {

@@ -10,17 +10,16 @@ SAME_VOICE, different speakers below it. clone_voice then runs whole with a scri
 stored with its score, a mismatch keeps nothing at all, and a missing model stores the clone as not checked."""
 import asyncio
 import json
-import os
-import tempfile
 import wave
 from itertools import combinations
 from pathlib import Path
 from types import SimpleNamespace
 
+import harness
 import numpy as np
+from harness import expect, scratch_data
 
-scratch = Path(tempfile.mkdtemp(prefix="winston-consent-"))
-os.environ["WINSTON_DATA"] = str(scratch)
+scratch = scratch_data("winston-consent-")
 ASSETS = Path(__file__).resolve().parent.parent / "assets" / "voices" / "vctk"
 
 from winston.channels import clone as clone_channel  # noqa: E402  (after WINSTON_DATA is set)
@@ -28,13 +27,6 @@ from winston.config.schema import WinstonConfig  # noqa: E402
 from winston.core import speaker, voices  # noqa: E402
 
 RATE, SPLIT = 16000, 4 * 16000
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail}")
 
 
 def clip(speaker_id: str) -> np.ndarray:
@@ -158,5 +150,5 @@ expect("a missing model stores the clone", omar is not None and result.get("clon
 expect("as not checked", omar is not None and omar.consent_score is None and omar.consent_checked_at is None
        and omar.consent_model is None and result.get("consent_score") is None, omar)
 
-print(f"\n{'all passed' if not failed else f'{failed} FAILED'} (scratch data in {scratch})")
-raise SystemExit(1 if failed else 0)
+print(f"\n{'all passed' if not harness.failed else f'{harness.failed} FAILED'} (scratch data in {scratch})")
+raise SystemExit(1 if harness.failed else 0)

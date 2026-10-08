@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { CircleAlert, CircleCheck, CircleHelp, Play, ShieldCheck, Square, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { $api, errorText } from '@/api/client'
-import { StatusTip } from '@/components/ha-connection'
+import { StatusTip } from '@/components/status-tip'
 import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
 import { Badge } from '@/components/ui/badge'
@@ -51,7 +51,7 @@ const useClones = () => $api.useQuery('get', '/api/voices/clones')
 export function ClonedVoices({ current }: Props) {
   const name = $api.useQuery('get', '/api/status').data?.assistant ?? 'Winston'
   const clones = useClones()
-  const remove = $api.useMutation('delete', '/api/voices/clones/{slug}', { meta: { showsErrors: true } })
+  const remove = $api.useMutation('delete', '/api/voices/clones/{slug}')
   const ask = useConfirm()
   const audio = useRef<HTMLAudioElement | null>(null)
   const [playing, setPlaying] = useState<string | null>(null)
@@ -84,13 +84,7 @@ export function ClonedVoices({ current }: Props) {
     })
     if (!choice) return
     stop()
-    try {
-      await remove.mutateAsync({ params: { path: { slug } } })
-    } catch (error) {
-      toast.error(errorText(error))
-      return
-    }
-    void clones.refetch()
+    remove.mutate({ params: { path: { slug } } }, { onSuccess: () => void clones.refetch() })
   }
 
   const columns: Column<Clone>[] = [

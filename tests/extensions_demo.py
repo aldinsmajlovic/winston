@@ -7,42 +7,19 @@ URL; Ctrl-C stops it.
 """
 import argparse
 import asyncio
-import os
 import re
 import shutil
-import socket
 import sys
-import tempfile
-from pathlib import Path
 
-DATA = Path(tempfile.mkdtemp(prefix="winston-extensions-demo-"))
-os.environ["WINSTON_DATA"] = str(DATA)
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tests"))
+from harness import REPO, free_port, scratch_data, winstond_data
+
+DATA = scratch_data("winston-extensions-demo-")
 
 import uvicorn  # noqa: E402
-import yaml  # noqa: E402
 from fake_ha import FakeHA  # noqa: E402
 
 
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def setup(api_port: int, ha_port: int):
-    (DATA / "extensions").mkdir(parents=True)
-    doc = (REPO / "docs" / "extensions.md").read_text()
-    builtin = {p.stem for p in (REPO / "src" / "winston" / "extensions").glob("*.py")}
-    for block in re.findall(r"```python\n(# /// script.*?)```", doc, re.S):
-        ident = re.search(r'^# id = "(\w+)"', block, re.M).group(1)
-        if ident not in builtin:                        # the docs' trimmed Hevy is the built-in's example
-            (DATA / "extensions" / f"{ident}.py").write_text(block)
-    shutil.copytree(REPO / "examples" / "memory", DATA / "memory")
-    shutil.copy(REPO / "examples" / "persona.md", DATA / "persona.md")
-    (DATA / ".env").write_text('HA_TOKEN="fake-ha-token"\n')
-    os.chmod(DATA / ".env", 0o600)
     cfg = {"llm": {"model": "none"},
            "channels": {"voice": {"enabled": False}, "satellite": {"enabled": False}, "discord": {"enabled": False}},
            "announce": {"enabled": False},
@@ -58,7 +35,14 @@ def setup(api_port: int, ha_port: int):
                "reminders": {"enabled": True},
                "echo": {"enabled": True, "mcp": {"command": [sys.executable, str(REPO / "tests/fixtures/mcp_echo.py")]},
                         "tools": {"echo": {}}}}}
-    (DATA / "config.yaml").write_text(yaml.safe_dump(cfg))
+    winstond_data(DATA, cfg)
+    (DATA / "extensions").mkdir()
+    doc = (REPO / "docs" / "extensions.md").read_text()
+    builtin = {p.stem for p in (REPO / "src" / "winston" / "extensions").glob("*.py")}
+    for block in re.findall(r"```python\n(# /// script.*?)```", doc, re.S):
+        ident = re.search(r'^# id = "(\w+)"', block, re.M).group(1)
+        if ident not in builtin:                        # the docs' trimmed Hevy is the built-in's example
+            (DATA / "extensions" / f"{ident}.py").write_text(block)
 
 
 async def main(port: int):

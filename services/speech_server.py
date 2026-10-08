@@ -1,25 +1,29 @@
-"""The OpenAI speech protocol shared by the benchmark candidates in this directory.
+"""The OpenAI speech protocol shared by the speech servers in this directory.
 
-Each candidate (qwen3-tts, voxcpm2, gepard) is a small `Engine` in its own venv; this module turns it
-into the same server as services/tts-chatterbox/server.py, so Winston's `openai_speech` provider and
-tests/tts_bench/bench.py talk to any of them unchanged:
+Each engine (tts-chatterbox, tts-pocket, tts-qwen3, tts-voxcpm2, tts-gepard) is a small `Engine` in its
+own venv; this module turns it into the server Winston's `openai_speech` provider and
+tests/tts_bench/bench.py talk to:
 
 - POST /v1/audio/speech with input, voice, response_format pcm (raw s16le mono, streamed) or wav.
-  The rate is the model's own and is sent as X-Sample-Rate: 24 kHz for Qwen3-TTS, 48 kHz for
-  VoxCPM2, 22.05 kHz for Gepard.
-- voice is a clip name under --voices-dir ("vctk/p254_023" means vctk/p254_023.wav), prepared on
-  first use and cached (the default plus the eight most recently used), prepared again when the
-  file changes. OpenAI's names ("alloy" and so on) mean the default clip. A name that leaves
-  --voices-dir is refused with a 400.
-- A request may carry stream true or false for itself (as the Chatterbox server takes it); the
-  answer says which way it rendered in X-Streaming. Chatterbox's first_secs, chunk_secs and
-  lookahead_secs are accepted and ignored.
+  The rate is the model's own and is sent as X-Sample-Rate: 24 kHz for Chatterbox, Pocket and
+  Qwen3-TTS, 48 kHz for VoxCPM2, 22.05 kHz for Gepard.
+- voice is a built-in voice of the engine or a clip name under --voices-dir ("vctk/p254_023" means
+  vctk/p254_023.wav), prepared on first use and cached (the default plus the eight most recently
+  used), prepared again when the file changes. OpenAI's names ("alloy" and so on) mean the default.
+  A name that leaves --voices-dir is refused with a 400.
+- A request may carry stream true or false for itself, and the engine may take more of its own
+  (Chatterbox's first_secs, chunk_secs, lookahead_secs); the answer says which way it rendered in
+  X-Streaming.
 - GET /health: status, sample_rate, default_voice, voices_loaded, builtin_voices, streaming, model,
-  pid (so the benchmark can find the process on nvidia-smi) and the torch peak GPU memory.
+  pid (so the benchmark can find the process on nvidia-smi) and the torch GPU memory.
 
-Cloning with the clip's words (Qwen3-TTS ICL, VoxCPM2 continuation) needs a transcript: a .txt
-beside the clip if there is one, otherwise Parakeet (onnx-asr on the CPU, as Winston hears)
-transcribes it once. Nothing is written into the voices directory.
+Cloning with the clip's words (Qwen3-TTS, VoxCPM2) needs a transcript: a .txt beside the clip if there
+is one, otherwise Parakeet (onnx-asr on the CPU, as Winston hears) transcribes it once (`transcript`).
+Nothing is written into the voices directory. Models whose generate() returns only at the end stream
+through `frames_from` and `stream_frames`.
+
+Engines import it with services/ on sys.path; it needs only what every engine's venv has, and imports
+the rest (onnx_asr, soundfile) only when an engine asks for a transcript.
 """
 import argparse
 import asyncio
@@ -50,20 +54,6 @@ _OPENAI_VOICES = {"alloy", "ash", "ballad", "cedar", "coral", "echo", "fable", "
                   "sage", "shimmer", "verse", "default", "winston"}
 
 
-class Engine(Protocol):
-    """What a candidate provides. prepare and synth run in a worker thread, one at a time."""
-    model: str                    # what /health reports, e.g. "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
-    sample_rate: int
-    streams: bool                 # synth can send audio before a sentence is finished
-    builtin_voices: tuple[str, ...]
-
-    def prepare(self, clip: Path) -> object:
-        """A reference clip to whatever synth needs (prompt codes, a cache), once per clip."""
-
-    def synth(self, text: str, voice: object, stream: bool) -> Iterable[np.ndarray]:
-        """One sentence as float32 mono chunks in [-1, 1]; a single chunk when stream is false."""
-
-
 class SpeechRequest(BaseModel):
     input: str
     model: str | None = None
@@ -72,18 +62,31 @@ class SpeechRequest(BaseModel):
     speed: float | None = None        # accepted, ignored
     instructions: str | None = None   # accepted, ignored
     stream: bool | None = None        # this request only; unset keeps --stream
-    first_secs: float | None = Field(None, gt=0, le=20)       # Chatterbox's; accepted, ignored
+    first_secs: float | None = Field(None, gt=0, le=20)       # Chatterbox's chunking; other engines ignore it
     chunk_secs: float | None = Field(None, gt=0, le=20)
     lookahead_secs: float | None = Field(None, gt=0, le=20)
 
 
-# ---------------------------------------------------------------------------------------------
-# Helpers the engines share
-# ---------------------------------------------------------------------------------------------
+class Engine(Protocol):
+    """What an engine provides. prepare and synth run in a worker thread, one at a time."""
+    model: str                    # what /health reports, e.g. "ResembleAI/chatterbox-turbo"
+    sample_rate: int
+    builtin_voices: tuple[str, ...]
 
+    def prepare(self, source: Path | str) -> object:
+        """A reference clip (a Path) or a built-in voice's name to whatever synth needs, once per voice."""
+
+    def stream_for(self, req: SpeechRequest, on: bool) -> object:
+        """What synth gets as `stream` for this request: `on` itself, or the engine's own chunking with
+        the request's values on top. Raises HTTPException to refuse them, before any audio is sent."""
+
+    def synth(self, text: str, voice: object, stream: object) -> Iterable[np.ndarray]:
+        """One sentence as float32 mono chunks in [-1, 1], as they are made; a single chunk when not on."""
+
+
+_transcripts: dict[tuple[str, float], str] = {}
 _asr = None
 _asr_lock = threading.Lock()
-_transcripts: dict[tuple[str, float], str] = {}
 
 
 def read_clip(path: Path) -> tuple[np.ndarray, int]:
@@ -175,23 +178,29 @@ def stream_frames(frames: Iterable, decode: Callable[[list], np.ndarray], *, con
         due, inc = n + inc, min(step, inc * 2)
 
 
-# ---------------------------------------------------------------------------------------------
-# The server
-# ---------------------------------------------------------------------------------------------
-
 class SpeechServer:
-    def __init__(self, engine: Engine, default_clip: Path, voices_dir: Path, stream: bool):
+    def __init__(self, engine: Engine, voice: str, voices_dir: str | None, stream: bool):
         self.engine, self.stream = engine, stream
-        self.voices_dir = voices_dir.resolve()
-        clip = default_clip.resolve()
-        self.default = str(clip.relative_to(self.voices_dir).with_suffix("")) \
-            if clip.is_relative_to(self.voices_dir) else clip.stem
-        self.default_clip = clip
-        self.lock = threading.Lock()               # one generate at a time on the device
-        self.voices: OrderedDict[str, tuple[object, float | None]] = OrderedDict()
+        path = Path(voice)
+        if path.suffix.lower() == ".wav" or path.is_file():
+            path = path.resolve()
+            self.voices_dir = Path(voices_dir or path.parent).resolve()
+            self.default = str(path.relative_to(self.voices_dir).with_suffix("")) \
+                if path.is_relative_to(self.voices_dir) else path.stem
+            self.default_source: Path | str = path
+        else:                                      # a built-in voice, or a clip name under the voices dir
+            self.voices_dir = Path(voices_dir or ".").resolve()
+            self.default = voice
+            self.default_source = voice if voice in engine.builtin_voices else self._clip_path(voice)
+            if isinstance(self.default_source, Path) and not self.default_source.is_file():
+                raise HTTPException(400, f"not a built-in voice and no file {self.default_source}")
+        self.lock = threading.Lock()               # one prepare or synth at a time on the device
+        self.cache_lock = threading.Lock()         # self.voices, read and written from request threads
+        self.voices: OrderedDict[str, tuple[object, float | None]] = OrderedDict()   # name: (prepared, mtime)
         self.app = self._routes()
 
     def _clip_path(self, name: str) -> Path:
+        """The clip a voice name means, refused (400) unless it stays under the voices directory."""
         parts = Path(name).parts
         if "\\" in name or "\0" in name or Path(name).is_absolute() or ".." in parts or not parts:
             raise HTTPException(400, f"voice {name!r} is not a clip name under the voices directory")
@@ -200,43 +209,62 @@ class SpeechServer:
     def prepare_default(self) -> None:
         t0 = time.perf_counter()
         with self.lock:
-            self.voices[self.default] = (self.engine.prepare(self.default_clip), None)
+            self.voices[self.default] = (self.engine.prepare(self.default_source), None)
         log.info("default voice %s prepared in %.0f ms", self.default, (time.perf_counter() - t0) * 1000)
 
-    def resolve(self, name: str | None) -> tuple[str, object]:
-        """The voice's name and prepared prompt, preparing its clip first (under the lock) if needed."""
-        if not name or name in _OPENAI_VOICES or name == self.default:
-            self.voices.move_to_end(self.default)
-            return self.default, self.voices[self.default][0]
-        path = self._clip_path(name)
-        try:
-            mtime = path.stat().st_mtime
-        except OSError:
-            self.voices.pop(name, None)
-            raise HTTPException(400, f"unknown voice {name!r}; no file {path}") from None
-        with self.lock:
-            if name in self.voices and self.voices[name][1] == mtime:
+    def _cached(self, name: str, mtime: float | None) -> object | None:
+        """The voice's prepared state if it is cached and its clip is unchanged, else None."""
+        with self.cache_lock:
+            hit = self.voices.get(name)
+            if hit is not None and (name == self.default or hit[1] == mtime):
                 self.voices.move_to_end(name)
-                return name, self.voices[name][0]
+                return hit[0]
+        return None
+
+    def resolve(self, name: str | None) -> tuple[str, object]:
+        """The voice's name and prepared state, preparing it first if needed. Preparing blocks on the device
+        lock, so the async handler runs this in a thread; a cached voice does not wait. The state itself
+        goes to the synth, so a voice dropped from the cache meanwhile still speaks."""
+        # OpenAI clients validate voice names against OpenAI's list, so any of those means the default
+        if not name or name in _OPENAI_VOICES:
+            name = self.default
+        source: Path | str = name
+        mtime = None
+        if name != self.default and name not in self.engine.builtin_voices:
+            source = self._clip_path(name)
+            try:
+                mtime = source.stat().st_mtime
+            except OSError:
+                with self.cache_lock:
+                    self.voices.pop(name, None)
+                raise HTTPException(400, f"unknown voice {name!r}; no file {source}") from None
+        if (prepared := self._cached(name, mtime)) is not None:
+            return name, prepared
+        with self.lock:
+            # two requests for a new voice both wait here; the second finds what the first prepared
+            if (prepared := self._cached(name, mtime)) is not None:
+                return name, prepared
             t0 = time.perf_counter()
-            prepared = self.engine.prepare(path)
-            self.voices.pop(name, None)
-            self.voices[name] = (prepared, mtime)
-            for old in [v for v in self.voices if v != self.default][:-MAX_VOICES]:
-                del self.voices[old]
+            prepared = self.engine.prepare(source)
+            with self.cache_lock:
+                self.voices.pop(name, None)
+                self.voices[name] = (prepared, mtime)
+                for old in [v for v in self.voices if v != self.default][:-MAX_VOICES]:
+                    del self.voices[old]
         log.info("prepared voice %s in %.0f ms", name, (time.perf_counter() - t0) * 1000)
         return name, prepared
 
-    def synth_all(self, sentences: list[str], voice: object, stream: bool, emit) -> None:
-        """Runs in a thread: every sentence through the engine, each chunk to emit as int16 bytes."""
-        with self.lock:
-            for s in sentences:
+    def synth_all(self, sentences: list[str], voice: object, stream: object, emit) -> None:
+        """Runs in a thread: every sentence through the engine, each chunk to emit as int16 bytes. The lock
+        is taken per sentence, so another request (a second box) gets its turn between sentences."""
+        for s in sentences:
+            with self.lock:
                 for a in self.engine.synth(s, voice, stream):
                     emit((np.clip(np.asarray(a, dtype=np.float32).reshape(-1), -1.0, 1.0) * 32767)
                          .astype(np.int16).tobytes())
 
     def _routes(self) -> FastAPI:
-        app = FastAPI(title=f"Winston TTS candidate ({self.engine.model})")
+        app = FastAPI(title=f"Winston TTS ({self.engine.model})")
 
         @app.get("/health")
         async def health():
@@ -252,7 +280,7 @@ class SpeechServer:
             return {"status": "ok", "model": self.engine.model, "sample_rate": self.engine.sample_rate,
                     "default_voice": self.default, "voices_loaded": sorted(self.voices),
                     "builtin_voices": list(self.engine.builtin_voices),
-                    "streaming": self.stream and self.engine.streams, "pid": os.getpid(), "gpu": gpu}
+                    "streaming": self.stream, "pid": os.getpid(), "gpu": gpu}
 
         @app.post("/v1/audio/speech")
         async def speech(req: SpeechRequest):
@@ -260,8 +288,9 @@ class SpeechServer:
                 raise HTTPException(400, "empty input")
             if req.response_format not in ("pcm", "wav"):
                 raise HTTPException(400, "response_format must be pcm or wav")
-            stream = (self.stream if req.stream is None else req.stream) and self.engine.streams
-            # preparing a new clip holds the lock for a while; off the event loop, which may be sending audio
+            on = self.stream if req.stream is None else req.stream
+            stream = self.engine.stream_for(req, on)
+            # preparing a new voice holds the lock for a while; off the event loop, which may be sending audio
             voice, prompt = await asyncio.to_thread(self.resolve, req.voice)
             sentences = [s.strip() for s in _SENTENCE_RE.split(req.input.strip()) if s.strip()] or [req.input.strip()]
             sr = self.engine.sample_rate
@@ -289,10 +318,10 @@ class SpeechServer:
                 await task
                 dt = time.perf_counter() - t_req
                 log.info("tts %s %s %d chars -> %.2fs audio in %.0f ms (rtf %.2f), ttfb %.0f ms", voice,
-                         "streamed" if stream else "whole", len(req.input), total / sr, dt * 1000,
+                         "streamed" if on else "whole", len(req.input), total / sr, dt * 1000,
                          dt / max(total / sr, 1e-3), (first or 0) * 1000)
 
-            headers = {"X-Sample-Rate": str(sr), "X-Streaming": "on" if stream else "off"}
+            headers = {"X-Sample-Rate": str(sr), "X-Streaming": "on" if on else "off"}
             if req.response_format == "wav":
                 buf = io.BytesIO()
                 with wave.open(buf, "wb") as w:
@@ -305,33 +334,34 @@ class SpeechServer:
         return app
 
 
-def arg_parser(description: str) -> argparse.ArgumentParser:
-    """The command line every candidate shares; each adds its own model options."""
+def arg_parser(description: str, voice: str | None = None) -> argparse.ArgumentParser:
+    """The command line every engine shares; each adds its own options. voice is the default --voice."""
     ap = argparse.ArgumentParser(description=description)
-    ap.add_argument("--voice", required=True, help="reference clip (wav) for the default voice")
+    ap.add_argument("--voice", required=voice is None, default=voice,
+                    help="reference clip (wav) for the default voice, or a built-in voice's name")
     ap.add_argument("--voices-dir", default=None, help="dir that request 'voice' names resolve under")
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8890)
-    ap.add_argument("--device", default="cuda", help="cuda or cpu")
+    ap.add_argument("--port", type=int, default=8880)
     ap.add_argument("--stream", type=lambda v: v.lower() in ("1", "true", "yes", "on"), default=True,
                     help="true: send audio while a sentence is still being generated; false: whole sentences")
-    ap.add_argument("--no-warmup", action="store_true", help="skip the warm-up sentences (a CPU smoke test)")
     return ap
 
 
 def serve(engine: Engine, args: argparse.Namespace) -> None:
-    """Prepare the default clip, warm up, and serve until stopped."""
-    voice = Path(args.voice)
-    server = SpeechServer(engine, voice, Path(args.voices_dir) if args.voices_dir else voice.resolve().parent,
-                          args.stream)
-    server.prepare_default()
-    if not args.no_warmup:
-        for s in ("Hello.", "Hello, I'm Winston. How can I help?"):
-            for stream in {False, server.stream and engine.streams}:
-                t0 = time.perf_counter()
-                server.synth_all([s], server.voices[server.default][0], stream, lambda b: None)
-                log.info("warmup %s %r in %.0f ms", "streamed" if stream else "whole", s,
-                         (time.perf_counter() - t0) * 1000)
+    """Prepare the default voice, warm up, and serve until stopped."""
+    try:
+        server = SpeechServer(engine, args.voice, args.voices_dir, args.stream)
+        server.prepare_default()
+    except HTTPException as e:
+        raise SystemExit(f"default voice {args.voice!r}: {e.detail}") from e
+    voice = server.voices[server.default][0]
+    # the streaming path too, even with --stream false: a request may ask for it (the Voice page's sample)
+    for text, on in (("Hello.", False), ("Hello, I'm Winston. How can I help?", False),
+                     ("Hello, I'm Winston. How can I help?", True)):
+        t0, got = time.perf_counter(), []
+        server.synth_all([text], voice, engine.stream_for(SpeechRequest(input=text), on), got.append)
+        log.info("warmup %s %r: %.2fs audio in %.0f ms", "streamed" if on else "whole", text,
+                 sum(map(len, got)) / 2 / engine.sample_rate, (time.perf_counter() - t0) * 1000)
     try:
         import torch
         if torch.cuda.is_available() and torch.cuda.is_initialized():

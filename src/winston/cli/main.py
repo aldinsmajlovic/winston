@@ -7,12 +7,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-import httpx
 import typer
 from loguru import logger
 
 from winston import __version__
-from winston.cli.ext import ext_app
+from winston.cli.ext import _call, _ok, ext_app
 from winston.config import data_dir, load, repo_root
 
 app = typer.Typer(help="Winston, a self-hosted voice assistant.", no_args_is_help=True, add_completion=False)
@@ -23,11 +22,6 @@ app.add_typer(config_app, name="config")
 app.add_typer(ha_app, name="ha")
 app.add_typer(api_app, name="api")
 app.add_typer(ext_app, name="ext")
-
-
-def _api() -> str:
-    cfg = load()
-    return f"http://{cfg.control.host}:{cfg.control.port}"
 
 
 def _quiet():
@@ -92,10 +86,7 @@ def up(host: str = typer.Option(None), port: int = typer.Option(None),
 @app.command()
 def status():
     """Engines, channel and GPU, from the running winstond."""
-    try:
-        s = httpx.get(f"{_api()}/api/status", timeout=10).json()
-    except httpx.HTTPError:
-        print("winstond is not running (start it with `winston up`)"); raise typer.Exit(1)
+    s = _ok(_call("GET", "/api/status", timeout=10))
     icons = {"healthy": "●", "starting": "◐", "unhealthy": "◑", "stopped": "○", "error": "✕"}
     for e in s["engines"]:
         port = f":{e['port']}" if e["port"] else ""
@@ -113,14 +104,13 @@ def status():
 @app.command()
 def restart(name: str):
     """Restart one engine or channel."""
-    r = httpx.post(f"{_api()}/api/engines/{name}/restart", timeout=30)
-    print(r.json() if r.status_code == 200 else r.text)
+    print(_ok(_call("POST", f"/api/engines/{name}/restart")))
 
 
 @app.command()
 def down():
     """Stop every engine and channel (winstond keeps serving)."""
-    print(httpx.post(f"{_api()}/api/engines/stop_all", timeout=120).json())
+    print(_ok(_call("POST", "/api/engines/stop_all", timeout=120)))
 
 
 @app.command()
@@ -137,13 +127,7 @@ def announce(text: str = typer.Argument(..., help="What the assistant says."),
                                                help="key=value details kept for follow-up questions; repeatable.")):
     """Make the assistant say something on its own: chime and speech on connected speakers, Discord per config."""
     ctx = dict(kv.split("=", 1) for kv in context or [] if "=" in kv)
-    try:
-        r = httpx.post(f"{_api()}/api/announce", json={"text": text, "context": ctx, "source": "cli"}, timeout=10)
-    except httpx.HTTPError:
-        print("winstond is not running (start it with `winston up`)"); raise typer.Exit(1)
-    if r.status_code != 200:
-        print(r.text); raise typer.Exit(1)
-    d = r.json()
+    d = _ok(_call("POST", "/api/announce", json={"text": text, "context": ctx, "source": "cli"}, timeout=10))
     where = [f"{d['spoken_on']} speaker(s)"] if d["spoken_on"] else []
     where += ["Discord"] if d["discord"] else []
     print(f"announced on {', '.join(where)}" if where else
@@ -239,14 +223,13 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     """Run the checks: unit needs nothing, ui a built web UI (a throwaway winstond on a copy of data/),
     the milestones need the engines up."""
     tests = repo_root() / "tests"
-    unit = ["guard_cases.py", "memory_cases.py", "persona_cases.py", "announce_cases.py", "live_cases.py",
-            "verify_cases.py", "hints_cases.py", "consent_cases.py", "rooms_cases.py", "home_cases.py", "profiles_load.py",
-            "extensions_cases.py", "nudges_cases.py", "turns_cases.py"]
-    unit_paths = [tests / t for t in unit] + [repo_root() / "sdk" / "tests" / "sdk_cases.py"]
+    unit = sorted(tests.glob("*_cases.py")) + [tests / "profiles_load.py", repo_root() / "sdk" / "tests" / "sdk_cases.py"]
     builtin = sorted(p.name.removesuffix("_test.py") for p in (repo_root() / "src" / "winston" / "extensions").glob("*_test.py"))
-    unit_steps = [f"{sys.executable} {t}" for t in unit_paths] + \
-        [f"{sys.executable} -m winston.cli.main ext test {name}" for name in builtin]   # built-in extensions' own tests
-    plan = {"unit": ["bash", "-c", " && ".join(unit_steps)],
+    # each file is a step of its own, so one failing does not hide the rest
+    unit_steps = {t.name: [sys.executable, str(t)] for t in unit} | \
+        {f"{name}_test.py": [sys.executable, "-m", "winston.cli.main", "ext", "test", name]
+         for name in builtin}   # built-in extensions' own tests
+    plan = {"unit": unit_steps,
             "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],
             "m1": [sys.executable, str(tests / "m1_ha.py")],
@@ -259,8 +242,9 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     failed = []
     for n in names:
         print(f"\n=== {n}")
-        if subprocess.run(plan[n], cwd=repo_root()).returncode != 0:
-            failed.append(n)
+        for step, cmd in (plan[n] if n == "unit" else {n: plan[n]}).items():
+            if subprocess.run(cmd, cwd=repo_root()).returncode != 0:
+                failed.append(step)
     if failed:
         print(f"\nFAILED: {failed}"); raise typer.Exit(1)
     print("\nall passed")

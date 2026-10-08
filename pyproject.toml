@@ -31,6 +31,7 @@ winston = "winston.cli.main:app"
 # Built-in plugins register through the same entry points third-party packages use.
 [project.entry-points."winston.stt"]
 parakeet = "winston.plugins.stt.parakeet:Parakeet"
+openai_transcription = "winston.plugins.stt.openai_transcription:OpenAITranscription"
 
 [build-system]
 requires = ["hatchling"]

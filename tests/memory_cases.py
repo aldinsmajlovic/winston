@@ -4,29 +4,19 @@ examples/memory, no hardware needed.
 
     uv run python tests/memory_cases.py
 """
-import os
 import shutil
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
 
-scratch = Path(tempfile.mkdtemp(prefix="winston-memory-"))
-os.environ["WINSTON_DATA"] = str(scratch)
+from harness import expect, finish, scratch_data
+
+scratch = scratch_data("winston-memory-")
 shutil.copytree(Path(__file__).resolve().parents[1] / "examples" / "memory", scratch / "memory")
 
 from winston.config.schema import WinstonConfig  # noqa: E402  (after WINSTON_DATA is set)
 from winston.core.memory import absolute_dates, facts, prompt_block, remember  # noqa: E402
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}})
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail}")
-
 
 expect("empty prompt without facts", prompt_block(cfg) == "")
 r = remember(cfg, "about-you", "The user prefers warm light in the evening.")
@@ -225,5 +215,4 @@ expect("remember no longer names topics", "projects" not in schemas["remember"].
 expect("replaces and until are optional", schemas["remember"].required == ["topic", "fact"] and
        {"replaces", "until"} <= set(schemas["remember"].properties))
 
-print(f"\n{'all passed' if not failed else f'{failed} failed'}")
-sys.exit(1 if failed else 0)
+finish()

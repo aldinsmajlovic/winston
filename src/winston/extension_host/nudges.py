@@ -28,6 +28,7 @@ from winston_sdk.when import parse_when
 
 from winston.config import data_dir, resolve
 from winston.core.announce import in_quiet_hours
+from winston.extension_host.sources import read_json, write_json
 
 KEEP_SECS = 7 * 86400           # ended nudges stay listed this long (`ctx.nudges()`)
 EVERY = 5.0
@@ -45,6 +46,12 @@ Deliver = Callable[[dict[str, Any], str], Awaitable[str | None]]
 
 def nudge_id(ext_id: str, kind: str, about: str) -> str:
     return "n" + hashlib.sha1(f"{ext_id}\0{kind}\0{about}".encode()).hexdigest()[:10]
+
+
+def info(rec: dict[str, Any]) -> dict[str, Any]:
+    """A nudge as its extension's handlers see it (`event.nudge`, the SDK's NudgeInfo)."""
+    return {"kind": rec["kind"], "about": rec["about"], "level": rec["level"], "facts": rec.get("facts") or {},
+            "links": rec.get("links") or []}
 
 
 def per_level(value: Any, level: int, default: str) -> str:
@@ -85,19 +92,11 @@ class Nudges:
 
     def _load(self) -> dict[str, Any]:
         empty = {"records": {}, "mutes": {}, "spoken": {}, "briefed": None}
-        try:
-            data = json.loads(self._path.read_text())
-            if isinstance(data, dict):
-                return {**empty, **data}
-        except (OSError, ValueError):
-            pass
-        return empty
+        data = read_json(self._path, None)
+        return {**empty, **data} if isinstance(data, dict) else empty
 
     def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self._path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.state, default=str))
-        tmp.replace(self._path)
+        write_json(self._path, self.state)
 
     def log(self, rec: dict[str, Any], what: str, why: str = "", **extra: Any) -> None:
         self._log.parent.mkdir(parents=True, exist_ok=True)
@@ -280,8 +279,7 @@ class Nudges:
         """A nudge as `ctx.nudges()` shows it."""
         later = rec.get("later") or {}
         zone = local_zone()
-        return {"kind": rec["kind"], "about": rec["about"], "level": rec["level"], "facts": rec.get("facts") or {},
-                "state": rec["state"],
+        return {**info(rec), "state": rec["state"],
                 "said_at": datetime.fromtimestamp(rec["said_at"], zone).isoformat() if rec.get("said_at") else None,
                 "held_until": datetime.fromtimestamp(later["until"], zone).isoformat()
                 if later.get("until") and not later.get("home") else None}
@@ -305,11 +303,10 @@ class Nudges:
             return
         if not self.host.described.get(rec["ext"], {}).get("has", {}).get("on_nudge"):
             return
-        info = {"kind": rec["kind"], "about": rec["about"], "level": rec["level"], "facts": rec.get("facts") or {}}
 
         async def send():
             try:
-                r = await proc.call("nudge_event", timeout=35, what=what, nudge=info, **extra)
+                r = await proc.call("nudge_event", timeout=35, what=what, nudge=info(rec), **extra)
                 if not r.get("ok", True):
                     self.host._note(rec["ext"], "on_nudge", r.get("error", ""))
             except Exception as e:                                      # noqa: BLE001
@@ -657,9 +654,7 @@ class Nudges:
         if proc is None or proc.state != "running":
             return {"error": f"{name} is not running right now."}
         try:
-            r = await proc.call("act", timeout=35, action=action,
-                                nudge={"kind": rec["kind"], "about": rec["about"], "level": rec["level"],
-                                       "facts": rec.get("facts") or {}})
+            r = await proc.call("act", timeout=35, action=action, nudge=info(rec))
         except Exception as e:                                          # noqa: BLE001
             r = {"ok": False, "error": str(e)}
         self.log(rec, "action", action, ok=r.get("ok"), channel=channel)

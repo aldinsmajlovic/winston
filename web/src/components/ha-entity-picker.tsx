@@ -9,16 +9,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { components } from '@/api/schema'
 import { NOISY_DOMAINS, type HAEntity } from '@/hooks/use-home-assistant'
+import { humanize } from '@/lib/format'
 
 type HARegistry = components['schemas']['HARegistry']
 
 const COMMON = 'common'
 const ALL = 'all'
-
-const typeLabel = (domain: string) => {
-  const words = domain.replace(/_/g, ' ')
-  return words.charAt(0).toUpperCase() + words.slice(1)
-}
 
 type Props = {
   open: boolean
@@ -90,7 +86,7 @@ export function HAEntityPicker({ open, onOpenChange, registry, listed, onAdd, on
               <KindIcon name={e.domain} className="text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{e.friendly_name ?? e.entity_id}</span>
               <span className="shrink-0 text-sm text-muted-foreground">
-                {[typeLabel(e.domain), e.state === 'unavailable' ? 'unavailable' : e.state_text].filter(Boolean).join(', ')}
+                {[humanize(e.domain), e.state === 'unavailable' ? 'unavailable' : e.state_text].filter(Boolean).join(', ')}
               </span>
             </label>
           )
@@ -120,7 +116,7 @@ export function HAEntityPicker({ open, onOpenChange, registry, listed, onAdd, on
               {domains.map((d) => (
                 <SelectItem key={d} value={d}>
                   <KindIcon name={d} />
-                  {typeLabel(d)}
+                  {humanize(d)}
                 </SelectItem>
               ))}
             </SelectContent>

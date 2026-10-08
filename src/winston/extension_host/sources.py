@@ -37,6 +37,22 @@ def state_dir(ext_id: str) -> Path:
     return data_dir() / "state" / "extensions" / ext_id
 
 
+def read_json(path: Path, default: Any) -> Any:
+    """A JSON file's value, or `default` when it is missing or broken."""
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return default
+
+
+def write_json(path: Path, value: Any) -> None:
+    """Written whole through a temporary file, so a crash mid-write leaves the old one."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(value, default=str))
+    tmp.replace(path)
+
+
 @dataclass
 class Source:
     id: str
@@ -169,12 +185,9 @@ def base_env() -> dict[str, str]:
 async def describe(src: Source, timeout: float = 120) -> dict[str, Any]:
     """What it offers, cached by its code's stamp and the SDK's version."""
     cache = state_dir(src.id) / "describe.json"
-    try:
-        cached = json.loads(cache.read_text())
-        if cached.get("stamp") == src.stamp and cached.get("sdk") == sdk_stamp():
-            return cached["describe"]
-    except (OSError, ValueError):
-        pass
+    cached = read_json(cache, {})
+    if cached.get("stamp") == src.stamp and cached.get("sdk") == sdk_stamp():
+        return cached["describe"]
     proc = await asyncio.create_subprocess_exec(
         *command(src), "describe", src.target, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         env={**_path_env(), **base_env()}, cwd=str(data_dir()))
@@ -187,8 +200,7 @@ async def describe(src: Source, timeout: float = 120) -> dict[str, Any]:
         lines = [ln.removeprefix("error ").strip() for ln in err.decode(errors="replace").splitlines() if ln.strip()]
         raise RuntimeError(lines[-1] if lines else f"describe exited with {proc.returncode}")
     described = json.loads(out)
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({"stamp": src.stamp, "sdk": sdk_stamp(), "describe": described}))
+    write_json(cache, {"stamp": src.stamp, "sdk": sdk_stamp(), "describe": described})
     return described
 
 

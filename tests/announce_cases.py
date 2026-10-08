@@ -4,24 +4,15 @@ No hardware and no winstond needed.
     uv run python tests/announce_cases.py
 """
 import asyncio
-import os
-import sys
-import tempfile
 from datetime import datetime
 from datetime import time as t
 
-os.environ["WINSTON_DATA"] = tempfile.mkdtemp(prefix="winston-announce-")
+from harness import expect, finish, scratch_data
+
+scratch_data("winston-announce-")
 
 from winston.config.schema import WinstonConfig  # noqa: E402  (after WINSTON_DATA is set)
 from winston.core.announce import Announcement, Hub, in_quiet_hours, note, route  # noqa: E402
-
-failed = 0
-
-
-def expect(name: str, ok: bool, detail=""):
-    global failed
-    failed += not ok
-    print(f"{'ok  ' if ok else 'FAIL'} {name} {detail}")
 
 
 def cfg(**announce) -> WinstonConfig:
@@ -78,5 +69,4 @@ async def media_back():
 
 asyncio.run(fan_out())
 asyncio.run(media_back())
-print(f"\n{'all passed' if not failed else f'{failed} failed'}")
-sys.exit(1 if failed else 0)
+finish()

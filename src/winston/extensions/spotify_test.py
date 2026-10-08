@@ -78,8 +78,8 @@ def library_ha() -> FakeHA:
 
 
 def harness(rx: Receiver, keys: bool = True, library: bool = False) -> Harness:
-    settings = {"run_here": False, **({"library": PLAYER} if library else {})}
-    return Harness(HERE, settings=settings, secrets=KEYS if keys else {"client_id": "", "client_secret": ""},
+    return Harness(HERE, settings={"library": PLAYER} if library else {}, background=False,
+                   secrets=KEYS if keys else {"client_id": "", "client_secret": ""},
                    http=httpx.MockTransport(rx.handle), ha=library_ha() if library else None)
 
 
@@ -199,7 +199,7 @@ async def test_the_speakers_follow_spotify_and_a_pause_loses_nothing():
 
 async def test_one_party_at_a_time_and_each_ends_with_its_song():
     rx, ha = Receiver(), FakeHA()
-    h = Harness(HERE, settings={"run_here": False}, secrets=KEYS, http=httpx.MockTransport(rx.handle), ha=ha)
+    h = Harness(HERE, secrets=KEYS, http=httpx.MockTransport(rx.handle), ha=ha, background=False)
     module = h.ext.tools["play"].fn.__globals__
     handle, ctx = module["handle_event"], h.rt.ctx
     await h.status()

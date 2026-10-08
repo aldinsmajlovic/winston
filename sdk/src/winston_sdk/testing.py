@@ -32,6 +32,7 @@ import httpx
 from winston_sdk.context import Clock
 from winston_sdk.errors import NotPermitted
 from winston_sdk.loader import load
+from winston_sdk.manifest import refusal
 from winston_sdk.nudge import Nudge, NudgeInfo
 from winston_sdk.runtime import Runtime
 
@@ -118,23 +119,9 @@ class FakeServices:
         self._ids = itertools.count(1)
 
     async def call(self, op: str, **p: Any) -> Any:
-        h, perms = self.h, self.h.ext.manifest.permissions
-        if op.startswith("ha.") and perms.home_assistant is None:
-            raise NotPermitted("this extension has no home_assistant permission")
-        if op == "ha.call" and perms.home_assistant != "act":
-            raise NotPermitted("calling services needs home_assistant = \"act\"")
-        if op.startswith("memory.") and perms.memory is None:
-            raise NotPermitted("this extension has no memory permission")
-        if op == "memory.remember" and perms.memory != "write":
-            raise NotPermitted("remembering needs memory = \"write\"")
-        if op == "presence" and not perms.presence:
-            raise NotPermitted("this extension has no presence permission")
-        if op == "llm.ask" and not perms.llm:
-            raise NotPermitted("this extension has no llm permission")
-        if op == "ext.call" and p["extension"] not in perms.extensions:
-            raise NotPermitted(f"this extension may not call {p['extension']}")
-        if op.startswith("speakers.") and not perms.speakers:
-            raise NotPermitted("this extension has no speakers permission")
+        h = self.h
+        if (why := refusal(h.ext.manifest.permissions, op, p)) is not None:
+            raise NotPermitted(why)
         match op:
             case "ha.state":
                 return h.ha.states.get(p["entity_id"])
@@ -186,7 +173,7 @@ class FakeServices:
                 h.pushed = [(k, n) for k, n in h.pushed if (k, n.about) != (p["kind"], p["about"])]
                 return None
             case "nudge.list":
-                return [{"kind": k, "about": n.about, "level": n.level, "facts": n.facts, "state": "waiting"}
+                return [{**h._info(k, n).model_dump(mode="json"), "state": "waiting"}
                         for k, n in h.pushed if p.get("kind") in (None, k)]
             case "speakers.play":
                 h.speakers.append(("play", p["url"], p.get("title")))
@@ -202,13 +189,15 @@ class FakeServices:
 
 
 class Harness:
-    """One extension, running against fakes."""
+    """One extension, running against fakes. `background=False` leaves its `@ext.background` tasks
+    unstarted (a receiver it runs, a websocket), for tests that call what they would."""
 
     def __init__(self, target: str | Path, *, settings: dict[str, Any] | None = None,
                  secrets: dict[str, str] | None = None, http: httpx.AsyncBaseTransport | None = None,
                  ha: FakeHA | None = None, clock: FakeClock | None = None, home: bool = True,
                  facts: list[dict[str, Any]] | None = None, llm: Any = None,
-                 others: dict[str, dict[str, Any]] | None = None, day_parts: dict[str, str] | None = None):
+                 others: dict[str, dict[str, Any]] | None = None, day_parts: dict[str, str] | None = None,
+                 background: bool = True):
         self.ext = load(str(target))
         self.clock = clock or FakeClock()
         self.ha = ha or FakeHA()
@@ -223,7 +212,8 @@ class Harness:
         self.log: list[tuple[str, str]] = []
         self._folder = tempfile.mkdtemp(prefix=f"winston-{self.ext.manifest.id}-")
         self.rt = Runtime(self.ext, services=FakeServices(self), clock=self.clock, state_dir=self._folder,
-                          transport=http, log_write=lambda level, msg: self.log.append((level, msg)))
+                          transport=http, log_write=lambda level, msg: self.log.append((level, msg)),
+                          background=background)
         self._settings, self._secrets, self._day_parts = settings or {}, secrets or {}, day_parts
         self._started = False
 
@@ -242,7 +232,7 @@ class Harness:
                         validate: bool = True) -> list[dict[str, Any]]:
         """Saves new settings as the card would; returns the field errors, empty when they took."""
         await self._start()
-        result = await self.rt.configure(settings, secrets or self._secrets, validate=validate)
+        result = await self.rt.configure(settings, secrets or self._secrets, validate_first=validate)
         return result.get("errors", [])
 
     @staticmethod
@@ -279,26 +269,30 @@ class Harness:
             raise HandlerFailed(result.get("error"))
         return result["nudges"]
 
+    def _info(self, kind: str | None, nudge: Nudge | NudgeInfo) -> NudgeInfo:
+        """A nudge as the core hands it to the extension's handlers."""
+        if isinstance(nudge, NudgeInfo):
+            return nudge
+        return NudgeInfo(kind=kind or next(iter(self.ext.kinds)), about=nudge.about, level=nudge.level,
+                         facts=nudge.facts, links=nudge.links)
+
     async def act(self, action: str, nudge: Nudge | NudgeInfo, kind: str | None = None) -> Any:
         await self._start()
-        info = nudge if isinstance(nudge, NudgeInfo) else NudgeInfo(
-            kind=kind or next(iter(self.ext.kinds)), about=nudge.about, level=nudge.level, facts=nudge.facts)
-        return self._ok(await self.rt.act(action, info.model_dump(mode="json")))
+        return self._ok(await self.rt.act(action, self._info(kind, nudge).model_dump(mode="json")))
 
     async def nudge_event(self, what: str, nudge: Nudge | NudgeInfo, kind: str | None = None,
                           until: datetime | None = None) -> None:
         await self._start()
-        info = nudge if isinstance(nudge, NudgeInfo) else NudgeInfo(
-            kind=kind or next(iter(self.ext.kinds)), about=nudge.about, level=nudge.level, facts=nudge.facts)
-        await self.rt.nudge_event(what, info.model_dump(mode="json"), until.isoformat() if until else None)
+        await self.rt.nudge_event(what, self._info(kind, nudge).model_dump(mode="json"),
+                                  until.isoformat() if until else None)
 
     async def press(self, key: str, entry: str | None = None) -> None:
         await self._start()
-        self._ok(await self.rt.entity(key, entry, None, True))
+        self._ok(await self.rt.entity(key, entry, press=True))
 
     async def set_entity(self, key: str, value: Any, entry: str | None = None) -> None:
         await self._start()
-        self._ok(await self.rt.entity(key, entry, value, False))
+        self._ok(await self.rt.entity(key, entry, value))
 
     async def hook(self, name: str, /, json: Any = None, headers: dict[str, str] | None = None) -> Any:
         await self._start()
@@ -306,11 +300,15 @@ class Harness:
 
     async def status(self) -> str | None:
         await self._start()
-        return await self.rt.status()
+        return (await self.rt.status())["text"]
 
     async def context(self) -> str | None:
         await self._start()
-        return await self.rt.context()
+        return (await self.rt.context())["text"]
+
+    async def hint_words(self) -> list[str]:
+        await self._start()
+        return (await self.rt.hint_words())["words"]
 
     def describe(self) -> dict[str, Any]:
         return self.rt.describe()

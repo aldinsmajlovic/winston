@@ -1,32 +1,10 @@
 import type { ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Blocks, CircleAlert, CircleCheck, CloudUpload, LoaderCircle, RefreshCw, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
+import { Blocks, CircleAlert, CircleCheck, CloudUpload, LoaderCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { $api, errorText } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { StatusTip } from '@/components/status-tip'
 import { refreshHomeAssistant, useApplyNow, type ExposurePlan, type HAEntity, type HAExposure } from '@/hooks/use-home-assistant'
-import { cn } from '@/lib/utils'
-
-/** A status as an icon and a colour, its words in the tooltip (one line per entry). */
-export function StatusTip({ icon: Icon, className, label, lines }: { icon: LucideIcon; className: string; label: string; lines?: ReactNode[] }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="inline-flex" tabIndex={0} role="img" aria-label={label}>
-          <Icon className={cn('size-4', className)} />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent>
-        <div className="flex max-w-80 flex-col gap-0.5">
-          <span>{label}</span>
-          {(lines ?? []).map((l, i) => (
-            <span key={i}>{l}</span>
-          ))}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  )
-}
 
 const names = (entities: HAEntity[]) => entities.map((e) => e.friendly_name ?? e.entity_id).join(', ')
 

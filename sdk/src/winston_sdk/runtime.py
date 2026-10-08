@@ -1,6 +1,7 @@
 """Runs an extension: calls its handlers with `ctx` (and `event` where the handler takes one), keeps
 its store, applies its settings, reads `When` arguments, starts its background tasks and describes
-it. The MCP server (`server.py`) and the test harness (`testing.py`) are both thin layers on this."""
+it. The MCP server (`server.py`) and the test harness (`testing.py`) are both thin layers on this:
+each `winston/*` method is the method here of the same name, taking its params and returning its result."""
 from __future__ import annotations
 
 import asyncio
@@ -30,7 +31,6 @@ from winston_sdk.nudge import Nudge, NudgeInfo
 from winston_sdk.when import parse_when
 
 CONTEXT_MAX = 300
-RESULT_MAX = 4000
 
 
 class Event(SimpleNamespace):
@@ -59,7 +59,7 @@ class ToolError(MCPToolError):
 class Runtime:
     def __init__(self, ext: Extension, *, services: Any, clock: Clock | None = None,
                  state_dir: str | Path | None = None, transport: httpx.AsyncBaseTransport | None = None,
-                 log_write: Callable[[str, str], None] | None = None):
+                 log_write: Callable[[str, str], None] | None = None, background: bool = True):
         self.ext = ext
         ext._bound = self
         self.services = services
@@ -73,7 +73,7 @@ class Runtime:
         self.settings: Any = ext.settings_model.model_construct()
         self.day_parts: dict[str, time] = {}
         self.configured = False
-        self.errors: list[dict[str, Any]] = []            # the last few, for the card
+        self._run_background = background                  # off in tests that drive those tasks themselves
         self._background: list[asyncio.Task] = []
         self.ctx = Ctx(self)
 
@@ -103,7 +103,6 @@ class Runtime:
     def _error(self, where: str, e: BaseException) -> str:
         msg = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
         self.write_log("error", f"{where}: {msg}\n{''.join(traceback.format_exception(e))}")
-        self.errors = [*self.errors[-9:], {"at": self.clock.now().isoformat(), "where": where, "error": msg}]
         return msg
 
     async def invoke(self, fn: Callable, event: Event | None = None, *, timeout: float | None = None,
@@ -133,12 +132,14 @@ class Runtime:
     def _secret_names(self) -> dict[str, str]:
         return secret_fields(self.ext.settings_model)
 
-    async def configure(self, settings: dict[str, Any], secrets: dict[str, str] | None = None, *,
-                        validate: bool = False, apply: bool = True, day_parts: dict[str, str] | None = None,
-                        time_zone: str | None = None) -> dict[str, Any]:
-        """New settings. With `validate` the extension's own check runs first; with `apply` they take
-        effect (and `@ext.on_settings` jobs run when they change after the first time)."""
-        values = {**settings, **(secrets or {})}
+    async def configure(self, settings: dict[str, Any] | None = None, secrets: dict[str, str] | None = None,
+                        validate_only: bool = False, validate_first: bool = False,
+                        day_parts: dict[str, str] | None = None, time_zone: str | None = None) -> dict[str, Any]:
+        """New settings. With `validate_first` the extension's own check runs before they take effect
+        (and `@ext.on_settings` jobs run when they change after the first time); `validate_only` runs
+        the check and keeps the old ones."""
+        validate, apply = validate_first or validate_only, not validate_only
+        values = {**(settings or {}), **(secrets or {})}
         try:
             new = self.ext.settings_model.model_validate(values)
         except pydantic.ValidationError as e:
@@ -160,7 +161,7 @@ class Runtime:
             self.clock.zone = ZoneInfo(time_zone)
         old, first = self.settings, not self.configured
         self.settings, self.configured = new, True
-        if first:
+        if first and self._run_background:
             self._start_background()
         elif old != new:
             for spec in self._jobs("on_settings"):
@@ -213,12 +214,12 @@ class Runtime:
             return {"ok": False, "error": f"no job named {job!r}"}
         return await self._run_job(spec, self._event(spec, data or {}))
 
-    async def hook(self, name: str, body: Any, headers: dict[str, str]) -> dict[str, Any]:
+    async def hook(self, name: str, body: Any = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
         spec = next((j for j in self._jobs("hook") if j.trigger["name"] == name), None)
         if spec is None:
             return {"ok": False, "error": f"no hook named {name!r}"}
         try:
-            result = await self.invoke(spec.fn, Event(json=body, headers=headers), timeout=spec.timeout,
+            result = await self.invoke(spec.fn, Event(json=body, headers=headers or {}), timeout=spec.timeout,
                                        where=f"hook {name}")
             return {"ok": True, "result": result}
         except Exception as e:
@@ -343,7 +344,8 @@ class Runtime:
             value = value.isoformat()
         await self.services.call("entity.set", key=spec.key, entry=entry, value=value, attributes=attributes)
 
-    async def entity(self, key: str, entry: str | None, value: Any, press: bool) -> dict[str, Any]:
+    async def entity(self, key: str, entry: str | None = None, value: Any = None,
+                     press: bool = False) -> dict[str, Any]:
         handle = self.ext.entities.get(key)
         if handle is None:
             return {"ok": False, "error": f"no entity {key!r}"}
@@ -368,17 +370,21 @@ class Runtime:
             self._error(where, e)
             return None
 
-    async def status(self) -> str | None:
+    async def status(self) -> dict[str, str | None]:
         text = await self._optional(self.ext.status_fn, "status")
-        return str(text)[:200] if text is not None else None
+        return {"text": str(text)[:200] if text is not None else None}
 
-    async def context(self) -> str | None:
+    async def context(self) -> dict[str, str | None]:
         text = await self._optional(self.ext.context_fn, "context")
-        return str(text)[:CONTEXT_MAX] if text else None
+        return {"text": str(text)[:CONTEXT_MAX] if text else None}
 
-    async def hint_words(self) -> list[str]:
+    async def hint_words(self) -> dict[str, list[str]]:
         words = await self._optional(self.ext.hint_words_fn, "hint_words")
-        return [str(w) for w in (words or [])][:200]
+        return {"words": [str(w) for w in (words or [])][:200]}
+
+    async def info(self) -> dict[str, Any]:
+        """Its process id, for winstond's watch on crashes and memory."""
+        return {"pid": os.getpid(), "sdk": __version__, "id": self.ext.manifest.id}
 
     def describe(self) -> dict[str, Any]:
         ext = self.ext

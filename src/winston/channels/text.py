@@ -1,7 +1,7 @@
 """Text channel: the same brain and tools as voice, minus STT and TTS. Used by `winston talk`,
-the Discord channel and the web chat."""
+the Discord channel and the web chat; a satellite box runs the same session with its TTS and speaker
+after it (channels/satellite.py)."""
 import asyncio
-import sys
 import time
 from typing import Awaitable, Callable
 
@@ -21,6 +21,7 @@ from winston.core.brain import Brain, Clock, ToolCallLogObserver
 from winston.core.guard import ClaimGuard
 from winston.core.rooms import RoomLink
 from winston.core.speak_up import Mentions
+from winston.extension_host.client import tools_changed
 
 QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-response end
 
@@ -75,16 +76,20 @@ class Printer(FrameProcessor):
 
 class TextSession:
     """One conversation over text: the brain, the claim guard and the tool log, minus STT and TTS.
-    `winston talk` runs one; the Discord channel runs one per conversation.
+    `winston talk` runs one; the Discord channel runs one per conversation. A spoken channel passes
+    what comes after the printer (`outputs`: a TTS and where its audio goes), its own `tools`, and
+    `spoken` for the claim guard.
 
         s = TextSession(cfg, channel="discord"); await s.start()
         reply = await s.ask("turn on the lights"); await s.close()"""
 
     def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False, observers: list | None = None,
-                 room: RoomLink | None = None, area: str | None = None, brain_channel: str = "text"):
+                 room: RoomLink | None = None, area: str | None = None, brain_channel: str = "text",
+                 outputs: list | None = None, tools: list | None = None, spoken: bool = False):
         self.cfg, self.channel, self.echo, self.room, self.area = cfg, channel, echo, room, area
         self.brain_channel = brain_channel   # whose thinking the brain uses: a replayed spoken turn's own channel
         self._extra = observers or []
+        self._outputs, self._tools, self._spoken = outputs or [], tools or [], spoken
         self.last_used = time.monotonic()
         self._lock = asyncio.Lock()          # one question at a time; a second waits its turn
         # Where a state-check correction goes besides the context and the terminal: a Discord DM, the
@@ -95,12 +100,14 @@ class TextSession:
         cfg = self.cfg
         self.brain = Brain(cfg, channel=self.brain_channel); await self.brain.start()
         self.brain.verifier.channel = self.channel          # its log says web or discord, not text
+        for schema, handler in self._tools:
+            self.brain.add_tool(schema, handler)
         agg = LLMContextAggregatorPair(self.brain.new_context())
-        guard = ClaimGuard(cfg, channel=self.channel, spoken=False)
+        guard = ClaimGuard(cfg, channel=self.channel, spoken=self._spoken)
         self._tracker = TurnTracker(guard); self.printer = Printer(self._tracker, self.echo)
         before, after = ([self.room.before], [self.room.after]) if self.room else ([], [])
         self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), Mentions(cfg), *before, self.brain.llm, guard,
-                                                self.printer, agg.assistant(), *after]),
+                                                self.printer, *self._outputs, agg.assistant(), *after]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[guard.observer, self.brain.verifier.observer,
                                                  ToolCallLogObserver(cfg, channel=self.channel),
@@ -128,12 +135,12 @@ class TextSession:
     def busy(self) -> bool:
         return self._lock.locked()
 
-    async def ask(self, m: str) -> str:
+    async def ask(self, m: str, timeout: float = 90) -> str:
         async with self._lock:
             self.last_used = time.monotonic()
             await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}],
                                                                     run_llm=True)])
-            reply = await self.printer.wait_reply()
+            reply = await self.printer.wait_reply(timeout)
             self.last_used = time.monotonic()
             return reply
 
@@ -152,6 +159,19 @@ class TextSession:
 
     async def close(self):
         await self._worker.cancel(); await self._task; await self.brain.close()
+
+
+async def stale(s: TextSession, idle_secs: float) -> bool:
+    """Whether a channel should close this conversation and start a new one: not while it answers, and
+    only once it has idled for idle_secs or the extension tools on offer changed (a conversation keeps
+    the tools it started with). Checked when the conversation is next used."""
+    if s.busy:
+        return False
+    if time.monotonic() - s.last_used > idle_secs:
+        return True
+    if changed := await tools_changed(s.brain):
+        logger.info(f"{s.channel}: extension tools changed; a new conversation with them")
+    return changed
 
 
 async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True) -> list[str]:
@@ -178,9 +198,3 @@ async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True)
     finally:
         await s.close()
     return s.printer.replies
-
-
-if __name__ == "__main__":
-    from winston.config import load
-    logger.remove(); logger.add(sys.stderr, level="WARNING")
-    asyncio.run(run(load(), sys.argv[1:] or None))

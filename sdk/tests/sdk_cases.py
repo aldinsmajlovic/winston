@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mcp.client.client import Client
 from mcp.client.stdio import StdioServerParameters
+from mcp.shared.exceptions import MCPError
 import mcp.types as mt
 
 from winston_sdk import manifest
@@ -217,7 +218,7 @@ async def harness_everything_rest():
                                       "chores": {"bins": {"every_days": 7}, "plants": {"every_days": 3}}},
                 secrets={"key": "k"}, ha=ha, llm=lambda prompt, schema: {"yes": True},
                 others={"other": {"lookup": lambda q: {"q": q}}},
-                http=httpx.MockTransport(lambda r: httpx.Response(200, text="hi")))
+                http=httpx.MockTransport(lambda r: httpx.Response(200, text="hi")), background=False)
     try:
         await h.tool("mark", chore="plants", when="whenever")
         expect("an unreadable When is refused", False)
@@ -225,6 +226,8 @@ async def harness_everything_rest():
         expect("an unreadable When is refused", "Could not read the time" in str(e), e)
     out = await h.tool("mark", chore="plants", when="in two hours")
     expect("a readable When arrives as a time", out["at"] == "2026-01-05T11:00:00+00:00", out)
+    await asyncio.sleep(0)
+    expect("background=False leaves background tasks unstarted", "background" not in h.store, h.store)
     t0 = time.perf_counter()
     try:
         await h.tool("slow")
@@ -255,7 +258,7 @@ async def harness_everything_rest():
     ran = await h.run_due_timers()
     expect("a timer runs its job with its data", ran == 1 and h.store["later"] == {"x": 1}, h.store)
     expect("context is cut at 300 characters", len(await h.context()) == 300)
-    expect("hint words from settings", await h.rt.hint_words() == ["bins", "plants"])
+    expect("hint words from settings", await h.hint_words() == ["bins", "plants"])
     errors = await h.configure({"key": "bad"}, {"key": "bad"})
     expect("validate refuses on the field", errors == [{"field": "key", "message": "That key was refused."}], errors)
     errors = await h.configure({"heater": "switch.heater", "mode": "keen", "chores": {}}, {"key": "k"})
@@ -310,8 +313,8 @@ async def over_mcp():
         early = await c.call_tool("mark", {"chore": "bins"})
         expect("with a key and no settings yet, a tool refuses rather than use the variable's name",
                early.is_error and "still starting" in early.content[0].text, early.content)
-        d = await send("winston/describe")
-        expect("winston/describe", d["manifest"]["id"] == "everything")
+        d = await send("winston/info")
+        expect("winston/info", d["id"] == "everything" and d["pid"] == os.getpid(), d)
         r = await send("winston/configure", {"settings": {"mode": "keen"}, "secrets": {"key": "k"}})
         expect("winston/configure", r["ok"], r)
         r = await send("winston/configure", {"settings": {"mode": "nonsense"}, "validate_only": True})
@@ -320,14 +323,20 @@ async def over_mcp():
         expect("winston/run", r["ok"], r)
         r = await send("winston/run", {"job": "nope"})
         expect("winston/run an unknown job", not r["ok"], r)
+        try:
+            await send("winston/run", {"data": [1]})
+            expect("a malformed request is refused", False)
+        except MCPError as e:
+            expect("a malformed request is refused, naming each bad param",
+                   "winston/run" in str(e) and "job" in str(e) and "data" in str(e), e)
+        r = await send("winston/run", {"job": "tick", "from_a_newer_winstond": 1})
+        expect("a param the method does not take is ignored", r["ok"], r)
         r = await c.call_tool("mark", {"chore": "bins"})
         expect("a tool call over MCP", not r.is_error, r)
         r = await c.call_tool("slow", {})
         expect("a failing tool keeps its message", r.is_error and "longer than 1 s" in r.content[0].text, r.content)
         r = await send("winston/status")
         expect("winston/status", r["text"] == "1 done", r)
-        r = await send("winston/errors")
-        expect("winston/errors lists the last failures", any("slow" in e["where"] for e in r["errors"]), r)
     await h.close()
 
 
@@ -342,8 +351,8 @@ async def over_stdio():
         r = await c.call_tool("flip", {})
         expect(f"over stdio: started in {started:.2f} s and flipped", json.loads(r.content[0].text) in ("heads", "tails"), r)
         from winston_sdk.server import request
-        d = (await c.session.send_request(request("describe"), Anything)).model_dump()
-        expect("over stdio: describe", d["manifest"]["id"] == "coin")
+        d = (await c.session.send_request(request("info"), Anything)).model_dump()
+        expect("over stdio: info", d["id"] == "coin")
         t1 = time.perf_counter()
         for _ in range(20):
             await c.call_tool("flip", {})

@@ -244,6 +244,13 @@ class Hearing:
         self.cfg, self.adapter, self.model = cfg, adapter, model
         self._clones: tuple[float, list[str]] = (0.0, [])
 
+    @classmethod
+    def load(cls, cfg: WinstonConfig) -> "Hearing":
+        """The configured adapter (stt.provider) with its model loaded, once per process."""
+        from winston.config.registry import get as get_adapter
+        adapter = get_adapter("stt", cfg.stt.provider)
+        return cls(cfg, adapter, adapter.load_model(cfg.stt))
+
     def _clone_names(self) -> list[str]:
         from winston.core import voices
         t, names = self._clones

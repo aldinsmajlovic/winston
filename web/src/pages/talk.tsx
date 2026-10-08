@@ -15,7 +15,7 @@ import {
   VolumeOff,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { $api, errorText, type TurnMark } from '@/api/client'
+import { $api, type TurnMark } from '@/api/client'
 import { clock, micHolder, presence, useChat, useLive, type Item } from '@/api/live'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -24,9 +24,11 @@ import { TurnMarkControl } from '@/components/turn-mark'
 import { WinstonHeader } from '@/components/winston-header'
 import { Input } from '@/components/ui/input'
 import { useMarks } from '@/hooks/use-marks'
+import { useNow } from '@/hooks/use-now'
 import { useRoom } from '@/hooks/use-room'
 import { useSpeech } from '@/hooks/use-speech'
 import { useVoice } from '@/hooks/use-voice'
+import { capitalize } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const NO_ROOM = 'none' // the picker's value for no room; Radix wants a non-empty one
@@ -52,7 +54,7 @@ function RoomPicker({ room, onChange, disabled }: { room: string; onChange: (roo
         {!known && room && <SelectItem value={room}>{room}</SelectItem>}
         {names.map((n) => (
           <SelectItem key={n} value={n}>
-            {n.charAt(0).toUpperCase() + n.slice(1)}
+            {capitalize(n)}
           </SelectItem>
         ))}
       </SelectContent>
@@ -171,7 +173,7 @@ export default function TalkPage() {
   const chat = useChat()
   const status = $api.useQuery('get', '/api/status')
   const [text, setText] = useState('')
-  const [now, setNow] = useState(() => Date.now())
+  const now = useNow(10_000)
   const end = useRef<HTMLDivElement>(null)
   const onVoiceError = useCallback((message: string) => toast.error(message), [])
   const [room, setRoom] = useRoom()
@@ -181,10 +183,6 @@ export default function TalkPage() {
   const heard = presence(feed, now)
   const state = speech.playing && heard === 'idle' ? 'speaking' : heard
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 10_000)
-    return () => clearInterval(timer)
-  }, [])
   useEffect(() => {
     void end.current?.scrollIntoView({ block: 'end' })
   }, [feed.items])
@@ -209,7 +207,7 @@ export default function TalkPage() {
     if (!message) return
     if (readAloud) speech.prime()
     listened.current = { since: feed.items.length, said: new Map() }
-    chat.mutate({ body: { text: message, room: room || null } }, { onError: (error) => toast.error(errorText(error)) })
+    chat.mutate({ body: { text: message, room: room || null } })
     setText('')
   }
 

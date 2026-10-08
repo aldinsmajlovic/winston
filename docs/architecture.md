@@ -17,7 +17,7 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
   runs a brain (voice, Discord, satellite), so a new channel joins every brain setting in one place.
   Speech and hearing settings restart voice and satellite; the web channel is rebuilt on every save.
 - **Presets over hand-written engine blocks.** `config/presets.py` names the engine and model choices per
-  slot (vLLM, llama.cpp, Ollama, hosted; Chatterbox, Pocket TTS, hosted) and composes them into hardware profiles.
+  slot (vLLM, llama.cpp, Ollama, hosted; Chatterbox, Pocket TTS, Qwen3-TTS, VoxCPM2, Gepard, hosted) and composes them into hardware profiles.
   The UI offers them as dropdowns, `winston init --profile` writes one, and the config stays the truth.
 - **Choices come from where the truth lives.** A field names a live list in the schema (`options`);
   `api/options.py` fills it from the brain's server, Home Assistant, the data directory or a provider's
@@ -52,7 +52,8 @@ flowchart TB
   now", "is still", "turning") counts only when the sentence names something he can act on: an exposed
   Home Assistant name, alias or entity id, or a light word. A passive memory change ("has been removed",
   "has been updated") counts only when no tool ran that turn. The guard passes the reply on a sentence at a time (dropping a
-  stray `</think>` the model sometimes writes with thinking off) and judges each one as it finishes; the model calls tools before it speaks, so a backed claim goes straight
+  stray `</think>` the model sometimes writes with thinking off, and saying the answer once when he repeats it after
+  one: each sentence waits until the next text shows up) and judges each one as it finishes; the model calls tools before it speaks, so a backed claim goes straight
   through. An unbacked claim is held back and never said. When a reply drops a claim, or ends on a
   promise to act that no call kept ("Let me turn them on."), the guard asks the model once more with a
   user-role note marked "not said by the user" (at most once per user turn; such notes, like
@@ -67,8 +68,10 @@ flowchart TB
   straight to the TTS so it covers the thinking. Without it the 27B sometimes said a light was on without
   calling a tool. Home Assistant tools that take a name and an area get the area dropped when the named
   device is in another one (`rooms.scoped_by_name`).
-- **Adapters** (`winston/plugins`): Pipecat services with a settings model, discovered through Python
-  entry points (`winston.stt`, `winston.tts`, ...). A third-party package adds one without touching core.
+- **Adapters** (`winston/plugins`): speech to text, found through the `winston.stt` entry point group, so a
+  third-party package adds one without touching core. `parakeet` runs in the voice process;
+  `openai_transcription` sends the audio to a server (Qwen3-ASR in `services/stt-qwen3-asr`, a hosted one)
+  that runs as `engines.stt`, as the brain and the voice run behind OpenAI-compatible HTTP.
 - **Channels** (`winston/channels`): feed the same brain. Voice is the Pipecat pipeline with VAD,
   barge-in and latency observers; text is `winston talk`, the Discord channel (DMs) and web chat,
   which runs inside winstond for the Talk page.
@@ -100,21 +103,28 @@ flowchart TB
   the announcement hub to the speakers in the room you are in, or to your phone. The channel words it
   with its own brain after the chime; `Mentions` adds next-talk nudges and the briefing to your next
   message; `follow_up` is the one tool for answers to any of them.
-- **Providers** (`winston/providers`): platform helpers, currently Home Assistant's exposure allowlist.
+- **Providers** (`winston/providers`): platform helpers, currently Home Assistant: one client
+  (`HomeAssistant`) for its REST reads, websocket API and MCP tool list, used by the settings pages,
+  the state check, the sensor tool and `winston ha`, and the exposure allowlist. Its events (state
+  changes, announcements, phone buttons) arrive over one websocket that `extension_host/scheduler.py`
+  keeps, with or without extensions.
+- **Shared helpers** (`core/common.py`): how names are folded and matched (rooms, an exposed entity's
+  names, what was said: case and spacing do not count), the tool-call log line, acting on a frame once
+  in an observer, and reading winstond's event streams. Clients reach winstond at `control.url`.
 - **Control** (`winston/api`, `winston/cli`): `winstond` and the `winston` command.
 
 ## Config API
 
 - **Safe saves.** `GET /api/config` returns the config with its version in `ETag` (a hash of
-  `config.yaml`; also `GET /api/config/version`). `PATCH /api/config` takes
+  `config.yaml`). `PATCH /api/config` takes
   `{"changes": [{"path": ["tts", "voice"], "value": "onyx"}]}` (null removes a key, so its default
   applies) and applies it to the file as it is now, so two savers keep each other's fields. With
   `If-Match: "<version>"`, a changed path that also changed on disk since that version is refused with
   409 and `{detail, paths, version}`; other changes merge. `?dry_run=true` only reports the restarts;
   `?applied=voice` names a process that already runs the change (the voice channel after a live voice
-  switch), so it is not marked for a restart. `PUT /api/config` still takes a whole config for the CLI.
-  Both answer `{saved, restarts, version}`; a 422 lists `{loc, msg, type}` with `loc` counted from the
-  config root (`["vad", "stop_secs"]`).
+  switch), so it is not marked for a restart. It answers `{saved, restarts, version}`; a 422 lists
+  `{loc, msg, type}` with `loc` counted from the config root (`["vad", "stop_secs"]`). The CLI saves the
+  same way (`winston ext enable` patches one path).
 - **Pending restarts.** A save or a new secret marks each running process in its restart list; the
   status shows `config_changed` until it is restarted, or until a later save puts the settings it reads
   back to what it runs with (a secret's mark stays until the restart). What only winstond reads at start (`control`
@@ -152,8 +162,9 @@ data/               your instance; gitignored
 
 ## Plugin contract
 
-An adapter is a class with a small contract and a settings model. For STT: a static `load_model(name,
-quantization)` returning a reusable model object, so one load serves every connection, and a static
+An adapter is a class with a small contract and a settings model. For STT: a static `load_model(stt)`
+that takes the `stt` settings and returns a reusable model object (a loaded model, or a client for a
+server), so one load serves every connection; `Hearing.load(cfg)` calls it. And a static
 `transcribe(model, pcm, rate, hints=None)` that turns int16 audio into text. `supports_hints` says
 whether the engine can be told words in advance; one that can maps `hints` to its own setting
 (Whisper's initial prompt or hotwords, a cloud engine's keyterms). Parakeet cannot. That is all an

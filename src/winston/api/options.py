@@ -4,9 +4,11 @@ truth lives (the brain's server, Home Assistant, the data directory, a provider'
 nothing is typed by hand that a machine already knows. Secrets never leave: the env list names
 variables and says whether they hold a value, nothing more. Every provider answers with a reason in
 `source` rather than an error, so a dropdown still takes a typed value when its source is down."""
+import inspect
 import json
 import os
 import re
+from collections import Counter
 from pathlib import Path
 from typing import get_args
 
@@ -14,10 +16,13 @@ import httpx
 from dotenv import dotenv_values
 from pydantic import BaseModel
 
+from winston.api.secrets import env_file
 from winston.config import data_dir, repo_root
 from winston.config.registry import available
 from winston.config.schema import WinstonConfig
+from winston.core import memory
 from winston.core.voices import clones
+from winston.providers.home_assistant import HomeAssistant, state_text
 
 TIMEOUT = 4
 
@@ -49,21 +54,17 @@ class HomeAssistantCheck(BaseModel):
     location: str | None = None
 
 
-def _env_file() -> Path:
-    return data_dir() / ".env"
-
-
 def _secret(name: str | None) -> str:
     return os.environ.get(name, "") if name else ""
 
 
 def _env(cfg: WinstonConfig, params: dict) -> Options:
-    values = dotenv_values(_env_file()) if _env_file().is_file() else {}
+    values = dotenv_values(env_file()) if env_file().is_file() else {}
     choices = []
     for name, value in values.items():
         has = bool(value or os.environ.get(name))
         choices.append(Choice(value=name, label=name, icon="set" if has else "missing"))
-    return Options(name="env", choices=choices, source=str(_env_file()))
+    return Options(name="env", choices=choices, source=str(env_file()))
 
 
 def _personas(cfg: WinstonConfig, params: dict) -> Options:
@@ -87,13 +88,27 @@ def _stt_adapters(cfg: WinstonConfig, params: dict) -> Options:
                             for n, path in sorted(available("stt").items())])
 
 
-def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
+async def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
+    """A speech-to-text server's models (base_url, the draft's or the saved one), else onnx-asr's for Parakeet."""
+    saved = cfg.stt.base_url if cfg.stt.provider == "openai_transcription" else None
+    if url := (params.get("base_url") or saved or "").rstrip("/"):
+        headers = {"Authorization": f"Bearer {key}"} if (key := _secret(cfg.stt.api_key_env)) else {}
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT) as c:
+                r = await c.get(url + "/models", headers=headers)
+            r.raise_for_status()
+            ids = sorted(m.get("id", "") for m in r.json().get("data", []) if m.get("id"))
+            return Options(name="stt_models", source=url,
+                           choices=[Choice(value=i, label=i, group="Running") for i in ids])
+        except Exception as e:                                          # noqa: BLE001
+            return Options(name="stt_models", source=f"{url}: {type(e).__name__}", ok=False,
+                           choices=[Choice(value=cfg.stt.model, label=cfg.stt.model)])
     try:
         from onnx_asr.loader import AsrNames
         names = list(get_args(AsrNames))
     except Exception:                                                   # noqa: BLE001
         names = [cfg.stt.model]
-    cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache/huggingface")) / "hub"
+    cache = hf_cache(None)
     cached = [p.name.lower() for p in cache.glob("models--*")] if cache.is_dir() else []
     choices = []
     for n in sorted(names, key=lambda n: ("parakeet" not in n, n)):
@@ -406,22 +421,11 @@ def _ha_off(cfg: WinstonConfig) -> bool:
 
 async def _ha_states(cfg: WinstonConfig, params: dict) -> tuple[list[dict], str]:
     # Switched off, the saved URL is not used; a URL the UI passes for a draft still is.
-    ha = cfg.providers.home_assistant
-    url = (params.get("base_url") or (ha.url if _ha(cfg) else "")).rstrip("/")
+    url = params.get("base_url") or (cfg.providers.ha.url if _ha(cfg) else "")
     if not url:
         raise RuntimeError("Home Assistant is turned off" if _ha_off(cfg) else "Home Assistant is not configured")
-    token = _secret(ha.token_env if ha else "HA_TOKEN")
-    if not token:
-        raise RuntimeError(f"{ha.token_env if ha else 'HA_TOKEN'} is not set")
-    async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-        r = await c.get(url + "/api/states", headers={"Authorization": f"Bearer {token}"})
-    r.raise_for_status()
-    return r.json(), url
-
-
-def _state_hint(s: dict) -> str:
-    from winston.providers.home_assistant import state_text
-    return state_text(s) or ""
+    ha = HomeAssistant(cfg, url)
+    return await ha.get("/api/states"), ha.url
 
 
 async def _ha_entities(cfg: WinstonConfig, params: dict) -> Options:
@@ -436,7 +440,7 @@ async def _ha_entities(cfg: WinstonConfig, params: dict) -> Options:
         if domains and domain not in domains:
             continue
         choices.append(Choice(value=s["entity_id"], label=s.get("attributes", {}).get("friendly_name") or s["entity_id"],
-                              hint=_state_hint(s), icon=domain, group=domain))
+                              hint=state_text(s) or "", icon=domain, group=domain))
     return Options(name="ha_entities", choices=choices, source=url)
 
 
@@ -446,10 +450,7 @@ async def _ha_notify(cfg: WinstonConfig, params: dict) -> Options:
     if ha is None:
         return Options(name="ha_notify", choices=[], source="Home Assistant is switched off", ok=False)
     try:
-        async with httpx.AsyncClient(timeout=10, headers={"Authorization": f"Bearer {os.environ.get(ha.token_env, '')}"}) as c:
-            r = await c.get(f"{ha.url.rstrip('/')}/api/services")
-            r.raise_for_status()
-            listing = r.json()
+        listing = await HomeAssistant(cfg).get("/api/services")
     except Exception as e:                                              # noqa: BLE001
         return Options(name="ha_notify", choices=[], source=str(e) or type(e).__name__, ok=False)
     names = sorted(s for d in listing if d.get("domain") == "notify" for s in d.get("services", {}))
@@ -463,10 +464,7 @@ async def _ha_domains(cfg: WinstonConfig, params: dict) -> Options:
         states, url = await _ha_states(cfg, params)
     except Exception as e:                                              # noqa: BLE001
         return Options(name="ha_domains", choices=[], source=str(e) or type(e).__name__, ok=False)
-    counts: dict[str, int] = {}
-    for s in states:
-        d = s["entity_id"].split(".")[0]
-        counts[d] = counts.get(d, 0) + 1
+    counts = Counter(s["entity_id"].split(".")[0] for s in states)
     return Options(name="ha_domains", source=url,
                    choices=[Choice(value=d, label=d.replace("_", " ").capitalize(), hint=str(n), icon=d)
                             for d, n in sorted(counts.items())])
@@ -474,7 +472,6 @@ async def _ha_domains(cfg: WinstonConfig, params: dict) -> Options:
 
 async def _ha_areas(cfg: WinstonConfig, params: dict) -> Options:
     """Home Assistant's areas, from its registry (needs an admin token), with how many exposed entities each has."""
-    from winston.providers.home_assistant import HomeAssistant
     ha = _ha(cfg)
     if ha is None:
         return Options(name="ha_areas", choices=[], ok=False,
@@ -485,12 +482,9 @@ async def _ha_areas(cfg: WinstonConfig, params: dict) -> Options:
         return Options(name="ha_areas", choices=[], source=str(e) or type(e).__name__, ok=False)
     if snap.registry is None:
         return Options(name="ha_areas", choices=[], source="; ".join(snap.errors) or "no registry", ok=False)
-    exposed: dict[str, int] = {}
-    for eid in snap.exposed or ():
-        if aid := snap.area(eid)[0]:
-            exposed[aid] = exposed.get(aid, 0) + 1
+    exposed = Counter(aid for eid in snap.exposed or () if (aid := snap.area(eid)[0]))
     return Options(name="ha_areas", source=ha.url, choices=[
-        Choice(value=name, label=name, hint=f"{exposed.get(aid, 0)} exposed")
+        Choice(value=name, label=name, hint=f"{exposed[aid]} exposed")
         for aid, name in sorted(snap.areas.items(), key=lambda a: a[1].casefold())])
 
 
@@ -557,9 +551,16 @@ async def _discord_users(cfg: WinstonConfig, params: dict) -> Options:
                    source=source, ok=not closed or bool(choices))
 
 
+def _memory_topics(cfg: WinstonConfig, params: dict) -> Options:
+    """His memory's topics (core/memory.py): the file's name is the value, its title the label."""
+    return Options(name="memory_topics", source=str(memory.vault(cfg)), choices=[
+        Choice(value=t, label=memory.title(cfg, t), hint=memory.description(cfg, t) or None)
+        for t in memory.topics(cfg)])
+
+
 PROVIDERS = {
     "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
-    "hint_words": _hint_words,
+    "hint_words": _hint_words, "memory_topics": _memory_topics,
     "llm_models": _llm_models, "voices": _voices, "gemini_models": _gemini_models, "claude_models": _claude_models,
     "ha_entities": _ha_entities, "ha_domains": _ha_domains, "ha_notify": _ha_notify, "ha_areas": _ha_areas, "discord_users": _discord_users,
 }
@@ -570,26 +571,19 @@ async def options(name: str, cfg: WinstonConfig, params: dict) -> Options | None
     if fn is None:
         return None
     out = fn(cfg, params)
-    return await out if hasattr(out, "__await__") else out
+    return await out if inspect.isawaitable(out) else out
 
 
 async def check_home_assistant(cfg: WinstonConfig, url: str | None) -> HomeAssistantCheck:
     """Can Winston reach Home Assistant with its token, and which one is it."""
-    ha = cfg.providers.home_assistant
-    url = (url or (ha.url if _ha(cfg) else "")).rstrip("/")
-    env = ha.token_env if ha else "HA_TOKEN"
+    url = url or (cfg.providers.ha.url if _ha(cfg) else "")
     if not url:
         return HomeAssistantCheck(ok=False, detail="Turned off" if _ha_off(cfg) else "No URL")
-    if not (token := _secret(env)):
-        return HomeAssistantCheck(ok=False, detail=f"{env} is not set")
     try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(url + "/api/config", headers={"Authorization": f"Bearer {token}"})
-        if r.status_code == 401:
-            return HomeAssistantCheck(ok=False, detail="Token rejected")
-        r.raise_for_status()
-        j = r.json()
-        return HomeAssistantCheck(ok=True, version=j.get("version"), location=j.get("location_name"),
-                                  detail=f"{j.get('location_name')}, Home Assistant {j.get('version')}")
+        j = await HomeAssistant(cfg, url).ping()
+    except RuntimeError as e:                                           # the token: not set, or rejected
+        return HomeAssistantCheck(ok=False, detail=str(e))
     except Exception as e:                                              # noqa: BLE001
         return HomeAssistantCheck(ok=False, detail=f"Not reachable ({type(e).__name__})")
+    return HomeAssistantCheck(ok=True, version=j["version"], location=j["location"],
+                              detail=f"{j['location']}, Home Assistant {j['version']}")

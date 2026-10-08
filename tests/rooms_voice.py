@@ -39,7 +39,6 @@ from m2_headless_roundtrip import synth_user_audio  # noqa: E402
 from satellite_fake import FakeVoicePE, USER  # noqa: E402
 from winston.channels import satellite as sat  # noqa: E402
 from winston.config import load  # noqa: E402
-from winston.config.registry import get as get_adapter  # noqa: E402
 from winston.config.schema import SatelliteDevice  # noqa: E402
 from winston.core import brain as brain_mod  # noqa: E402
 from winston.core.hints import Hearing  # noqa: E402
@@ -90,7 +89,7 @@ class Live:
 
 async def main() -> int:
     cfg = load()
-    api = f"http://{cfg.control.host}:{cfg.control.port}"
+    api = cfg.control.url
     cfg.channels.satellite.devices = {ROOM: SatelliteDevice(host="127.0.0.1", port=PORT, wake_word="hey_jarvis")}
     cfg.channels.satellite.http_port, cfg.channels.satellite.public_host = HTTP_PORT, "127.0.0.1"
     cfg.logging.tool_calls = str(Path(tempfile.gettempdir()) / "winston-rooms-voice.jsonl")    # not data/logs
@@ -114,8 +113,7 @@ async def main() -> int:
     box = FakeVoicePE()
     server = await asyncio.start_server(box.serve, "127.0.0.1", PORT)
     audio = sat.AudioServer(cfg); await audio.start()
-    cls = get_adapter("stt", cfg.stt.provider)
-    stt = Hearing(cfg, cls, cls.load_model(cfg.stt.model, cfg.stt.quantization))
+    stt = Hearing.load(cfg)
     satellite = sat.Satellite(cfg, ROOM, cfg.channels.satellite.devices[ROOM], audio, stt, NoFeed())
     await satellite.connect()
     await asyncio.wait_for(box.subscribed.wait(), 15)

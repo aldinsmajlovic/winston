@@ -354,10 +354,6 @@ def forget_said(cfg: WinstonConfig, topic: str, fact: str) -> dict | str:
 # Edits by stored line. A fact is addressed by its stored line (text and stamp), so an edit never
 # lands on a different fact when the voice channel appended one meanwhile. Same checks as remember.
 
-def _stamp(fact: str) -> str | None:
-    return _parts(fact)[1]
-
-
 def _head(lines: list[str]) -> tuple[int | None, int | None]:
     """Where a topic file's title and description are. The description is the first plain line
     after the title and before the facts; a leading "> " is allowed and not part of it."""

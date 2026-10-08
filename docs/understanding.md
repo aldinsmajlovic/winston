@@ -126,9 +126,11 @@ Hearing stays a separate speech engine in front of the brain, and that engine is
 Revisit when both hold: an open model that hears is at least as good a brain as the current one and
 fits beside the voice (watch Qwen 4 27B), and a local server takes audio and tools in one request.
 
-**A swappable slot, like the brain and the voice.** Today speech to text is the one slot built into
-Winston: Parakeet runs inside the voice process and is the only choice. It becomes an engine like the
-other two:
+**A swappable slot, like the brain and the voice.** Built 2026-10-08: the provider, the engine, the
+presets and the model dropdown below, with Qwen3-ASR in its own service (`services/stt-qwen3-asr`, Qwen's
+runner on transformers) since vLLM's stock image cannot read audio and its preallocation did not fit
+beside the 27B brain and Chatterbox; measured in [voices](voices.md#hearing-engines). Still to come: the
+language back into the turn, capabilities, and `winston check stt`. As designed:
 
 - **A protocol, not a vendor.** The provider is `openai_transcription`: OpenAI's
   `/v1/audio/transcriptions`, which vLLM, other local servers and hosted services speak. Per request it
@@ -167,8 +169,12 @@ Room on the GPU: 3.7 GB is left beside the 27B brain (17.2 GB) and the voice (3.
 must be measured there; 0.6B is the fallback if it does not fit.
 
 **End of speech.** The box waits for 0.8 s of silence, which is most of the 1.05 s (median) from the
-end of speech to the text. A turn model decides instead, as in the browser, and is measured on the
-recorded turns.
+end of speech to the text. A turn model alone is not enough there: Smart Turn, asked at a 0.3 s pause
+as in the browser, cut 4 of 60 synthetic requests short at a comma ("Okay, turn it off."), sure of
+itself each time (0.67 to 0.97), and the box closes its mic when the request ends, so the rest is
+lost. Since 2026-10-08 the box transcribes at the first 0.3 s of a pause instead, in case it is the
+end, which takes about 0.2 s off every request and cuts nobody off. A turn model is measured on the
+recorded turns before it may end a request sooner.
 
 ## 4. For him?
 

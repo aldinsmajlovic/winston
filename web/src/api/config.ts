@@ -6,7 +6,8 @@ import type { JsonSchema, Path } from '@/lib/schema'
 export type ConfigChange = { path: Path; value: unknown }
 
 export const configKey = $api.queryOptions('get', '/api/config').queryKey
-export const configVersionKey = $api.queryOptions('get', '/api/config/version').queryKey
+/** A cache slot, never fetched: the version the config was read or saved at. */
+const configVersionKey = ['config-version']
 
 /** "abc", W/"abc" or abc: the version an ETag names. */
 const etagVersion = (etag: string | null) => etag?.replace(/^W\//, '').replace(/"/g, '') || undefined

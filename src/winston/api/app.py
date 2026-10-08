@@ -8,6 +8,7 @@ import uuid
 from collections import OrderedDict
 from datetime import date
 import subprocess
+from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Literal
@@ -45,7 +46,6 @@ from winston.extension_host.nudges import Nudges
 from winston.extension_host.scheduler import Scheduler
 from winston.extension_host.outward import build as outward_mcp
 from winston.extension_host.services import Services as ExtensionServices
-from winston.providers import ha_events
 from winston.providers.home_assistant import (HAApply, HAExposure, HARegistry, HATool, HomeAssistant,
                                               apply_saved, exposure_view, ha_changed, registry_view)
 
@@ -295,10 +295,6 @@ class ConfigResult(BaseModel):
     persona_rename: PersonaRename | None = None
 
 
-class ConfigVersion(BaseModel):
-    version: str
-
-
 class ConfigChange(BaseModel):
     path: list[str | int] = Field(min_length=1, description="Keys from the config root, e.g. [\"tts\", \"voice\"]")
     value: Any = Field(None, description="Any JSON value; null removes the key, so the default applies")
@@ -370,6 +366,25 @@ def gpu_status() -> GpuStatus | None:
         return None
 
 
+def _events(q: asyncio.Queue, close: Callable[[], object],
+            encode: Callable[[Any], str] = lambda ev: json.dumps(ev, ensure_ascii=False),
+            head: Iterable[str] = ()) -> StreamingResponse:
+    """Server-sent events: head, then each item from q as encode(item), with a keepalive after 15 s without one
+    (which also lets a dead client be noticed), and close() once the client has gone."""
+    async def gen():
+        try:
+            for line in head:
+                yield line
+            while True:
+                try:
+                    yield f"data: {encode(await asyncio.wait_for(q.get(), timeout=15))}\n\n"
+                except TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            close()
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
 def _dump(cfg: WinstonConfig) -> dict:
     return cfg.model_dump(mode="json", exclude_none=True)
 
@@ -400,15 +415,14 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     rooms = Rooms(cfg, on_mic=lambda room, held: feed.publish(
         LiveEvent(channel="rooms", type="mic", room=room, held_by=held)))
     web = WebChat(cfg, feed, rooms)
-    ctl = cfg.control.host if cfg.control.host not in ("0.0.0.0", "::", "") else "127.0.0.1"
-    extensions = Host(cfg, api=f"http://{ctl}:{cfg.control.port}")
+    extensions = Host(cfg, api=cfg.control.url)
     extension_services = ExtensionServices(extensions)
     extension_services.talking = feed.talking             # background model calls yield to conversations
     extensions.on_feed = lambda ev: feed.publish(LiveEvent(**ev))
     extensions.scheduler = Scheduler(extensions, extension_services)
     mcp_out = outward_mcp(extensions)
     mcp_app = mcp_out.streamable_http_app(streamable_http_path="/mcp", stateless_http=True, json_response=True,
-                                          host=ctl)
+                                          host=httpx.URL(cfg.control.url).host)
     tasks: set[asyncio.Task] = set()
 
     def spawn(coro):
@@ -421,6 +435,16 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         feed.publish(LiveEvent(channel=a.source, type="announcement", text=a.text))
         spawn(web.announced(a.text, a.context))
         return d
+
+    def ha_announcement(data: dict):
+        """An automation's announce.ha_event, {text, context}, from Home Assistant's websocket (the scheduler's)."""
+        try:
+            publish_announcement(Announcement(text=str(data.get("text", "")).strip(),
+                                              context=data.get("context") or {}, source="home_assistant"))
+        except ValidationError as e:
+            logger.warning(f"ignored {cfg.announce.ha_event} with bad data {data}: {e.errors()[0]['msg']}")
+    if cfg.announce.enabled and cfg.announce.ha_event:      # read at start, like every control section
+        extensions.scheduler.announce_event, extensions.scheduler.on_announce = cfg.announce.ha_event, ha_announcement
 
     # Speaking up: the engine decides (extension_host/nudges.py); here is how a nudge gets out.
 
@@ -514,15 +538,13 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def lifespan(app: FastAPI):
         if autostart:
             asyncio.create_task(sup.start_all())
-        listener = asyncio.create_task(ha_events.listen(cfg, publish_announcement))
         # Found and described either way, so the page shows them; run only when winstond starts things.
         spawn(extensions.start() if autostart else extensions.refresh())
+        extensions.scheduler.start(jobs=autostart)      # Home Assistant's events either way: announcements
         if autostart:
-            extensions.scheduler.start()
             nudges.start()
         async with mcp_out.session_manager.run():
             yield
-        listener.cancel()
         await nudges.stop()
         await extensions.scheduler.stop()
         await extensions.stop_all()
@@ -580,15 +602,11 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     @app.exception_handler(RequestValidationError)
     async def invalid(request: Request, exc: RequestValidationError):
-        """FastAPI's 422, except that a whole config sent to PUT /api/config gets locations from the config root."""
+        """FastAPI's 422, without the refused input for a secret."""
         errors = jsonable_encoder(exc.errors())
         if request.url.path.startswith("/api/secrets"):
             # never echo a pasted key back (FastAPI puts the refused body in `input`)
             errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in errors]
-        if request.url.path == "/api/config" and request.method == "PUT":
-            for e in errors:
-                if e.get("loc", [])[:1] == ["body"]:
-                    e["loc"] = e["loc"][1:]
         return JSONResponse({"detail": errors}, status_code=422)
 
     def status_payload() -> Status:
@@ -639,38 +657,16 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                      room: str | None = Query(None, description="The room the session is in: nudges go to the "
                                                                 "room you are in")):
         q = hub.subscribe(channel, room)
-
-        async def gen():
-            try:
-                yield ": subscribed\n\n"
-                while True:
-                    try:
-                        ev = await asyncio.wait_for(q.get(), timeout=15)
-                        yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-                    except asyncio.TimeoutError:
-                        yield ": keepalive\n\n"           # also lets a dead client be noticed
-            finally:
-                hub.unsubscribe(channel, q)
-        return StreamingResponse(gen(), media_type="text/event-stream")
+        return _events(q, lambda: hub.unsubscribe(channel, q), head=[": subscribed\n\n"])
 
     @app.get("/api/live", summary="What he hears, says and does: recent events, then new ones, as "
                                   "server-sent events (LiveEvent objects)")
     async def live():
         q = feed.subscribe()
 
-        async def gen():
-            try:
-                for ev in feed.backlog():
-                    yield f"data: {ev.model_dump_json(exclude_none=True)}\n\n"
-                while True:
-                    try:
-                        ev = await asyncio.wait_for(q.get(), timeout=15)
-                        yield f"data: {ev.model_dump_json(exclude_none=True)}\n\n"
-                    except asyncio.TimeoutError:
-                        yield ": keepalive\n\n"
-            finally:
-                feed.unsubscribe(q)
-        return StreamingResponse(gen(), media_type="text/event-stream")
+        def encode(ev: LiveEvent) -> str:
+            return ev.model_dump_json(exclude_none=True)
+        return _events(q, lambda: feed.unsubscribe(q), encode, [f"data: {encode(ev)}\n\n" for ev in feed.backlog()])
 
     @app.post("/api/live", response_model=Ok, summary="Events from a channel process into the live feed")
     async def live_publish(events: list[LiveEvent]):
@@ -704,18 +700,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                                               "events ({room, held_by})")
     async def room_mic_events(room: str):
         q = rooms.subscribe(room)
-
-        async def gen():
-            try:
-                while True:
-                    try:
-                        ev = await asyncio.wait_for(q.get(), timeout=15)
-                        yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-                    except asyncio.TimeoutError:
-                        yield ": keepalive\n\n"
-            finally:
-                rooms.unsubscribe(room, q)
-        return StreamingResponse(gen(), media_type="text/event-stream")
+        return _events(q, lambda: rooms.unsubscribe(room, q))
 
     @app.post("/api/speak", response_class=StreamingResponse,
               responses={200: {"content": {"audio/pcm": {}}, "description": "16-bit mono PCM, rate in X-Sample-Rate",
@@ -993,11 +978,6 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         response.headers["ETag"] = _etag(app.state.version)
         return app.state.cfg      # no secrets live in config, only the names of env variables
 
-    @app.get("/api/config/version", response_model=ConfigVersion,
-             summary="The saved config's version, the same as GET /api/config's ETag")
-    async def get_config_version():
-        return ConfigVersion(version=app.state.version)
-
     def running_restarts(old: dict, new: dict) -> list[str]:
         return sorted(r for r in restarts_for(old, new, schema) if r in sup.items or r == "control")
 
@@ -1037,20 +1017,6 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                             persona_rename=rename)
 
     conflict = {409: {"model": ConfigConflict, "description": "Changed on disk since the If-Match version"}}
-
-    @app.put("/api/config", response_model=ConfigResult, responses=conflict,
-             summary="Validate and save a whole config; dry_run only reports which engines a change restarts. "
-                     "With If-Match, refused while the saved file is another version")
-    async def put_config(new: WinstonConfig, request: Request, response: Response, dry_run: bool = Query(False),
-                         rename_persona: bool = Query(False, description=RENAME_PERSONA)):
-        async with config_lock:
-            cur, v = current()
-            if (base := _if_match(request.headers.get("if-match"))) and base != v:
-                return JSONResponse(ConfigConflict(detail="The config was saved elsewhere since it was loaded",
-                                                   paths=[], version=v).model_dump(), status_code=409)
-            if errors := await extensions.validate(new):
-                return JSONResponse({"detail": errors}, status_code=422)
-            return await commit(cur, v, new, dry_run, [], response, rename_persona)
 
     @app.patch("/api/config", response_model=ConfigResult, responses=conflict,
                summary="Change some fields of the saved config: each change sets one path (null removes it). "

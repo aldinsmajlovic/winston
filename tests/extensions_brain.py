@@ -12,20 +12,16 @@ import json
 import os
 import re
 import shutil
-import socket
 import sys
-import tempfile
 import time
 from pathlib import Path
 
-DATA = Path(tempfile.mkdtemp(prefix="winston-extensions-brain-"))
+from harness import free_port, scratch_data, serve, winstond_data
+
 REAL = Path(os.environ.get("WINSTON_DATA") or Path(__file__).resolve().parent.parent / "data")
-os.environ["WINSTON_DATA"] = str(DATA)
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "tests"))
+DATA = scratch_data("winston-extensions-brain-")
 
 import httpx  # noqa: E402
-import uvicorn  # noqa: E402
 import yaml  # noqa: E402
 from fake_ha import FakeHA  # noqa: E402
 
@@ -38,12 +34,6 @@ def expect(name: str, ok: bool, detail=""):
     print(f"{'ok  ' if ok else 'FAIL'} {name}{'' if ok else f'  {detail}'}")
 
 
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 def setup(api_port: int, ha_port: int):
     real = yaml.safe_load((REAL / "config.yaml").read_text())
     cfg = {"assistant": real.get("assistant", {}), "llm": real["llm"],
@@ -54,11 +44,7 @@ def setup(api_port: int, ha_port: int):
            "speak_up": {"home": "person.someone"},
            "extensions": {"reminders": {"enabled": True},
                           "news": {"enabled": True, "settings": {"sweden_en": True, "world": True}}}}
-    (DATA / "config.yaml").write_text(yaml.safe_dump(cfg))
-    shutil.copy(REAL / "persona.md", DATA / "persona.md")
-    shutil.copytree(REPO / "examples" / "memory", DATA / "memory")
-    (DATA / ".env").write_text('HA_TOKEN="fake-ha-token"\n')
-    os.chmod(DATA / ".env", 0o600)
+    winstond_data(DATA, cfg, REAL / "persona.md")
 
 
 def calls(since: float) -> list[tuple[str, dict]]:
@@ -74,10 +60,7 @@ async def main() -> bool:
     from winston.config import load
     async with FakeHA(ha_port, seed="home"):
         app = create_app(load(), autostart=False)
-        server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=api_port, log_level="warning"))
-        serving = asyncio.create_task(server.serve())
-        while not server.started:
-            await asyncio.sleep(0.1)
+        stop_server = await serve(app, api_port)
         host = app.state.extensions
         await host.start()
         host.scheduler.start()                          # News reads its feeds at start
@@ -134,8 +117,7 @@ async def main() -> bool:
 
         await host.stop_all()
         await host.scheduler.stop()
-        server.should_exit = True
-        await serving
+        await stop_server()
         await api.aclose()
     print(f"\n{'all passed' if not failed else f'{failed} failed'}")
     return not failed

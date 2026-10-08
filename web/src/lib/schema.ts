@@ -54,9 +54,6 @@ export type PruneOptions = {
 /** The key a secret's value field gets next to its name field (`api_key_env` -> `api_key_env__secret`). */
 export const SECRET_SUFFIX = '__secret'
 
-/** The key of a row a page adds to a section form (SectionForm `extras`), never part of the config. */
-export const EXTRA_SUFFIX = '__extra'
-
 type Walk = { path?: Path; slot?: string }
 
 /** Whether a field's `when` holds for the draft: every entry must. A key is a dotted path from the

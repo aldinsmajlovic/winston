@@ -5,7 +5,6 @@ browser session's frames are cut into turns. Writes only to a temporary folder. 
 """
 import asyncio
 import json
-import sys
 import tempfile
 import time
 from datetime import date
@@ -13,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+from harness import check, finish_checks, mismatches, scratch_data
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
@@ -28,17 +28,12 @@ from pipecat.frames.frames import (
 from pipecat.observers.base_observer import FramePushed
 from pipecat.processors.frame_processor import FrameDirection
 
+scratch_data("winston-turns-")     # logging.latency and the other relative paths land here, not in data/
+
 from winston.config.schema import WinstonConfig
 from winston.core import turns as turns_mod
 from winston.core.hints import Heard
 from winston.core.turns import SpokenTurns, TurnLog, TurnStore, make_mark_tool
-
-failed = []
-
-
-def check(name, got, want):
-    if got != want:
-        failed.append(f"{name}: got {got!r}, want {want!r}")
 
 
 def cfg(folder: Path, enabled: bool = True) -> WinstonConfig:
@@ -204,7 +199,7 @@ def marks(folder: Path):
     for bad, why in (("../../etc/x", "id"), (t2.id, "kind")):
         try:
             store.mark(bad, "misheard" if why == "id" else "rude")
-            failed.append(f"mark: a bad {why} was taken")
+            mismatches.append(f"mark: a bad {why} was taken")
         except ValueError:
             pass
 
@@ -261,6 +256,5 @@ with tempfile.TemporaryDirectory() as tmp:
     asyncio.run(voice_mark(root / "voice_mark"))
     off(root / "off")
 
-if failed:
-    print("\n".join(failed)); sys.exit(1)
-print("turns: box and browser turns written, a reply over ends a turn, old days removed, marks kept and checked, off writes nothing")
+finish_checks("turns: box and browser turns written, a reply over ends a turn, old days removed, marks kept and "
+              "checked, off writes nothing")

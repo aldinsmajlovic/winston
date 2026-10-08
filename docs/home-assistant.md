@@ -53,6 +53,12 @@ Home Assistant's own names stay as they are, since they are the household's (oft
 Winston never renames an entity. The name on his list is what you call it, and it is saved to Home
 Assistant as one more alias.
 
+On Winston's side an entity on the list answers to its name there, its aliases and its object id as
+words (`light.shelf_lamp` is "shelf lamp"), whatever the case or spacing. Those names make a spoken
+request think first, make a loose claim about it ("the shelf lamp is now on") need a tool call, name a
+shortcut, and keep a named device's own area; the state check also matches Home Assistant's friendly
+names.
+
 ## What Save does
 
 Saving the list, its domains or the Home Assistant switch applies it to Home Assistant before the

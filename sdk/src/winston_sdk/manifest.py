@@ -7,7 +7,7 @@ from __future__ import annotations
 import re
 import tomllib
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,29 @@ class Permissions(BaseModel):
     llm: bool = False
     speakers: bool = Field(False, description="Play an audio stream on your speakers (ctx.speakers).")
     extensions: list[str] = Field(default_factory=list, description="Extensions whose read tools it may call.")
+
+
+def refusal(perms: Permissions, op: str, params: dict[str, Any]) -> str | None:
+    """Why these permissions do not cover one of winstond's operations (`ctx.ha.call` is "ha.call"), or
+    None. winstond and the test harness both ask; the entities a Home Assistant call names are winstond's
+    to check, and `network` is ctx.http's."""
+    if op.startswith("ha.") and perms.home_assistant is None:
+        return "this extension has no home_assistant permission"
+    if op == "ha.call" and perms.home_assistant != "act":
+        return "calling services needs home_assistant = \"act\""
+    if op.startswith("memory.") and perms.memory is None:
+        return "this extension has no memory permission"
+    if op == "memory.remember" and perms.memory != "write":
+        return "remembering needs memory = \"write\""
+    if op == "presence" and not perms.presence:
+        return "this extension has no presence permission"
+    if op == "llm.ask" and not perms.llm:
+        return "this extension has no llm permission"
+    if op == "ext.call" and params["extension"] not in perms.extensions:
+        return f"this extension may not call {params['extension']}"
+    if op.startswith("speakers.") and not perms.speakers:
+        return "this extension has no speakers permission"
+    return None
 
 
 class Manifest(BaseModel):

@@ -11,16 +11,14 @@ session_idle_mins, which also re-reads memory."""
 import asyncio
 import os
 import sys
-import time
 
 import discord
 from loguru import logger
 
-from winston.channels.text import TextSession
+from winston.channels.text import TextSession, stale
 from winston.config import load
 from winston.config.schema import WinstonConfig
 from winston.core.announce import nudge_note, subscribe
-from winston.extension_host.client import tools_changed
 
 LIMIT = 2000        # Discord's message length
 
@@ -56,8 +54,8 @@ class DiscordChannel:
 
     async def current(self) -> TextSession:
         async with self._session_lock:
-            if self.session is not None and not self.session.busy and await tools_changed(self.session.brain):
-                logger.info("extension tools changed; a new conversation with them")
+            idle = self.cfg.channels.discord.session_idle_mins * 60
+            if self.session is not None and await stale(self.session, idle):
                 await self.session.close()
                 self.session = None
             if self.session is None:
@@ -65,18 +63,6 @@ class DiscordChannel:
                 self.session.notify = self.correction
                 logger.info("new conversation")
             return self.session
-
-    async def reaper(self):
-        """Close a conversation after it sits idle, so the next message starts fresh."""
-        idle = self.cfg.channels.discord.session_idle_mins * 60
-        while True:
-            await asyncio.sleep(60)
-            async with self._session_lock:
-                s = self.session
-                if s and not s.busy and time.monotonic() - s.last_used > idle:
-                    self.session = None
-                    await s.close()
-                    logger.info("conversation closed after idling")
 
     async def dm(self) -> discord.DMChannel:
         user = self.client.get_user(self.allowed) or await self.client.fetch_user(self.allowed)
@@ -107,7 +93,6 @@ class DiscordChannel:
         logger.info(f"connected to Discord as {self.client.user}")
         if not getattr(self, "_started", False):         # on_ready fires again after reconnects
             self._started = True
-            asyncio.create_task(self.reaper())
             if self.cfg.announce.enabled:
                 asyncio.create_task(self.announcements())
 

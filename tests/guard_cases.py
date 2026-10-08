@@ -278,6 +278,20 @@ async def rigs():
     await r.reply("Shelf lamp is off.\n</", "think>\n\nAnything else?</think>")
     got["a think tag is not said"] = (r.said(), "Shelf lamp is off.\n\n\nAnything else?")
 
+    # An answer, a stray </think>, and the same answer again (the 27B on the box, 2026-10-08) is said once.
+    r = Rig()
+    await r.user("What's the capital of Norway?")
+    await r.reply("Os", "lo", ",", " Sir", ".", "\n", "</think>", "\n\n", "Os", "lo", ",", " Sir", ".")
+    got["a repeat after a stray think tag is said once"] = (r.said().strip(), "Oslo, Sir.")
+    # The last sentence waits only until more follows, not for the end of the response.
+    r = Rig()
+    await r.user("What time is it?")
+    await r.llm(LLMFullResponseStartFrame())
+    await r.llm(LLMTextFrame("It's ten. "))
+    got["the last sentence waits for what follows"] = (r.said(), "")
+    await r.llm(LLMTextFrame("Anything"))
+    got["and goes once more follows"] = (r.said(), "It's ten. ")
+
     # An unbacked claim is held back and never said; one retry, with the note upstream over voice.
     r = Rig()
     await r.user("Turn off the shelf lamp.")

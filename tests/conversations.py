@@ -17,22 +17,16 @@ import tempfile
 import time
 from pathlib import Path
 
-import numpy as np
 from loguru import logger
-from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame, Frame, FunctionCallResultFrame,
-                                   FunctionCallsStartedFrame, InterruptionFrame, StartFrame, TranscriptionFrame,
-                                   TTSAudioRawFrame, TTSStoppedFrame, TTSTextFrame, UserAudioRawFrame,
-                                   UserStartedSpeakingFrame, UserStoppedSpeakingFrame, VADUserStartedSpeakingFrame,
-                                   VADUserStoppedSpeakingFrame)
+from pipecat.frames.frames import FunctionCallResultFrame, FunctionCallsStartedFrame
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.workers.runner import WorkerRunner
 
 sys.path.insert(0, str(Path(__file__).parent))
-from m2_headless_roundtrip import CHUNK, SR, synth_user_audio  # noqa: E402
+from m2_headless_roundtrip import SR, Heard, Mic, Speaker, synth_user_audio  # noqa: E402
 from winston.channels import voice as vp  # noqa: E402
 from winston.channels.clone import MicTap, make_voice_tools  # noqa: E402
 from winston.core.brain import Brain  # noqa: E402
@@ -81,6 +75,7 @@ ACT_STUBS = {"intent__HassTurnOn", "intent__HassTurnOff", "light__HassLightSet",
 
 
 GUARD_LOG = Path(tempfile.gettempdir()) / "winston-conversations-guard.jsonl"
+vp.CFG.logging.tool_calls = str(GUARD_LOG.with_name("winston-conversations-tools.jsonl"))   # not data/logs
 EXPOSED = {n.lower() for e in (vp.CFG.providers.home_assistant.expose.values() if vp.CFG.providers.home_assistant else [])
            for n in [e.name or "", *e.aliases] if n}
 
@@ -107,88 +102,6 @@ def stub(name: str):
                    "data": {"success": [{"name": target, "type": "entity"}], "failed": []}}
         await params.result_callback(res)
     return handler
-
-
-class Mic(FrameProcessor):
-    """20 ms frames of silence, or of the queued utterance framed by VAD frames like the aggregator's analyzer."""
-
-    def __init__(self):
-        super().__init__()
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self.t_end = 0.0
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        await self.push_frame(frame, direction)
-        if isinstance(frame, StartFrame):
-            asyncio.get_running_loop().create_task(self._run())
-
-    def say(self, audio: np.ndarray):
-        self._queue.put_nowait(audio)
-
-    async def _run(self):
-        silence = np.zeros(CHUNK, np.int16).tobytes()
-        while True:
-            try:
-                audio = self._queue.get_nowait()
-            except asyncio.QueueEmpty:
-                await self.push_frame(UserAudioRawFrame(silence, SR, 1)); await asyncio.sleep(0.02)
-                continue
-            await self.push_frame(VADUserStartedSpeakingFrame()); await self.push_frame(UserStartedSpeakingFrame())
-            for i in range(0, len(audio), CHUNK):
-                chunk = audio[i:i + CHUNK]
-                chunk = np.pad(chunk, (0, CHUNK - len(chunk))) if len(chunk) < CHUNK else chunk
-                await self.push_frame(UserAudioRawFrame(chunk.tobytes(), SR, 1)); await asyncio.sleep(0.02)
-            self.t_end = time.perf_counter()
-            await self.push_frame(VADUserStoppedSpeakingFrame()); await self.push_frame(UserStoppedSpeakingFrame())
-
-
-class Speaker(FrameProcessor):
-    """Plays TTS audio in real time where the transport would, with bot started/stopped speaking and
-    interruption (the rest of the audio is dropped), and records what was said."""
-
-    def __init__(self, log):
-        super().__init__()
-        self.log, self.until, self.speaking, self.first_audio = log, 0.0, False, None
-        self._task: asyncio.Task | None = None
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, InterruptionFrame):
-            self.until = time.perf_counter()
-            if self.speaking:
-                self.log("   [interrupted]")
-        elif isinstance(frame, TTSAudioRawFrame):
-            now = time.perf_counter()
-            self.first_audio = self.first_audio or now
-            if not self.speaking:
-                self.speaking = True
-                await self.push_frame(BotStartedSpeakingFrame(), FrameDirection.UPSTREAM)
-            self.until = max(self.until, now) + len(frame.audio) / 2 / frame.sample_rate
-        elif isinstance(frame, TTSTextFrame):
-            self.log(f"   W: {frame.text}", inline=True)
-        if isinstance(frame, (TTSStoppedFrame, InterruptionFrame)) and self.speaking:
-            if self._task:
-                self._task.cancel()
-            self._task = asyncio.get_running_loop().create_task(self._stopped())
-        await self.push_frame(frame, direction)
-
-    async def _stopped(self):
-        while (left := self.until - time.perf_counter()) > 0:
-            await asyncio.sleep(left)
-        self.speaking = False
-        await self.push_frame(BotStoppedSpeakingFrame(), FrameDirection.UPSTREAM)
-
-
-class Heard(FrameProcessor):
-    def __init__(self, log):
-        super().__init__(); self.log = log
-
-    async def process_frame(self, frame: Frame, direction: FrameDirection):
-        await super().process_frame(frame, direction)
-        if isinstance(frame, TranscriptionFrame):
-            self.log(f"   heard: {frame.text!r}")
-        await self.push_frame(frame, direction)
 
 
 class Tools(BaseObserver):

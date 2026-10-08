@@ -236,11 +236,12 @@ Secrets need no permission line: an extension gets the values of its own secret 
 others. Speaking up and entities need none either: declaring a kind or an entity is the request,
 and both show on the card, where each can be switched off.
 
-winstond checks every permission except `network` on each call. The Python SDK checks `network` for
-`ctx.http`; other traffic (a raw socket, IMAP) and extensions in other languages are held to it only
-by what they declare. Permissions keep honest extensions honest and make mistakes visible; they are
-not a sandbox. An extension runs as your user and could read files a well-behaved one would not.
-Install ones you trust, as with VS Code or Home Assistant; the card of anything not built in says so.
+winstond checks every permission except `network` on each call. The SDK checks `network` for
+`ctx.http`; other traffic (a raw socket, IMAP) is held to it only by what the extension declares. An
+MCP server has no manifest and no permissions: it gets only the variables named in its `env`.
+Permissions keep honest extensions honest and make mistakes visible; they are not a sandbox. An
+extension runs as your user and could read files a well-behaved one would not. Install ones you
+trust, as with VS Code or Home Assistant; the card of anything not built in says so.
 
 ## Settings
 
@@ -298,7 +299,7 @@ the card.
 | `@ext.validate` | `settings` (the ones being saved; `ctx.settings` still holds the saved ones) |
 | `@entity.on_change` | `value`, and `entry` for a `per` entity |
 | `@entity.on_press` | `entry` for a `per` entity |
-| `@ext.action` | `nudge` (`kind`, `about`, `level`, `facts`) |
+| `@ext.action` | `nudge` (`kind`, `about`, `level`, `facts`, `links`) |
 | `@ext.on_nudge` | `what` (`said`, `dismissed`, `put_off`, `muted`, `ended`), `nudge`, and `until` or `where` where they apply |
 
 Checks, `@ext.status`, `@ext.context` and `@ext.hint_words` take `ctx` only. The store is saved after
@@ -401,7 +402,7 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.speakers.play(url, title=None)`, `.stop()` | Plays a stream (anything ffmpeg reads, served on 127.0.0.1 or a declared host) on the box of the room last talked in, else on every box, and returns how many play; a new stream replaces what plays, and `stop()` ends only its own. The box turns it down while it listens and while he talks (needs `speakers`) |
 | `ctx.later(when, job, data=None)` | Runs one of its jobs once at a computed `datetime` or after a `timedelta`, kept across restarts; returns a timer with `cancel()`. `ctx.timers()` lists them |
 | `ctx.nudge(kind, nudge)`, `ctx.withdraw(kind, about)` | Pushes a nudge of a pushed kind, or takes one back |
-| `ctx.nudges(kind=None)` | Its nudges now and those ended in the last 7 days, each with `kind`, `about`, `level`, `facts`, `state` (waiting, held, said, dismissed, ended), `said_at`, `held_until` |
+| `ctx.nudges(kind=None)` | Its nudges now and those ended in the last 7 days, each with `kind`, `about`, `level`, `facts`, `links`, `state` (waiting, held, said, dismissed, ended), `said_at`, `held_until` |
 | `ctx.parse_when(text)` | Reads a time as `When` does; `None` if it cannot |
 | `ctx.quota(name, per_day)` | Takes one use and returns `True`, or `False` once the day's are gone (for paid APIs) |
 | `ctx.poke(kind)` | Asks the core to run a kind's check now |
@@ -652,9 +653,9 @@ flowchart LR
   An MCP server gets the variables named in its `env`, and no others. Each takes about 76 MB.
 - **MCP over stdio**, spec 2026-07-28, with winstond as the client. Tools are plain MCP tools. The
   rest travels on Winston's extension to the protocol, `io.github.aldinsmajlovic/winston` version 1,
-  negotiated as the spec's extension mechanism (SEP-2133) provides:
-  - `winston/describe`: settings schema, kinds, actions, entities, jobs and triggers, with `From`
-    references as field names
+  negotiated as the spec's extension mechanism (SEP-2133) provides. A missing or mistyped param is
+  refused with its name; one a method does not take is ignored, so winstond can add params within a
+  version. The methods:
   - `winston/configure`: new settings, answered with field errors or ok
   - `winston/run`: a job, with its `event`
   - `winston/check`: a kind's nudges
@@ -663,7 +664,6 @@ flowchart LR
   - `winston/hook`: a request to one of its hooks
   - `winston/nudge_event`: what happened to one of its nudges, for `@ext.on_nudge`
   - `winston/status`, `winston/context` and `winston/hint_words`
-  - `winston/errors`: its last failures, for the card
   - `winston/info`: its process id, for the watch on crashes and memory
 - **Back to winstond over REST**, under `/api/ext/v1/`, with its token. winstond checks every call
   against the manifest and logs it with the extension's id.
@@ -674,8 +674,10 @@ flowchart LR
   (a key would still be its variable's name); one with neither runs on its defaults, so a plain MCP
   client can use it directly. winstond starts an extension only once it is described, so its keys are
   known.
-- **Describe runs** without secrets or a token when the extension is found, its code changes or the
-  SDK changes. winstond keeps the answer, so the config and the form are checked without starting it.
+- **Describe runs** (`python -m winston_sdk describe`: settings schema, kinds, actions, entities, jobs
+  and triggers, with `From` references as field names) without secrets or a token when the extension
+  is found, its code changes or the SDK changes. winstond keeps the answer, so the config and the form
+  are checked without starting it.
 - **Failures stay contained.** A crash restarts it after 1, 5 and 30 s; five crashes in ten minutes
   stop it. Past its memory limit (`memory_mb`, 500) it is stopped, and one that stops answering for
   30 s is started again. The reason is on its card either way. MCP 2026-07-28 has no ping, so an
@@ -692,9 +694,10 @@ flowchart LR
 - **Its prompt lines and hint words** are written as files in its folder when it starts and after
   each of its jobs, and read by every channel when a conversation starts, as memory is, so the prompt
   stays the same through a conversation and its cache holds.
-- **Other languages** work too: anything that speaks MCP and HTTP can be an extension by following
-  this page. `winston-sdk` is the Python reference, a small package in `sdk/` with no part of
-  Winston's voice stack in it.
+- **Other languages** join as an MCP server, with tools only. Everything else on this page needs
+  `winston-sdk`, a small Python package in `sdk/` with no part of Winston's voice stack in it: winstond
+  reads an extension's manifest from Python and describes it by running it under the SDK. The protocol
+  above is what an SDK in another language would speak; none exists yet.
 
 ## Offering tools to other apps
 
@@ -743,8 +746,9 @@ async def test_rest_after_three_days():
     assert nudge.level == 1 and nudge.facts["days_since"] == 3
 ```
 
-Fixtures in the repo are made up. A recording of a real account stays in `data/`, like all personal
-data. `winston ext test` runs the tests in the extension's own environment when it needs packages
+`background=False` leaves its `@ext.background` tasks unstarted (a receiver it runs, a websocket), so
+a test calls what they would instead. Fixtures in the repo are made up. A recording of a real account
+stays in `data/`, like all personal data. `winston ext test` runs the tests in the extension's own environment when it needs packages
 Winston does not have (`python -m winston_sdk test FILE` there); `winston check unit` runs the built-in
 extensions' tests.
 

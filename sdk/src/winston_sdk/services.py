@@ -3,15 +3,11 @@ presence, the model, timers, nudges, entities) is one operation on winstond's ex
 `POST /api/ext/v1/<op>` with the extension's own token. winstond checks each against the manifest."""
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
 
 import httpx
 
 from winston_sdk.errors import HomeAssistantError, NotPermitted
-
-
-class Services(Protocol):
-    async def call(self, op: str, **params: Any) -> Any: ...
 
 
 class RestServices:
@@ -35,9 +31,6 @@ class RestServices:
         if r.status_code == 502 and op.startswith("ha."):
             raise HomeAssistantError(detail)
         raise RuntimeError(f"{op}: {detail}")
-
-    async def close(self) -> None:
-        await self._client.aclose()
 
 
 class NoServices:
