@@ -208,6 +208,16 @@ Each milestone should end with something Aldin can demo. Don't start the next on
 - Re-evaluate quarterly: local omni model with working barge-in (Qwen omni successors via vllm-omni), full-duplex models with tool calling (PersonaPlex successors), better TTS.
 - Each experiment lives on a branch and must pass M2/M3 acceptance before merging.
 - 2026-09-23: bigger brain. Qwen3.8-27B on llama.cpp fits next to Chatterbox and passes 42/42 brain trials against the 9B's 36/42 (`winston check brain`, `docs/hardware.md`); offered as the `nvidia-24gb-27b` profile.
+- 2026-10-09: next, a smaller quant of the 27B for VRAM headroom (not benched yet). Candidate:
+  `ISTA-DASLab/Qwen3.8-27B-GSQ-RCO-GGUF`, `IQ3_S-mtp` (12.1 GB against 15.4 GB for `UD-Q4_K_S`,
+  about 3.3 GB freed; vendor numbers: wiki PPL 7.07 against BF16's 7.05, AIME25 and LCB v6 equal).
+  Stretch: `IQ3_XXS-mtp` (10.4 GB, PPL 7.20). Take the `-mtp` builds, since the preset runs
+  `--spec-type draft-mtp`; confirm the exact `-hf` tag from the repo's file names. No published
+  tool-calling numbers exist at 3 bits, so on the 3090 run, against the current Q4 on the same day:
+  `winston check brain` (Q4: 42/42), `tests/extensions_brain.py`, `tests/speak_up_brain.py`, first
+  audio median from `logging.latency`, tokens/s and VRAM from nvidia-smi. Adopt only on equal passes
+  and no latency loss; then the preset, `docs/hardware.md` and `docs/decisions.md`. Rejected: webAI's
+  TwIL-LM3-Pro (3.6B formal-logic fine-tune of Granite 4.2, no tool use, non-commercial license).
 
 ### UI track (added 2026-09-23, runs next to M3 to M5)
 The web UI started as settings only. Winston himself moves to the front; settings go behind him. Direction chosen from three rounds of mockups, see `decisions.md` and `docs/ui-guide.md`.
