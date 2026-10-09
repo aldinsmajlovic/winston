@@ -218,6 +218,20 @@ Each milestone should end with something Aldin can demo. Don't start the next on
   audio median from `logging.latency`, tokens/s and VRAM from nvidia-smi. Adopt only on equal passes
   and no latency loss; then the preset, `docs/hardware.md` and `docs/decisions.md`. Rejected: webAI's
   TwIL-LM3-Pro (3.6B formal-logic fine-tune of Granite 4.2, no tool use, non-commercial license).
+- 2026-10-09: next, a second voice round (not benched yet), once the GPU has room: these need 8 to
+  16 GB, so the brain moves to the `hosted` preset first (Haiku 5.5 or DeepSeek V4.1 Flash, a few USD
+  a month by estimate; check `winston check brain` and first audio before keeping it) or the card is
+  otherwise free. Candidates, all cloning and streaming, all non-commercial weights (fine for this
+  instance; a preset must say so and the default stays Chatterbox), vendor numbers on H100-class GPUs:
+  Breeze TTS 2 (`BreezeBlue/Breeze-TTS-2`, 3B, 7.7 GB, Artificial Analysis open-weights Elo 1222,
+  first audio 134 ms median, RTF 0.32: on a 3090 it may land near real time, measure that first),
+  Fish Audio S2 Pro (4.4B, about 16 GB bf16 or 8 GB fp8, Elo 1116, RTF 0.195, SGLang), Voxtral TTS
+  (`mistralai/Voxtral-4B-TTS-2603`, 16 GB, Elo 1085, about 90 ms, vLLM-Omni). Each behind the shared
+  server in `services/tts-candidates/`, run through `tests/tts_bench/` against streamed Turbo in the
+  current clip plus one or two new ones (last round the voice mattered as much as the engine).
+  Skipped: Magpie 357M and Supertonic 3 (no cloning in the open weights), Kokoro and Maya1 (no
+  cloning), Step-Audio-EditX (an editor, no streaming), Higgs Audio v3 (Elo 1038, barely above
+  Chatterbox's 1028), and last round's Qwen3-TTS, VoxCPM2 and Gepard. Results go to `docs/voices.md`.
 
 ### UI track (added 2026-09-23, runs next to M3 to M5)
 The web UI started as settings only. Winston himself moves to the front; settings go behind him. Direction chosen from three rounds of mockups, see `decisions.md` and `docs/ui-guide.md`.
