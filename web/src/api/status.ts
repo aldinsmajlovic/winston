@@ -29,9 +29,9 @@ export function useEngineActions() {
   }
 }
 
-/** "the voice channel" or "llm": how a confirm names what it restarts. */
+/** "the voice channel" or "the llm engine": how a confirm names what it restarts. */
 export function engineLabel(e: EngineStatus): string {
-  return e.kind === 'channel' ? `the ${e.name} channel` : e.name
+  return e.kind === 'channel' ? `the ${e.name} channel` : `the ${e.name} engine`
 }
 
 /** What a restart costs: how long it took last time, else its startup timeout. */

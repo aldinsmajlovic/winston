@@ -129,7 +129,9 @@ flowchart TB
   status shows `config_changed` until it is restarted, or until a later save puts the settings it reads
   back to what it runs with (a secret's mark stays until the restart). What only winstond reads at start (`control`
   sections, the Home Assistant token) is listed in the status as `pending_control` and applies at the
-  next `winston up`.
+  next `winston up`. An engine or channel a save adds (picking a preset that brings an engine, a
+  channel switched on) starts at once; one the config drops stops when it is restarted. The save's confirm
+  says both, and a slot whose preset changed is named by the preset ("Hearing: Qwen3-ASR 0.6B on GPU").
 - **Secrets.** Config names variables, `data/.env` holds them. `GET /api/secrets` lists every variable
   the config names, plus `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN`, with set or not, the paths
   that name it and what restarts; never a value. `PUT /api/secrets/{name}` `{value}` and `DELETE` write

@@ -14,6 +14,10 @@ and whether the words come out right; Aldin's ears decide what sounds human, bli
 
 The candidates live in `services/tts-qwen3/`, `tts-voxcpm2/` and `tts-gepard/` (one venv each, weights
 already in the Hugging Face cache), and are Voice presets too; [docs/voices.md](../../docs/voices.md#benchmark) says why these.
+Breeze TTS 2 (`services/tts-breeze2/`) is a candidate only: it needs more of the card than the voice
+has beside the brain, so `breeze2` and `breeze2-fast` stop the brain, voice and hearing (`/api/engines/{llm,tts,stt}/stop`).
+`breeze2-int4` needs only the voice stopped, but leaves about 4.3 GB free, under the script's 5 GB
+guard; start its server by hand with candidate.sh's arguments and run `bench.py breeze2-int4=http://127.0.0.1:8898`.
 
 | Name | Engine | Port | Where it runs |
 | --- | --- | --- | --- |
@@ -23,6 +27,9 @@ already in the Hugging Face cache), and are Voice presets too; [docs/voices.md](
 | `voxcpm2` | VoxCPM2 | 8892 | GPU |
 | `gepard` | Gepard 1.1 | 8893 | GPU |
 | `gepard-1.0` | Gepard 1.0 (optional) | 8894 | GPU |
+| `breeze2` | Breeze TTS 2, eager | 8896 | GPU, about 8.6 GB |
+| `breeze2-fast` | Breeze TTS 2, decoding as CUDA graphs | 8897 | GPU, about 9.1 GB |
+| `breeze2-int4` | the same, 4-bit backbone and text encoder | 8898 | GPU, about 3.8 GB, beside the brain |
 
 ## What is measured
 
@@ -101,7 +108,7 @@ again. Run from the repo root.
    Each pair is Turbo and one candidate on the same line in the same voice, A and B in random
    order, levelled to the same loudness. Answer A, B or Same (keys 1 and 2 play, a, b and s answer),
    then Copy results and paste them back. With five candidates, `--pairs 6` keeps it to 10 minutes;
-   `--candidates qwen3,gepard` pairs only those.
+   `--candidates qwen3,gepard` pairs only those; `--lines s15,s16,s18,s20` pairs only those lines, each in every clip.
 
 Nothing here starts, stops or writes anything outside `tests/tts_bench/work/` except what steps 3
 and 5 do by hand. A dry run (3 lines against the live Turbo, Pocket and Gepard on the CPU) was done

@@ -205,7 +205,7 @@ test('the brain model lists running and downloaded models, and a model not on di
   // On disk: the restart costs what it did last time.
   await page.getByRole('option', { name: /smoke\/Other-GGUF:Q8_0/ }).click()
   await header.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(dialog).toContainText('Llm: about 12 s')
+  await expect(dialog).toContainText('The llm engine: about 12 s')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
 
   // Not on disk: the engine downloads it first, and the size is not known without asking the Hub.
@@ -213,7 +213,7 @@ test('the brain model lists running and downloaded models, and a model not on di
   await page.getByPlaceholder('Search').fill('smoke/New-GGUF:Q4_K_M')
   await page.getByRole('option', { name: 'Use smoke/New-GGUF:Q4_K_M' }).click()
   await header.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(dialog).toContainText('Llm: downloads the model first, size unknown, so it may take many minutes')
+  await expect(dialog).toContainText('The llm engine: downloads the model first, size unknown, so it may take many minutes')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
   await page.getByRole('button', { name: 'Discard changes' }).click()
   expect(errors).toEqual([])

@@ -185,10 +185,11 @@ STT: list[Fragment] = [
                              "model": "nemo-parakeet-tdt-0.6b-v3", "quantization": "int8"}},
     },
     _qwen3_asr("0.6B", "Hears with the house's names given up front, and tells English from other languages. "
-                       "About 2.2 GB of VRAM; in a noisy room a third of Parakeet's errors, weaker on Swedish."),
+                       "About 2.2 GB of VRAM; in a noisy room a third of Parakeet's errors, weaker on Swedish. The first "
+                       "start downloads the model (1.9 GB)."),
     _qwen3_asr("1.7B", "The more accurate Qwen3-ASR, also with accents and in noisy rooms, with the same names "
                        "up front. About 5 GB of VRAM: beside the 27B brain it needs Pocket TTS instead of "
-                       "Chatterbox, or a bigger card."),
+                       "Chatterbox, or a bigger card. The first start downloads the model (about 4.7 GB)."),
     {
         "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI transcription URL)", "needs": ["internet"],
         "hint": "Any server speaking OpenAI's transcription API. The key goes in .env. Your speech leaves the LAN.",

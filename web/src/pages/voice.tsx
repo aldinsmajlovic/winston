@@ -37,7 +37,7 @@ function Voice({ page, presets }: { page: SettingsState; presets: Presets }) {
         <SectionForm page={page} path={STT} omit={PROVIDER} />
       </SlotCard>
       {page.advanced ? <SectionForm page={page} path={VAD} title="Turn taking" /> : null}
-      {page.advanced && engine ? <SectionForm page={page} path={ENGINE} title="Speech engine" /> : null}
+      {page.advanced && engine ? <SectionForm page={page} path={ENGINE} title="Speaking engine" /> : null}
       {page.advanced && hearing ? <SectionForm page={page} path={STT_ENGINE} title="Hearing engine" /> : null}
     </SettingsPage>
   )

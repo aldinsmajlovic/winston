@@ -38,7 +38,9 @@ def levelled_wav(path: Path) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def build_pairs(results: dict, baseline: str, per: int, rng: random.Random, only: set[str]) -> list[dict]:
+def build_pairs(results: dict, baseline: str, per: int, rng: random.Random, only: set[str],
+                lines: set[str] = frozenset()) -> list[dict]:
+    """per pairs for each candidate, a line once across clips; with lines, only those, each in every clip."""
     base = {(r["clip"], r["sid"]): r for r in results[baseline]["rows"]}
     pairs = []
     for name, res in results.items():
@@ -49,6 +51,8 @@ def build_pairs(results: dict, baseline: str, per: int, rng: random.Random, only
         # (candidate row, baseline row) for every line and clip both have; the baseline's first clip for a built-in voice
         both: dict[str, list[tuple[dict, dict]]] = {}
         for r in rows:
+            if lines and r["sid"] not in lines:
+                continue
             ref = base.get((CLIPS[0] if builtin else r["clip"], r["sid"]))
             if ref is not None:
                 both.setdefault(r["clip"], []).append((r, ref))
@@ -60,11 +64,12 @@ def build_pairs(results: dict, baseline: str, per: int, rng: random.Random, only
             if sum(p["candidate"] == name for p in pairs) >= per or not clips:
                 break
             clip = clips[i % len(clips)]
-            pick = next(((cand, ref) for cand, ref in both[clip] if cand["sid"] not in used), None)
+            pick = next(((cand, ref) for cand, ref in both[clip]
+                         if (clip, cand["sid"]) not in used and (lines or cand["sid"] not in used)), None)
             if pick is None:
                 continue
             (cand, ref), sid = pick, pick[0]["sid"]
-            used.add(sid)
+            used.update({sid, (clip, sid)})
             swap = rng.random() < 0.5
             a, b = (cand, ref) if swap else (ref, cand)
             pairs.append({"candidate": name, "sid": sid, "clip": clip, "text": ref["text"],
@@ -192,6 +197,7 @@ def main():
     ap.add_argument("--pairs", type=int, default=8, help="pairs per candidate (about 20 s each to judge)")
     ap.add_argument("--seed", type=int, default=None, help="for the same draw and order again")
     ap.add_argument("--candidates", default="", help="comma-separated names to pair; default every one but the baseline")
+    ap.add_argument("--lines", default="", help="comma-separated line ids (s15,s18) to pair, each in every clip")
     ap.add_argument("--out", default=str(WORK / "listen.html"))
     args = ap.parse_args()
     results = json.loads(RESULTS.read_text())
@@ -199,7 +205,8 @@ def main():
         raise SystemExit(f"no {args.baseline!r} in {RESULTS}; run bench.py with it first")
     only = {c.strip() for c in args.candidates.split(",") if c.strip()}
     rng = random.Random(args.seed)
-    pairs = build_pairs(results, args.baseline, args.pairs, rng, only)
+    lines = {x.strip() for x in args.lines.split(",") if x.strip()}
+    pairs = build_pairs(results, args.baseline, args.pairs, rng, only, lines)
     if not pairs:
         raise SystemExit("no candidate shares a sentence and clip with the baseline")
     audio = {f: levelled_wav(WORK / f) for p in pairs for f in (p["a"], p["b"])}

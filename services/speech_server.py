@@ -1,12 +1,12 @@
 """The OpenAI speech protocol shared by the speech servers in this directory.
 
-Each engine (tts-chatterbox, tts-pocket, tts-qwen3, tts-voxcpm2, tts-gepard) is a small `Engine` in its
+Each engine (tts-chatterbox, tts-pocket, tts-qwen3, tts-voxcpm2, tts-gepard, tts-breeze2) is a small `Engine` in its
 own venv; this module turns it into the server Winston's `openai_speech` provider and
 tests/tts_bench/bench.py talk to:
 
 - POST /v1/audio/speech with input, voice, response_format pcm (raw s16le mono, streamed) or wav.
-  The rate is the model's own and is sent as X-Sample-Rate: 24 kHz for Chatterbox, Pocket and
-  Qwen3-TTS, 48 kHz for VoxCPM2, 22.05 kHz for Gepard.
+  The rate is the model's own and is sent as X-Sample-Rate: 24 kHz for Chatterbox, Pocket,
+  Qwen3-TTS and Breeze TTS 2, 48 kHz for VoxCPM2, 22.05 kHz for Gepard.
 - voice is a built-in voice of the engine or a clip name under --voices-dir ("vctk/p254_023" means
   vctk/p254_023.wav), prepared on first use and cached (the default plus the eight most recently
   used), prepared again when the file changes. OpenAI's names ("alloy" and so on) mean the default.

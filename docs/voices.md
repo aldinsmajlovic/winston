@@ -356,3 +356,69 @@ are not a problem. No candidate is clearly more human: VoxCPM2 edges it but leav
 24.6 GB, Qwen3-TTS runs slower than real time (RTF 1.25), and Gepard drops and garbles words. Pocket
 won with a different voice, so its pairs compare voices more than engines; they suggest the voice
 Winston speaks in matters more than the engine. Six pairs per engine is a leaning, not proof.
+
+### Breeze TTS 2, 8 October
+
+Breeze TTS 2 (BreezeBlue, 3B, August 2026) led the open-weights models on Artificial Analysis's
+Speech Arena (1215 Elo, above ElevenLabs v3). Its weights are for research and non-commercial use
+only, which a home assistant is; its inference code (Apache-2.0) is not a package, so
+`services/tts-breeze2` clones it at a pinned commit (the server's docstring has the command). It
+clones from a clip and its words, streams itself and takes tags in parentheses, "(laugh)", which the
+server writes Chatterbox's "[laugh]" into. It is a benchmark candidate only, not a Voice preset: it
+does not fit beside the brain.
+
+Same 20 lines and three voices, run with the brain, voice and hearing stopped, since its bf16 weights
+alone ran out of the 6.7 GB the voice and hearing leave:
+
+| Engine | First sound | Real-time factor | Word errors | GPU memory |
+| --- | --- | --- | --- | --- |
+| Chatterbox-Turbo, streamed (24 September) | 0.45 s | 0.34 | 3.4% | 4.2 GB |
+| Breeze TTS 2, eager (3 lines a voice) | 0.44 s | 2.16 | 0% | 8.6 GB |
+| Breeze TTS 2, `--fast backbone_decode depth_decoder codec` | 0.15 s | 0.44 | 1.9% | 9.1 GB, 13.7 GB while capturing |
+| Breeze TTS 2, the same with `--int4`, beside the brain | 0.20 s | 0.43 | 5.1% | 3.8 GB |
+
+Eager it is twice as slow as it speaks, so a streamed reply would stall after its first second.
+With its per-frame decoding captured as CUDA graphs it starts sooner than Turbo and makes the fewest
+word errors of any GPU candidate; its misses were "in ancient Egyptian tombs" said as "ancient
+Egyptians" in all three voices and "4500" once read as "four five hundred". In 10 blind pairs
+against streamed Turbo Aldin preferred it 9 times.
+
+In bf16 it needs about twice the 4.3 GB the voice has beside the 27B and Qwen3-ASR. `--int4` fits
+it there with 0.4 GB of the card to spare: 4-bit backbone and text encoder (torchao), the text
+lookup tables and the unused codec copy in RAM, the depth decoder kept in bf16, and graphs captured
+only for the one guidance branch in use. It is as fast, but its word errors went from 1.9% to 5.1%:
+part of that is how Parakeet writes numbers ("58%"), part is real ("Warmed them up a touch" heard
+as "Warned the Mapatouch" in one voice, "[chuckle] Glad that amused you" garbled in two of three).
+In 10 blind pairs against streamed Turbo it tied, 5 to 5 (Turbo won 3 of
+4 in clifton_fatherbrown, the voice Winston uses), so 4 bits cost what made it better.
+
+Which part costs the words, beside the brain with its context cut to 24k (60 lines each):
+
+| `--backbone-bits` | `--text-encoder-bits` | `--int4-group` | Word errors | RTF | GPU memory |
+| --- | --- | --- | --- | --- | --- |
+| 4 | 4 | 128 | 5.1% | 0.43 | 4.1 GB |
+| 4 | 8 | 128 | 5.0% | 0.41 | 4.0 GB |
+| 4 | 8 | 32 | 4.1% | 0.39 | 4.1 GB |
+| 8 | 8 | | failed: torchao's 8-bit product breaks CUDA graph capture | | |
+
+The text encoder in 8 bits changes nothing, so the 4-bit backbone is what garbles words; finer
+scales win back about a point. An 8-bit backbone would need its own capturable layer and about
+4.65 GB, against the 4.55 GB free beside the 27B at 24k and Qwen3-ASR. The finer 4-bit build won 6 of 10
+blind pairs against streamed Turbo: all 6 in the two VCTK voices, none of the 4 in
+clifton_fatherbrown.
+
+Aldin heard the voice change at a full stop in some of the pairs he did not pick. Every sentence is
+a generation of its own: the speech server splits a request at sentence ends, and Winston's Pipecat
+TTS sends a reply a sentence at a time anyway, so each sentence starts again from the clip, and
+Breeze's take on it differs more than Turbo's. `--chain-secs` (30 s by default) gives a sentence
+the one before it in the same voice, its words and frames after the clip's, as its reference, so it
+carries on from it; the clip stays first so the voice cannot drift. Chained, first sound is 0.22 s
+(the longer reference) and word errors 4.8%, within the noise of 4.1%; whether it stops the change
+was a blind run on the four lines of more than one sentence (`listen.py --baseline breeze2-b4g32t8
+--candidates breeze2-chain --lines s15,s16,s18,s20 --pairs 12`): chained won 7 of 12, every pair of
+s20 and none of s16, so it helps some lines and is no clear fix.
+
+Turbo stays. The Breeze that fits beside the brain is about even with it, at the cost of a nearly
+full card, a smaller brain context and weaker results in the voice Winston uses; only near full
+precision (about 6.5 GB) is it clearly better, which would mean giving up Qwen3-ASR's hearing.
+`services/tts-breeze2` stays as a candidate for a better quantization, a newer model or more memory.

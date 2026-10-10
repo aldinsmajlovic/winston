@@ -21,3 +21,6 @@ web/dist/
 
 # The voice benchmark's copied clips, audio, results and listening page (tests/tts_bench/README.md)
 tests/tts_bench/work/
+
+# Breeze TTS 2 inference code, cloned at a pinned commit (services/tts-breeze2/server.py)
+services/tts-breeze2/upstream/

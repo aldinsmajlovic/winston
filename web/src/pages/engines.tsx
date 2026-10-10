@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Play, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { $api, type EngineConfig, type EngineStatus } from '@/api/client'
+import { useEngineActions } from '@/api/status'
 import { IconButton } from '@/components/icon-button'
 import { ItemDialog } from '@/components/item-dialog'
 import { KindIcon } from '@/components/kind-icon'
@@ -26,6 +27,7 @@ const nextPort = (engines: Record<string, EngineConfig>) =>
 export default function EnginesPage() {
   const s = useSettings([])
   const status = $api.useQuery('get', '/api/status')
+  const actions = useEngineActions()
   const ask = useConfirm()
   const navigate = useNavigate()
   const [adding, setAdding] = useState<Adding | null>(null)
@@ -100,6 +102,11 @@ export default function EnginesPage() {
       onRowClick={(r) => navigate(`/engines/${r.name}`)}
       actions={(r) => (
         <>
+          {r.status?.state === 'stopped' || r.status?.state === 'error' ? (
+            <IconButton label="Start" onClick={() => actions.start.mutate({ params: { path: { name: r.name } } })}>
+              <Play />
+            </IconButton>
+          ) : null}
           <IconButton label="Edit" onClick={() => navigate(`/engines/${r.name}`)}>
             <Pencil />
           </IconButton>

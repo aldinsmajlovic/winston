@@ -12,6 +12,7 @@ import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
 import { refreshHomeAssistant, toastSaved, type HAApply } from '@/hooks/use-home-assistant'
 import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
 import { capitalize, humanize, joinNames } from '@/lib/format'
+import { presetSwitches } from '@/lib/presets'
 import { deepEqual, deref, getIn, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
 
 type Edits = { changes: ConfigChange[]; version: string | undefined }
@@ -159,15 +160,22 @@ function keyLabel(root: JsonSchema, path: Path, name: string): string {
 }
 
 /** "Voice: Voice, Speed" per page, for the confirms. */
-function summary(root: JsonSchema, edits: ConfigChange[], keys: string[], byName: Map<string, SecretStatus>): string[] {
+function summary(root: JsonSchema, edits: ConfigChange[], keys: string[], byName: Map<string, SecretStatus>,
+                 switches: { line: string; paths: string[][] }[] = []): string[] {
   const groups = new Map<string, Set<string>>()
   const add = (page: string, label: string) => groups.set(page, (groups.get(page) ?? new Set()).add(label))
-  for (const c of edits) add(pagesOf(c.path)[0]?.label ?? 'Other', fieldLabel(root, c.path))
+  const switched = (path: Path) => switches.some((w) => w.paths.some((p) => p.every((k, i) => path[i] === k)))
+  for (const c of edits) {
+    if (switched(c.path)) continue
+    const page = pagesOf(c.path)[0]?.label ?? 'Other'
+    const label = fieldLabel(root, c.path)
+    add(page, label.startsWith(`${page}: `) ? label.slice(page.length + 2) : label)     // not "Engines: Engines: stt"
+  }
   for (const name of keys) {
     const path = secretPaths(name, byName)[0]
     add(pagesOf(path ?? [])[0]?.label ?? 'Keys', path ? keyLabel(root, path, name) : name)
   }
-  return [...groups].map(([page, labels]) => `${page}: ${[...labels].join(', ')}`)
+  return [...switches.map((w) => w.line), ...[...groups].map(([page, labels]) => `${page}: ${[...labels].join(', ')}`)]
 }
 
 /** The pages with unsaved edits or pasted keys, for the sidebar's dots. */
@@ -210,6 +218,7 @@ export function useSettings(paths: string[][]): Loading | Ready {
   const schema = useSchema()
   const actions = useEngineActions()
   const status = $api.useQuery('get', '/api/status')
+  const presets = $api.useQuery('get', '/api/presets')
   const secrets = useSecretsDraft()
   const { byName } = useSecretStatus()
   const ask = useConfirm()
@@ -303,14 +312,22 @@ export function useSettings(paths: string[][]): Loading | Ready {
 
     const engines = status.data?.engines ?? []
     const restartable = engines.filter((e) => restarts.includes(e.name) && e.state !== 'stopped' && e.state !== 'error')
+    // An engine the config gains starts on save (winstond starts what it did not run before).
+    const starting = [...new Set(changes.filter((c) => c.path[0] === 'engines').map((c) => String(c.path[1])))]
+      .filter((n) => value.engines?.[n] && value.engines[n].enabled !== false && !engines.some((e) => e.name === n))
     const later = restarts.some((name) => !engines.some((e) => e.name === name))
     const download = await needsDownload(changes, value, restartable)
+    // An engine the config no longer has (hearing switched back to Parakeet): its "restart" stops it for good.
+    const stopping = restartable.filter((e) => e.kind === 'engine' && !value.engines?.[e.name])
+    const restarting = restartable.filter((e) => !stopping.includes(e))
     const costs = [
-      ...restartable.map((e) =>
+      ...stopping.map((e) => `${capitalize(engineLabel(e))}: stops, nothing uses it now`),
+      ...restarting.map((e) =>
         e.name === 'llm' && download
           ? `${capitalize(engineLabel(e))}: ${DOWNLOAD_COST}`
           : `${capitalize(engineLabel(e))}: ${restartCost(e)}`,
       ),
+      ...starting.map((n) => `The ${n} engine: starts when saved`),
       ...(later ? ['Some changes apply on the next winston up'] : []),
     ]
 
@@ -330,15 +347,19 @@ export function useSettings(paths: string[][]): Loading | Ready {
         // A rename leads (its restarts are in the lines and the choices), as Save and restart would bury it.
         title: rename
           ? `Rename him to ${rename.new}?`
-          : restartable.length
-            ? `Save and restart ${joinNames(restartable.map(engineLabel))}?`
-            : 'Save these changes?',
-        lines: [...summary(root, changes, keys, byName), ...costs],
+          : restarting.length
+            ? `Save and restart ${joinNames(restarting.map(engineLabel))}?`
+            : stopping.length
+              ? `Save and stop ${joinNames(stopping.map(engineLabel))}?`
+              : starting.length
+              ? `Save and start the ${joinNames(starting)} engine?`
+              : 'Save these changes?',
+        lines: [...summary(root, changes, keys, byName, presetSwitches(base, value, presets.data)), ...costs],
         check,
         choices: restartable.length
           ? [
               { label: 'Save only', value: 'save' },
-              { label: 'Save and restart', value: 'restart' },
+              { label: restarting.length ? 'Save and restart' : 'Save and stop', value: 'restart' },
             ]
           : [{ label: 'Save', value: 'save' }],
       })

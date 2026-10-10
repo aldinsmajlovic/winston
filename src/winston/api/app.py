@@ -1005,7 +1005,11 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         # Before the reload, so channels that restart read Home Assistant's new tool list. A live voice
         # switch never touches Home Assistant.
         ha_apply = await apply_saved(cur, new) if "voice" not in applied and ha_changed(cur, new) else None
+        before = set(sup.items)
         await sup.reload(new)
+        if autostart:       # what the config just gained (a hearing engine, a channel) starts: no restart would
+            for name in sup.items.keys() - before:
+                spawn(sup.start(name))
         rooms.cfg = new
         await extensions.apply(cur, new)
         new_d = _dump(new)

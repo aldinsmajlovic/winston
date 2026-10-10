@@ -1,0 +1,31 @@
+[project]
+name = "winston-tts-breeze2"
+version = "0.1.0"
+description = "Winston TTS engine: OpenAI-compatible /v1/audio/speech server for Breeze TTS 2"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    # upstream's requirements.txt at the pinned commit (server.py); its code is cloned into upstream/
+    "torch==2.9.1",
+    "torchaudio==2.9.1",
+    "qwen-tts==0.1.1",          # the audio tokenizer; pins transformers 4.57.3
+    "transformers==4.57.3",
+    "huggingface-hub",
+    "torchao==0.14.1",          # 4-bit weights (--int4); the release built against torch 2.9
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "numpy>=2.0",
+    "soundfile>=0.13",
+    "onnx-asr[cpu,hub]>=0.12.0", # transcribes a reference clip once, for cloning with its words
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

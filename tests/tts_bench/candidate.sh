@@ -3,7 +3,7 @@
 # copied clips, wait until it answers, run bench.py against it, stop it. Its log goes to
 # work/logs/NAME.log. Extra arguments go to bench.py (--sentences 3 for a quick try).
 #
-#   tests/tts_bench/candidate.sh qwen3 | voxcpm2 | gepard | gepard-1.0 | pocket [bench.py args]
+#   tests/tts_bench/candidate.sh qwen3 | voxcpm2 | gepard | gepard-1.0 | breeze2 | breeze2-fast | breeze2-int4 | pocket [bench.py args]
 #
 # The GPU candidates need the live Chatterbox stopped first (see README.md): the script refuses to
 # start one while less than 5 GB of the card is free, so it never pushes the brain out of memory.
@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 work="$here/work"
 voices="$work/voices"
-name="${1:?usage: candidate.sh qwen3|voxcpm2|gepard|gepard-1.0|pocket [bench.py args]}"
+name="${1:?usage: candidate.sh qwen3|voxcpm2|gepard|gepard-1.0|breeze2|breeze2-fast|breeze2-int4|pocket [bench.py args]}"
 shift
 default="$voices/librivox/clifton_fatherbrown.wav"   # the voice Winston speaks in now
 gpu=1
@@ -22,6 +22,10 @@ case "$name" in
   voxcpm2)    dir=voxcpm2;   port=8892; args=() ;;
   gepard)     dir=gepard;    port=8893; args=() ;;
   gepard-1.0) dir=gepard;    port=8894; args=(--checkpoint nineninesix/gepard-1.0) ;;
+  breeze2)    dir=breeze2;   port=8896; args=() ;;
+  breeze2-fast) dir=breeze2; port=8897; args=(--fast backbone_decode depth_decoder codec) ;;
+  breeze2-int4) dir=breeze2; port=8898; args=(--fast backbone_decode depth_decoder codec --backbone-bits 4 --text-encoder-bits 4) ;;
+  breeze2-b4g32t8) dir=breeze2; port=8898; args=(--fast backbone_decode depth_decoder codec --backbone-bits 4 --int4-group 32 --text-encoder-bits 8) ;;
   pocket)     dir=pocket;    port=8895; gpu=0 ;;
   *) echo "unknown candidate $name"; exit 2 ;;
 esac
