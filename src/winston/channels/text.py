@@ -78,15 +78,17 @@ class TextSession:
     """One conversation over text: the brain, the claim guard and the tool log, minus STT and TTS.
     `winston talk` runs one; the Discord channel runs one per conversation. A spoken channel passes
     what comes after the printer (`outputs`: a TTS and where its audio goes), its own `tools`, and
-    `spoken` for the claim guard.
+    `spoken` for the claim guard. A check or trial passes `mentions=False`, so it does not take the household's
+    nudges and briefing (a replay once took the day's briefing, and he never said it to anyone).
 
         s = TextSession(cfg, channel="discord"); await s.start()
         reply = await s.ask("turn on the lights"); await s.close()"""
 
     def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False, observers: list | None = None,
                  room: RoomLink | None = None, area: str | None = None, brain_channel: str = "text",
-                 outputs: list | None = None, tools: list | None = None, spoken: bool = False):
+                 outputs: list | None = None, tools: list | None = None, spoken: bool = False, mentions: bool = True):
         self.cfg, self.channel, self.echo, self.room, self.area = cfg, channel, echo, room, area
+        self.mentions = mentions
         self.brain_channel = brain_channel   # whose thinking the brain uses: a replayed spoken turn's own channel
         self._extra = observers or []
         self._outputs, self._tools, self._spoken = outputs or [], tools or [], spoken
@@ -106,7 +108,7 @@ class TextSession:
         guard = ClaimGuard(cfg, channel=self.channel, spoken=self._spoken)
         self._tracker = TurnTracker(guard); self.printer = Printer(self._tracker, self.echo)
         before, after = ([self.room.before], [self.room.after]) if self.room else ([], [])
-        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), Mentions(cfg), *before, self.brain.llm, guard,
+        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), *([Mentions(cfg)] if self.mentions else []), *before, self.brain.llm, guard,
                                                 self.printer, *self._outputs, agg.assistant(), *after]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[guard.observer, self.brain.verifier.observer,

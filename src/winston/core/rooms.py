@@ -38,7 +38,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pydantic import BaseModel, Field
 
 from winston.config.schema import WinstonConfig
-from winston.core.common import entity_names, key, sse
+from winston.core.common import key, sse
 from winston.core.guard import is_note
 
 SHARED_ROLES = ("user", "assistant", "tool")
@@ -56,36 +56,6 @@ def area(cfg: WinstonConfig, room: str) -> str:
 def configured(cfg: WinstonConfig) -> list[str]:
     """Rooms named in config: the satellite boxes."""
     return list(cfg.channels.satellite.devices)
-
-
-DEVICE_AREAS_SECS = 600.0
-_device_areas: dict[str, str] = {}
-_device_areas_at = -DEVICE_AREAS_SECS
-
-
-async def device_areas(cfg: WinstonConfig) -> dict[str, str]:
-    """Every name an exposed device answers to (its Home Assistant name and aliases, common.entity_names), folded,
-    mapped to the Home Assistant area it is in. Read from Home Assistant's registry at most every ten
-    minutes; empty when it cannot be read (no admin token, Home Assistant away)."""
-    global _device_areas, _device_areas_at
-    ha = cfg.providers.ha
-    if ha is None or time.monotonic() - _device_areas_at < DEVICE_AREAS_SECS:
-        return _device_areas
-    _device_areas_at = time.monotonic()
-    from winston.providers.home_assistant import HomeAssistant
-    try:
-        snap = await HomeAssistant(cfg).snapshot(list(ha.expose))
-    except Exception as e:                                                  # noqa: BLE001
-        logger.warning(f"device areas not read: {e}")
-        return _device_areas
-    found = {}
-    for eid, ent in ha.expose.items():
-        if where := snap.area(eid)[1]:
-            for n in (snap.display_name(eid), *entity_names(eid, ent), *snap.aliases(eid)):
-                if n:
-                    found[key(n)] = where
-    _device_areas = found
-    return found
 
 
 def scoped_by_name(args: dict, areas: dict[str, str]) -> dict:

@@ -86,6 +86,10 @@ flowchart TB
   reply. A box that wakes holds the room's mic, and a browser session in the room hears silence until
   its reply has played. The room goes in the time stamp of each message, so "the lights" means its
   lights. See [rooms](rooms.md).
+- **Directory** (`core/directory.py`): what the names in his world mean. Each brain reads Home
+  Assistant's exposed entities, areas and aliases when it starts (at most every ten minutes) and puts a
+  map of the house in its prompt, rooms with what is in each, so naming a device needs no lookup. The
+  same read tells which area a device is in. See [understanding](understanding.md#2-directory).
 - **Announcements** (`core/announce.py`): winstond is the hub. Home Assistant events, the API and the
   CLI publish; channel sessions (browser voice, each satellite box, Discord) subscribe to
   `/api/events` with the room they are in and deliver (chime and speech, or a DM). An announcement

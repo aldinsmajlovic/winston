@@ -7,7 +7,6 @@ tool-call loop itself, streaming. Local tools sit next to the MCP ones.
     ... pipeline uses brain.llm ...
     await brain.close()
 """
-import asyncio
 import json
 import os
 import re
@@ -36,10 +35,10 @@ from winston.config import resolve
 from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import)
 from winston.config.schema import WinstonConfig
 from winston.core import persona as persona_file
-from winston.core import guard, region
+from winston.core import directory, guard, region
 from winston.core.common import Once, entity_names, key, log_event, rewrap, words_pattern
 from winston.core.memory import make_memory_tools, prompt_block
-from winston.core.rooms import device_areas, plain_words, scoped_by_name
+from winston.core.rooms import plain_words, scoped_by_name
 from winston.core.tools.ask_claude import make_ask_claude_tool
 from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.messaging import make_send_message_tool
@@ -90,13 +89,13 @@ class Clock(FrameProcessor):
 _STAMP = re.compile(r"\[\d\d:\d\d(, room: [^\]]+)?\] ")
 
 
-def persona(cfg: WinstonConfig) -> str:
-    """The persona file, the remembered facts, notes from running extensions, the region and the reply
-    language, read when a session's LLM is built.
+def persona(cfg: WinstonConfig, house: str = "") -> str:
+    """The persona file, the remembered facts, notes from running extensions, the map of the house
+    (directory.house_map), the region and the reply language, read when a session's LLM is built.
     The language comes last: a line in the persona lost to the user's language every time (asked in
     Swedish, he answered in Swedish 8 of 8); at the end of the prompt it holds."""
     text = persona_file.prompt_text(cfg).strip()
-    parts = [text, prompt_block(cfg), extension_texts.prompt_block(cfg), region.prompt_block(cfg), today(),
+    parts = [text, prompt_block(cfg), extension_texts.prompt_block(cfg), house, region.prompt_block(cfg), today(),
              f"The user may speak another language, like Swedish: understand it and do what they ask, as you "
              f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
              f"only {cfg.assistant.language}."]
@@ -362,7 +361,7 @@ class WinstonLLM(OpenAILLMService):
         return params
 
 
-def build_llm(cfg: WinstonConfig, channel: str = "voice") -> OpenAILLMService:
+def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "") -> OpenAILLMService:
     c = cfg.llm
     if c.provider != "openai_compatible":
         raise ValueError(f"unsupported llm provider {c.provider}")
@@ -376,7 +375,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice") -> OpenAILLMService:
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=c.model,
-            system_instruction=persona(cfg),   # must live in Settings; a bare kwarg is ignored when settings= is given
+            system_instruction=persona(cfg, house),   # must live in Settings; a bare kwarg is ignored when settings= is given
             temperature=s.temperature, top_p=s.top_p, presence_penalty=s.presence_penalty,
             max_completion_tokens=s.max_tokens,
             extra={"extra_body": body} if body else {},
@@ -394,7 +393,7 @@ class Brain:
         # Checks Home Assistant's state after an action; the channel sets verifier.deliver and adds
         # verifier.observer to its pipeline (core/verify.py).
         self.verifier = Verifier(cfg, channel)
-        self._areas: asyncio.Task | None = None
+        self._areas: dict[str, str] = {}
         # A spoken channel sets this to say a line (an extension tool's filler when it is slow).
         self.on_slow: Callable[[str], Awaitable[None]] | None = None
         self.tools_signature: str | None = None     # the extension tools it started with (extension_host.client)
@@ -402,6 +401,10 @@ class Brain:
     async def start(self):
         ha = self.cfg.providers.ha
         if ha is not None:
+            # Built again with the map of the house, which needs Home Assistant read first.
+            snap = await directory.home(self.cfg)
+            self.llm = build_llm(self.cfg, self.channel, directory.house_map(self.cfg, snap))
+            self._areas = directory.device_areas(self.cfg, snap)
             token = os.environ.get(ha.token_env)
             if not token:
                 raise RuntimeError(f"{ha.token_env} is not set (data/.env)")
@@ -430,18 +433,15 @@ class Brain:
 
     def _scope_by_name(self):
         """Wrap the Home Assistant tools that take a name and an area, so a call that names a device keeps
-        that device's own area (rooms.scoped_by_name). The areas are read in the background; calls made
-        before they arrive go out unchanged."""
-        self._areas = asyncio.create_task(device_areas(self.cfg))
+        that device's own area (rooms.scoped_by_name)."""
         for t in self.tools.standard_tools:
             if {"name", "area"} <= set(t.properties or {}):
                 rewrap(self.llm, t.name, self._scoped)
 
     def _scoped(self, original):
         async def handler(params):
-            areas = self._areas.result() if self._areas.done() and not self._areas.cancelled() else {}
             if isinstance(params.arguments, dict):
-                scoped = scoped_by_name(params.arguments, areas)
+                scoped = scoped_by_name(params.arguments, self._areas)
                 if scoped is not params.arguments:
                     logger.info(f"{params.function_name}: {params.arguments['name']!r} is not in "
                                 f"{params.arguments['area']!r}, area left out")
@@ -455,8 +455,6 @@ class Brain:
         self.tools.standard_tools.append(schema)
 
     async def close(self):
-        if self._areas:
-            self._areas.cancel()
         await self.verifier.close()
         if self._mcp:
             await self._mcp.close()

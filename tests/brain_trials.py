@@ -95,7 +95,7 @@ def matches(expect: str, called: list[str]) -> bool:
 async def run_case(case: dict) -> dict:
     before = snapshot()
     watch = Watch()
-    s = TextSession(CFG, channel="trial", observers=[watch]); await s.start()
+    s = TextSession(CFG, mentions=False, channel="trial", observers=[watch]); await s.start()
     ts, turns = time.time(), []
     try:
         for say in case["say"]:

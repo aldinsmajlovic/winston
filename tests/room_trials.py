@@ -32,7 +32,7 @@ def targets(calls: list[tuple[str, dict]]) -> list[str]:
 
 async def trial(cfg, place: str | None, said: str) -> tuple[list[tuple[str, dict]], str]:
     calls: list[tuple[str, dict]] = []
-    s = TextSession(cfg, channel="room-trial", area=place)
+    s = TextSession(cfg, mentions=False, channel="room-trial", area=place)
     await s.start()
     for t in s.brain.tools.standard_tools:
         if t.name in ACT_STUBS:

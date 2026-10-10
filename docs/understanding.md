@@ -2,8 +2,8 @@
 
 How Winston hears, decides whether he is being spoken to, and knows what a name means. A design,
 proposed 2026-10-07 after the first week of real use. Built so far: part 1 (the turn record, marks by
-voice, on the page and from the command line, `winston check turns`). Each part becomes the reference for
-itself as it is built.
+voice, on the page and from the command line, `winston check turns`), part 2's map of the house, and
+part 3's hearing slot. Each part becomes the reference for itself as it is built.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/turns-dark.png">
@@ -100,7 +100,14 @@ has to mean something.
   - Hearing gets the names as context (part 3), so an artist in your library is expected before
     it is said.
   - The brain gets a short map of the house up front: rooms, what is in each, what each can do. A lamp
-    named in the map needs no lookup.
+    named in the map needs no lookup. **Built** (`core/directory.py`): each Home Assistant area with what
+    is exposed in it, by the name you gave it (Home Assistant's own name and the aliases after it), its
+    kind and, for a light, whether it dims, goes warm to cool or takes a colour. A group is listed in its
+    members' area with its members, first, and the brain is told to call a group once rather than each
+    light. No states, so the prompt stays the same between turns; "is it on?" and "a bit dimmer" still
+    read the state with GetLiveContext. Read from Home Assistant when a conversation starts, at most every
+    ten minutes and again when the exposed list changes; without an admin token there are no areas, and
+    the map lists everything under "In no room".
   - For lists too long to put in front of the brain (a music library, all of Spotify), a lookup returns
     a few ranked candidates and the brain picks. Spotify's search returns tracks with their artists and
     popularity instead of playing the first of five results.

@@ -109,7 +109,7 @@ async def replay(cfg: WinstonConfig, hearing: Hearing, t: dict, store: TurnStore
     row["wer"] = round(wer(row["heard"], ref), 3)
 
     observer = TurnObserver()
-    s = TextSession(cfg, channel="check", observers=[observer], area=area(cfg, t["room"]) if t.get("room") else None,
+    s = TextSession(cfg, mentions=False, channel="check", observers=[observer], area=area(cfg, t["room"]) if t.get("room") else None,
                     brain_channel=t["channel"])
     await s.start()
     for tool in s.brain.tools.standard_tools:
