@@ -60,13 +60,22 @@ class DockerDriver:
                 return
             if c:
                 c.remove(force=True)
+            volumes = {str(Path(_expand(h)).expanduser()): c_ for h, c_ in self.cfg.volumes.items()}
+            # Made as us first: a container runs as root and would make a missing host folder root's, and
+            # a Hugging Face cache's hub/ with it, which engines on the host (a voice) then cannot write.
+            from winston.api.options import hf_cache
+            for host in volumes:
+                if not Path(host).exists():
+                    Path(host).mkdir(parents=True)
+            hub = hf_cache({"volumes": volumes})
+            if str(hub.parent) in volumes:              # from one of its volumes, not the HF_HOME fallback
+                hub.mkdir(exist_ok=True)
             kwargs = dict(
                 name=self.name, command=[_expand(a) for a in self.cfg.args], detach=True,
                 labels={FINGERPRINT: self.fingerprint},
                 environment=self.cfg.env,
                 ports={f"{self.cfg.port}/tcp": ("127.0.0.1", self.cfg.port)},
-                volumes={str(Path(_expand(h)).expanduser()): {"bind": c_, "mode": "rw"}
-                         for h, c_ in self.cfg.volumes.items()},
+                volumes={h: {"bind": c_, "mode": "rw"} for h, c_ in volumes.items()},
             )
             if self.cfg.ipc_host:
                 kwargs["ipc_mode"] = "host"

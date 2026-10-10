@@ -210,7 +210,9 @@ Declared under `engines:` in config with a driver:
   `--gpus` path broken by a stale CDI spec on some hosts, set `runtime: nvidia` explicitly. The
   container carries a label with a hash of its engine block; `winston up` replaces a running
   `winston-<name>` container whose label does not match, so a swapped engine never silently keeps
-  the old one.
+  the old one. Before it starts one, the host side of each volume is made as you, and `hub/` in a
+  Hugging Face cache volume: the container runs as root, and a folder it made would be root's, which a
+  voice running on the host then cannot download its model into.
 - `subprocess`: cmd and cwd, with `{data}` and `{repo}` expanding. Used for the Chatterbox TTS server,
   which has its own venv because it pins torch 2.6.
 - `external`: a URL you already run; Winston only health-checks it.
