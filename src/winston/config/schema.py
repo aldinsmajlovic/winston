@@ -619,6 +619,10 @@ class McpServer(Model):
     command: list[str] | None = Field(None, description="How to start it, for a server that talks over stdio.")
     url: str | None = Field(None, description="Where it listens, for a server that talks over HTTP.")
     env: list[str] = Field(default_factory=list, description="Variables from data/.env it gets; no others.")
+    token_env: str | None = Field(None, title="Token variable",
+                                  description="For a server over HTTP: the variable in data/.env that holds its "
+                                              "token, sent as Authorization: Bearer on every request.",
+                                  json_schema_extra=ui("advanced", secret=secret("MCP_TOKEN", "Token")))
 
 
 class ExtensionConfig(Model):

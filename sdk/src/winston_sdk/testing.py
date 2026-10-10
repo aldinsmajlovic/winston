@@ -31,6 +31,7 @@ import httpx
 
 from winston_sdk.context import Clock
 from winston_sdk.errors import NotPermitted
+from winston_sdk.fields import picked
 from winston_sdk.loader import load
 from winston_sdk.manifest import refusal
 from winston_sdk.nudge import Nudge, NudgeInfo
@@ -64,9 +65,11 @@ class FakeClock(Clock):
 
 
 class FakeHA:
-    """States and service answers for `ctx.ha`. `calls` records every service call."""
+    """States and service answers for `ctx.ha`, and devices for `ctx.devices()`. `calls` records every
+    service call."""
 
-    def __init__(self, states: dict[str, Any] | None = None, services: dict[str, Any] | None = None):
+    def __init__(self, states: dict[str, Any] | None = None, services: dict[str, Any] | None = None,
+                 devices: list[dict[str, Any]] | None = None):
         self.states: dict[str, dict[str, Any]] = {}
         self.history: dict[str, list[dict[str, Any]]] = {}
         for entity_id, value in (states or {}).items():
@@ -75,6 +78,7 @@ class FakeHA:
             else:
                 self.set(entity_id, value)
         self.services = services or {}
+        self.devices = devices or []                    # as ctx.devices() gives them: id, name, manufacturer, ...
         self.calls: list[dict[str, Any]] = []
 
     def set(self, entity_id: str, state: Any, attributes: dict | None = None, at: datetime | None = None) -> None:
@@ -120,7 +124,9 @@ class FakeServices:
 
     async def call(self, op: str, **p: Any) -> Any:
         h = self.h
-        if (why := refusal(h.ext.manifest.permissions, op, p)) is not None:
+        picks = set(picked(h.ext.settings_model.model_json_schema(), h.rt.settings.model_dump(mode="json"),
+                           "extension_tool")) if op == "ext.call" else set()
+        if (why := refusal(h.ext.manifest.permissions, op, p, {(e, t) for t, e in picks})) is not None:
             raise NotPermitted(why)
         match op:
             case "ha.state":
@@ -139,6 +145,8 @@ class FakeServices:
                 h.facts.append({"text": p["text"], "topic": p["topic"], "noted": str(h.clock.now().date()),
                                 "until": p.get("until")})
                 return f"Remembered: {p['text']}"
+            case "devices":
+                return h.ha.devices
             case "presence":
                 return {"home": h.home, "since": None}
             case "llm.ask":

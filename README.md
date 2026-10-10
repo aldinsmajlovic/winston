@@ -28,7 +28,8 @@ by default, and any part can be swapped for a hosted service.
 - **Speaks up.** Announcements from Home Assistant and reminders from extensions reach the room you
   are in or your phone, never during quiet hours.
 - **Extensible.** Add a tool in one Python file or connect any MCP server. Hevy, news, reminders and
-  Spotify come built in.
+  Spotify come built in, and a small server on each of your computers lets him open apps, files and
+  pages there and tell you how it is doing.
 - **Borrows a voice.** A friend agrees out loud and talks for fifteen seconds; Winston can then speak
   as them.
 
@@ -60,7 +61,7 @@ Optional keys (web search, Claude, Discord) are listed in [tools](docs/tools.md)
 
 - **Using it:** [running](docs/running.md), [Home Assistant](docs/home-assistant.md),
   [tools](docs/tools.md), [voices](docs/voices.md), [announcements](docs/announcements.md),
-  [Discord](docs/discord.md)
+  [Discord](docs/discord.md), [computers](docs/computer.md)
 - **Rooms:** [Voice PE satellite](docs/voice-pe.md), [rooms](docs/rooms.md)
 - **Extending it:** [extensions](docs/extensions.md), [built-in extensions](docs/built-in-extensions.md)
 - **How it works:** [architecture](docs/architecture.md), [hardware](docs/hardware.md),

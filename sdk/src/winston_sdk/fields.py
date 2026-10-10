@@ -83,6 +83,51 @@ def Entity(domain: str | list[str] | None = None, *, device_class: str | None = 
                                                 entity=True))
 
 
+def Extensions(tool: str, *, default: Any = _UNSET, title: str | None = None, description: str | None = None,
+               level: str = "basic") -> Any:
+    """A picker of the switched-on extensions and MCP servers that have a read tool named `tool`; the
+    value is their ids (`list[str]`, or `str` for one). Picking one is consent for the extension to call
+    that tool through `ctx.ext(id).call(tool)`."""
+    return pydantic.Field(default, title=title, description=description,
+                          json_schema_extra=_ui(level, options="extension_tools", options_query={"tool": tool},
+                                                extension_tool=tool))
+
+
+def _deref(node: dict, defs: dict) -> dict:
+    while "$ref" in node:
+        node = defs.get(node["$ref"].rsplit("/", 1)[-1], {})
+    return node
+
+
+def picked(settings_schema: dict[str, Any], settings: Any, marker: str) -> list[tuple[Any, str]]:
+    """(the marker's value, a value picked) for each field whose schema carries `marker` (`entity` for
+    Entity, `extension_tool` for Extensions), at any depth: one plant's sensor in a dict of plants counts.
+    winstond and the test harness both read consent this way."""
+    defs, out = settings_schema.get("$defs", {}), []
+
+    def walk(node: dict, value: Any) -> None:
+        node = _deref(node, defs)
+        if node.get(marker):
+            for v in value if isinstance(value, list) else [value]:
+                if isinstance(v, str) and v:
+                    out.append((node[marker], v))
+        for option in node.get("anyOf", []):
+            walk(option, value)
+        if isinstance(value, dict):
+            props, extra = node.get("properties", {}), node.get("additionalProperties")
+            for k, v in value.items():
+                if k in props:
+                    walk(props[k], v)
+                elif isinstance(extra, dict):
+                    walk(extra, v)
+        elif isinstance(value, list) and isinstance(node.get("items"), dict):
+            for v in value:
+                walk(node["items"], v)
+
+    walk(settings_schema, settings)
+    return out
+
+
 def Topic(*, default: Any = _UNSET, title: str | None = None, description: str | None = None,
           level: str = "basic") -> Any:
     """A picker of memory topics."""

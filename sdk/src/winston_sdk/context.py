@@ -70,6 +70,21 @@ class State:
 
 
 @dataclass
+class Device:
+    """A device in Home Assistant's registry, as far as the `devices` permission shows it. `service` is
+    true for what Home Assistant lists as a service rather than hardware (an add-on, a cloud account)."""
+    id: str
+    name: str
+    manufacturer: str | None = None
+    model: str | None = None
+    model_id: str | None = None
+    sw_version: str | None = None
+    hw_version: str | None = None
+    area: str | None = None
+    service: bool = False
+
+
+@dataclass
 class Fact:
     text: str
     topic: str
@@ -227,6 +242,10 @@ class Ctx:
         if self._http is None:
             self._http = self._rt.make_http(self)
         return self._http
+
+    async def devices(self) -> list[Device]:
+        """Every device Home Assistant knows, exposed or not (needs `devices`)."""
+        return [Device(**d) for d in await self._call("devices")]
 
     def ext(self, extension_id: str) -> _Other:
         return _Other(self, extension_id)

@@ -51,7 +51,7 @@ export type FormContext = {
 
 type Meta = JsonSchema & {
   options?: string
-  options_query?: { domain?: string }
+  options_query?: { domain?: string; tool?: string }
   labels?: Record<string, string>
   icons?: Record<string, string>
   widget?: string

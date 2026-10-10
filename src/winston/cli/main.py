@@ -240,7 +240,9 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     # each file is a step of its own, so one failing does not hide the rest
     unit_steps = {t.name: [sys.executable, str(t)] for t in unit} | \
         {f"{name}_test.py": [sys.executable, "-m", "winston.cli.main", "ext", "test", name]
-         for name in builtin}   # built-in extensions' own tests
+         for name in builtin} | \
+        {"computer cases.py": ["uv", "run", "--project", str(repo_root() / "computer"), "python",
+                               str(repo_root() / "computer" / "tests" / "cases.py")]}   # its own environment
     plan = {"unit": unit_steps,
             "ui": ["pnpm", "--dir", str(repo_root() / "web"), "smoke"],
             "m0": ["bash", str(tests / "m0_tool_call.sh")],

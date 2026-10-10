@@ -173,7 +173,8 @@ function summary(root: JsonSchema, edits: ConfigChange[], keys: string[], byName
   }
   for (const name of keys) {
     const path = secretPaths(name, byName)[0]
-    add(pagesOf(path ?? [])[0]?.label ?? 'Keys', path ? keyLabel(root, path, name) : name)
+    // A key the saved config does not name yet (a new MCP server's token) is listed by its name.
+    add((path && pagesOf(path)[0]?.label) || 'Keys', path ? keyLabel(root, path, name) : name)
   }
   return [...switches.map((w) => w.line), ...[...groups].map(([page, labels]) => `${page}: ${[...labels].join(', ')}`)]
 }

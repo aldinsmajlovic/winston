@@ -115,6 +115,121 @@ Not Home Assistant's Spotify integration or Music Assistant: the integration is 
 that already are Spotify Connect speakers and cannot search, and the box is not one; Music Assistant
 reaches a box through Home Assistant, which would take the box's microphone from Winston.
 
+## Vulnerabilities
+
+Approved 2026-10-10. Built: what it needs from the standard (below); the extension itself is not built
+yet. The order is in the [plan](plan.md) (Computers and vulnerabilities track).
+
+New vulnerabilities as they come out, and whether you have them. It never patches anything. Two
+sources, both free and with no key:
+
+- **CISA's [Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)
+  catalog** (KEV): one JSON file of bugs with evidence of being exploited. It held 1,739 on 8 October
+  2026, with 21 to 43 added each month this year.
+- **ENISA's [EU Vulnerability Database](https://euvd.enisa.europa.eu)** (EUVD): every new CVE, with
+  its score and the vendor and product it names. In the week to 10 October, 2,787 CVEs were published,
+  and 329 of them were scored 9 or more.
+
+Stories about security are the News extension's Security preset; this is the vulnerabilities
+themselves.
+
+### What is new
+
+- **Newly exploited**: every entry CISA adds, in the briefing: what it is, whose product, and whether
+  ransomware uses it. About one a day.
+- **Critical, in what you follow**: a new CVE scored 9 or more whose vendor or product is something you
+  have (below) or a name on the card's Follow list ("OpenSSH", "Home Assistant", "WordPress"), in the
+  briefing, at most three a day, highest score first. Following everything would be about 47 a day;
+  Google alone had 26 in that week. The rest wait for the tool.
+- **`vulns_recent`**: what was newly exploited and newly critical in the last days (7 unless asked),
+  all of it or about one vendor or product. "Any new vulnerabilities?", "what got exploited this
+  week?", "anything new about Chrome?".
+
+Both kinds are pushed, one nudge per CVE, and expire after three days, as news goes stale. A CVE you
+have is said as one you have (below), never twice.
+
+### What you have
+
+What you own comes from where it is already known:
+
+- **Home Assistant's devices**: the maker, model and firmware of every device it knows, exposed or not
+  (needs the new `devices` permission, below).
+- **Your computers**: each computer server you pick, through its `security_updates`
+  ([computers](computer.md)).
+- **Anything else**: a list on the card, each entry a name, a vendor, a product and optionally a
+  version, for what neither knows (a router with no Home Assistant integration, a NAS, a phone).
+
+An exploited CVE (in the catalog) matches what you have in one of two ways:
+
+- **Sure**: it is among the CVE ids of a computer's waiting updates. You have it, and the update that
+  fixes it is waiting. Level 2.
+- **Likely**: the catalog's vendor is the device's maker (compared without Inc, Ltd, GmbH and the
+  like), and the background model, given the catalog entry and the device's maker, model and firmware,
+  says yes, this is that product. Level 1. The catalog gives no versions, so a likely match can be one
+  you already patched; a device's likely match ends when its firmware changes.
+
+Word matching alone is not enough: in the 8 October catalog, 389 of the 1,739 entries are Microsoft's,
+and products read "Multiple Products" (Apple), "Multiple Routers" (TP-Link, Netgear) or "Kernel"
+(Linux). So a computer's CVE ids win where its package tool gives them, and elsewhere the model judges
+the product. Computers whose tool gives no ids (Ubuntu's apt, Arch, macOS, Homebrew, winget) are
+matched like devices, by their OS and their waiting updates. A critical CVE that is not (yet)
+exploited is news, not a match: it reaches you through the Follow kind above.
+
+- **"Exploited, and you have it"**: a checked kind, one nudge per CVE and thing, so it ends by itself
+  when the update is installed (the CVE leaves the computer's list), and "that's not mine" dismisses it
+  for good. Sure matches at the next talk, likely ones in the briefing; changeable per level on the
+  card. What is already in the catalog when you switch it on is listed by the tool but not said, unless
+  it is a sure match.
+- **`vulns_to_patch`**: everything you have with a match, sure ones first: the thing, the CVE, what it
+  is (the catalog's name and description), CISA's required action, when it was listed, whether it is
+  known to be used by ransomware, and for a computer the waiting update that fixes it. "Anything I need
+  to patch?", "is the router affected by anything?".
+
+### How it runs
+
+- **Every 6 hours** it reads the catalog, asking with If-Modified-Since, so an unchanged catalog costs
+  one 304, and EUVD's search for CVEs published since its last read and scored 9 or more, a hundred
+  at a time. Every hour it reads each picked computer's `security_updates`, and each day Home
+  Assistant's devices. It keeps 14 days of new CVEs in its folder, and both tools answer from what was
+  read, so a question never waits on the web.
+- **Status**: the catalog's date, and how many sure and likely matches. **Entity**: the number of
+  exploited vulnerabilities you have.
+- EUVD's API is young, and its documentation page needs a browser to read. If it stops answering, the
+  Follow kind says so on the card and the rest works on.
+
+```toml
+permissions = { network = ["www.cisa.gov", "euvdservices.enisa.europa.eu"], devices = true, llm = true }
+```
+
+Nothing about what you have or follow leaves the house: the catalog is downloaded whole, the search
+asks only for a date and a score, and the matching happens here, by the background model where it
+judges, which is the local brain unless you picked a cloud one. Text from the catalog and EUVD is from
+outside: it reaches his brain only as facts marked as information, and the model's answer about it is
+a yes or a no.
+
+### What this needs from the standard
+
+Two additions, each for any extension, not for this one. Built 2026-10-10 and in
+[extensions](extensions.md) (permissions, settings and `ctx`).
+
+1. **`devices = true`**, and `ctx.devices()`: every device in Home Assistant's device registry, as
+   `Device(id, name, manufacturer, model, model_id, sw_version, hw_version, area, service)`, `service`
+   being true for what Home Assistant lists as a service (an add-on, Home Assistant itself). It is not part of
+   `home_assistant = "read"`, which is scoped on purpose to exposed and picked entities and reads their
+   states (least privilege, plan §6 rule 5). An inventory needs every device, exposed or not (routers,
+   cameras and storage are rarely exposed to a voice assistant), and none of their states. Network
+   addresses, serial numbers and integration ids stay out: nothing that matches a vulnerability needs
+   them. A firmware update reminder, a battery list or a warranty tracker would use the same
+   permission. winstond already reads the registry for the map of the house.
+2. **Picking another extension's tool in settings**: `Extensions(tool="security_updates")`, a picker of
+   the extensions and MCP servers that are switched on and have a read tool of that name. Picking one is
+   consent for this extension to call that tool through `ctx.ext(id).call(...)`, as picking an entity is
+   consent to use it. `ctx.ext` then reaches an MCP server's read tools too (today only an SDK
+   extension's), by the tier you set on that server's card. The manifest's `extensions = [...]` cannot
+   do this: it names ids fixed when the extension is written, and computers get their names when you
+   add them. A backup monitor over each computer's `logs`, or a disk-space nudge over each `status`,
+   would use the same picker.
+
 ## With his brain
 
 Checked with the 27B through the voice channel's brain (`tests/extensions_brain.py`, Reminders and

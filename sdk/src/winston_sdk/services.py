@@ -28,7 +28,7 @@ class RestServices:
             detail = r.text
         if r.status_code == 403:
             raise NotPermitted(detail)
-        if r.status_code == 502 and op.startswith("ha."):
+        if r.status_code == 502 and (op.startswith("ha.") or op == "devices"):
             raise HomeAssistantError(detail)
         raise RuntimeError(f"{op}: {detail}")
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any, Literal
 
@@ -26,13 +27,17 @@ class Permissions(BaseModel):
     presence: bool = False
     llm: bool = False
     speakers: bool = Field(False, description="Play an audio stream on your speakers (ctx.speakers).")
+    devices: bool = Field(False, description="Every device Home Assistant knows: name, maker, model, firmware and "
+                                             "area (ctx.devices), with no states, addresses or serial numbers.")
     extensions: list[str] = Field(default_factory=list, description="Extensions whose read tools it may call.")
 
 
-def refusal(perms: Permissions, op: str, params: dict[str, Any]) -> str | None:
+def refusal(perms: Permissions, op: str, params: dict[str, Any],
+            picked: Collection[tuple[str, str]] = ()) -> str | None:
     """Why these permissions do not cover one of winstond's operations (`ctx.ha.call` is "ha.call"), or
-    None. winstond and the test harness both ask; the entities a Home Assistant call names are winstond's
-    to check, and `network` is ctx.http's."""
+    None. `picked` holds the (extension, tool) pairs picked in its settings with `Extensions`, which may be
+    called as if listed. winstond and the test harness both ask; the entities a Home Assistant call names
+    are winstond's to check, and `network` is ctx.http's."""
     if op.startswith("ha.") and perms.home_assistant is None:
         return "this extension has no home_assistant permission"
     if op == "ha.call" and perms.home_assistant != "act":
@@ -45,7 +50,10 @@ def refusal(perms: Permissions, op: str, params: dict[str, Any]) -> str | None:
         return "this extension has no presence permission"
     if op == "llm.ask" and not perms.llm:
         return "this extension has no llm permission"
-    if op == "ext.call" and params["extension"] not in perms.extensions:
+    if op == "devices" and not perms.devices:
+        return "this extension has no devices permission"
+    if op == "ext.call" and params["extension"] not in perms.extensions and \
+            (params["extension"], params["tool"]) not in picked:
         return f"this extension may not call {params['extension']}"
     if op.startswith("speakers.") and not perms.speakers:
         return "this extension has no speakers permission"

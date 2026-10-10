@@ -1145,8 +1145,10 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                           domain: str | None = Query(None, description="ha_entities: comma-separated domains to keep"),
                           q: str | None = Query(None, description="discord_users: a user id to look up"),
                           engine: str | None = Query(None, description="llm_models: the draft brain engine block as JSON, "
-                                                                       "to list the downloads it can load")):
-        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q, "engine": engine})
+                                                                       "to list the downloads it can load"),
+                          tool: str | None = Query(None, description="extension_tools: the read tool they must have")):
+        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q, "engine": engine,
+                                                  "tool": tool, "extensions": extensions})
         if out is None:
             raise HTTPException(404, f"no options named {name}")
         return out

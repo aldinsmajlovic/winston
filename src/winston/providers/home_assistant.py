@@ -320,6 +320,13 @@ class HomeAssistant:
                     snap.errors.append(str(e))
         return snap
 
+    async def devices(self) -> tuple[list[dict], dict[str, str]]:
+        """The device registry as Home Assistant lists it, and area id -> name."""
+        async with self._session() as s, _Socket(s, self.url, self.token) as ws:
+            devices = await ws.call("config/device_registry/list") or []
+            areas = {a["area_id"]: a["name"] for a in await ws.call("config/area_registry/list") or []}
+        return devices, areas
+
     async def plan(self, old: HomeAssistantConfig | None = None) -> tuple[ExposurePlan, Snapshot]:
         """What an apply would do, with old the config before a save (None: remove no aliases)."""
         snap = await self.snapshot(list(dict.fromkeys([*self.ha.expose, *(old.expose if old else {})])))

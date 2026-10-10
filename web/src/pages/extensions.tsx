@@ -6,6 +6,7 @@ import { $api, type ExtensionView } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
 import { PageSkeleton } from '@/components/page'
+import { SecretField } from '@/components/secret-field'
 import { SectionForm } from '@/components/section-form'
 import { StateIcon } from '@/components/state-icon'
 import { StatusTip } from '@/components/status-tip'
@@ -19,6 +20,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { setSecret } from '@/hooks/use-secrets'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { capitalize } from '@/lib/format'
 import { getIn, section, setIn } from '@/lib/schema'
@@ -76,6 +78,7 @@ function reach(e: ExtensionView): string[] {
   else out.push(...hosts)
   if (p.home_assistant) out.push(p.home_assistant === 'act' ? 'Home Assistant: changes things' : 'Home Assistant: reads')
   if (p.memory) out.push(p.memory === 'write' ? 'Memory: reads and writes' : 'Memory: reads')
+  if (p.devices) out.push('Home Assistant: its devices')
   if (p.presence) out.push('Whether you are home')
   if (p.llm) out.push('The background model')
   for (const other of (p.extensions as string[] | undefined) ?? []) out.push(`Tools of ${other}`)
@@ -267,6 +270,34 @@ function SpeakingUp({ e, page }: Props) {
   )
 }
 
+/** The variable an MCP server's token goes in when none is named yet: one per server, by its id. */
+const tokenVar = (id: string) => `${id.toUpperCase()}_MCP_TOKEN`
+
+/** An MCP server over HTTP: its token, kept in data/.env and sent as Authorization: Bearer. */
+function McpToken({ e, page }: Props) {
+  const path = [...EXTENSIONS, e.id, 'mcp', 'token_env']
+  const named = getIn(page.value, path)
+  const name = typeof named === 'string' && named ? named : tokenVar(e.id)
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={`${e.id}-token`} className="flex items-center gap-1.5">
+        Token
+        <InfoTip text={`Sent with every request. Kept in data/.env on this machine as ${name}; once saved it is never shown again.`} />
+      </Label>
+      <SecretField
+        id={`${e.id}-token`}
+        names={[name]}
+        label="Token"
+        placeholder="Paste its token, if it wants one"
+        optional
+        onPaste={() => {
+          if (name !== named) page.update((c) => setIn(c, path, name))
+        }}
+      />
+    </div>
+  )
+}
+
 function hasFields(page: SettingsState, path: string[]): boolean {
   try {
     return Object.keys(section(page.schema, path).properties ?? {}).length > 0
@@ -351,6 +382,7 @@ function ExtensionCard({ e, page }: Props) {
           )}
           <span className="ml-auto text-xs text-muted-foreground">{ORIGIN[e.origin] ?? e.origin}</span>
         </div>
+        {e.origin === 'mcp' && Boolean(getIn(page.value, [...path, 'mcp', 'url'])) && <McpToken e={e} page={page} />}
         {hasFields(page, settingsPath) && <SectionForm page={page} path={settingsPath} />}
         {e.origin === 'mcp' && page.advanced && <SectionForm page={page} path={[...path, 'mcp']} />}
         <Tools e={e} page={page} />
@@ -390,22 +422,26 @@ function ExtensionCard({ e, page }: Props) {
   )
 }
 
-/** An MCP server added as a tools-only extension: its id, how it starts (a command or a URL) and the
- * variables from data/.env it gets. Saved with the page. */
+/** An MCP server added as a tools-only extension: its id, how it starts (a command or a URL), the
+ * variables from data/.env it gets, and for a URL its token. Saved with the page, the token after it. */
 function AddMcp({ page, taken, open, onOpenChange }: { page: SettingsState; taken: string[]; open: boolean; onOpenChange: (o: boolean) => void }) {
   const [id, setId] = useState('')
   const [start, setStart] = useState('')
   const [env, setEnv] = useState('')
+  const [token, setToken] = useState('')
   const url = /^https?:\/\//.test(start.trim())
   const command = start.match(/"[^"]*"|'[^']*'|\S+/g)?.map((a) => a.replace(/^["']|["']$/g, '')) ?? []
   const problem = !ID.test(id) ? 'Lowercase letters, digits and underscores' : taken.includes(id) ? 'Already in the list' : !start.trim() ? 'How it starts' : null
   const add = () => {
-    const mcp = { ...(url ? { url: start.trim() } : { command }), env: env.split(/[\s,]+/).filter(Boolean) }
+    const named = url && token ? { token_env: tokenVar(id) } : {}
+    const mcp = { ...(url ? { url: start.trim() } : { command }), env: env.split(/[\s,]+/).filter(Boolean), ...named }
     page.update((c) => setIn(c, [...EXTENSIONS, id], { enabled: true, mcp }))
+    if (url && token) setSecret(tokenVar(id), token)
     onOpenChange(false)
     setId('')
     setStart('')
     setEnv('')
+    setToken('')
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -432,6 +468,23 @@ function AddMcp({ page, taken, open, onOpenChange }: { page: SettingsState; take
             </Label>
             <Input id="mcp-env" value={env} onChange={(ev) => setEnv(ev.target.value)} placeholder="HEVY_API_KEY" />
           </div>
+          {url && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="mcp-token" className="flex items-center gap-1.5">
+                Token
+                <InfoTip text="For a server that wants one: sent with every request as Authorization: Bearer, and kept in data/.env, never in the config." />
+              </Label>
+              <Input
+                id="mcp-token"
+                type="password"
+                autoComplete="new-password"
+                spellCheck={false}
+                value={token}
+                onChange={(ev) => setToken(ev.target.value.trim())}
+                placeholder="Paste its token, if it wants one"
+              />
+            </div>
+          )}
         </div>
         <DialogFooter>
           {problem && id && <span className="mr-auto text-sm text-muted-foreground">{problem}</span>}

@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 from loguru import logger
 from openai import AsyncOpenAI
+from winston_sdk.fields import picked
 from winston_sdk.manifest import refusal
 
 from winston.config.schema import WinstonConfig
@@ -43,38 +44,9 @@ class BadCall(Exception):
     """400: a call that makes no sense (an unknown operation, a missing argument)."""
 
 
-def _deref(node: dict, defs: dict) -> dict:
-    while "$ref" in node:
-        node = defs.get(node["$ref"].rsplit("/", 1)[-1], {})
-    return node
-
-
 def picked_entities(settings_schema: dict[str, Any], settings: dict[str, Any]) -> set[str]:
-    """Entity ids the user picked in an extension's settings (fields made with Entity()), at any
-    depth: one plant's sensor in a dict of plants counts."""
-    defs, out = settings_schema.get("$defs", {}), set()
-
-    def walk(node: dict, value: Any) -> None:
-        node = _deref(node, defs)
-        if node.get("entity"):
-            for v in value if isinstance(value, list) else [value]:
-                if isinstance(v, str) and "." in v:
-                    out.add(v)
-        for option in node.get("anyOf", []):
-            walk(option, value)
-        if isinstance(value, dict):
-            props, extra = node.get("properties", {}), node.get("additionalProperties")
-            for k, v in value.items():
-                if k in props:
-                    walk(props[k], v)
-                elif isinstance(extra, dict):
-                    walk(extra, v)
-        elif isinstance(value, list) and isinstance(node.get("items"), dict):
-            for v in value:
-                walk(node["items"], v)
-
-    walk(settings_schema, settings)
-    return out
+    """Entity ids the user picked in an extension's settings (fields made with Entity()), at any depth."""
+    return {v for _, v in picked(settings_schema, settings, "entity") if "." in v}
 
 
 def _ids(value: Any) -> list[str]:
@@ -109,8 +81,16 @@ class Services:
         logger.debug(f"extension {ext_id}: {op}")
         return result
 
+    def picked_tools(self, ext_id: str) -> set[tuple[str, str]]:
+        """(extension, tool) pairs picked in its settings with Extensions(tool=...): consent to call them."""
+        d = self.host.described.get(ext_id)
+        if not d:
+            return set()
+        return {(other, tool) for tool, other in picked(d["settings"]["schema"], self.host.config(ext_id).settings,
+                                                        "extension_tool")}
+
     async def _dispatch(self, ext_id: str, perms, op: str, p: dict[str, Any]) -> Any:
-        if (why := refusal(perms, op, p)) is not None:
+        if (why := refusal(perms, op, p, self.picked_tools(ext_id) if op == "ext.call" else ())) is not None:
             raise Refused(why)
         if op.startswith("ha."):
             return await self._ha(ext_id, op, p)
@@ -125,10 +105,12 @@ class Services:
             return await self.presence()
         if op == "llm.ask":
             return await self._ask(p["prompt"], p.get("schema"), int(p.get("max_tokens") or 500))
+        if op == "devices":
+            return await self._devices()
         if op == "ext.call":
+            # An SDK extension's tools, or an MCP server's allowed ones, at the tier you gave them.
             other = p["extension"]
-            tool = next((t for t in self.host.described.get(other, {}).get("tools", []) if t["name"] == p["tool"]), None)
-            if tool is None or tool["tier"] != "read":
+            if self.host.tier(other, p["tool"]) != "read":
                 raise Refused(f"{other} has no read tool {p['tool']}")
             r = await self.host.call_tool(other, p["tool"], p.get("args") or {})
             if not r["ok"]:
@@ -251,6 +233,20 @@ class Services:
         out = self._json(r)
         logger.info(f"extension {ext_id}: {domain}.{service} on {', '.join(entities)}")
         return out.get("service_response", out) if isinstance(out, dict) else out
+
+    async def _devices(self) -> list[dict[str, Any]]:
+        """Home Assistant's device registry, every device exposed or not, cut to what `devices` allows:
+        no addresses, serial numbers, identifiers or integration entries."""
+        from winston.providers.home_assistant import HomeAssistant
+        try:
+            devices, areas = await HomeAssistant(self.cfg).devices()
+        except Exception as e:                                          # said to the extension as its error
+            raise Failed(f"Home Assistant did not list its devices: {e}") from e
+        return [{"id": d["id"], "name": d.get("name_by_user") or d.get("name") or "",
+                 "manufacturer": d.get("manufacturer"), "model": d.get("model"), "model_id": d.get("model_id"),
+                 "sw_version": d.get("sw_version"), "hw_version": d.get("hw_version"),
+                 "area": areas.get(d.get("area_id") or ""), "service": d.get("entry_type") == "service"}
+                for d in devices]
 
     async def presence(self) -> dict[str, Any]:
         person = self.cfg.speak_up.home

@@ -558,9 +558,23 @@ def _memory_topics(cfg: WinstonConfig, params: dict) -> Options:
         for t in memory.topics(cfg)])
 
 
+def _extension_tools(cfg: WinstonConfig, params: dict) -> Options:
+    """The switched-on extensions and MCP servers with a read tool named `tool` (at the tier you gave it),
+    for an extension's `Extensions(tool=...)` setting. An MCP server lists its tools once it runs."""
+    host, tool = params.get("extensions"), params.get("tool") or ""
+    if host is None or not tool:
+        return Options(name="extension_tools", choices=[], source="no tool named", ok=False)
+    choices = []
+    for ext_id in sorted(host.sources):
+        if host.enabled(ext_id) and host.tier(ext_id, tool) == "read":
+            name = host.described.get(ext_id, {}).get("manifest", {}).get("name") or ext_id
+            choices.append(Choice(value=ext_id, label=name, hint=ext_id if name != ext_id else None))
+    return Options(name="extension_tools", choices=choices, source=f"switched on, with a read tool {tool}")
+
+
 PROVIDERS = {
     "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
-    "hint_words": _hint_words, "memory_topics": _memory_topics,
+    "hint_words": _hint_words, "memory_topics": _memory_topics, "extension_tools": _extension_tools,
     "llm_models": _llm_models, "voices": _voices, "gemini_models": _gemini_models, "claude_models": _claude_models,
     "ha_entities": _ha_entities, "ha_domains": _ha_domains, "ha_notify": _ha_notify, "ha_areas": _ha_areas, "discord_users": _discord_users,
 }

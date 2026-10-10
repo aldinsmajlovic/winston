@@ -51,3 +51,9 @@ async def peek(ctx, tool: str) -> dict:
 async def lights(ctx) -> dict:
     """Tries Home Assistant, which it has no permission for."""
     return {"state": (await ctx.ha.state("light.taklampa")).state}
+
+
+@ext.tool(tier="read")
+async def gear(ctx) -> list:
+    """Tries the device list, which it has no permission for."""
+    return [d.name for d in await ctx.devices()]

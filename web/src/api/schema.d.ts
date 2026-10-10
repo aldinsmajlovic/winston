@@ -955,7 +955,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, memory_topics, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, memory_topics, extension_tools, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -2398,6 +2398,11 @@ export interface components {
              * @description Variables from data/.env it gets; no others.
              */
             env?: string[];
+            /**
+             * Token variable
+             * @description For a server over HTTP: the variable in data/.env that holds its token, sent as Authorization: Bearer on every request.
+             */
+            token_env?: string | null;
         };
         /** MemoryConfig */
         MemoryConfig: {
@@ -5663,6 +5668,8 @@ export interface operations {
                 q?: string | null;
                 /** @description llm_models: the draft brain engine block as JSON, to list the downloads it can load */
                 engine?: string | null;
+                /** @description extension_tools: the read tool they must have */
+                tool?: string | null;
             };
             header?: never;
             path: {

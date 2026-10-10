@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=kitty
+GenericName=Terminal emulator
+Keywords=terminal;
+Exec=kitty

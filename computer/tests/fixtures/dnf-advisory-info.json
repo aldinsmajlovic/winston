@@ -1,0 +1,163 @@
+[
+ {
+  "Name": "FEDORA-2026-8efcd7a2a0",
+  "Title": "curl-8.18.0-12.fc44",
+  "Severity": "Low",
+  "Type": "security",
+  "Status": "stable",
+  "Vendor": "updates@fedoraproject.org",
+  "Issued": 1791422147,
+  "Description": "- fix secure cookie attribute bypass with tab (CVE-2026-80255)\n- fix OpenSSL provider use-after-free (CVE-2026-80229)\n\n----\n\n- Fix HTTP/2 server push UAF (CVE-2026-18924)",
+  "Message": "",
+  "Rights": "Copyright (C) 2026 Red Hat, Inc. and others.",
+  "references": [
+   {
+    "Title": "CVE-2026-18924 curl: libcurl: Use-after-free in HTTP/2 Server Push with shared connections [fedora-all]",
+    "Id": "2535958",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2535958"
+   },
+   {
+    "Title": "CVE-2026-80229 curl: libcurl: Memory corruption vulnerability via OpenSSL 3 provider use-after-free [fedora-all]",
+    "Id": "2537381",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2537381"
+   },
+   {
+    "Title": "CVE-2026-80255 curl: curl: Information disclosure due to secure cookie attribute bypass [fedora-all]",
+    "Id": "2537784",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2537784"
+   }
+  ],
+  "collections": {
+   "packages": [
+    "libcurl-minimal-debuginfo-8.18.0-12.fc44.x86_64",
+    "curl-debugsource-8.18.0-12.fc44.x86_64",
+    "libcurl-debuginfo-8.18.0-12.fc44.x86_64",
+    "curl-debuginfo-8.18.0-12.fc44.x86_64",
+    "curl-8.18.0-12.fc44.x86_64",
+    "libcurl-8.18.0-12.fc44.x86_64"
+   ]
+  }
+ },
+ {
+  "Name": "FEDORA-2026-7d4732cbab",
+  "Title": "sudo-1.9.17-10.p2.fc44",
+  "Severity": "Important",
+  "Type": "security",
+  "Status": "stable",
+  "Vendor": "updates@fedoraproject.org",
+  "Issued": 1791507998,
+  "Description": "Fix for CVE-2026-96512",
+  "Message": "",
+  "Rights": "Copyright (C) 2026 Red Hat, Inc. and others.",
+  "references": [],
+  "collections": {
+   "packages": [
+    "sudo-python-plugin-debuginfo-1.9.17-10.p2.fc44.x86_64",
+    "sudo-debuginfo-1.9.17-10.p2.fc44.x86_64",
+    "sudo-debugsource-1.9.17-10.p2.fc44.x86_64",
+    "sudo-logsrvd-1.9.17-10.p2.fc44.x86_64",
+    "sudo-logsrvd-debuginfo-1.9.17-10.p2.fc44.x86_64",
+    "sudo-python-plugin-1.9.17-10.p2.fc44.x86_64"
+   ]
+  }
+ },
+ {
+  "Name": "FEDORA-2026-12f3f3d569",
+  "Title": "openssl-3.5.9-1.fc44",
+  "Severity": "Important",
+  "Type": "security",
+  "Status": "stable",
+  "Vendor": "updates@fedoraproject.org",
+  "Issued": 1790989781,
+  "Description": "Rebase to OpenSSL 3.5.9",
+  "Message": "",
+  "Rights": "Copyright (C) 2026 Red Hat, Inc. and others.",
+  "references": [],
+  "collections": {
+   "packages": [
+    "openssl-libs-debuginfo-1:3.5.9-1.fc44.x86_64",
+    "openssl-debuginfo-1:3.5.9-1.fc44.x86_64",
+    "openssl-devel-engine-1:3.5.9-1.fc44.x86_64",
+    "openssl-perl-1:3.5.9-1.fc44.x86_64",
+    "openssl-1:3.5.9-1.fc44.x86_64",
+    "openssl-libs-1:3.5.9-1.fc44.x86_64"
+   ]
+  }
+ },
+ {
+  "Name": "FEDORA-2026-72d10c874d",
+  "Title": "libevent-2.1.13-1.fc44",
+  "Severity": "Important",
+  "Type": "security",
+  "Status": "stable",
+  "Vendor": "updates@fedoraproject.org",
+  "Issued": 1788929228,
+  "Description": "# Update to 2.1.13.\n\nThe following security vulnerabilites are fixed in this update:\n\n- GHSA-fj29-64w6-73h6 CVE-2026-63383 <https://github.com/libevent/libevent/security/advisories/GHSA-fj29-64w6-73h6",
+  "Message": "",
+  "Rights": "Copyright (C) 2026 Red Hat, Inc. and others.",
+  "references": [
+   {
+    "Title": "libevent-2.1.13 is available",
+    "Id": "2495969",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2495969"
+   },
+   {
+    "Title": "CVE-2026-63379 libevent: Libevent: HTTP header smuggling allows authorization bypass or cache poisoning [fedora-all]",
+    "Id": "2526922",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2526922"
+   },
+   {
+    "Title": "CVE-2026-63382 libevent: libevent: Multiple HTTP Parser Bugs Enable Request Smuggling [fedora-all]",
+    "Id": "2527748",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2527748"
+   },
+   {
+    "Title": "CVE-2026-63385 libevent: Libevent: HTTP header handling bugs create risk of access control bypass. [fedora-all]",
+    "Id": "2527791",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2527791"
+   },
+   {
+    "Title": "CVE-2026-63381 libevent: Libevent: Memory corruption due to use-after-free [fedora-all]",
+    "Id": "2527797",
+    "Type": "bugzilla",
+    "Url": "https://bugzilla.redhat.com/show_bug.cgi?id=2527797"
+   }
+  ],
+  "collections": {
+   "packages": [
+    "libevent-doc-2.1.13-1.fc44.noarch",
+    "libevent-debugsource-2.1.13-1.fc44.x86_64",
+    "libevent-devel-2.1.13-1.fc44.x86_64",
+    "libevent-2.1.13-1.fc44.x86_64",
+    "libevent-debuginfo-2.1.13-1.fc44.x86_64"
+   ]
+  }
+ },
+ {
+  "Name": "FEDORA-2026-044e56d9ff",
+  "Title": "tar-1.35-9.fc44",
+  "Severity": "Moderate",
+  "Type": "security",
+  "Status": "stable",
+  "Vendor": "updates@fedoraproject.org",
+  "Issued": 1788929228,
+  "Description": "Fix build with libacl 2.4.0, fix CVE-2026-5704, CVE-2026-18508, CVE-2026-18477, and a regression in the fix for CVE-2025-45582.",
+  "Message": "",
+  "Rights": "Copyright (C) 2026 Red Hat, Inc. and others.",
+  "references": [],
+  "collections": {
+   "packages": [
+    "tar-debuginfo-2:1.35-9.fc44.x86_64",
+    "tar-2:1.35-9.fc44.x86_64",
+    "tar-debugsource-2:1.35-9.fc44.x86_64"
+   ]
+  }
+ }
+]

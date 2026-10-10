@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -285,6 +286,63 @@ async def harness_everything_rest():
     await h3.close()
 
 
+PICKS = """# /// script
+# [tool.winston]
+# id = "picks"
+# name = "Picks"
+# api = 1
+# permissions = { devices = true }
+# ///
+from winston_sdk import Extension, Extensions, Settings
+
+ext = Extension()
+
+
+class S(Settings):
+    machines: list[str] = Extensions("status", default=[])
+
+
+ext.settings(S)
+
+
+@ext.tool(tier="read")
+async def look(ctx, server: str) -> dict:
+    \"\"\"Another server's status.\"\"\"
+    return await ctx.ext(server).call("status")
+"""
+
+
+async def harness_picks_and_devices():
+    folder = Path(tempfile.mkdtemp(prefix="winston-sdk-picks-"))
+    (folder / "picks.py").write_text(PICKS)
+    ha = FakeHA(devices=[{"id": "d1", "name": "Router", "manufacturer": "Made Up Networks", "model": "MU-1",
+                          "sw_version": "2.0"}])
+    h = Harness(folder / "picks.py", settings={"machines": ["desk"]}, ha=ha,
+                others={"desk": {"status": {"up": True}}, "nas": {"status": {"up": False}}})
+    await h._start()
+    [d] = await h.rt.ctx.devices()
+    expect("ctx.devices() gives the fake's devices", d.name == "Router" and d.manufacturer == "Made Up Networks"
+           and d.sw_version == "2.0" and d.area is None and d.service is False, d)
+    expect("a server picked in settings may be called", await h.tool("look", server="desk") == {"up": True})
+    try:
+        await h.tool("look", server="nas")
+        expect("one not picked is refused", False)
+    except Exception as e:
+        expect("one not picked is refused", "may not call nas" in str(e), e)
+    schema = h.describe()["settings"]["schema"]["properties"]["machines"]
+    expect("the picker says what the form needs", schema.get("options") == "extension_tools"
+           and schema.get("options_query") == {"tool": "status"} and schema.get("extension_tool") == "status", schema)
+    await h.close()
+    h2 = Harness(EX / "coin.py")
+    try:
+        await h2.rt.ctx.devices()
+        expect("no devices permission: refused", False)
+    except NotPermitted as e:
+        expect("no devices permission: refused", "devices" in str(e), e)
+    await h2.close()
+    shutil.rmtree(folder, ignore_errors=True)
+
+
 class Anything(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -381,6 +439,7 @@ when_reader()
 asyncio.run(harness_examples())
 asyncio.run(harness_everything())
 asyncio.run(harness_everything_rest())
+asyncio.run(harness_picks_and_devices())
 asyncio.run(over_mcp())
 asyncio.run(over_stdio())
 print(f"\n{'all passed' if not failed else f'{failed} failed'}")

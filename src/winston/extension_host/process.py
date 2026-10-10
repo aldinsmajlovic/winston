@@ -12,12 +12,16 @@ import signal
 import time
 from collections import deque
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
+import httpx2
 from loguru import logger
 from mcp.client.client import Client
 from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import create_mcp_http_client
 from pydantic import BaseModel, ConfigDict
 from winston_sdk.server import request
 
@@ -27,6 +31,20 @@ BACKOFF = (1, 5, 30)
 CRASH_WINDOW, CRASH_LIMIT = 600, 5
 WATCH_EVERY = 2.0
 PING_EVERY, PING_MISSES = 10.0, 3
+
+
+class _Bearer(httpx2.Auth):
+    """An HTTP MCP server's token on every request, and a note of any 401, so the card can say the token
+    was refused rather than MCP's "Server returned an error response"."""
+
+    def __init__(self, token: str):
+        self.token, self.refused = token, False
+
+    def auth_flow(self, request):
+        if self.token:
+            request.headers["Authorization"] = f"Bearer {self.token}"
+        response = yield request
+        self.refused = self.refused or response.status_code == 401
 
 
 class _Any(BaseModel):
@@ -51,7 +69,8 @@ def proc_status(pid: int) -> tuple[bool, float]:
 class ExtensionProcess:
     def __init__(self, src: Source, *, api: str, token: str, log_path: Path, memory_mb: Callable[[], int],
                  on_ready: Callable[[ExtensionProcess], Awaitable[None]], extra_env: dict[str, str] | None = None,
-                 mcp_command: list[str] | None = None, mcp_url: str | None = None):
+                 mcp_command: list[str] | None = None, mcp_url: str | None = None,
+                 mcp_token: Callable[[], str] = lambda: ""):
         self.src = src
         self.id = src.id
         self.api, self.token = api, token
@@ -59,7 +78,7 @@ class ExtensionProcess:
         self.memory_mb = memory_mb
         self.on_ready = on_ready
         self.extra_env = extra_env or {}
-        self.mcp_command, self.mcp_url = mcp_command, mcp_url
+        self.mcp_command, self.mcp_url, self.mcp_token = mcp_command, mcp_url, mcp_token
         self.state = "stopped"          # stopped | starting | running | restarting | failed
         self.detail = ""
         self.client: Client | None = None
@@ -160,18 +179,32 @@ class ExtensionProcess:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.log_path, "a", buffering=1) as log:
             log.write(f"--- started {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            transport = (self.mcp_url if self.mcp_url and self.is_mcp_server
-                         else stdio_client(self._params(), errlog=log))
-            async with Client(transport, read_timeout_seconds=None) as client:
-                self.client = client
-                if not self.is_mcp_server:
-                    info = await self.call("info", timeout=15)
-                    self.pid = int(info["pid"])
-                self.started_at = time.time()
-                await self.on_ready(self)
-                self.state, self.detail = "running", ""
-                self.ready.set()
-                await self._watch()
+            auth = _Bearer(self.mcp_token()) if self.mcp_url and self.is_mcp_server else None
+            try:
+                await self._session(log, auth)
+            except Exception:
+                if auth and auth.refused:
+                    raise ConnectionError("it refused its token (401)" if auth.token else
+                                          "it wants a token (401); paste one on its card") from None
+                raise
+
+    async def _session(self, log, auth: _Bearer | None) -> None:
+        """Connected over stdio, or over HTTP with `auth`; returns when it stops or is stopped."""
+        async with AsyncExitStack() as stack:
+            if auth is not None:
+                http = await stack.enter_async_context(create_mcp_http_client(auth=auth))
+                transport = streamable_http_client(self.mcp_url, http_client=http)
+            else:
+                transport = stdio_client(self._params(), errlog=log)
+            self.client = await stack.enter_async_context(Client(transport, read_timeout_seconds=None))
+            if not self.is_mcp_server:
+                info = await self.call("info", timeout=15)
+                self.pid = int(info["pid"])
+            self.started_at = time.time()
+            await self.on_ready(self)
+            self.state, self.detail = "running", ""
+            self.ready.set()
+            await self._watch()
 
     async def _watch(self) -> None:
         last_ping, misses = time.monotonic(), 0

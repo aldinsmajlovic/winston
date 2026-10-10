@@ -1,8 +1,11 @@
 # Extensions
 
 Approved 2026-09-29. Built: everything on this page but entities reaching Home Assistant, which wait
-for Winston's integration (UI track step 3 in the [plan](plan.md)). Three extensions come with Winston,
-written on this standard alone: Hevy, News and Reminders ([built-in extensions](built-in-extensions.md)).
+for Winston's integration (UI track step 3 in the [plan](plan.md)). Four extensions come with Winston,
+written on this standard alone: Hevy, News, Reminders and Spotify
+([built-in extensions](built-in-extensions.md)). Added within v1 on 2026-10-10, for
+[computers](computer.md) and the vulnerabilities extension: a token for MCP servers over HTTP, the
+`devices` permission, and picking another extension's tool in settings.
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs
@@ -228,9 +231,16 @@ permissions = { network = ["api.elprisetjustnu.se"], home_assistant = "act", llm
 | `llm = true` | The background model, through `ctx.llm` |
 | `extensions = ["id", ...]` | The read tools of those extensions, through `ctx.ext` |
 | `speakers = true` | Playing an audio stream on the speakers, through `ctx.speakers` |
+| `devices = true` | Every device in Home Assistant's registry, exposed or not, through `ctx.devices()`: name, maker, model, firmware and area; no states, network addresses, serial numbers or integration ids |
 
 Picking an entity in an extension's settings is consent for it to use that entity, even if it is not
-exposed to the brain.
+exposed to the brain. Picking an extension or MCP server in an `Extensions(tool=...)` setting is
+consent for it to call that one's read tool of that name, as if it were listed under `extensions`.
+
+`devices` is apart from `home_assistant` because the two read different things: `home_assistant` reads
+the states of exposed and picked entities (least privilege, plan §6 rule 5), while an inventory (a
+vulnerability check, a firmware or battery list) needs every device, exposed or not, and none of
+their states.
 
 Secrets need no permission line: an extension gets the values of its own secret fields and no
 others. Speaking up and entities need none either: declaring a kind or an entity is the request,
@@ -238,7 +248,8 @@ and both show on the card, where each can be switched off.
 
 winstond checks every permission except `network` on each call. The SDK checks `network` for
 `ctx.http`; other traffic (a raw socket, IMAP) is held to it only by what the extension declares. An
-MCP server has no manifest and no permissions: it gets only the variables named in its `env`.
+MCP server has no manifest and no permissions: it gets only the variables named in its `env`, and
+over HTTP its token (`token_env`).
 Permissions keep honest extensions honest and make mistakes visible; they are not a sandbox. An
 extension runs as your user and could read files a well-behaved one would not. Install ones you
 trust, as with VS Code or Home Assistant; the card of anything not built in says so.
@@ -247,8 +258,9 @@ trust, as with VS Code or Home Assistant; the card of anything not built in says
 
 A settings model subclasses `Settings`; its form is drawn on the card and its values are saved under
 `extensions.<id>.settings` in `config.yaml`. The entries of a `dict` setting subclass `Model`.
-`Field(default, ...)` works on any type. `Field`, `Entity`, `Topic`, `TimeOfDay` and `Duration` take
-`default=` (`None` makes the field optional); `Secret` takes the variable name instead. All take
+`Field(default, ...)` works on any type. `Field`, `Entity`, `Topic`, `Extensions`, `TimeOfDay` and
+`Duration` take `default=` (`None` makes the field optional, `[]` an empty list); `Secret` takes the
+variable name instead. All take
 `description=` and `level=` (`"advanced"` puts it behind Advanced, as elsewhere in settings); `Field`
 also takes `placeholder=`, what the form shows while it is empty ("None: no crisis alerts"). An
 optional choice (`Literal[...] | None`) gets a first item for none, so it can be taken back.
@@ -263,6 +275,7 @@ optional choice (`Literal[...] | None`) gets a first item for none, so it can be
 | `Secret("VAR")` | A key field; the key goes to `data/.env`, the config keeps the variable name | The key |
 | `Entity(domain="sensor" or [...], device_class=None)` | A picker of Home Assistant entities | The entity id |
 | `Topic()` | A picker of memory topics | The topic name |
+| `Extensions(tool="status")` | A picker of the switched-on extensions and MCP servers with a read tool of that name; picking one lets this extension call it | Their ids (`list[str]`, or `str` for one) |
 | `TimeOfDay("07:00")` | A time picker | `datetime.time` |
 | `Duration("30m")` | A duration | `datetime.timedelta` |
 
@@ -277,8 +290,8 @@ its entities and their history.
 ### Imports
 
 Everything comes from `winston_sdk`: `Extension`, `Settings`, `Model`, `Field`, `Secret`, `Entity`,
-`Topic`, `TimeOfDay`, `Duration`, `From`, `Choices`, `When`, `Nudge`, `Link`, `SettingsError`,
-`NotPermitted`, `HomeAssistantError`.
+`Topic`, `Extensions`, `TimeOfDay`, `Duration`, `From`, `Choices`, `When`, `Nudge`, `Link`,
+`SettingsError`, `NotPermitted`, `HomeAssistantError`.
 
 ### Handlers
 
@@ -397,8 +410,9 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.ha.call(domain, service, data=None, target=None)` | Any service on permitted entities (act); returns its response or `None` |
 | `ctx.memory.facts(topic=None)`, `.remember(text, topic, until=None)` | `Fact(text, topic, noted, until)` items; writing as `remember` |
 | `ctx.presence.home()`, `.since()` | `bool`, `datetime` |
+| `ctx.devices()` | `Device(id, name, manufacturer, model, model_id, sw_version, hw_version, area, service)` for every device Home Assistant knows (needs `devices`); `service` is true for what it lists as a service rather than hardware (an add-on, Home Assistant itself, a cloud account) |
 | `ctx.llm.ask(prompt, schema=None, max_tokens=500)` | Text, or an instance of the Pydantic model `schema`. The background model is the local brain unless you pick a cloud model; an extension never chooses, so nothing leaves the house unless a setting says so. It waits while a conversation runs (see [How it runs](#how-it-runs)) |
-| `ctx.ext(id).call(tool, **args)` | Another extension's read tool (needs `extensions`) |
+| `ctx.ext(id).call(tool, **args)` | Another extension's or MCP server's read tool, at the tier you gave it on its card (needs `extensions`, or `id` picked in an `Extensions(tool=...)` setting) |
 | `ctx.speakers.play(url, title=None)`, `.stop()` | Plays a stream (anything ffmpeg reads, served on 127.0.0.1 or a declared host) on the box of the room last talked in, else on every box, and returns how many play; a new stream replaces what plays, and `stop()` ends only its own. The box turns it down while it listens and while he talks (needs `speakers`) |
 | `ctx.later(when, job, data=None)` | Runs one of its jobs once at a computed `datetime` or after a `timedelta`, kept across restarts; returns a timer with `cancel()`. `ctx.timers()` lists them |
 | `ctx.nudge(kind, nudge)`, `ctx.withdraw(kind, about)` | Pushes a nudge of a pushed kind, or takes one back |
@@ -409,7 +423,7 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.run_sync(fn, *args)` | Runs a synchronous function in a thread |
 
 Errors: `NotPermitted` (outside its permissions), `HomeAssistantError` (Home Assistant failed or
-refused), `SettingsError(field, message)` (raised by `@ext.validate`).
+refused, `ctx.devices()` included), `SettingsError(field, message)` (raised by `@ext.validate`).
 
 ### Shortcuts and scenes
 
@@ -616,7 +630,8 @@ the API only.
 - **Built in**: `src/winston/extensions/`, off until switched on.
 - **Packages**: anything installed with the entry point group `winston.extensions`.
 - **Personal**: `data/extensions/<name>.py`, or a folder with a `pyproject.toml`.
-- **Any MCP server**, as tools only: no speaking up, settings or entities.
+- **Any MCP server**, as tools only: no speaking up, settings or entities; its `instructions` are its
+  line in the prompt.
 
 ```yaml
 extensions:
@@ -628,10 +643,26 @@ extensions:
     enabled: true
     mcp: {command: [npx, -y, hevy-mcp], env: [HEVY_API_KEY]}
     tools: {get-workouts: {tier: read}}
+  lab:
+    enabled: true
+    mcp: {url: "http://192.0.2.10:8711/mcp", token_env: LAB_MCP_TOKEN}
+    tools: {status: {tier: read}}
 ```
 
 The page writes this; it is shown so you know what the file holds. An MCP server offers the brain only
-the tools listed under its `tools`; the card lists every tool it has, each with a switch. Speaking up has its own section,
+the tools listed under its `tools`; the card lists every tool it has, each with a switch. One over
+HTTP that wants a token gets it from the variable `token_env` names, sent as `Authorization: Bearer`
+on every request; the card has a key field for it, saved to `data/.env` like any key, so the token is
+never in `config.yaml` or shown back. A missing or refused token is said on its card ("it wants a
+token (401)"). It is read again at each connect, so a token saved after the server was added reaches
+it on the next try.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/extensions-mcp-dark.png">
+  <img src="images/extensions-mcp-light.png" alt="The card of an MCP server over HTTP: its token field, set, and its two tools with their tiers and switches" width="600">
+</picture>
+
+ Speaking up has its own section,
 `speak_up`: `max_per_day` (4), `briefing_from` (06:00), `fallback_time` (18:00), the parts of the
 day, `home` (the person entity) and `phone` (a notify service).
 
@@ -650,7 +681,8 @@ flowchart LR
   `WINSTON_API`, `WINSTON_TOKEN` (scoped to its permissions) and `WINSTON_STATE` (its folder), and
   nothing else of winstond's, whose environment holds every key in `data/.env`. The values of its own
   secret fields arrive with its settings over the protocol, so a new key reaches it without a restart.
-  An MCP server gets the variables named in its `env`, and no others. Each takes about 76 MB.
+  An MCP server gets the variables named in its `env`, and no others; over HTTP, its token is sent with
+  each request instead. Each takes about 76 MB.
 - **MCP over stdio**, spec 2026-07-28, with winstond as the client. Tools are plain MCP tools. The
   rest travels on Winston's extension to the protocol, `io.github.aldinsmajlovic/winston` version 1,
   negotiated as the spec's extension mechanism (SEP-2133) provides. A missing or mistyped param is
@@ -693,7 +725,9 @@ flowchart LR
   starting while a call was under way (five stopped and asked again, 60 answered between turns).
 - **Its prompt lines and hint words** are written as files in its folder when it starts and after
   each of its jobs, and read by every channel when a conversation starts, as memory is, so the prompt
-  stays the same through a conversation and its cache holds.
+  stays the same through a conversation and its cache holds. An MCP server's prompt line is its own
+  `instructions` (MCP's word for what a server is and offers), written when it connects, cut at 300
+  characters and marked as information like the rest.
 - **Other languages** join as an MCP server, with tools only. Everything else on this page needs
   `winston-sdk`, a small Python package in `sdk/` with no part of Winston's voice stack in it: winstond
   reads an extension's manifest from Python and describes it by running it under the SDK. The protocol
@@ -731,7 +765,9 @@ Designed now, built within v1 when the first extension needs them (each only add
 ## Testing
 
 `winston_sdk.testing` runs an extension against a fake winstond: a clock you move, a fake Home
-Assistant, recorded HTTP answers and a record of what it asked to say.
+Assistant (`FakeHA(states, services, devices)`), recorded HTTP answers, the other extensions it calls
+(`others={"desk": {"status": {...}}}`, refused unless listed or picked in its settings) and a record of
+what it asked to say.
 
 ```python
 from winston_sdk.testing import FakeHA, Harness, recorded
@@ -777,8 +813,8 @@ when the briefing starts; the parts of the day and "after work" are under Advanc
 Log, Restart and its switch in the title; then what it may reach (read before switching it on), a
 problem or why it stopped lately, its status line, its settings (key fields included), its tools with
 their tier, whether the brain gets each and whether other apps may use it, its entities' values, and
-its memory and prompt cost. The + in the header adds an MCP server: an id, a command or a URL, and
-the variables it gets. Its kinds of speaking up are a table: when and where each is said (your choice
+its memory and prompt cost. The + in the header adds an MCP server: an id, a command or a URL, the
+variables it gets, and for a URL its token. Its kinds of speaking up are a table: when and where each is said (your choice
 over the extension's; a kind that delivers per level shows By level), whether it may speak at all,
 and a Muted button that switches a muted kind back on; below it, its nudges now, each with where it
 stands (waiting for the next conversation, put off until when and the reason you gave, held in quiet

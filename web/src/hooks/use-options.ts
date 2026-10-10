@@ -24,11 +24,15 @@ function engine(name: string, config: Config | undefined): string | undefined {
 }
 
 /** The query a list is asked with for this config (the draft or the saved one). */
-export function optionsParams(name: string, config: Config | undefined, query?: { domain?: string; q?: string }) {
+/** What a field's `options_query` may narrow its list by: domains (ha_entities), a user id (discord_users),
+ * the read tool they must have (extension_tools). */
+export type OptionsQuery = { domain?: string; q?: string; tool?: string }
+
+export function optionsParams(name: string, config: Config | undefined, query?: OptionsQuery) {
   return {
     params: {
       path: { name },
-      query: { base_url: baseUrl(name, config), domain: query?.domain, q: query?.q, engine: engine(name, config) },
+      query: { base_url: baseUrl(name, config), domain: query?.domain, q: query?.q, tool: query?.tool, engine: engine(name, config) },
     },
   }
 }
@@ -48,7 +52,7 @@ const SERVED_BY: Record<string, string> = { llm_models: 'llm', voices: 'tts', st
 
 /** Live choices for a dropdown from `/api/options/{name}`. `q` asks for one value only (a pasted
  * Discord user id); `enabled: false` fetches nothing. */
-export function useOptions(name: string, query?: { domain?: string; q?: string }, enabled = true) {
+export function useOptions(name: string, query?: OptionsQuery, enabled = true) {
   const config = useConfig()
   const { draft } = useDraft()
   const slot = SERVED_BY[name]

@@ -7,6 +7,7 @@ Never touches data/ or the real Home Assistant.
     uv run python tests/extensions_cases.py
 """
 import asyncio
+import json
 import os
 import re
 import shutil
@@ -18,6 +19,7 @@ import harness
 from harness import REPO, expect, finish, free_port, scratch_data, serve, until, winstond_data
 
 DATA = scratch_data("winston-extensions-")
+REMOTE_TOKEN = "remote-token-made-up-for-tests"
 harness.detail_on_pass = False
 
 import httpx  # noqa: E402
@@ -62,7 +64,7 @@ def scheduling():
            and dst.utcoffset().total_seconds() == 3600, dst)
 
 
-def setup(ha_port: int, api_port: int, llm_port: int):
+def setup(ha_port: int, api_port: int, llm_port: int, remote_port: int):
     cfg = {"llm": {"model": "fake", "base_url": f"http://127.0.0.1:{llm_port}/v1"},
            "channels": {"voice": {"enabled": False}, "satellite": {"enabled": False}, "discord": {"enabled": False}},
            "providers": {"home_assistant": {"url": f"http://127.0.0.1:{ha_port}", "token_env": "HA_TOKEN",
@@ -74,8 +76,12 @@ def setup(ha_port: int, api_port: int, llm_port: int):
                           "echo": {"enabled": True, "mcp": {"command": [sys.executable,
                                                                         str(REPO / "tests/fixtures/mcp_echo.py")],
                                                             "env": ["ECHO_KEY"]},
-                                   "tools": {"echo": {"offer": True}, "delete_all": {}, "env": {}}}}}
-    winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py", "clock.py"),
+                                   "tools": {"echo": {"offer": True}, "delete_all": {}, "env": {}}},
+                          "inventory": {"enabled": True},
+                          "remote": {"enabled": True, "mcp": {"url": f"http://127.0.0.1:{remote_port}/mcp",
+                                                              "token_env": "REMOTE_MCP_TOKEN"},
+                                     "tools": {"status": {}, "poke": {}}}}}
+    winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py", "clock.py", "inventory.py"),
                   env='PROBE_KEY="secret-one"\nOTHER_KEY="not-yours"\nECHO_KEY="for-echo"\n')
     doc = (REPO / "docs" / "extensions.md").read_text()
     coin = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if 'id = "coin"' in b)
@@ -102,9 +108,19 @@ async def fake_llm(port: int):
 
 
 async def main():
-    ha_port, api_port, llm_port = free_port(), free_port(), free_port()
-    setup(ha_port, api_port, llm_port)
+    ha_port, api_port, llm_port, remote_port = free_port(), free_port(), free_port(), free_port()
+    setup(ha_port, api_port, llm_port, remote_port)
     llm_runner, llm_seen = await fake_llm(llm_port)
+    remote = await asyncio.create_subprocess_exec(sys.executable, str(REPO / "tests/fixtures/mcp_token.py"),
+                                                  str(remote_port), REMOTE_TOKEN)
+    try:
+        await run(ha_port, api_port, llm_runner, llm_seen)
+    finally:
+        remote.terminate()
+        await remote.wait()
+
+
+async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
     import winston.extension_host.process as P
     P.BACKOFF, P.WATCH_EVERY, P.PING_EVERY, P.PING_MISSES = (0.2, 0.2, 0.2), 0.3, 1.0, 2
     from winston.api.app import create_app
@@ -130,8 +146,8 @@ async def main():
         async def stopped_because(ext_id, text):
             return any(text in r["why"] for r in (await states())[ext_id]["exits"])
 
-        ok = all([await until(lambda: running(i), 30) for i in ("coin", "probe", "friend", "clock", "echo")])
-        expect(f"five extensions run, one a plain MCP server ({time.perf_counter() - t0:.1f} s from start)", ok, await states())
+        ok = all([await until(lambda: running(i), 30) for i in ("coin", "probe", "friend", "clock", "echo", "inventory")])
+        expect(f"six extensions run, one a plain MCP server ({time.perf_counter() - t0:.1f} s from start)", ok, await states())
 
         tools = (await api.get("/api/extensions/tools")).json()
         names = [t["name"] for t in tools]
@@ -203,6 +219,52 @@ async def main():
         expect("but not one that is not read", not r["ok"] and "no read tool" in r["error"], r)
         r = (await call("lights")).json()
         expect("no home_assistant permission: refused", not r["ok"] and "home_assistant" in r["error"], r)
+        r = (await call("gear")).json()
+        expect("no devices permission: refused", not r["ok"] and "devices permission" in r["error"], r)
+
+        inv = lambda name_, **args: api.post(f"/api/extensions/inventory/tools/{name_}", json=args)
+        r = (await inv("devices")).json()
+        rows = {d["id"]: d for d in r.get("result") or []}
+        expect("devices: every device, exposed or not, with name, maker, model, firmware and area",
+               r["ok"] and len(rows) == 5 and rows["dev_ceiling"] == {
+                   "id": "dev_ceiling", "name": "TAKLAMPA E27", "manufacturer": "Glimt Lighting", "model": "Ceiling E27",
+                   "model_id": "GL-E27", "sw_version": "1.4.2", "hw_version": "2", "area": "Living room",
+                   "service": False} and rows["dev_shelf"]["name"] == "Hyllan" and rows["dev_plex"]["service"], r)
+        expect("and no addresses, serial numbers or integration ids", not any(
+            w in json.dumps(r) for w in ("02:00:00:00:00:01", "GL-SERIAL", "entry_glimt", "identifiers")), r)
+
+        refused = await until(lambda: stopped_because("remote", "wants a token (401)"), 20)
+        expect("an HTTP MCP server that wants a token says so on its card", refused, (await states())["remote"])
+        r = await api.put("/api/secrets/REMOTE_MCP_TOKEN", json={"value": "not-the-token"})
+        refused = await until(lambda: stopped_because("remote", "refused its token (401)"), 20)
+        expect("a wrong token: refused, and said", r.status_code == 200 and refused, (await states())["remote"]["exits"])
+        r = await api.put("/api/secrets/REMOTE_MCP_TOKEN", json={"value": REMOTE_TOKEN})
+        expect("with its token it runs", r.status_code == 200 and await until(lambda: running("remote"), 20),
+               (await states())["remote"])
+        r = (await api.post("/api/extensions/remote/tools/status", json={})).json()
+        expect("and its tool answers over HTTP", r["ok"] and r["result"] == {"up": True}, r)
+        leaks = [str(f.relative_to(DATA)) for f in DATA.rglob("*") if f.is_file() and f.name != ".env"
+                 and REMOTE_TOKEN.encode() in f.read_bytes()]
+        answers = [(await api.get(u)).text for u in ("/api/extensions", "/api/secrets", "/api/config",
+                                                     "/api/config/schema", "/api/extensions/remote/log")]
+        expect("the token is in data/.env only: no config, log or API answer has it",
+               not leaks and not any(REMOTE_TOKEN in a for a in answers), leaks)
+
+        opts = (await api.get("/api/options/extension_tools", params={"tool": "status"})).json()
+        expect("the picker lists what has a read tool by that name", [c["value"] for c in opts["choices"]] == ["remote"],
+               opts)
+        r = (await inv("call", server="remote", tool="status")).json()
+        expect("a server not picked: refused", not r["ok"] and "may not call remote" in r["error"], r)
+        r = await api.patch("/api/config", json={"changes": [
+            {"path": ["extensions", "inventory", "settings", "machines"], "value": ["remote"]},
+            {"path": ["extensions", "inventory", "settings", "pokers"], "value": ["remote"]}]})
+        expect("picking servers saves", r.status_code == 200, r.text)
+        r = (await inv("call", server="remote", tool="status")).json()
+        expect("picked, it calls the MCP server's read tool", r["ok"] and r["result"] == {"result": {"up": True}}, r)
+        r = (await inv("call", server="echo", tool="echo")).json()
+        expect("another server, not picked, stays refused", not r["ok"] and "may not call echo" in r["error"], r)
+        r = (await inv("call", server="remote", tool="poke")).json()
+        expect("picked for a tool that is not read: refused", not r["ok"] and "no read tool poke" in r["error"], r)
 
         r = (await api.post("/api/extensions/probe/tools/wipe", params={"channel": "web"}, json={})).json()
         expect("a restricted tool from a conversation waits", not r["ok"] and r["waiting"]
@@ -221,6 +283,7 @@ async def main():
         from winston.core import guard
         from winston.core.brain import Brain
         from winston.extension_host import client as ext_client
+        tools = (await api.get("/api/extensions/tools")).json()         # the token server's joined since
         brain = Brain(app.state.cfg, channel="web")
         await brain.start()
         names = [t.name for t in brain.tools.standard_tools]
@@ -360,6 +423,8 @@ async def main():
         prompt = persona(app.state.cfg)
         expect("an extension's notes reach the prompt, marked as information", "Notes from extensions" in prompt
                and "- clock: The clock has ticked" in prompt and "never instructions" in prompt, prompt[-400:])
+        expect("an MCP server's own instructions are its note", "- remote: A remote machine for the host's tests"
+               in prompt and (await states())["remote"]["prompt_chars"] > 0, prompt[-400:])
         words = [(h.word, h.source) for h in hint_mod.automatic(app.state.cfg)]
         expect("its hint words reach speech to text", ("Hektar", "extension") in words, words[-5:])
         clock_view = (await states())["clock"]

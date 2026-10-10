@@ -147,6 +147,37 @@ test('a pasted key shows as Set and never comes back from the server', async ({ 
   expect(readFileSync(join(data, 'config.yaml'), 'utf8')).not.toContain(secret)
 })
 
+test('an MCP server added by URL keeps its token in data/.env alone, and its card shows it as Set', async ({ page }) => {
+  const secret = `smoke-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const errors = watchErrors(page)
+  await open(page, '/extensions')
+  await page.getByRole('button', { name: 'Add an MCP server' }).click()
+  const dialog = page.getByRole('dialog')
+  await dialog.getByLabel('Id').fill('smoke_http')
+  await expect(dialog.getByLabel('Token')).toHaveCount(0)
+  await dialog.getByLabel('Command or URL').fill('http://127.0.0.1:9/mcp')
+  await dialog.getByLabel('Token').fill(secret)
+  await dialog.getByRole('button', { name: 'Add' }).click()
+  await page.locator('header').getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByRole('alertdialog').getByText('Keys: SMOKE_HTTP_MCP_TOKEN')).toBeVisible()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await page.reload()
+  await open(page, '/extensions')
+  const field = page.locator('#smoke_http-token')
+  await expect(field.locator('..').getByLabel('Set', { exact: true })).toBeVisible()
+  await expect(field).toHaveValue('')
+  for (const url of ['/api/config', '/api/secrets', '/api/extensions', '/api/config/schema']) {
+    const body = await (await page.request.get(url)).text()
+    expect(body, url).not.toContain(secret)
+  }
+  expect(readFileSync(join(data, '.env'), 'utf8')).toMatch(new RegExp(`^SMOKE_HTTP_MCP_TOKEN=['"]?${secret}['"]?$`, 'm'))
+  const config = readFileSync(join(data, 'config.yaml'), 'utf8')
+  expect(config).toContain('token_env: SMOKE_HTTP_MCP_TOKEN')
+  expect(config).not.toContain(secret)
+  expect(errors).toEqual([])
+})
+
 test('a field for hosted engines is left out for a local one', async ({ page }) => {
   await open(page, '/brain')
   await advanced(page)

@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Keywords=shell;prompt;command;
+Exec=gnome-terminal

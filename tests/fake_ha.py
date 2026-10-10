@@ -23,12 +23,18 @@ VERSION = "2026.9.3"
 # A small generic home: Swedish names on the Home Assistant side, as a household would have them.
 AREAS = [{"area_id": "living_room", "name": "Living room", "aliases": []},
          {"area_id": "kitchen", "name": "Kitchen", "aliases": []}]
+# Makers, models and firmware are made up; addresses and serials are there to check they are never passed on.
 DEVICES = [
-    {"id": "dev_ceiling", "name": "TAKLAMPA E27", "name_by_user": None, "area_id": "living_room"},
-    {"id": "dev_shelf", "name": "HYLLA E27", "name_by_user": "Hyllan", "area_id": "living_room"},
+    {"id": "dev_ceiling", "name": "TAKLAMPA E27", "name_by_user": None, "area_id": "living_room",
+     "manufacturer": "Glimt Lighting", "model": "Ceiling E27", "model_id": "GL-E27", "sw_version": "1.4.2",
+     "hw_version": "2", "serial_number": "GL-SERIAL-0001", "connections": [["mac", "02:00:00:00:00:01"]],
+     "identifiers": [["fake", "ceiling"]], "config_entries": ["entry_glimt"], "entry_type": None},
+    {"id": "dev_shelf", "name": "HYLLA E27", "name_by_user": "Hyllan", "area_id": "living_room",
+     "manufacturer": "Glimt Lighting", "model": "Shelf E27", "sw_version": "1.3.0"},
     {"id": "dev_kitchen", "name": "Kitchen spots", "name_by_user": None, "area_id": "kitchen"},
     {"id": "dev_phone", "name": "Phone", "name_by_user": None, "area_id": None},
-    {"id": "dev_plex", "name": "Plex client", "name_by_user": None, "area_id": None},
+    {"id": "dev_plex", "name": "Plex client", "name_by_user": None, "area_id": None,
+     "manufacturer": "Plexus Media", "sw_version": "9.1", "entry_type": "service"},
 ]
 # entity_id, friendly name, state, attributes, registry (None: not in the registry), exposed
 ENTITIES = [

@@ -32,6 +32,7 @@ links to it.
 | `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md` | Their one subject |
 | `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
+| `docs/computer.md` | The computer server: opening things, status, logs and updates on each computer |
 | `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
 | `docs/built-in-extensions.md` | The extensions that come with Winston: Hevy, news, reminders |

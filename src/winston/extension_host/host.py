@@ -210,9 +210,15 @@ class Host:
         proc = ExtensionProcess(src, api=self.api, token=token, log_path=self.log_path(ext_id),
                                 memory_mb=lambda i=ext_id: self.config(i).memory_mb, on_ready=self._ready,
                                 extra_env=extra_env, mcp_command=ec.mcp.command if ec.mcp else None,
-                                mcp_url=ec.mcp.url if ec.mcp else None)
+                                mcp_url=ec.mcp.url if ec.mcp else None, mcp_token=lambda i=ext_id: self.mcp_token(i))
         self.procs[ext_id] = proc
         proc.start()
+
+    def mcp_token(self, ext_id: str) -> str:
+        """An HTTP MCP server's token as data/.env holds it now, read at each connect: a key saved after
+        the config that names it reaches the next try without a restart."""
+        mcp = self.config(ext_id).mcp
+        return secret_value(mcp.token_env) if mcp and mcp.token_env else ""
 
     async def _ready(self, proc: ExtensionProcess) -> None:
         """Just started: MCP servers list their tools, SDK extensions get their settings and run their
@@ -225,6 +231,9 @@ class Host:
                  "outside": t.annotations.open_world_hint is not False if t.annotations else True,
                  "timeout": 30, "filler": None, "input_schema": t.input_schema}
                 for t in await proc.list_tools()]
+            # The server's own instructions (MCP's word for what it is and offers) are its prompt line, as
+            # an extension's @ext.context is: so the brain knows what it reaches, with nothing in the core.
+            texts.write(proc.id, (proc.client.instructions or "").strip() or None, None)
             return
         result = await proc.call("configure", settings=self.config(proc.id).settings,
                                  secrets=self.secret_values(proc.id), time_zone=local_zone().key)
@@ -341,6 +350,7 @@ class Host:
             ec = self.config(ext_id)
             if ec.mcp and name in ec.mcp.env:
                 self.procs[ext_id].extra_env[name] = secret_value(name)
+            if ec.mcp and name in (*ec.mcp.env, ec.mcp.token_env):
                 await self.procs[ext_id].restart("a key it uses changed")
 
     def graft(self, schema: dict[str, Any]) -> dict[str, Any]:
