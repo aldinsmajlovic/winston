@@ -26,7 +26,11 @@ lights" means that room's lights. A screen with no room works as before.
 - **One conversation.** A request started at the box can be continued at the screen and the other way
   round: "Okay Winston, what's the capital of Norway?" at the box, then "How many people live there?"
   at the dashboard. Typed messages on the Talk page join the room's conversation too. It starts fresh
-  after `channels.satellite.session_idle_mins` (10) without a new message.
+  after `channels.satellite.session_idle_mins` (10) without a new message, or when you start over:
+  say "start over" or "new conversation" anywhere in the room, or press New conversation (left of the
+  Talk page's text field). Either ends it for the box and every screen in the room; what he remembers
+  stays. Without a room, saying it starts over that one conversation, and the button the household's
+  typed one.
 - **One mic at a time.** When the box wakes, a screen in the room stops listening until the box's reply
   has played (plus 4 s while the box listens again without the wake word, then for as long as it does). The screen shows
   "Mic paused while the box has it". So the screen neither answers the request said to the box nor
@@ -72,6 +76,7 @@ turns its microphone into silence while the box has it. Details in `core/rooms.p
 | `POST /api/rooms/{room}/sync` | A session hands over its new messages and takes in the others' |
 | `POST /api/rooms/{room}/mic` | `{by, secs}`: hold the mic for secs; 0 lets go |
 | `GET /api/rooms/{room}/mic` | Who has the mic, now and on every change (server-sent events) |
+| `POST /api/chat/start-over` | `{room}`: a new conversation for the room's box and screens; no room, the household's typed one |
 
 The live feed carries the mic too, as `mic` events with `room` and `held_by`.
 

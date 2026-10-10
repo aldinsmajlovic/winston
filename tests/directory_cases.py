@@ -16,17 +16,22 @@ cfg = WinstonConfig.model_validate({"llm": {"model": "x"}, "providers": {"home_a
         "script.movie": {},
         "light.office": {"name": "office lights"},
         "light.loop": {},
+        "vacuum.robot": {"name": "vacuum"},
         "switch.gone": {}}}}})
 snap = Snapshot(
     states={"light.desk": {"attributes": {"friendly_name": "LAMPA 12 GU10", "supported_color_modes": ["color_temp"]}},
             "light.hall": {"attributes": {"friendly_name": "Hall", "supported_color_modes": ["onoff"]}},
             "script.movie": {"attributes": {"friendly_name": "Movie night"}},
             "light.office": {"attributes": {"entity_id": ["light.desk", "light.lamp_not_exposed"]}},
-            "light.loop": {"attributes": {"entity_id": ["light.office", "light.loop"]}}},
+            "light.loop": {"attributes": {"entity_id": ["light.office", "light.loop"]}},
+            "vacuum.robot": {"attributes": {"friendly_name": "Robot"}}},
     registry={"light.desk": {"area_id": "office", "aliases": ["the desk"]},
               "light.hall": {"device_id": "d1", "aliases": ["hall light"]},
-              "script.movie": {}},
-    areas={"office": "Office", "hall": "Hallway"}, devices={"d1": {"area_id": "hall"}})
+              "script.movie": {},
+              "vacuum.robot": {"area_id": "hall", "options": {"vacuum": {"area_mapping": {
+                  "kitchen": ["1_1"], "office": ["1_2", "1_3"], "bedroom": [], "gone": ["1_4"]}}}}},
+    areas={"office": "Office", "hall": "Hallway", "kitchen": "Kitchen", "bedroom": "Bedroom"},
+    devices={"d1": {"area_id": "hall"}})
 
 m = house_map(cfg, snap)
 lines = m.splitlines()
@@ -34,8 +39,10 @@ check("a room's line: groups first in their members' area, the user's name first
       next(x for x in lines if x.startswith("- Office")),
       "- Office: office lights (light group: desk lamp); loop (light group: office lights); desk lamp (light; dims, "
       "warm to cool; also LAMPA 12 GU10, the desk)")
-check("a device's area through its device, and its own name before Home Assistant's",
-      next(x for x in lines if x.startswith("- Hallway")), "- Hallway: hall light (light; also Hall)")
+check("a device's area through its device, its own name before Home Assistant's, and the areas a vacuum's rooms "
+      "are mapped to, though nothing he controls is in them",
+      next(x for x in lines if x.startswith("- Hallway")),
+      "- Hallway: hall light (light; also Hall); vacuum (vacuum; cleans Kitchen, Office; also Robot)")
 check("no area is listed last", lines[-1], "- In no room: Movie night (script)")
 check("an entity Home Assistant does not have is left out", "gone" in m, False)
 check("no Home Assistant read: no map", house_map(cfg, None), "")

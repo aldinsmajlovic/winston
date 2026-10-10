@@ -58,6 +58,14 @@ def _can(state: dict | None) -> str:
                                      ("colour", modes & COLOUR)) if ok)
 
 
+def _cleans(snap: Snapshot, eid: str) -> str:
+    """The areas a vacuum can be sent to clean: those its rooms are mapped to in Home Assistant (the clean area
+    feature), which need not hold anything else he controls."""
+    mapping = ((((snap.registry or {}).get(eid) or {}).get("options") or {}).get("vacuum") or {}).get("area_mapping")
+    names = [snap.areas[a] for a, rooms in (mapping or {}).items() if rooms and a in snap.areas]
+    return f"cleans {', '.join(names)}" if names else ""
+
+
 def house_map(cfg: WinstonConfig, snap: Snapshot | None) -> str:
     """The exposed entities by area: each by the name the user gave it (else Home Assistant's), its kind, a group's
     members, what a light can do and the other names it answers to. A group with no area of its own is in its
@@ -91,6 +99,8 @@ def house_map(cfg: WinstonConfig, snap: Snapshot | None) -> str:
                  else domain.replace("_", " ")]
         if domain == "light" and (can := _can(snap.states.get(eid))):
             parts.append(can)
+        if cleans := _cleans(snap, eid):
+            parts.append(cleans)
         if others:
             parts.append(f"also {', '.join(others)}")
         rooms.setdefault(where(eid), []).append((not group, f"{name} ({'; '.join(parts)})"))

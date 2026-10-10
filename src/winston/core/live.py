@@ -144,6 +144,7 @@ _VERBS = {
     "forget": ("Forgetting {q}", "Forgot {q}", "Could not forget that"),
     "send_message": ("Messaging {t}", "Messaged {t}", "Could not message {t}"),
     "mark_mistake": ("Marking a mistake", "Marked a mistake", "Could not mark that"),
+    "start_over": ("Starting over", "Started a new conversation", "Could not start over"),
 }
 
 

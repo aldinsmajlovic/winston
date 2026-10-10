@@ -97,6 +97,11 @@ class ChatMessage(BaseModel):
                                                                "shared with the room's box. None: the household's.")
 
 
+class StartOver(BaseModel):
+    room: str | None = Field(None, max_length=60, description="The room the page is set to: its conversation ends "
+                                                               "for its box and screens too. None: the household's.")
+
+
 def _partial(model: type[BaseModel], name: str, doc: str) -> type[BaseModel]:
     """model's fields, same names and bounds, each optional and unset unless sent. Its own validators do not
     run here: the caller merges what was sent onto a saved value and validates the whole with model."""
@@ -678,6 +683,14 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
               summary="Say something to him in the web conversation; the reply arrives on /api/live")
     async def chat(m: ChatMessage):
         spawn(web.ask(m.text.strip(), (m.room or "").strip() or None))
+        return Ok()
+
+    @app.post("/api/chat/start-over", response_model=Ok,
+              summary="New conversation: the room's, for every box and screen in it, or the household's typed one")
+    async def chat_start_over(m: StartOver):
+        await web.start_over((m.room or "").strip() or None)
+        feed.publish(LiveEvent(channel="web", type="tool", call=uuid.uuid4().hex[:12], name="start_over",
+                               status="ok", label=tool_label("start_over", None, "ok")))
         return Ok()
 
     @app.get("/api/rooms", response_model=list[RoomState],

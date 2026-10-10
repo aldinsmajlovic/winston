@@ -1,11 +1,12 @@
-"""Room cases: one conversation per room across sessions, idle reset, the mic lease, the gate and the
-room in the time stamp. No hardware needed.
+"""Room cases: one conversation per room across sessions, idle reset, starting over, the mic lease, the
+gate and the room in the time stamp. No hardware needed.
 
     uv run python tests/rooms_cases.py
 """
 import asyncio
 import re
 import time
+from types import SimpleNamespace
 
 from harness import check, finish_checks
 from pipecat.frames.frames import InputAudioRawFrame, LLMContextFrame, TranscriptionFrame
@@ -14,8 +15,8 @@ from pipecat.processors.frame_processor import FrameDirection
 
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.brain import _STAMP, Clock
-from winston.core.rooms import (MicGate, RoomLink, Rooms, area, dismissal, local_sync, scoped_by_name,
-                                wake_phrases)
+from winston.core.rooms import (MicGate, RoomLink, Rooms, area, dismissal, local_sync, make_start_over_tool,
+                                scoped_by_name, wake_phrases)
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}})
 cfg.channels.satellite.devices = {"main room": SatelliteDevice(host="10.0.0.5", area="Main Room"),
@@ -27,6 +28,7 @@ check("area of a room without a box", area(cfg, "Office "), "Office")
 user = lambda t: {"role": "user", "content": t}             # noqa: E731
 bot = lambda t: {"role": "assistant", "content": t}         # noqa: E731
 texts = lambda ctx: [m["content"] for m in ctx.get_messages()]   # noqa: E731
+said = lambda ctx: [m.get("content") for m in ctx.get_messages()]   # noqa: E731
 
 
 async def turn(link: RoomLink, ctx: LLMContext, said: str, reply: str):
@@ -88,6 +90,35 @@ async def conversation():
     await turn(box, at_box, "[10:31] what did I just say?", "You said good morning.")
     check("the box picks up the new conversation", texts(at_box),
           ["[10:30] good morning", "Good morning.", "[10:31] what did I just say?", "You said good morning."])
+
+    # Starting over at the screen: the room's conversation ends for the box too; the request that asked
+    # stays, with its tool call, so the model has something to answer.
+    _, start_over = make_start_over_tool()
+    results = []
+
+    async def done(result, **_):
+        results.append(result)
+    call = {"role": "assistant", "tool_calls": [{"id": "s1", "type": "function", "function": {
+        "name": "start_over", "arguments": "{}"}}]}
+    at_screen.add_message(user("[10:32] start over"))
+    await screen.sync(at_screen, pull=True)
+    at_screen.add_message(call)
+    await start_over(SimpleNamespace(context=at_screen, result_callback=done))
+    check("start over keeps the request and its call", (said(at_screen), results),
+          (["[10:32] start over", None], [{"started_over": True}]))
+    at_screen.add_message({"role": "tool", "tool_call_id": "s1", "content": '{"started_over": true}'})
+    await screen.sync(at_screen, pull=True)
+    at_screen.add_message(bot("Very well."))
+    await screen.sync(at_screen, pull=False)
+    check("the screen goes on in the new conversation", said(at_screen),
+          ["[10:32] start over", None, '{"started_over": true}', "Very well."])
+    await turn(box, at_box, "[10:33] what did I say before?", "Only to start over.")
+    check("the box starts over too", said(at_box),
+          ["[10:32] start over", None, '{"started_over": true}', "Very well.", "[10:33] what did I say before?",
+           "Only to start over."])
+    no_room = LLMContext([user("[10:34] hi"), bot("Hello."), user("[10:35] new conversation"), call])
+    await start_over(SimpleNamespace(context=no_room, result_callback=done))
+    check("without a room only the session starts over", said(no_room), ["[10:35] new conversation", None])
 
     # Tool calls travel with their results; objects that are not chat messages stay local.
     tool_ctx = LLMContext([])

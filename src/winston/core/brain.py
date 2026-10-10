@@ -38,7 +38,7 @@ from winston.core import persona as persona_file
 from winston.core import directory, guard, region
 from winston.core.common import Once, entity_names, key, log_event, rewrap, words_pattern
 from winston.core.memory import make_memory_tools, prompt_block
-from winston.core.rooms import plain_words, scoped_by_name
+from winston.core.rooms import make_start_over_tool, plain_words, scoped_by_name
 from winston.core.tools.ask_claude import make_ask_claude_tool
 from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.messaging import make_send_message_tool
@@ -294,11 +294,14 @@ class WinstonLLM(OpenAILLMService):
 
     def bind(self, tools: list[str]):
         """The brain's tools are known: find each shortcut's tool. An HA script (script.x) is the MCP tool
-        x or y__x; an extension tool (extension.tool) is its brain name, extension_tool (host.brain_name)."""
+        x or y__x; an extension tool (extension.tool) is its brain name, extension_tool (host.brain_name); one
+        of his own tools (start_over) is its name."""
         for own in self._own:
             if not own.shortcut:
                 continue
-            if own.entity_id.startswith("script."):
+            if own.entity_id in tools:
+                own.tool = own.entity_id
+            elif own.entity_id.startswith("script."):
                 oid = own.entity_id.split(".", 1)[1]
                 own.tool = next((t for t in tools if t == oid or t.endswith("__" + oid)), None)
             else:
@@ -419,7 +422,7 @@ class Brain:
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
         for local in (make_sensor_tool(self.cfg), *make_memory_tools(self.cfg), make_web_search_tool(self.cfg),
-                      make_ask_claude_tool(self.cfg), make_send_message_tool(self.cfg)):
+                      make_ask_claude_tool(self.cfg), make_send_message_tool(self.cfg), make_start_over_tool()):
             if local:
                 schema, handler = local
                 self.llm.register_function(schema.name, handler)

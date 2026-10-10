@@ -38,7 +38,8 @@ transport), connecting through winstond to the voice channel.
   a bell and the time.
 - His presence is his logo, one component, `Presence`, driven by his state (idle, listening,
   thinking, speaking); see [identity](identity.md). Pages never draw their own version of it.
-- Voice and typing sit side by side at the bottom: a text field and one round talk button.
+- Voice and typing sit side by side at the bottom: a text field and one round talk button, with New
+  conversation before the field as a quiet round icon button of the same size.
 - Links to Talk, Turns, Memory, Dashboard and Settings are plain text at the top right, not a sidebar,
   the current one in the text colour. On Talk they follow one speaker icon button that reads typed
   replies aloud, and before it the room picker (a house icon and the room's name, "No room" by

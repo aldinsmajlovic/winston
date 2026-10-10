@@ -8,7 +8,8 @@ winstond keeps each room's conversation (`Rooms`). Every session in a room links
 it with a `RoomLink`: before the LLM runs, the link takes in what the other sessions in the room said
 since (inserted before the newest user message) and hands over its own new messages; after each reply
 it hands over the reply. So a request started at the box can be continued at the screen. A room's
-conversation starts fresh after `channels.satellite.session_idle_mins` without a new message.
+conversation starts fresh after `channels.satellite.session_idle_mins` without a new message, or when
+someone starts over (the start_over tool, the Talk page's New conversation).
 
 The microphone: a box that wakes holds its room's mic with a lease, renewed while its turn runs and
 kept for the rest of its reply's playback (longer when it asked a question and listens again). A
@@ -24,6 +25,7 @@ import json
 import re
 import time
 import uuid
+import weakref
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable
 from urllib.parse import quote
@@ -31,10 +33,12 @@ from urllib.parse import quote
 import httpx
 import numpy as np
 from loguru import logger
+from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.frames.frames import (Frame, InputAudioRawFrame, InterimTranscriptionFrame, LLMContextFrame,
                                    TranscriptionFrame)
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.services.llm_service import FunctionCallParams
 from pydantic import BaseModel, Field
 
 from winston.config.schema import WinstonConfig
@@ -80,6 +84,7 @@ class SyncRequest(BaseModel):
     messages: list[dict[str, Any]] = Field(default_factory=list, description="The session's new messages, "
                                                                             "OpenAI chat format.")
     pull: bool = Field(True, description="False: only hand over (after a reply); nothing comes back.")
+    fresh: bool = Field(False, description="End the room's conversation first: the hand-over starts the new one.")
 
 
 class SyncResult(BaseModel):
@@ -134,7 +139,13 @@ class Rooms:
             r = self._rooms[k] = Room(name=name.strip())
         elif r.messages and time.monotonic() - r.last_used > self.idle_secs:
             logger.info(f"{r.name}: room conversation closed after idling")
-            r.epoch, r.messages = uuid.uuid4().hex[:12], []
+            self.clear(r)
+        return r
+
+    def clear(self, r: Room | str) -> Room:
+        """End a room's conversation: every session in it drops what it has of it at its next turn."""
+        r = self.room(r) if isinstance(r, str) else r
+        r.epoch, r.messages = uuid.uuid4().hex[:12], []
         return r
 
     def states(self) -> list[RoomState]:
@@ -157,6 +168,9 @@ class Rooms:
 
     def sync(self, name: str, req: SyncRequest) -> SyncResult:
         r = self.room(name)
+        if req.fresh:
+            logger.info(f"{r.name}: room conversation started over")
+            self.clear(r)
         reset = req.epoch != r.epoch
         others: list[dict] = []
         seqs: list[int] = []
@@ -262,6 +276,19 @@ def _note(m: dict) -> bool:
     return m.get("role") == "user" and isinstance(c, str) and is_note(c)
 
 
+def this_turn(messages: list) -> list:
+    """The newest request and what has come after it (the tool call it is running): what a session keeps
+    when it starts over."""
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if isinstance(m, dict) and m.get("role") == "user" and not _note(m):
+            return messages[i:]
+    return []
+
+
+_LINKS: weakref.WeakKeyDictionary[LLMContext, RoomLink] = weakref.WeakKeyDictionary()
+
+
 class RoomLink:
     """One session's link to its room's conversation: `before` goes between the Clock and the LLM,
     `after` behind the assistant aggregator."""
@@ -276,6 +303,7 @@ class RoomLink:
         self.after = _Hook(self, pull=False)
 
     async def sync(self, context: LLMContext, pull: bool):
+        _LINKS[context] = self
         async with self._lock:
             msgs = list(context.get_messages())
             self.synced = min(self.synced, len(msgs))
@@ -304,6 +332,43 @@ class RoomLink:
             if others:
                 logger.info(f"{self.room}: {len(others)} message(s) from the room")
             self.epoch, self.taken, self.synced = res.epoch, taken, len(merged)
+
+    async def start_over(self, context: LLMContext) -> bool:
+        """End the room's conversation for every session in it. Here the newest request stays, with what
+        came after it, and starts the new one; the rest of it is handed over as it completes. False when
+        winstond is not there."""
+        async with self._lock:
+            keep = this_turn(list(context.get_messages()))
+            res = await self._sync(self.room, SyncRequest(origin=self.origin, fresh=True, messages=keep[:1]))
+            if res is None:
+                return False
+            context.set_messages(keep)
+            self.epoch, self.taken, self.synced = res.epoch, res.seq, min(1, len(keep))
+            return True
+
+
+def make_start_over_tool():
+    """start_over: "let's start over", "new conversation". A session in a room ends the room's conversation,
+    so the box and the screens there start again too; a session without one drops its own. Either way the
+    request that asked stays, so the model has something to answer."""
+    async def start_over(params: FunctionCallParams):
+        context = params.context
+        link = _LINKS.get(context)
+        if link is not None:
+            if not await link.start_over(context):
+                return await params.result_callback({"error": "the room's conversation could not be reached"})
+        else:
+            context.set_messages(this_turn(list(context.get_messages())))
+        await params.result_callback({"started_over": True})
+
+    schema = FunctionSchema(
+        name="start_over",
+        description="Start a new conversation: everything said before this request is dropped, for every box "
+                    "and screen in the room. Use it when the user asks to start over, for a new conversation, or "
+                    "to forget this conversation. Remembered facts stay; to forget one of those, use forget. "
+                    "Then say briefly that you have.",
+        properties={}, required=[])
+    return schema, start_over
 
 
 class _Hook(FrameProcessor):

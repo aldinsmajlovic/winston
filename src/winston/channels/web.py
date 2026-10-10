@@ -77,6 +77,17 @@ class WebChat:
         for s in list(self.sessions.values()):
             await s.noted(house_note, said)
 
+    async def start_over(self, room: str | None = None):
+        """New conversation on the Talk page: a room's ends for every session in it (its typed one too, at
+        the next message); the household's typed one closes."""
+        if room and self.rooms:
+            self.rooms.clear(room)
+            return
+        async with self._lock:
+            s = self.sessions.pop(None, None)
+        if s is not None:
+            await s.close()
+
     async def reset(self, cfg: WinstonConfig | None = None):
         """Close the conversations; the next message starts one with the current config and memory."""
         async with self._lock:

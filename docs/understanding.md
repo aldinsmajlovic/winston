@@ -102,7 +102,9 @@ has to mean something.
   - The brain gets a short map of the house up front: rooms, what is in each, what each can do. A lamp
     named in the map needs no lookup. **Built** (`core/directory.py`): each Home Assistant area with what
     is exposed in it, by the name you gave it (Home Assistant's own name and the aliases after it), its
-    kind and, for a light, whether it dims, goes warm to cool or takes a colour. A group is listed in its
+    kind and, for a light, whether it dims, goes warm to cool or takes a colour; for a vacuum, the areas
+    its rooms are mapped to in Home Assistant ("cleans Kitchen"), which need hold nothing else he
+    controls, or "clean the kitchen" meets a map with no kitchen in it. A group is listed in its
     members' area with its members, first, and the brain is told to call a group once rather than each
     light. No states, so the prompt stays the same between turns; "is it on?" and "a bit dimmer" still
     read the state with GetLiveContext. Read from Home Assistant when a conversation starts, at most every

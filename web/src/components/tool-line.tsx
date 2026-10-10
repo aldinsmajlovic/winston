@@ -7,6 +7,7 @@ import {
   Lightbulb,
   LoaderCircle,
   MessageCircleQuestion,
+  MessageSquarePlus,
   Search,
   Send,
   Wrench,
@@ -24,6 +25,7 @@ const TOOL_ICONS: [(base: string) => boolean, LucideIcon][] = [
   [(b) => b === 'forget', BookmarkMinus],
   [(b) => b === 'send_message', Send],
   [(b) => b === 'mark_mistake', Flag],
+  [(b) => b === 'start_over', MessageSquarePlus],
 ]
 
 export function ToolIcon({ name, running }: { name: string; running: boolean }) {

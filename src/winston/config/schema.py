@@ -722,8 +722,9 @@ class Shortcut(Model):
                                            "fillers around it aside (\"Okay Winston, party time\"), runs the "
                                            "tool straight away without the model, the same every time.")
     tool: str = Field(title="Tool",
-                      description="The tool it runs: an extension tool as \"extension.tool\" (\"spotify.party\"), or a "
-                                  "Home Assistant script as \"script.name\". The tool must be available to the brain.")
+                      description="The tool it runs: an extension tool as \"extension.tool\" (\"spotify.party\"), a "
+                                  "Home Assistant script as \"script.name\", or one of his own tools by its name "
+                                  "(\"start_over\"). The tool must be available to the brain.")
     args: dict[str, Any] = Field(default_factory=dict, title="Arguments",
                                  description="Fixed arguments passed to the tool every time, e.g. which track a party "
                                              "plays and which light scene it runs.",

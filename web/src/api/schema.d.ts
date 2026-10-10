@@ -413,6 +413,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/start-over": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** New conversation: the room's, for every box and screen in it, or the household's typed one */
+        post: operations["chat_start_over_api_chat_start_over_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rooms": {
         parameters: {
             query?: never;
@@ -2918,7 +2935,7 @@ export interface components {
             phrases?: string[];
             /**
              * Tool
-             * @description The tool it runs: an extension tool as "extension.tool" ("spotify.party"), or a Home Assistant script as "script.name". The tool must be available to the brain.
+             * @description The tool it runs: an extension tool as "extension.tool" ("spotify.party"), a Home Assistant script as "script.name", or one of his own tools by its name ("start_over"). The tool must be available to the brain.
              */
             tool: string;
             /**
@@ -3016,6 +3033,14 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** StartOver */
+        StartOver: {
+            /**
+             * Room
+             * @description The room the page is set to: its conversation ends for its box and screens too. None: the household's.
+             */
+            room?: string | null;
+        };
         /** Status */
         Status: {
             /** Version */
@@ -3067,6 +3092,12 @@ export interface components {
              * @default true
              */
             pull?: boolean;
+            /**
+             * Fresh
+             * @description End the room's conversation first: the hand-over starts the new one.
+             * @default false
+             */
+            fresh?: boolean;
         };
         /** SyncResult */
         SyncResult: {
@@ -4455,6 +4486,39 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ChatMessage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_start_over_api_chat_start_over_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartOver"];
             };
         };
         responses: {

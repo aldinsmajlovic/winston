@@ -8,6 +8,7 @@ import {
   CircleX,
   House,
   LoaderCircle,
+  MessageSquarePlus,
   Mic,
   MicOff,
   ShieldQuestion,
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { $api, type TurnMark } from '@/api/client'
-import { clock, micHolder, presence, useChat, useLive, type Item } from '@/api/live'
+import { clock, micHolder, presence, useChat, useLive, useStartOver, type Item } from '@/api/live'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ToolLine } from '@/components/tool-line'
@@ -171,6 +172,7 @@ export default function TalkPage() {
   const feed = useLive()
   const marks = useMarks(feed.items.filter((i) => i.kind === 'tool' && i.name === 'mark_mistake' && i.status === 'ok').length)
   const chat = useChat()
+  const startOver = useStartOver()
   const status = $api.useQuery('get', '/api/status')
   const [text, setText] = useState('')
   const now = useNow(10_000)
@@ -249,6 +251,20 @@ export default function TalkPage() {
       {paused && <p className="w-full max-w-3xl px-8 text-sm text-muted-foreground">Mic paused while the {paused} has it</p>}
 
       <form onSubmit={send} className="flex w-full max-w-3xl items-center gap-3 px-4 pt-3 pb-8">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="New conversation"
+          title={room ? `New conversation, for everything in ${room}` : 'New conversation'}
+          disabled={startOver.isPending}
+          onClick={() =>
+            startOver.mutate({ body: { room: room || null } }, { onError: () => toast.error('Could not start a new conversation') })
+          }
+          className="size-14 rounded-full text-muted-foreground hover:text-foreground"
+        >
+          <MessageSquarePlus className="size-6" />
+        </Button>
         <Input
           value={text}
           onChange={(event) => setText(event.target.value)}

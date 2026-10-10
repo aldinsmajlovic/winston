@@ -36,7 +36,8 @@ flowchart LR
   night"). The Home Assistant page's edit dialog has them as "Said first", "Quiet after" and "Run when named".
 - A shortcut can also run an **extension tool**, not only a Home Assistant script, through the top-level
   `shortcuts` config: a list of entries with `phrases`, a `tool` (`extension.tool`, like `spotify.party`,
-  or `script.name`), the fixed `args` it runs with, `say_first` and `quiet_after`. Saying just one of the
+  `script.name`, or one of his own tools by its name, like `start_over`), the fixed `args` it runs with,
+  `say_first` and `quiet_after`. Saying just one of the
   phrases runs the tool straight away, without the model, the same every time. This is how a party scene
   works: one phrase plays music on his own speakers and runs a light show (see the Spotify `party` tool in
   [extensions.md](extensions.md)), where a script-only shortcut could not reach the speakers.
@@ -58,6 +59,16 @@ words (`light.shelf_lamp` is "shelf lamp"), whatever the case or spacing. Those 
 request think first, make a loose claim about it ("the shelf lamp is now on") need a tool call, name a
 shortcut, and keep a named device's own area; the state check also matches Home Assistant's friendly
 names.
+
+## A vacuum
+
+A vacuum on his list brings Home Assistant's start, return to base and clean an area. Cleaning a
+room needs its integration to support Home Assistant's clean area (Matter, Roborock, Ecovacs and some
+custom integrations do) and its rooms mapped to areas, in the vacuum's entity settings under "Map
+vacuum segments to areas". The map of the house names the areas it is mapped to ("cleans Kitchen"),
+so "clean the kitchen" works with nothing else in the kitchen on his list; a room left unmapped is
+not offered. Keep vacuums out of the brain trials: a trial makes the real call, and only lights are
+put back afterwards.
 
 ## What Save does
 

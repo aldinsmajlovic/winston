@@ -139,3 +139,8 @@ export function useLive() {
 export function useChat() {
   return $api.useMutation('post', '/api/chat')
 }
+
+/** New conversation: the room's, for every box and screen in it, or the household's typed one. */
+export function useStartOver() {
+  return $api.useMutation('post', '/api/chat/start-over')
+}
