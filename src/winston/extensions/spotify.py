@@ -445,6 +445,16 @@ def in_library(ctx, what: str, kind: str | None, exact: bool) -> dict | None:
     return None
 
 
+@ext.tool(tier="read")
+async def my_music(ctx) -> dict:
+    """His Spotify library: playlists, top artists, saved albums and liked songs. Call this before
+    playing something for a mood or vibe request ("something chill", "upbeat music", "sad songs")
+    so you can pick an artist or playlist that fits from what he actually listens to, then play it
+    as a radio (radio=true) for an endless personalized stream."""
+    lib = ctx.store.get("library") or {}
+    return {k: [item["name"] for item in items] for k, items in lib.items()}
+
+
 _app_token: dict = {}
 
 
@@ -504,24 +514,39 @@ def _describe(item: dict) -> str:
     return (name if kind == "track" else f"the {kind} {name}") + (f" by {by}" if by else "") + (f" ({owner})" if owner else "")
 
 
+def _radio_uri(uri: str) -> str | None:
+    """spotify:artist:X -> spotify:station:artist:X (and likewise for tracks)."""
+    m = re.match(r"spotify:(artist|track):(.+)", uri)
+    return f"spotify:station:{m.group(1)}:{m.group(2)}" if m else None
+
+
 @ext.tool(tier="act", filler="One moment.", timeout=15)
-async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playlist"] | None = None) -> str:
+async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playlist"] | None = None,
+               radio: bool = False) -> str:
     """Play music from Spotify on the speakers: a song, an artist, an album, or a playlist (his own
-    library first). It moves Spotify playback here from any other device.
+    library first). With radio, Spotify builds a personalized endless stream seeded from the artist
+    or song, drawing on his listening history. For a mood or vibe request, call my_music first to
+    pick an artist that fits, then play it as radio. It moves Spotify playback here from any other
+    device.
 
     Args:
         what: What he asked for, as said: "Daft Punk", "Get Lucky", "my running playlist".
         kind: Only when he said which: a track, an artist, an album or a playlist.
+        radio: True for an endless personalized stream seeded from the artist or song. Use for mood
+            or vibe requests after picking an artist from my_music.
     """
     await ready(ctx)
     state.pending = None                # another song: a party's lights stop with its music
     await end_party(ctx)
     if re.search(r"\bmy\b", what, re.IGNORECASE) and (own := in_library(ctx, what, kind, exact=False)) is not None:
-        await call(ctx, "POST", "/player/play", uri=own["uri"])
-        return f"Playing your {own['type']} {own['name']}."
+        uri = (radio and _radio_uri(own["uri"])) or own["uri"]
+        await call(ctx, "POST", "/player/play", uri=uri)
+        return f"Playing {'radio from ' if radio and uri != own['uri'] else 'your '}{own['type']} {own['name']}."
     item = await search(ctx, what, kind)
-    await call(ctx, "POST", "/player/play", uri=item["uri"])
-    return f"Playing {_describe(item)}."
+    uri = item.get("uri") or item.get("id", "")
+    station = _radio_uri(uri) if radio else None
+    await call(ctx, "POST", "/player/play", uri=station or uri)
+    return f"Playing {'radio from ' if station else ''}{_describe(item)}."
 
 
 @ext.tool(tier="act", timeout=15)
