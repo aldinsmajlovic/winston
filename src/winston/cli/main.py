@@ -75,11 +75,23 @@ def init(force: bool = typer.Option(False, help="Overwrite existing files."),
 def up(host: str = typer.Option(None), port: int = typer.Option(None),
        no_start: bool = typer.Option(False, "--no-start", help="Run the control service without starting engines.")):
     """Run winstond: start the engines and the channels, serve the control API. Ctrl-C stops everything."""
+    import socket
+
     import uvicorn
     from winston.api.app import create_app
     cfg = load()
+    host, port = host or cfg.control.host, port or cfg.control.port
+    # Before anything starts: uvicorn binds after the lifespan has started the engines and extensions, and a
+    # failed bind left that process running a second copy of every extension.
+    with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind((host, port))
+        except OSError:
+            raise SystemExit(f"port {port} is in use: winstond is already running (`winston status`) or something "
+                             f"else has it")
     application = create_app(cfg, autostart=not no_start)
-    uvicorn.run(application, host=host or cfg.control.host, port=port or cfg.control.port, log_level="warning",
+    uvicorn.run(application, host=host, port=port, log_level="warning",
                 timeout_graceful_shutdown=5)   # open SSE streams (status, live) would otherwise hold shutdown forever
 
 
