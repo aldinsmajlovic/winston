@@ -1,7 +1,8 @@
 """The built-in extensions with the real brain (Extensions track step 4): does the voice channel's brain
-(thinking off, the spoken prompt) use Reminders and News the way you would ask? A throwaway winstond
-with the fake Home Assistant, Reminders and News switched on (News reads the real public feeds of its
-presets, nothing personal); data/ is only read (config for the model, the persona).
+(thinking off, the spoken prompt) use Reminders, News, Agenda and Later the way you would ask? A
+throwaway winstond with the fake Home Assistant (a made-up calendar), those four switched on (News
+reads the real public feeds of its presets, nothing personal); data/ is only read (config for the
+model, the persona).
 
 Needs the LLM engine up.
 
@@ -14,6 +15,7 @@ import re
 import shutil
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from harness import free_port, scratch_data, serve, winstond_data
@@ -39,10 +41,11 @@ def setup(api_port: int, ha_port: int):
     cfg = {"assistant": real.get("assistant", {}), "llm": real["llm"],
            "channels": {c: {"enabled": False} for c in ("voice", "satellite", "discord")},
            "providers": {"home_assistant": {"url": f"http://127.0.0.1:{ha_port}", "token_env": "HA_TOKEN",
-                                            "expose": {"light.taklampa": {}}}},
+                                            "expose": {"light.taklampa": {}, "light.main_room": {}}}},
            "control": {"port": api_port, "host": "127.0.0.1"},
            "speak_up": {"home": "person.someone"},
-           "extensions": {"reminders": {"enabled": True},
+           "extensions": {"reminders": {"enabled": True}, "later": {"enabled": True},
+                          "agenda": {"enabled": True, "settings": {"calendars": ["calendar.home"]}},
                           "news": {"enabled": True, "settings": {"sweden_en": True, "world": True}}}}
     winstond_data(DATA, cfg, REAL / "persona.md")
 
@@ -58,7 +61,13 @@ async def main() -> bool:
     setup(api_port, ha_port)
     from winston.api.app import create_app
     from winston.config import load
-    async with FakeHA(ha_port, seed="home"):
+    async with FakeHA(ha_port, seed="home") as ha:
+        today = datetime.now().astimezone().date()
+        tomorrow = today + timedelta(days=1)
+        ha.events["calendar.home"] = [
+            {"summary": "Anna's birthday", "start": today.isoformat(), "end": tomorrow.isoformat()},
+            {"summary": "Dentist", "start": f"{tomorrow}T09:30:00+02:00", "end": f"{tomorrow}T10:15:00+02:00",
+             "location": "Storgatan 4"}]
         app = create_app(load(), autostart=False)
         stop_server = await serve(app, api_port)
         host = app.state.extensions
@@ -113,6 +122,24 @@ async def main() -> bool:
         reply, used = await turn("Anything about Sweden?")
         news = [a for n, a in used if n == "news_get_news"]
         expect("a topic is asked for as a topic", news and "swed" in str(news[0].get("topic", "")).lower(), used)
+
+        reply, used = await turn("What's on my calendar today?")
+        expect("the calendar comes from agenda_upcoming", any(n == "agenda_upcoming" for n, _ in used)
+               and "birthday" in reply.lower() and "dentist" not in reply.lower(), (used, reply))
+        reply, used = await turn("And tomorrow?")
+        expect("tomorrow is asked for", any(n == "agenda_upcoming" and a.get("days", 1) >= 2 for n, a in used)
+               and "dentist" in reply.lower(), (used, reply))
+
+        reply, used = await turn("Turn off the main room lights when I leave.")
+        add = [a for n, a in used if n == "later_add"]
+        expect("\"when I leave\" waits for leaving, nothing done now", add and add[0].get("on") == "leave"
+               and add[0].get("tool", "").endswith("HassTurnOff") and not any("HassTurnOff" in n for n, _ in used),
+               (used, reply))
+        await ha.change("person.someone", "not_home")
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 15 and not any(w["type"].endswith("HassTurnOff") for w in ha.writes):
+            await asyncio.sleep(0.5)
+        expect("leaving turns them off", [w for w in ha.writes if w["type"].endswith("HassTurnOff")], ha.writes)
         await s.close()
 
         await host.stop_all()

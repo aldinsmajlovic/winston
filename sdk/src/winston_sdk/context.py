@@ -93,6 +93,19 @@ class Fact:
 
 
 @dataclass
+class ToolInfo:
+    name: str
+    tier: str
+    description: str = ""
+
+
+@dataclass
+class DiaryEntry:
+    day: date
+    text: str
+
+
+@dataclass
 class Timer:
     id: str
     job: str
@@ -152,9 +165,28 @@ class _Memory:
         return [Fact(r["text"], r["topic"], date.fromisoformat(r["noted"]) if r.get("noted") else None,
                      date.fromisoformat(r["until"]) if r.get("until") else None) for r in rows]
 
+    async def diary(self, days: int = 7) -> list[DiaryEntry]:
+        """His diary entries of the last `days` days, newest first."""
+        rows = await self._ctx._call("memory.diary", days=days)
+        return [DiaryEntry(date.fromisoformat(r["day"]), r["text"]) for r in rows]
+
     async def remember(self, text: str, topic: str, until: date | str | None = None) -> str:
         return await self._ctx._call("memory.remember", text=text, topic=topic,
                                      until=until.isoformat() if isinstance(until, date) else until)
+
+
+class _Tools:
+    def __init__(self, ctx: Ctx):
+        self._ctx = ctx
+
+    async def list(self) -> list[ToolInfo]:
+        """The tools the brain has from Home Assistant and the other extensions, by the names it sees."""
+        return [ToolInfo(t["name"], t["tier"], t.get("description", "")) for t in await self._ctx._call("tools.list")]
+
+    async def call(self, name: str, args: dict[str, Any] | None = None, /) -> Any:
+        """Runs one of them as the brain would, with its arguments as one dict (Home Assistant's tools take
+        a `name` of their own), and returns its result; a failure raises with its error."""
+        return await self._ctx._call("tools.call", name=name, args=args or {})
 
 
 class _Presence:
@@ -212,6 +244,7 @@ class Ctx:
         self.ha = _HA(self)
         self.memory = _Memory(self)
         self.presence = _Presence(self)
+        self.tools = _Tools(self)
         self.llm = _LLM(self)
         self.speakers = _Speakers(self)
         self._http: httpx.AsyncClient | None = None

@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import copy
 import json
+from datetime import datetime
 
 from aiohttp import WSMsgType, web
 
@@ -85,6 +86,7 @@ HOME_ENTITIES = [
     ("person.someone", "Someone", "home", {}, _no, True),
     ("weather.forecast_home", "Forecast", "cloudy", {"temperature": 12}, _no, True),
     ("todo.shopping_list", "Shopping list", "3", {}, _no, True),
+    ("calendar.home", "Home", "off", {}, _no, False),
     ("update.home_assistant_core", "Home Assistant Core Update", "off", {}, _no, False),
     ("sun.sun", "Sun", "above_horizon", {}, None, False),
 ]
@@ -100,8 +102,19 @@ TOOLS_BY_DOMAIN = {"light": [("light__HassLightSet", "Sets the brightness percen
                             ("todo__HassListCompleteItem", "Complete item on a todo list")],
                    "media_player": [("media_player__HassMediaPause", "Pauses a media player")]}
 
+INTENT_ARGS = {"type": "object", "properties": {"name": {"type": "string"}, "area": {"type": "string"},
+                                             "domain": {"type": "array", "items": {"type": "string"}}}}
 WRITES = {"config/entity_registry/update", "homeassistant/expose_entity", "homeassistant/expose_new_entities/set"}
 UPDATE_KEYS = {"aliases", "name", "area_id", "icon", "new_entity_id", "disabled_by", "hidden_by"}
+
+
+def _between(events: list[dict], body: dict) -> list[dict]:
+    """The events overlapping get_events' range, as Home Assistant answers; a whole day is local midnight."""
+    lo, hi = (datetime.fromisoformat(body[k]) for k in ("start_date_time", "end_date_time"))
+
+    def at(v: str) -> datetime:
+        return datetime.fromisoformat(v) if "T" in v else datetime.fromisoformat(v).replace(tzinfo=lo.tzinfo)
+    return [e for e in events if at(e["start"]) < hi and at(e["end"]) > lo]
 
 
 class FakeHA:
@@ -134,6 +147,7 @@ class FakeHA:
         self.exposed = {eid for eid, *_, ex in self.entities if ex}
         self.expose_new = True
         self.writes: list[dict] = []
+        self.events: dict[str, list[dict]] = {}       # calendar.get_events answers, by calendar
 
     # ------------------------------------------------------------ REST
 
@@ -185,7 +199,7 @@ class FakeHA:
                 self.states[eid]["state"] = service.removeprefix("turn_")
         if "return_response" in request.query:
             response = {eid: {"forecast": [{"condition": "sunny", "temperature": 14}]} if domain == "weather"
-                        else {"events": []} if domain == "calendar" else {"items": []}
+                        else {"events": _between(self.events.get(eid, []), body)} if domain == "calendar" else {"items": []}
                         for eid in ([ids] if isinstance(ids, str) else ids)}
             return web.json_response({"changed_states": [], "service_response": response})
         return web.json_response([self.states[e] for e in ([ids] if isinstance(ids, str) else ids) if e in self.states])
@@ -299,7 +313,8 @@ class FakeHA:
     def _tools(self) -> list[dict]:
         domains = {eid.split(".")[0] for eid in self.exposed}
         tools = TOOLS_ALWAYS + [t for d, ts in TOOLS_BY_DOMAIN.items() if d in domains for t in ts]
-        return [{"name": n, "description": d, "inputSchema": {"type": "object", "properties": {}}} for n, d in tools]
+        return [{"name": n, "description": d, "inputSchema": INTENT_ARGS if "__Hass" in n else
+                 {"type": "object", "properties": {}}} for n, d in tools]
 
     async def mcp(self, request):
         await self._gate(request)
@@ -313,6 +328,13 @@ class FakeHA:
                       "serverInfo": {"name": "home-assistant", "version": "fake"}}
         elif method == "tools/list":
             result = {"tools": self._tools()}
+        elif method == "tools/call":
+            name, args = params.get("name"), params.get("arguments") or {}
+            known = name in {t["name"] for t in self._tools()}
+            if known:
+                self.writes.append({"type": f"mcp/{name}", **args})
+            result = {"content": [{"type": "text", "text": f"Done: {name}" if known else f"Error: no tool {name}"}],
+                      "isError": not known}
         elif method == "ping":
             result = {}
         else:

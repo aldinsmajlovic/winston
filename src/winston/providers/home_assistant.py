@@ -407,6 +407,23 @@ class HomeAssistant:
         _tools_cache[cached] = (time.monotonic(), out)
         return out
 
+    async def call_tool(self, name: str, args: dict) -> str:
+        """One of its MCP tools, run as a brain runs it; its text, starting "Error" when it failed."""
+        import mcp
+        from mcp.client.streamable_http import streamable_http_client
+        from mcp.shared._httpx_utils import create_mcp_http_client
+
+        async def run():
+            async with create_mcp_http_client(headers=self._headers) as hc, \
+                    streamable_http_client(self.url + self.ha.mcp_path, http_client=hc) as (r, w), \
+                    mcp.ClientSession(r, w) as cs:
+                await cs.initialize()
+                res = await cs.call_tool(name, args)
+                text = "\n".join(getattr(c, "text", "") for c in res.content if getattr(c, "type", "") == "text")
+                return f"Error: {text}" if res.is_error and not text.lower().startswith("error") else text
+
+        return await asyncio.wait_for(run(), 30)
+
 
 def ha_changed(old: WinstonConfig, new: WinstonConfig) -> bool:
     """Does a save change what Home Assistant should expose: the list, the domains or the switch."""

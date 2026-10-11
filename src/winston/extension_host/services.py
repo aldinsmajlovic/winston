@@ -13,7 +13,7 @@ import asyncio
 import json
 import time
 from collections.abc import Callable
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +21,12 @@ import httpx
 from loguru import logger
 from openai import AsyncOpenAI
 from winston_sdk.fields import picked
-from winston_sdk.manifest import refusal
+from winston_sdk.manifest import refusal, tool_refusal
 
+from winston.config import resolve
 from winston.config.schema import WinstonConfig
-from winston.core import memory
+from winston.core import guard, memory
+from winston.core.common import log_event
 from winston.core.brain import api_key, thinking_body
 from winston.extension_host.sources import read_json, state_dir, write_json
 
@@ -96,6 +98,10 @@ class Services:
             return await self._ha(ext_id, op, p)
         if op == "memory.facts":
             return self._facts(p.get("topic"))
+        if op == "memory.diary":
+            from winston.core.diary import Diary
+            since = (date.today() - timedelta(days=int(p.get("days") or 7))).isoformat()
+            return [{"day": d, "text": t} for d, t in Diary(self.cfg).entries(60) if d >= since]
         if op == "memory.remember":
             r = memory.remember(self.cfg, p["topic"], p["text"], until=p.get("until"))
             if "error" in r:
@@ -107,6 +113,11 @@ class Services:
             return await self._ask(p["prompt"], p.get("schema"), int(p.get("max_tokens") or 500))
         if op == "devices":
             return await self._devices()
+        if op == "tools.list":
+            return [{"name": n, "tier": t["tier"], "description": t["description"]}
+                    for n, t in (await self._brain_tools(ext_id)).items()]
+        if op == "tools.call":
+            return await self._call_brain_tool(ext_id, perms, p["name"], p.get("args") or {})
         if op == "ext.call":
             # An SDK extension's tools, or an MCP server's allowed ones, at the tier you gave them.
             other = p["extension"]
@@ -233,6 +244,47 @@ class Services:
         out = self._json(r)
         logger.info(f"extension {ext_id}: {domain}.{service} on {', '.join(entities)}")
         return out.get("service_response", out) if isinstance(out, dict) else out
+
+    async def _brain_tools(self, ext_id: str) -> dict[str, dict[str, Any]]:
+        """The brain's tools from the other extensions and Home Assistant, by the names it sees."""
+        out = {t["name"]: {"tier": t["tier"], "description": t["description"], "extension": t["extension"],
+                           "tool": t["tool"]} for t in self.host.brain_tools() if t["extension"] != ext_id}
+        if self.cfg.providers.ha is not None:
+            from winston.providers.home_assistant import HomeAssistant
+            try:
+                rows = await HomeAssistant(self.cfg).tools()
+            except Exception as e:                                      # said to the extension as its error
+                raise Failed(f"Home Assistant did not list its tools: {e}") from e
+            for row in rows:
+                for n in row.names:
+                    out[n] = {"tier": guard.tool_tier(n), "description": row.description}
+        return out
+
+    async def _call_brain_tool(self, ext_id: str, perms, name: str, args: dict[str, Any]) -> Any:
+        """One of the brain's tools, at its tier and logged like the brain's own calls (plan §6 rule 7)."""
+        t = (await self._brain_tools(ext_id)).get(name)
+        if t is None:
+            raise BadCall(f"the brain has no tool {name}")
+        if (why := tool_refusal(perms, name, t["tier"])) is not None:
+            raise Refused(why)
+        log = resolve(self.cfg.logging.tool_calls)
+        log_event(log, f"extension:{ext_id}", event="call", tool=name, args=args)
+        if "extension" in t:
+            r = await self.host.call_tool(t["extension"], t["tool"], args)
+            ok, result = r["ok"], r.get("result", r.get("error"))
+        else:
+            from winston.providers.home_assistant import HomeAssistant
+            try:
+                result = await HomeAssistant(self.cfg).call_tool(name, args)
+            except Exception as e:                                      # noqa: BLE001  (said back as its error)
+                result = f"Error: {e or type(e).__name__}"
+            ok = guard.result_ok(result)
+        text = result if isinstance(result, str) else json.dumps(result, default=str)
+        log_event(log, f"extension:{ext_id}", event="result", tool=name, result=text[:2000])
+        logger.info(f"extension {ext_id}: tool {name} {'ok' if ok else 'failed'}")
+        if not ok:
+            raise Failed(text[:300])
+        return result
 
     async def _devices(self) -> list[dict[str, Any]]:
         """Home Assistant's device registry, every device exposed or not, cut to what `devices` allows:

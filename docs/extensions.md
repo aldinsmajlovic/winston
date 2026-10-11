@@ -1,11 +1,12 @@
 # Extensions
 
 Approved 2026-09-29. Built: everything on this page but entities reaching Home Assistant, which wait
-for Winston's integration (UI track step 3 in the [plan](plan.md)). Four extensions come with Winston,
-written on this standard alone: Hevy, News, Reminders and Spotify
+for Winston's integration (UI track step 3 in the [plan](plan.md)). Seven extensions come with Winston,
+written on this standard alone: Agenda, Awareness, Hevy, Later, News, Reminders and Spotify
 ([built-in extensions](built-in-extensions.md)). Added within v1 on 2026-10-10, for
 [computers](computer.md) and the vulnerabilities extension: a token for MCP servers over HTTP, the
-`devices` permission, and picking another extension's tool in settings.
+`devices` permission, and picking another extension's tool in settings. Added on 2026-10-11: the
+`tools` permission (calling the brain's own tools, for Later) and the diary through `memory`.
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs
@@ -226,16 +227,22 @@ permissions = { network = ["api.elprisetjustnu.se"], home_assistant = "act", llm
 | `network = ["host", ...]` | `ctx.http` to those hosts; `["*"]` for any, shown as such on the card |
 | `home_assistant = "read"` | States, history and events, and services Home Assistant lists as response only (`weather.get_forecasts`, `calendar.get_events`, `todo.get_items`), for exposed entities and entities picked in its settings |
 | `home_assistant = "act"` | The above, and any service on those same entities |
-| `memory = "read"` or `"write"` | Remembered facts; writing goes through the same checks as `remember` |
+| `memory = "read"` or `"write"` | Remembered facts and his diary; writing goes through the same checks as `remember` |
 | `presence = true` | Whether you are home, and since when |
 | `llm = true` | The background model, through `ctx.llm` |
 | `extensions = ["id", ...]` | The read tools of those extensions, through `ctx.ext` |
 | `speakers = true` | Playing an audio stream on the speakers, through `ctx.speakers` |
 | `devices = true` | Every device in Home Assistant's registry, exposed or not, through `ctx.devices()`: name, maker, model, firmware and area; no states, network addresses, serial numbers or integration ids |
+| `tools = "read"` or `"act"` | The brain's own tools (Home Assistant's and the other extensions'), through `ctx.tools`: read ones, or read and act ones. Never a restricted one |
 
 Picking an entity in an extension's settings is consent for it to use that entity, even if it is not
 exposed to the brain. Picking an extension or MCP server in an `Extensions(tool=...)` setting is
 consent for it to call that one's read tool of that name, as if it were listed under `extensions`.
+
+`tools` is for an extension that acts for you later or on a trigger, as Later does: it runs a call
+the brain chose, by the brain's own tool names and tiers, so it can do no more than the brain could
+in a conversation. A restricted tool waits for you to confirm it outside the voice, so no extension
+runs one. Every call goes to the tool-call log with the channel `extension:<id>`.
 
 `devices` is apart from `home_assistant` because the two read different things: `home_assistant` reads
 the states of exposed and picked entities (least privilege, plan §6 rule 5), while an inventory (a
@@ -409,6 +416,8 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.ha.query(domain, service, data=None, target=None)` | A response-only service's answer, as Home Assistant gives it (read) |
 | `ctx.ha.call(domain, service, data=None, target=None)` | Any service on permitted entities (act); returns its response or `None` |
 | `ctx.memory.facts(topic=None)`, `.remember(text, topic, until=None)` | `Fact(text, topic, noted, until)` items; writing as `remember` |
+| `ctx.memory.diary(days=7)` | His diary entries of the last `days` days, newest first, as `DiaryEntry(day, text)` (needs `memory`) |
+| `ctx.tools.list()`, `.call(name, args=None)` | The brain's tools from Home Assistant and the other extensions as `ToolInfo(name, tier, description)`, and one run as the brain would, with its arguments as one dict; a failure raises with its error (needs `tools`) |
 | `ctx.presence.home()`, `.since()` | `bool`, `datetime` |
 | `ctx.devices()` | `Device(id, name, manufacturer, model, model_id, sw_version, hw_version, area, service)` for every device Home Assistant knows (needs `devices`); `service` is true for what it lists as a service rather than hardware (an add-on, Home Assistant itself, a cloud account) |
 | `ctx.llm.ask(prompt, schema=None, max_tokens=500)` | Text, or an instance of the Pydantic model `schema`. The background model is the local brain unless you pick a cloud model; an extension never chooses, so nothing leaves the house unless a setting says so. It waits while a conversation runs (see [How it runs](#how-it-runs)) |
@@ -764,8 +773,10 @@ Designed now, built within v1 when the first extension needs them (each only add
 
 `winston_sdk.testing` runs an extension against a fake winstond: a clock you move, a fake Home
 Assistant (`FakeHA(states, services, devices)`), recorded HTTP answers, the other extensions it calls
-(`others={"desk": {"status": {...}}}`, refused unless listed or picked in its settings) and a record of
-what it asked to say.
+(`others={"desk": {"status": {...}}}`, refused unless listed or picked in its settings), remembered
+facts and diary entries (`facts=[...]`, `diary={"2026-10-10": "..."}`), the brain's tools
+(`tools={"HassTurnOn": {"tier": "act", "answer": "..."}}`, each call in `h.tool_calls`) and a record
+of what it asked to say.
 
 ```python
 from winston_sdk.testing import FakeHA, Harness, recorded
@@ -801,7 +812,8 @@ winston ext logs ID
 winston ext test ID                  # its tests, with the harness
 ```
 
-A personal extension reloads when its file is saved (winstond looks every 2 s).
+An extension reloads when its file is saved (winstond looks every 2 s), a built-in one too, so
+editing one's code restarts it on a running Winston.
 
 ## The Extensions page
 

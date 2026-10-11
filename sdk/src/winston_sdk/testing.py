@@ -33,7 +33,7 @@ from winston_sdk.context import Clock
 from winston_sdk.errors import NotPermitted
 from winston_sdk.fields import picked
 from winston_sdk.loader import load
-from winston_sdk.manifest import refusal
+from winston_sdk.manifest import refusal, tool_refusal
 from winston_sdk.nudge import Nudge, NudgeInfo
 from winston_sdk.runtime import Runtime
 
@@ -141,12 +141,27 @@ class FakeServices:
                 return h.ha.answer(p["domain"], p["service"], p["data"], p["target"])
             case "memory.facts":
                 return [f for f in h.facts if p.get("topic") in (None, f["topic"])]
+            case "memory.diary":
+                since = (h.clock.now().date() - timedelta(days=int(p.get("days") or 7))).isoformat()
+                return [{"day": d, "text": t} for d, t in sorted(h.diary.items(), reverse=True) if d >= since]
             case "memory.remember":
                 h.facts.append({"text": p["text"], "topic": p["topic"], "noted": str(h.clock.now().date()),
                                 "until": p.get("until")})
                 return f"Remembered: {p['text']}"
             case "devices":
                 return h.ha.devices
+            case "tools.list":
+                return [{"name": n, "tier": t["tier"], "description": t.get("description", "")}
+                        for n, t in h.tools.items()]
+            case "tools.call":
+                t = h.tools.get(p["name"])
+                if t is None:
+                    raise AssertionError(f"no fake for the tool {p['name']}; give the Harness tools=")
+                if (why := tool_refusal(h.ext.manifest.permissions, p["name"], t["tier"])) is not None:
+                    raise NotPermitted(why)
+                h.tool_calls.append((p["name"], p["args"]))
+                answer = t.get("answer", "ok")
+                return answer(**p["args"]) if callable(answer) else answer
             case "presence":
                 return {"home": h.home, "since": None}
             case "llm.ask":
@@ -203,13 +218,17 @@ class Harness:
     def __init__(self, target: str | Path, *, settings: dict[str, Any] | None = None,
                  secrets: dict[str, str] | None = None, http: httpx.AsyncBaseTransport | None = None,
                  ha: FakeHA | None = None, clock: FakeClock | None = None, home: bool = True,
-                 facts: list[dict[str, Any]] | None = None, llm: Any = None,
+                 facts: list[dict[str, Any]] | None = None, diary: dict[str, str] | None = None, llm: Any = None,
                  others: dict[str, dict[str, Any]] | None = None, day_parts: dict[str, str] | None = None,
+                 tools: dict[str, dict[str, Any]] | None = None,
                  background: bool = True):
         self.ext = load(str(target))
         self.clock = clock or FakeClock()
         self.ha = ha or FakeHA()
         self.home, self.facts, self.llm, self.others = home, list(facts or []), llm, others or {}
+        self.diary = dict(diary or {})                                  # {"2026-10-10": "entry text"}
+        # The brain's tools, for ctx.tools: {"HassTurnOn": {"tier": "act", "answer": "ok" or a function}}
+        self.tools, self.tool_calls = dict(tools or {}), []
         self.entities: dict[str, Any] = {}
         self.pushed: list[tuple[str, Nudge]] = []
         self.timers: dict[str, dict[str, Any]] = {}

@@ -30,6 +30,9 @@ class Permissions(BaseModel):
     devices: bool = Field(False, description="Every device Home Assistant knows: name, maker, model, firmware and "
                                              "area (ctx.devices), with no states, addresses or serial numbers.")
     extensions: list[str] = Field(default_factory=list, description="Extensions whose read tools it may call.")
+    tools: Literal["read", "act"] | None = Field(None, description="Call the brain's own tools (Home Assistant's "
+                                                                   "and other extensions'): read ones, or read and "
+                                                                   "act ones; never a restricted one (ctx.tools).")
 
 
 def refusal(perms: Permissions, op: str, params: dict[str, Any],
@@ -57,6 +60,18 @@ def refusal(perms: Permissions, op: str, params: dict[str, Any],
         return f"this extension may not call {params['extension']}"
     if op.startswith("speakers.") and not perms.speakers:
         return "this extension has no speakers permission"
+    if op.startswith("tools.") and perms.tools is None:
+        return "this extension has no tools permission"
+    return None
+
+
+def tool_refusal(perms: Permissions, name: str, tier: str) -> str | None:
+    """Why `ctx.tools.call` may not run the brain's tool `name` of this tier, or None. A restricted tool
+    waits for you to confirm it outside the voice, so no extension runs one (plan §6 rule 4)."""
+    if tier == "restricted":
+        return f"{name} is restricted: only you can confirm it, so an extension may not call it"
+    if tier != "read" and perms.tools != "act":
+        return f"{name} changes things; calling it needs tools = \"act\""
     return None
 
 

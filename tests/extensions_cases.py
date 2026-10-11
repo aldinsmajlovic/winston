@@ -77,15 +77,18 @@ def setup(ha_port: int, api_port: int, llm_port: int, remote_port: int):
                                                                         str(REPO / "tests/fixtures/mcp_echo.py")],
                                                             "env": ["ECHO_KEY"]},
                                    "tools": {"echo": {"offer": True}, "delete_all": {}, "env": {}}},
-                          "inventory": {"enabled": True},
+                          "inventory": {"enabled": True}, "caller": {"enabled": True},
                           "remote": {"enabled": True, "mcp": {"url": f"http://127.0.0.1:{remote_port}/mcp",
                                                               "token_env": "REMOTE_MCP_TOKEN"},
                                      "tools": {"status": {}, "poke": {}}}}}
-    winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py", "clock.py", "inventory.py"),
+    winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py", "clock.py", "inventory.py", "caller.py"),
                   env='PROBE_KEY="secret-one"\nOTHER_KEY="not-yours"\nECHO_KEY="for-echo"\n')
     doc = (REPO / "docs" / "extensions.md").read_text()
     coin = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if 'id = "coin"' in b)
     (DATA / "extensions" / "coin.py").write_text(coin)
+    from datetime import date, timedelta
+    (DATA / "memory" / "diary").mkdir(parents=True, exist_ok=True)
+    (DATA / "memory" / "diary" / f"{date.today() - timedelta(days=1)}.md").write_text("He asked about the lamp.\n")
 
 
 async def fake_llm(port: int):
@@ -232,6 +235,32 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
                    "service": False} and rows["dev_shelf"]["name"] == "Hyllan" and rows["dev_plex"]["service"], r)
         expect("and no addresses, serial numbers or integration ids", not any(
             w in json.dumps(r) for w in ("02:00:00:00:00:01", "GL-SERIAL", "entry_glimt", "identifiers")), r)
+
+        use = lambda name_, **args: api.post("/api/extensions/caller/tools/use",
+                                             json={"name": name_, "args": json.dumps(args)})
+        r = (await api.post("/api/extensions/caller/tools/listing", json={})).json()
+        tiers = {t["name"]: t["tier"] for t in r.get("result") or []}
+        expect("tools: the brain's tools from Home Assistant and other extensions, with their tiers, not its own",
+               r["ok"] and tiers.get("intent__HassTurnOn") == "act" and tiers.get("homeassistant__GetLiveContext")
+               == "read" and tiers.get("coin_flip") == "read" and tiers.get("echo_delete_all") == "restricted"
+               and not any(n.startswith("caller_") for n in tiers), r)
+        r = (await use("intent__HassTurnOn", name="Taklampa")).json()
+        expect("tools: a Home Assistant tool runs through its MCP server", r["ok"] and r["result"] == "Done: "
+               "intent__HassTurnOn" and {"type": "mcp/intent__HassTurnOn", "name": "Taklampa"} in fake.writes, r)
+        logged = [json.loads(line) for line in (DATA / "logs" / "tool_calls.jsonl").read_text().splitlines()]
+        expect("tools: the call and its result are in the tool-call log", any(
+            e["channel"] == "extension:caller" and e["event"] == "call" and e["tool"] == "intent__HassTurnOn"
+            for e in logged) and any(e["channel"] == "extension:caller" and e["event"] == "result" for e in logged),
+            logged[-3:])
+        r = (await use("coin_flip")).json()
+        expect("tools: another extension's tool runs", r["ok"] and r["result"] in ("heads", "tails"), r)
+        r = (await use("echo_delete_all")).json()
+        expect("tools: a restricted tool is refused", not r["ok"] and "restricted" in r["error"], r)
+        r = (await use("intent__NoSuchThing")).json()
+        expect("tools: an unknown tool is refused", not r["ok"] and "no tool" in r["error"], r)
+        r = (await api.post("/api/extensions/caller/tools/diary", json={})).json()
+        expect("memory: the diary of the last days", r["ok"] and [e["text"] for e in r["result"]]
+               == ["He asked about the lamp."], r)
 
         refused = await until(lambda: stopped_because("remote", "wants a token (401)"), 20)
         expect("an HTTP MCP server that wants a token says so on its card", refused, (await states())["remote"])

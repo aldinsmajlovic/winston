@@ -25,11 +25,12 @@ by default, and any part can be swapped for a hosted service.
 - **In every room.** The browser, a wall tablet, and Home Assistant's Voice PE with an
   "Okay Winston" wake word. Start a conversation at one and finish it at another.
 - **Remembers** what you tell him, in plain Markdown you can read and edit.
-- **Speaks up.** Announcements from Home Assistant and reminders from extensions reach the room you
-  are in or your phone, never during quiet hours.
-- **Extensible.** Add a tool in one Python file or connect any MCP server. Hevy, news, reminders and
-  Spotify come built in, and a small server on each of your computers lets him open apps, files and
-  pages there and tell you how it is doing.
+- **Speaks up.** Announcements from Home Assistant, a word before what is on your calendar, and
+  reminders reach the room you are in or your phone; in quiet hours only what you asked for.
+- **Extensible.** Add a tool in one Python file or connect any MCP server. Your calendar, news,
+  reminders, things to do later ("clean the kitchen when I leave"), Hevy and Spotify come built in,
+  and a small server on each of your computers lets him open apps, files and pages there and tell you
+  how it is doing.
 - **Borrows a voice.** A friend agrees out loud and talks for fifteen seconds; Winston can then speak
   as them.
 

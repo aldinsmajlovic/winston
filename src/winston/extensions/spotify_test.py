@@ -21,6 +21,7 @@ class Receiver:
         self.calls: list[tuple[str, str, dict | None]] = []
         self.pairing: dict | None = None
         self.volume = 60
+        self.playing = True
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -58,7 +59,8 @@ class Receiver:
             return httpx.Response(200, json={"device_name": "Winston", "username": "someone", "paused": False,
                                              "stopped": False, "volume": self.volume,
                                              "track": {"name": "Get Lucky", "artist_names": ["Daft Punk"],
-                                                       "album_name": "Random Access Memories"}})
+                                                       "album_name": "Random Access Memories"}
+                                             if self.playing else None})
         if path.startswith("/player/"):
             return httpx.Response(200)
         return httpx.Response(404)
@@ -300,4 +302,17 @@ async def test_the_pipe_is_read_only_as_asked_and_a_pause_drops_the_rest():
         state.fd = None
         os.close(r)
         os.close(w)
+    await h.close()
+
+
+async def test_a_song_queued_plays_next_or_now_when_nothing_plays():
+    rx = Receiver()
+    h = harness(rx)
+    said = await h.tool("queue", what="get lucky")
+    assert said == "Queued Get Lucky by Daft Punk, Pharrell Williams.", said
+    assert ("POST", "/player/add_to_queue", {"uri": "spotify:track:gl"}) in rx.calls and played(rx) == []
+    assert ("SEARCH", "track", {"q": "get lucky"}) in rx.calls
+    rx.playing = False
+    said = await h.tool("queue", what="get lucky")
+    assert said.startswith("Nothing was playing") and played(rx) == ["spotify:track:gl"], said
     await h.close()

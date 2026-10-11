@@ -591,6 +591,26 @@ async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playli
     return f"Playing {'radio from ' if station else ''}{_describe(item)}."
 
 
+@ext.tool(tier="act", filler="One moment.", timeout=15)
+async def queue(ctx, what: str) -> str:
+    """Queue a song to play after the current one ("play Get Lucky next", "queue One More Time").
+    Songs only; when nothing is playing it plays now.
+
+    Args:
+        what: The song as said: "Get Lucky", "Get Lucky by Daft Punk".
+    """
+    await ready(ctx)
+    item = await search(ctx, what, "track")
+    uri = item.get("uri") or ""
+    if not uri.startswith("spotify:track:"):
+        raise ValueError(f"{_describe(item)} is not a song; only songs can be queued")
+    if not ((await call(ctx, "GET", "/status")) or {}).get("track"):
+        await call(ctx, "POST", "/player/play", uri=uri)
+        return f"Nothing was playing, so playing {_describe(item)} now."
+    await call(ctx, "POST", "/player/add_to_queue", uri=uri)
+    return f"Queued {_describe(item)}."
+
+
 @ext.tool(tier="act", timeout=15)
 async def party(ctx, what: str, lights: str | None = None, restore: str | None = None,
                 volume: int | None = None, delay: float = 0.0) -> str:
