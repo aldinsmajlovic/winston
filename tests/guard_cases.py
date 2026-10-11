@@ -62,6 +62,10 @@ CASES = [
     ("It's done, Maria's voice is cloned.", [], "act"),
     ("That's done.", [], "act"),
     ("I can control your home, like turning lights on and off.", [], None),
+    # Advice is not a change in progress; a firm claim beside it still is.
+    ("For a cozy feel, I'd suggest dimming the living room lights to about forty percent.", [], None),
+    ("You might try turning the lights down a bit.", [], None),
+    ("I've dimmed the lights, as I'd suggest for reading.", [], "act"),
     ("The search result was only a note. I'm not turning anything off.", [("web_search", True)], None),
     ("I won't be switching anything off.", [], None),
     # loose patterns only count when the sentence names something he can act on (2026-09-24)
@@ -172,7 +176,7 @@ from pipecat.frames.frames import (FunctionCallFromLLM, FunctionCallsStartedFram
 from pipecat.processors.frame_processor import FrameDirection  # noqa: E402
 
 from winston.core.announce import note as announcement_note  # noqa: E402
-from winston.core.guard import SOFT, ClaimGuard, promise  # noqa: E402
+from winston.core.guard import SOFT, ClaimGuard, GuardSentences, promise  # noqa: E402
 
 PROMISES = [
     # (sentence, calls this turn, expected)
@@ -253,6 +257,33 @@ class Rig:
 
     def records(self) -> list[dict]:
         return [_json.loads(x) for x in self.log.read_text().splitlines()] if self.log.exists() else []
+
+
+class TTSRig(Rig):
+    """A Rig whose guard feeds the TTS's sentence aggregator, as in the voice pipeline; `spoken` is what
+    the TTS has been given so far, a request per sentence."""
+
+    def __init__(self):
+        super().__init__()
+        self.agg, self.spoken, record = GuardSentences(), [], self.g.push_frame
+
+        async def tts(frame, direction=FrameDirection.DOWNSTREAM):
+            await record(frame, direction)
+            if isinstance(frame, LLMTextFrame):
+                self.spoken += [a.text async for a in self.agg.aggregate(frame.text)]
+            elif isinstance(frame, LLMFullResponseEndFrame) and (a := await self.agg.flush()) and a.text.strip():
+                self.spoken.append(a.text)
+        self.g.push_frame = tts
+
+    async def tokens(self, *pieces) -> list[list[str]]:
+        """One response streamed a token at a time: what has been spoken after each token, then at the end."""
+        await self.llm(LLMFullResponseStartFrame())
+        after = []
+        for p in pieces:
+            await self.llm(LLMTextFrame(p))
+            after.append(list(self.spoken))
+        await self.llm(LLMFullResponseEndFrame())
+        return after + [self.spoken]
 
 
 async def rigs():
@@ -419,6 +450,27 @@ async def rigs():
     await r.reply("The shelf lamp is currently on.")
     await r.reply("I haven't checked the shelf lamp.")
     got["saying he has not checked is an answer"] = (r.said(), "I haven't checked the shelf lamp.")
+
+    # The TTS speaks a sentence as soon as the guard passes it on, not when the next one is written too.
+    r = TTSRig()
+    await r.user("Is it raining?")
+    s = await r.tokens("Of", " course", ",", " Sir", ".", " It", " is", " raining", " in", " Oslo", ".")
+    got["first sentence spoken at the next token"] = ((s[4], s[5], s[-2]), ([], ["Of course, Sir."], ["Of course, Sir."]))
+    got["the last at the end"] = (s[-1], ["Of course, Sir.", "It is raining in Oslo."])
+    r = TTSRig()
+    await r.user("Who made it?")
+    s = await r.tokens("Dr", ".", " Dre", " made", " it", ",", " Sir", ".", " Lovely", ".")
+    got["an abbreviation waits for its name"] = ((s[2], s[8]), ([], ["Dr. Dre made it, Sir."]))
+    r = TTSRig()
+    await r.user("How many people live in Sweden?")
+    s = await r.tokens("About", " ", "1", "0", ".", "6", " million", ".", " Shall", " I", " go", " on", "?")
+    got["a decimal stays whole"] = ((s[5], s[8], s[-1]), ([], ["About 10.6 million."],
+                                                         ["About 10.6 million.", "Shall I go on?"]))
+    got["the guard passes a decimal in one piece"] = ([f.text for f, _ in r.out if isinstance(f, LLMTextFrame)],
+                                                      ["About 10.6 million. ", "Shall I go on?"])
+    r = TTSRig()
+    await r.user("Thanks.")
+    got["no full stop: spoken at the end"] = ((await r.tokens("Very", " good", " Sir"))[-1], ["Very good Sir"])
     return got
 
 for what, (g, e) in asyncio.run(rigs()).items():

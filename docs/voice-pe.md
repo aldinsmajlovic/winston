@@ -151,14 +151,33 @@ keeps what the box has.
   you go on, so the text is ready when the 0.8 s are up: end of speech to text 0.80 to 0.83 s against
   0.97 to 1.1 s before, on the fake box. Ending at the first pause instead cut people off (see
   [understanding](understanding.md#3-hearing)).
+- Since 2026-10-11 Smart Turn also judges that pause. A request that sounds finished ends after
+  `end_silence_secs`; one that does not ("Can you tell me what to have in my living room because")
+  waits `unfinished_silence_secs` (2.5 s), so a pause to think does not cut you off. Each verdict is
+  logged (`sounds finished 0.01`).
+- Since 2026-10-11 the box is told to start fetching (`tts_start_streaming`) when the first sentence
+  goes to the voice, as Home Assistant does, not when its audio exists, so the box connects and
+  ffmpeg starts while it is spoken. A lone "." before a tool call never starts a reply.
+- **The conversation is ready before the transcript.** A wake starts bringing the room's
+  conversation up to date, rebuilt and warmed when it went stale, while you speak; the request waits
+  for it only if it is not done. And every minute an idle box checks whether a new conversation's
+  prompt changed (the diary after midnight, a remembered fact, an extension's tools) and builds and
+  warms one, unless someone is talking on any channel (winstond's `talking` in `/api/status`).
+  Reading the 9.4k-token prompt cold takes 7.5 to 10.6 s, which the day's first request used to wait.
+  A wake during that keeps the conversation it has.
+- When the box ends or aborts a request, the log says so, and a run stopped from outside sets the Talk
+  page back to idle. `kill -USR1 <satellite pid>` writes every thread's stack to the log, for a run
+  that hangs.
 
 ## Winston's firmware: "Okay Winston"
 
 `services/voice-pe/voice-pe-winston.yaml` is the official factory firmware at a pinned release plus
 the `okay_winston` model from `assets/wake/` and hold to talk: the stock long press also starts a
 request without silence detection and sets the firmware's `dial_touched`, which keeps the factory
-reset off until the button is let go, and the center button is named so the box reports it. Nothing
-else changes, and Wi-Fi set over USB survives the flash. On stock firmware a hold does nothing; a
+reset off until the button is let go, and the center button is named so the box reports it. Its
+Wi-Fi never naps: the factory's light power save made the box wake for packets every 307 ms, so it
+heard `tts_start_streaming` up to 0.3 s late (0.14 s on average, from 196 replies); it costs about
+0.2 W. Nothing else changes, and Wi-Fi set over USB survives the flash. On stock firmware a hold does nothing; a
 double press still switches button only. Build and flash with the box on USB:
 
 ```sh

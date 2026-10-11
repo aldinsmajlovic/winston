@@ -14,6 +14,7 @@ midnight by winstond (write_pending), or by hand with `winston diary write`.
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from loguru import logger
@@ -177,9 +178,14 @@ class Diary:
     async def _ask(self, prompt: str, *, talking: Any = None) -> str | None:
         """Call the background model, yielding to conversations."""
         from winston.core.brain import api_key, thinking_body
+        from winston.extension_host.services import Services
         c = self.cfg.llm
         client = AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=120)
         extra: dict[str, Any] = dict(thinking_body(self.cfg, "voice"))
+        # The slot extension background calls keep to, so the nightly entry never evicts a conversation's
+        # cached prompt (the box's prewarmed one waits there for the morning).
+        if (slot := await Services(SimpleNamespace(cfg=self.cfg)).background_slot()) is not None:
+            extra["id_slot"] = slot
 
         deadline = time.monotonic() + 120
         while True:

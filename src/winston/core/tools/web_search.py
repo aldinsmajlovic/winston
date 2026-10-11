@@ -5,8 +5,11 @@ local model gets a short answer, not raw web text.
 Plan §6 rule 2: only the query string leaves the house, never home state or memory. Rule 3: the
 answer is web content, returned as information with a note that says so. Rule 7: the tool-call
 log records every query and answer. Configured under tools.web_search, capped per day."""
+import importlib
 import json
 import os
+import sys
+import threading
 import time
 from datetime import date
 
@@ -45,7 +48,7 @@ class DailyCap:
 
 
 async def gemini(c: WebSearchConfig, query: str) -> dict:
-    from google import genai                   # imported here: only instances that search pay for the import
+    from google import genai                   # imported here: only instances with search on load it (preloaded below)
     from google.genai import types
     client = genai.Client(api_key=os.environ[c.api_key_env],
                           http_options=types.HttpOptions(timeout=int(c.timeout * 1000)))
@@ -76,6 +79,8 @@ def make_web_search_tool(cfg: WinstonConfig):
     if not os.environ.get(c.api_key_env):
         logger.warning(f"web search is enabled but {c.api_key_env} is not set (data/.env); tool not offered")
         return None
+    if "google.genai" not in sys.modules:      # a 200-300 ms import, off the event loop before the first search
+        threading.Thread(target=importlib.import_module, args=("google.genai",), daemon=True).start()
     cap, search = DailyCap(cfg), PROVIDERS[c.provider]
 
     async def web_search(params: FunctionCallParams):

@@ -28,8 +28,8 @@ _LLAMACPP_ARGS = [
     "-hf", "{model}", "--alias", "{model}",      # repo:quant from the HF cache, served under the same name
     "--host", "0.0.0.0", "--port", "8000",
     "-ngl", "99", "-fa", "on",
-    "-c", "24576", "-np", "2",
-    "-ctk", "q8_0", "-ctv", "q4_0",
+    "-c", "32768", "-np", "2",                   # 16k per slot: the bare prompt is 9.4k, a long session 11.4k
+    "-ctk", "q8_0", "-ctv", "q8_0",
     "--no-mmproj",                               # text only; the vision projector is another 0.9 GB
     "--jinja",
     "--spec-type", "draft-mtp", "--spec-draft-n-max", "2",   # the GGUF's own MTP layer: 44 -> 60-80 tokens/s

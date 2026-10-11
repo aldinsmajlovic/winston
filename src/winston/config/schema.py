@@ -166,7 +166,10 @@ class Thinking(Model):
                              description="How long he reasons about a home request, for chat templates that take "
                                          "a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, "
                                          "high). Medium was as right as xhigh on the 27B and about twice as fast. "
-                                         "Empty uses the template's default.",
+                                         "Empty uses the template's default. A template that writes the effort at "
+                                         "the top of the system prompt makes every spoken home request read the "
+                                         "whole prompt again (about 8 s): on Qwen3.8 low, xhigh and empty do; "
+                                         "medium adds nothing there.",
                              json_schema_extra=ui("advanced", when={"llm.thinking.control": ["chat_template"]}))
     control: Literal["chat_template", "reasoning_effort", "none"] = Field(
         "chat_template", description="How the server is told to think or not: chat_template for vLLM and llama.cpp "
@@ -306,7 +309,7 @@ class VADConfig(Model):
     stop_secs: float = Field(0.3, ge=0.1, le=2.0, title="End of speech (s)",
                              description="Silence after speech before the utterance is sent.",
                              json_schema_extra=ui("advanced"))
-    unfinished_stop_secs: float = Field(1.0, ge=0.2, le=5.0, title="Pause when unfinished (s)",
+    unfinished_stop_secs: float = Field(2.5, ge=0.2, le=5.0, title="Pause when unfinished (s)",
                                         description="Extra wait after silence when the turn detector thinks the "
                                                     "sentence is unfinished. One-word answers pay this in full.",
                                         json_schema_extra=ui("advanced"))
@@ -404,6 +407,11 @@ class SatelliteChannel(Model):
     end_silence_secs: float = Field(0.8, ge=0.3, le=3.0, title="End of speech (s)",
                                     description="Silence after speech that ends a request.",
                                     json_schema_extra=ui("advanced"))
+    unfinished_silence_secs: float = Field(2.5, ge=0.5, le=5.0, title="Pause when unfinished (s)",
+                                           description="Silence that ends a request when the turn detector "
+                                                       "thinks the sentence is unfinished, so a pause to think "
+                                                       "does not cut you off.",
+                                           json_schema_extra=ui("advanced"))
     follow_up_secs: float = Field(6.0, ge=0.0, le=20.0, title="Listen after a reply (s)",
                                   description="After every reply the box listens this long for more, without the "
                                               "wake word (at least 8 s after a question). 0: only after a question.")

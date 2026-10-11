@@ -486,12 +486,16 @@ class Brain:
             await self._mcp.close()
 
     async def warm(self):
-        """Have the LLM server read the instructions and tools now, so the first real turn does not.
-        After a restart or a persona change that took 2.8 s (3,270 tokens) on top of a spoken
-        "Hello"; the server keeps the prompt cached afterwards (llama.cpp --cache-ram)."""
+        """Have the LLM server read the instructions and tools now, so the first real turn does not: a
+        changed prompt is a full prefill (9.4k tokens took 7.5 to 10.6 s on the 27B). With a throwaway
+        user message, not an empty context: llama.cpp keeps a checkpoint where the last user message
+        starts, so the first real turn resumes at the end of the system prompt instead of reading its last
+        ~500 tokens again (measured 593 ms against 142 ms). The one-token reply is thrown away."""
         t0 = time.perf_counter()
         try:
-            await self.llm.run_inference(self.new_context(), max_tokens=1)
+            await self.llm.run_inference(LLMContext([{"role": "user", "content": "."}],
+                                                    tools=self.tools if self.tools.standard_tools else None),
+                                         max_tokens=1)
             logger.info(f"brain warmed in {(time.perf_counter() - t0) * 1000:.0f} ms")
         except Exception as e:                                          # noqa: BLE001
             logger.warning(f"brain warm-up failed: {e}")

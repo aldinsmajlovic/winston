@@ -85,6 +85,8 @@ class Status(BaseModel):
     # Saved since winstond started and read only when it starts: config sections ("announce") and
     # secrets ("HA_TOKEN"). They apply at the next `winston up`; nothing here restarts winstond.
     pending_control: list[str] = []
+    talking: bool = Field(False, description="A conversation ran on any channel within 30 s; background model "
+                                             "work (a box's prewarm, extension calls) waits")
 
 
 class Ok(BaseModel):
@@ -639,6 +641,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                                        state=p.state, detail=p.detail)
                         for i, p in sorted(extensions.procs.items()) if extensions.enabled(i)],
             pending_control=control_sections(started, _dump(app.state.cfg), schema) + sorted(control_secrets),
+            talking=feed.talking(),
         )
 
     def managed(name: str):

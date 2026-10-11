@@ -1,6 +1,7 @@
 # Voice PE firmware with "Okay Winston": the official factory firmware at a pinned release, plus
-# the okay_winston microWakeWord model from assets/wake/ and hold to talk. Everything else (Wi-Fi setup
-# over USB and Bluetooth, LEDs, dial, mute switch, media player) is the stock firmware. See docs/voice-pe.md.
+# the okay_winston microWakeWord model from assets/wake/, hold to talk and no Wi-Fi modem sleep. Everything
+# else (Wi-Fi setup over USB and Bluetooth, LEDs, dial, mute switch, media player) is the stock firmware.
+# See docs/voice-pe.md.
 #
 #   uvx esphome compile voice-pe-winston.yaml
 #   uvx esphome upload voice-pe-winston.yaml --device /dev/ttyACM0
@@ -16,6 +17,17 @@ micro_wake_word:
   models:
     - model: ../../assets/wake/okay_winston.json
       id: okay_winston
+
+# No Wi-Fi modem sleep while connected: asleep, the box woke for packets only every ~307 ms (DTIM 3), so
+# it heard tts_start_streaming up to ~300 ms late (mean ~140 ms) and every reply started that much later.
+# ESPHome appends these to the factory's lists, so the request runs after its 5 s delay and ble.disable
+# (Bluetooth wants modem sleep), and the release keeps the count balanced when it re-enables Bluetooth.
+# A drop during that delay skips the request, else it would outlive the release.
+wifi:
+  on_connect:
+    - lambda: if (wifi::global_wifi_component->is_connected()) wifi::global_wifi_component->request_high_performance();
+  on_disconnect:
+    - lambda: wifi::global_wifi_component->release_high_performance();
 
 # The stock "Wake word sensitivity" select only sets the three stock models, so Okay Winston stayed at its
 # manifest's 0.95 whatever it said. This replaces its lambda: the stock values as they were, plus Okay

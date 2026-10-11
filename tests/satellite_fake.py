@@ -9,7 +9,8 @@ to and follows up when continue_conversation is set. Needs the LLM (:8000) and t
 Actions are stubbed as in tests/conversations.py. Passes when every request gets a spoken reply
 fetched from the URL, the events come in the box's order, every reply keeps the box listening
 without a wake word (channels.satellite.follow_up_secs), an answer there is taken as the next turn
-and silence there ends the run with the no-speech error, which takes the real box back to idle.
+and silence there ends the run with the no-speech error, which takes the real box back to idle. A
+request with a pause to think in it (1.5 s after "because") is heard whole.
 Then: "that's all" there ends the conversation without a reply; a nudge (speaking up) is played as an
 announcement with the chime first and his own wording after it, and the box listens on, so an answer
 needs no wake word; a double press switches the box to button only (no wake word, a spoken line, a press
@@ -294,6 +295,16 @@ async def main() -> int:
     print(f"\n> That's all, thank you. (after {r['said']!r})\n  heard {r2['heard']!r}, said {r2['said']!r}\n"
           f"  {' '.join(r2['order'])}")
     ok &= r["follow_up"] and not r2["said"] and r2["order"][-2:] == ["ERROR", "RUN_END"]
+
+    # A pause to think mid-sentence, longer than end_silence_secs: Smart Turn calls it unfinished, so the box
+    # waits for the rest instead of answering half a request.
+    satellite._follow_until = 0.0
+    first, rest = "Can you tell me what to have in my living room because", "I want it to feel cozy."
+    pause = np.zeros(int(16000 * 1.5), np.int16)
+    r = await box.converse(np.concatenate([synth_user_audio(first, USER)[0], pause, synth_user_audio(rest, USER)[0]]),
+                           "hey_jarvis")
+    print(f"\n> {first} (1.5 s pause) {rest}\n  heard {r['heard']!r}\n  said  {r['said']!r}")
+    ok &= "cozy" in (r["heard"] or "").lower() and bool(r["said"])
 
     # Speaking up: a nudge from an extension, as winstond's hub hands it to the box.
     chime = audio.chime()

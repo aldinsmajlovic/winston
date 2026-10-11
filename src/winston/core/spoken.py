@@ -61,4 +61,8 @@ class SpokenText(BaseTextFilter):
         self._clock = region.resolve(cfg)["time_format"]
 
     async def filter(self, text: str) -> str:
+        # The LLM sometimes streams a lone "." before a tool call. Nothing to say: Pipecat's gate after the
+        # filters then drops it before TTSStartedFrame, which would tell the box to start fetching a reply.
+        if not any(c.isalnum() for c in text):
+            return ""
         return speak_times(text, self._clock)

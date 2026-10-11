@@ -1269,6 +1269,7 @@ export interface components {
              *       "devices": {},
              *       "http_port": 8702,
              *       "end_silence_secs": 0.8,
+             *       "unfinished_silence_secs": 2.5,
              *       "follow_up_secs": 6,
              *       "session_idle_mins": 10
              *     }
@@ -2886,6 +2887,12 @@ export interface components {
              */
             end_silence_secs?: number;
             /**
+             * Pause when unfinished (s)
+             * @description Silence that ends a request when the turn detector thinks the sentence is unfinished, so a pause to think does not cut you off.
+             * @default 2.5
+             */
+            unfinished_silence_secs?: number;
+            /**
              * Listen after a reply (s)
              * @description After every reply the box listens this long for more, without the wake word (at least 8 s after a question). 0: only after a question.
              * @default 6
@@ -3106,6 +3113,12 @@ export interface components {
              * @default []
              */
             pending_control?: string[];
+            /**
+             * Talking
+             * @description A conversation ran on any channel within 30 s; background model work (a box's prewarm, extension calls) waits
+             * @default false
+             */
+            talking?: boolean;
         };
         /** SyncRequest */
         SyncRequest: {
@@ -3260,7 +3273,7 @@ export interface components {
             home?: boolean;
             /**
              * Home request effort
-             * @description How long he reasons about a home request, for chat templates that take a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, high). Medium was as right as xhigh on the 27B and about twice as fast. Empty uses the template's default.
+             * @description How long he reasons about a home request, for chat templates that take a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, high). Medium was as right as xhigh on the 27B and about twice as fast. Empty uses the template's default. A template that writes the effort at the top of the system prompt makes every spoken home request read the whole prompt again (about 8 s): on Qwen3.8 low, xhigh and empty do; medium adds nothing there.
              * @default medium
              */
             home_effort?: string;
@@ -3538,7 +3551,7 @@ export interface components {
             /**
              * Pause when unfinished (s)
              * @description Extra wait after silence when the turn detector thinks the sentence is unfinished. One-word answers pay this in full.
-             * @default 1
+             * @default 2.5
              */
             unfinished_stop_secs?: number;
         };
@@ -3706,7 +3719,7 @@ export interface components {
              * @default {
              *       "provider": "silero",
              *       "stop_secs": 0.3,
-             *       "unfinished_stop_secs": 1
+             *       "unfinished_stop_secs": 2.5
              *     }
              */
             vad?: components["schemas"]["VADConfig"];
@@ -3731,7 +3744,8 @@ export interface components {
              *         "end_silence_secs": 0.8,
              *         "follow_up_secs": 6,
              *         "http_port": 8702,
-             *         "session_idle_mins": 10
+             *         "session_idle_mins": 10,
+             *         "unfinished_silence_secs": 2.5
              *       },
              *       "web": {
              *         "session_idle_mins": 30

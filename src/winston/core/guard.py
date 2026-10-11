@@ -28,6 +28,9 @@ from pipecat.frames.frames import (Frame, FunctionCallResultFrame, FunctionCalls
                                    UserStartedSpeakingFrame)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.utils.string import match_endofsentence
+from pipecat.utils.text.base_text_aggregator import Aggregation, AggregationType
+from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
@@ -113,6 +116,10 @@ _REMEMBER_PASSIVE = re.compile(r"\b(?:has|have) been (?:forgotten|removed|delete
 # they count only in a sentence that names something he can act on (see targets()).
 # "setting the lights now": a change in progress.
 _ACT_ING = re.compile(r"\b(?:setting|turning|switching|dimming|changing|adjusting|booting|waking)\b")
+# "I'd suggest dimming the lights", "you might try turning them down": advice, not a change in progress.
+# Only the loose -ing claim yields to it; "I've dimmed them, as I'd suggest" is still a firm claim. A retry
+# on advice once made him dim the lights nobody asked him to.
+_SUGGEST = re.compile(r"\b(?:suggest|recommend|you might|you could|how about|try)\b")
 # "are now on", "now set to warm": a change claim unless a tool of any kind ran this turn.
 _ACT_WEAK = re.compile(r"\b(?:is|are|'s|'re) now\b|\bnow (?:set|on|off|at|turned|dimmed|warm|cool|back)\b")
 # "is already on", "are currently at": a state claim that needs some tool to have looked.
@@ -151,7 +158,7 @@ def judge(text: str, tools: list[tuple[str, bool]], names: re.Pattern = _GENERIC
         if not noted_ok and _NOTED.search(s):
             return ACT
         loose = _REMEMBER_PASSIVE.search(s) or (named and _ACT_WEAK.search(s))
-        if ACT not in ok and (_ACT_STRONG.search(s) or changed or (named and _ACT_ING.search(s))
+        if ACT not in ok and (_ACT_STRONG.search(s) or changed or (named and _ACT_ING.search(s) and not _SUGGEST.search(s))
                               or (not ok and loose)):
             return ACT
         if named and not ok and _STATE.search(s):
@@ -294,7 +301,6 @@ def _content(message) -> str:
 # A sentence ends at . ! ? (and any closing quote or bracket) followed by white space, or at a line
 # break. "10.6 million" does not end one; the last sentence ends with the response.
 _SENTENCE_END = re.compile(r"[.!?][\"')\]]*\s+|\n+")
-_SENTENCE_FINAL = re.compile(r"[.!?][\"')\]]*$")
 _THINK_TAG = re.compile(r"</?think>")         # with thinking off the model sometimes writes one
 _CLOSE_THINK = "</think>"
 
@@ -367,11 +373,6 @@ class ClaimGuard(FrameProcessor):
         rest = self._buf.strip()
         if rest and not _CLOSE_THINK.startswith(rest):
             await self._settle_last()
-            if _SENTENCE_FINAL.search(rest):
-                sentence, self._buf = _THINK_TAG.sub("", self._buf), ""
-                if sentence.strip():
-                    await self._after_tag(sentence)
-                    self._last = sentence
 
     async def _settle_last(self):
         if self._last is not None:
@@ -488,3 +489,19 @@ class ClaimGuard(FrameProcessor):
         obs = self.observer
         log_event(self._log, self._channel, event="guard", verdict=verdict, text=text, heard=obs.heard[:200],
                   tools=obs.calls, previous=obs.previous, **fields)
+
+
+class GuardSentences(SimpleTextAggregator):
+    """The TTS's sentence aggregator behind a ClaimGuard. The guard passes on a sentence only once it has
+    seen what follows, ending in white space, so one that ends there is spoken at once. Pipecat's own
+    waits for the next letter, which comes only with the guard's next sentence: the first sentence was
+    spoken after the second was written. " X" stands in for that letter, so NLTK still keeps "Mr. "
+    with its name; a piece not ending in white space ("It's 10.") waits as before."""
+
+    async def aggregate(self, text: str):
+        async for a in super().aggregate(text):
+            yield a
+        done = self._text.strip()
+        if done and self._text[-1].isspace() and match_endofsentence(done + " X") == len(done):
+            self._text, self._needs_lookahead = "", False
+            yield Aggregation(text=done, type=AggregationType.SENTENCE)

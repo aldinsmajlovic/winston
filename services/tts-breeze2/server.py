@@ -167,7 +167,7 @@ def main():
     ap.add_argument("--seed", type=int, default=42, help="sampling seed per sentence, upstream's default")
     ap.add_argument("--chain-secs", type=float, default=30.0,
                     help="a sentence this soon after the last one in its voice carries on from it (0: never)")
-    ap.add_argument("--pause-secs", type=float, default=0.12,
+    ap.add_argument("--pause-secs", type=float, default=0.25,
                     help="silence after each sentence: Breeze ends one about 0.04 s after its last sound")
     ap.add_argument("--fast", nargs="*", default=[], choices=STAGES, help="stages to capture as CUDA graphs")
     ap.add_argument("--backbone-bits", type=int, default=16, choices=(4, 8, 16), help="below 16 builds in RAM (docstring)")

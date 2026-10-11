@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import onnx_asr
+import onnxruntime
 from loguru import logger
 
 
@@ -24,7 +25,10 @@ class Parakeet:
     def load_model(stt):
         model_name, quantization = stt.model, stt.quantization
         t0 = time.perf_counter()
-        model = onnx_asr.load_model(model_name, quantization=quantization)
+        so = onnxruntime.SessionOptions()
+        # Idle threads sleep instead of spinning: beside Smart Turn, spinning made both slower (about 30 ms)
+        so.add_session_config_entry("session.intra_op.allow_spinning", "0")
+        model = onnx_asr.load_model(model_name, quantization=quantization, sess_options=so)
         model.recognize(np.zeros(16000, dtype=np.float32), sample_rate=16000)   # warm up
         logger.info(f"Parakeet {model_name} ({quantization}) loaded in {time.perf_counter() - t0:.1f}s")
         return model

@@ -6,11 +6,11 @@ microphone and speaker. Runs as its own process, started by the supervisor:
 Winston takes the role Home Assistant normally has: an ESPHome API client (aioesphomeapi) that
 subscribes to the box's voice assistant. The box hears its own wake word (microWakeWord: okay_nabu,
 hey_jarvis, hey_mycroft on stock firmware) and then streams 16 kHz microphone audio here. Winston
-decides when the request is over (Silero VAD), transcribes it, runs the brain with its tools and
+decides when the request is over (Silero VAD, Smart Turn), transcribes it, runs the brain with its tools and
 the claim guard, and speaks. The box plays replies from a URL, as it does Home Assistant's
 streaming TTS: RUN_START carries the URL, INTENT_PROGRESS with tts_start_streaming tells it to start
-fetching once the first audio exists, and this process serves that URL as a WAV that grows while
-the reply is synthesized. Every reply sets continue_conversation, so the box
+fetching once the first sentence goes to the voice, and this process serves that URL as a stream that
+grows while the reply is synthesized. Every reply sets continue_conversation, so the box
 listens again without the wake word: follow_up_secs for more (8 s after a question); silence then
 ends the run as a wake with nothing said does, and so does a dismissal ("stop", "that's all").
 
@@ -38,7 +38,9 @@ voice_assistant.cpp): take the box out of Home Assistant's voice pipeline, or HA
 Turn based for now: the stock firmware stops listening while it plays (docs/voice-pe.md)."""
 import argparse
 import asyncio
+import faulthandler
 import os
+import signal
 import socket
 import struct
 import time
@@ -46,6 +48,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+import httpx
 import numpy as np
 import soxr
 from aioesphomeapi import (APIClient, BinarySensorInfo, BinarySensorState, Event, EventInfo, MediaPlayerCommand,
@@ -54,6 +57,7 @@ from aioesphomeapi import (APIClient, BinarySensorInfo, BinarySensorState, Event
 from aioesphomeapi import VoiceAssistantEventType as Ev
 from aiohttp import web
 from loguru import logger
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import (Frame, LLMMessagesAppendFrame, TTSAudioRawFrame, TTSSpeakFrame, TTSStartedFrame,
                                    TTSStoppedFrame, TTSTextFrame)
@@ -66,10 +70,13 @@ from winston.config import load
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.hints import Heard, Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
+from winston.core import directory
 from winston.core.announce import note, nudge_note, subscribe
+from winston.core.brain import persona
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
 from winston.core.speak_up import WORDING_SECS
 from winston.core.turns import Turn, TurnLog, TurnObserver, make_mark_tool
+from winston.extension_host.client import signature
 
 MIC_RATE = 16000                 # what the box streams
 OUT_RATE = 48000                 # what the box's media player is set up for
@@ -83,6 +90,7 @@ RENEW_SECS = 5.0
 TAIL_SECS = 1.5                  # after the reply has played: the box's speaker and the room settle
 FOLLOW_UP_SECS = 4.0             # after a question: until the box starts listening again
 RELEASE_TAIL_SECS = 0.3          # hold to talk: audio kept after the button is let go, for a last word cut early
+PREWARM_SECS = 60.0              # how often an idle box checks whether a new conversation's prompt changed
 # Said on the box after a double press switched how it listens.
 BUTTON_ONLY_LINE = "Very well. I shall listen only when you press the button."
 WAKE_WORD_LINE = "Very well. I am listening for my name again."
@@ -111,6 +119,7 @@ class Run:
     out: asyncio.Queue = field(default_factory=asyncio.Queue)          # WAV body chunks, None at the end
     started: float = field(default_factory=time.perf_counter)
     first_audio: asyncio.Event = field(default_factory=asyncio.Event)
+    tts_started: asyncio.Event = field(default_factory=asyncio.Event)  # the first sentence went to the voice
     speech_end: float = 0.0                                 # time.time() the request went quiet
     audio_secs: float = 0.0                                 # reply audio sent to the box so far
     audio_start: float = 0.0                                # perf_counter() of the first of it
@@ -151,6 +160,8 @@ class Speaker(FrameProcessor):
             self.text.append(frame.text)
         elif isinstance(frame, TTSStartedFrame):
             self.busy = True
+            if self.run:
+                self.run.tts_started.set()
         elif isinstance(frame, TTSStoppedFrame):
             self.busy = False
         await self.push_frame(frame, direction)
@@ -171,6 +182,12 @@ class Conversation(TextSession):
                          room=RoomLink(room, f"box:{room}:{uuid.uuid4().hex[:6]}", http_sync(cfg)),
                          area=area(cfg, room), outputs=[build_tts(cfg), self.speaker],
                          observers=[LiveObserver("satellite", feed.put, spoken=True), self.turns])
+        self.used = False       # handed to a request or an announcement (Satellite._conversation)
+
+    def key(self) -> tuple[str, str | None]:
+        """What sets the prompt llama.cpp caches for it: the system prompt and the extension tools (the
+        other tools come from config and Home Assistant's MCP server)."""
+        return self.brain.llm._settings.system_instruction, self.brain.tools_signature
 
     async def start(self):
         await super().start()
@@ -239,8 +256,13 @@ class Satellite:
         self._follow_secs = START_TIMEOUT_SECS
         self.task: asyncio.Task | None = None
         self.conversation: Conversation | None = None
+        self._building: asyncio.Task | None = None          # bringing the conversation up to date, one at a time
+        self._uses = 0                                      # conversations handed out, so the prewarm sees a use
+        self._warmed: tuple | None = None                   # the key of the last conversation warmed (Conversation.key)
+        self._prewarming: asyncio.Task | None = None
         self._unsub = None
         self._vad = SileroVADAnalyzer(); self._vad.set_sample_rate(MIC_RATE)
+        self._turn_end = LocalSmartTurnAnalyzerV3(sample_rate=MIC_RATE)
         self._lock = asyncio.Lock()
         self.mic = MicLease(cfg, room)
         self.button_only = False            # no wake word on the box: a press starts a request, no follow-ups
@@ -268,8 +290,9 @@ class Satellite:
         logger.info(f"{self.room}: connected to {info.friendly_name or info.name} ({info.model}, ESPHome "
                     f"{info.esphome_version})")
         if self.conversation is None:            # ready before the first wake word, prompt already read
-            self.conversation = await Conversation(self.cfg, self.room, self.feed, lambda: self._last_turn).start()
-            await self.conversation.brain.warm()
+            await asyncio.shield(self._build(warm=True))
+        if self._prewarming is None or self._prewarming.done():
+            self._prewarming = asyncio.create_task(self._prewarm())
         self._unsub = self.client.subscribe_voice_assistant(
             handle_start=self._handle_start, handle_stop=self._handle_stop, handle_audio=self._handle_audio)
         try:                                     # after subscribing: the box answers only its voice client
@@ -475,19 +498,26 @@ class Satellite:
             self.run.mic.put_nowait(np.frombuffer(data, dtype="<i2"))
 
     async def _handle_stop(self, abort: bool):
+        logger.info(f"{self.room}: the box {'aborted' if abort else 'ended'} the request"
+                    f"{'' if self.task and not self.task.done() else ' (no run)'}")
         if abort and self.task:
             self.task.cancel()
         elif self.run:
             self.run.mic.put_nowait(None)
 
     async def _listen(self, run: Run) -> tuple[np.ndarray, asyncio.Task | None] | None:
-        """Microphone audio until the request is over: end_silence_secs of quiet after speech. At the first
-        GUESS_SECS of a pause the audio so far is transcribed, so the text is ready if the pause turns out
-        to be the end; speech after it throws that away. Returns the audio and that transcription."""
+        """Microphone audio until the request is over. At the first GUESS_SECS of a pause the audio so far
+        is transcribed, so the text is ready if the pause turns out to be the end, and Smart Turn judges
+        whether it sounds finished: end_silence_secs of quiet then ends a finished one, an unfinished one
+        ("Can you tell me what to have in my living room because") gets unfinished_silence_secs. Speech
+        after the pause throws both away. Returns the audio and that transcription."""
         buf, voiced = np.zeros(0, np.int16), []
-        end = int(self.cfg.channels.satellite.end_silence_secs * MIC_RATE / VAD_FRAME)
+        sat = self.cfg.channels.satellite
+        end = int(sat.end_silence_secs * MIC_RATE / VAD_FRAME)
+        unfinished = max(end, int(sat.unfinished_silence_secs * MIC_RATE / VAD_FRAME))     # longer, never shorter
         guess_at = int(GUESS_SECS * MIC_RATE / VAD_FRAME)
         guess: asyncio.Task | None = None
+        finished: asyncio.Task | None = None
         t0 = time.perf_counter()
         try:
             while True:
@@ -506,14 +536,18 @@ class Satellite:
                     i = len(voiced) * VAD_FRAME
                     voiced.append(self._vad.voice_confidence(buf[i:i + VAD_FRAME].tobytes()) >= 0.5)
                     if voiced[-1] and guess:            # more speech: the guess was not the whole request
-                        guess.cancel(); guess = None
+                        guess.cancel(); guess = finished = None
                 if any(voiced):
                     quiet = len(voiced) - 1 - max(i for i, v in enumerate(voiced) if v)
-                    # A hold to talk ends only when the button is let go (_on_state), whatever the pause.
-                    if not run.hold and quiet >= end:
-                        break
                     if quiet >= guess_at and guess is None:
-                        guess = asyncio.create_task(self._transcribe(buf[:len(voiced) * VAD_FRAME].copy()))
+                        pcm = buf[:len(voiced) * VAD_FRAME].copy()
+                        guess = asyncio.create_task(self._transcribe(pcm))
+                        finished = asyncio.create_task(asyncio.to_thread(self._sounds_finished, pcm))
+                    # Until Smart Turn has answered (about 80 ms) the pause counts as unfinished.
+                    # A hold to talk ends only when the button is let go (_on_state), whatever the pause.
+                    if not run.hold and quiet >= (end if finished and finished.done() and finished.result()
+                                                  else unfinished):
+                        break
         except BaseException:               # the run was stopped: nobody will use the guess
             if guess:
                 guess.cancel()
@@ -526,6 +560,17 @@ class Satellite:
         run.speech_end = time.time() - (len(buf) - (last + 1) * VAD_FRAME) / MIC_RATE
         return buf, guess
 
+    def _sounds_finished(self, pcm: np.ndarray) -> bool:
+        """Smart Turn's verdict on the request so far, ending in a pause (it reads the last 8 s)."""
+        try:
+            # ponytail: Pipecat's private predict call; its public API keeps its own clock and silence count
+            p = self._turn_end._predict_endpoint(pcm.astype(np.float32) / 32768)["probability"]
+        except Exception:                                                   # noqa: BLE001
+            logger.exception(f"{self.room}: Smart Turn failed; the pause counts as the end")
+            return True
+        logger.info(f"{self.room}: sounds finished {p:.2f}")
+        return p > 0.5
+
     async def _transcribe(self, pcm: np.ndarray) -> Heard:
         return await self.stt.hear(pcm, MIC_RATE, label=f"{self.room}: STT")
 
@@ -536,13 +581,96 @@ class Satellite:
                 self._last_turn = turn.id
             self.turns.write(turn)
 
-    async def _conversation(self) -> Conversation:
+    def _build(self, warm: bool = False) -> asyncio.Task:
+        """The task that brings the box's conversation up to date: a stale one is closed and a new one built,
+        and warmed on the wake path. One at a time: a wake, an announcement and the prewarm all come here and
+        join a build in flight. A task, so a run cut short leaves no half-built conversation."""
+        if self._building is None or self._building.done():
+            self._building = asyncio.create_task(self._rebuild(warm))
+            self._building.add_done_callback(self._build_failed)
+        return self._building
+
+    def _build_failed(self, t: asyncio.Task):
+        if not t.cancelled() and t.exception():     # read here, so a wake that heard nothing still logs it
+            logger.warning(f"{self.room}: building the conversation failed: {t.exception()}")
+
+    async def _rebuild(self, warm: bool) -> Conversation:
         c = self.conversation
         if c and await stale(c, self.cfg.channels.satellite.session_idle_mins * 60):
+            self.conversation = None
             await c.close(); c = None
         if c is None:
-            c = self.conversation = await Conversation(self.cfg, self.room, self.feed, lambda: self._last_turn).start()
+            c = self.conversation = await self._new(warm)
         return c
+
+    async def _new(self, warm: bool) -> Conversation:
+        c = await Conversation(self.cfg, self.room, self.feed, lambda: self._last_turn).start()
+        if warm:        # awaited before the real request, which then lands on the slot that holds the prompt
+            await c.brain.warm()
+            self._warmed = c.key()
+        return c
+
+    async def _conversation(self, building: asyncio.Task | None = None) -> Conversation:
+        """The conversation for a request or an announcement: from the build its wake started (once more if
+        that failed: Home Assistant may be back by the end of the request), or a new one."""
+        try:
+            c = await asyncio.shield(building or self._build())
+        except Exception:
+            if building is None:
+                raise
+            c = await asyncio.shield(self._build())
+        c.used = True
+        self._uses += 1
+        return c
+
+    def _busy(self) -> bool:
+        """A request, an announcement or a build is under way."""
+        return (self._lock.locked() or bool(self.task and not self.task.done())
+                or bool(self._building and not self._building.done()))
+
+    async def _next_key(self) -> tuple[str, str] | None:
+        """Conversation.key of a conversation built now, from what Brain.start builds it with (Home Assistant
+        is read at most every ten minutes, directory.home). None while a conversation runs on any channel
+        (winstond's talking): a prewarm's prefill would slow it. Raises when winstond does not answer, where
+        fetch_tools would say "no tools" and the prewarm would build a conversation without them."""
+        async with httpx.AsyncClient(base_url=self.cfg.control.url, timeout=3) as h:
+            if (await h.get("/api/status")).json().get("talking"):
+                return None
+            tools, kinds = await h.get("/api/extensions/tools"), await h.get("/api/nudges/kinds")
+            tools.raise_for_status(); kinds.raise_for_status()
+        house = directory.house_map(self.cfg, await directory.home(self.cfg))
+        return persona(self.cfg, house, "satellite"), signature(tools.json(), kinds.json().get("kinds", 0) > 0)
+
+    async def _prewarm(self):
+        """Every PREWARM_SECS while the box is idle: when the prompt a new conversation would get has changed
+        (the diary after midnight, a remembered fact, an extension's notes or tools), build and warm that
+        conversation now, so the first wake after it does not wait while llama.cpp reads ~9.4k tokens (7.5 to
+        10.6 s). Never while a conversation is in use and not stale: its cached prompt must stay. Only a
+        change starts one, never idling, so an unused conversation still goes stale at the wake as before
+        (a fresh Home Assistant session) and is rebuilt there from the cache."""
+        idle = self.cfg.channels.satellite.session_idle_mins * 60
+        while True:
+            await asyncio.sleep(PREWARM_SECS)
+            try:
+                c, uses = self.conversation, self._uses
+                if self._busy() or (c and c.used and not await stale(c, idle)):
+                    continue
+                key = await self._next_key()
+                if key is None or key == self._warmed or self._busy() or self._uses != uses:
+                    continue
+                t0 = time.perf_counter()
+                # Built on the side, not as self._building: a wake meanwhile keeps the conversation it has
+                # instead of waiting out this prefill, or failing with it.
+                new = await self._new(warm=True)
+                if self._busy() or self._uses != uses or self.conversation is not c:
+                    await new.close()           # the box was used meanwhile; the prompt is cached all the same
+                    continue
+                self.conversation = new         # no await since the check: nothing can take c in between
+                if c:
+                    await c.close()
+                logger.info(f"{self.room}: next conversation prewarmed in {(time.perf_counter() - t0) * 1000:.0f} ms")
+            except Exception as e:                                          # noqa: BLE001
+                logger.warning(f"{self.room}: prewarm failed: {e}")
 
     async def _hold(self):
         while True:
@@ -557,6 +685,7 @@ class Satellite:
         conv: Conversation | None = None
         try:
             async with self._lock:
+                building = self._build(warm=True)       # a stale conversation is rebuilt and warmed while he speaks
                 self._event(Ev.VOICE_ASSISTANT_RUN_START, {"url": url})
                 self._event(Ev.VOICE_ASSISTANT_STT_START)
                 self.feed.put(LiveEvent(channel="satellite", type="state", state="listening"))
@@ -593,11 +722,13 @@ class Satellite:
                     return
                 self._event(Ev.VOICE_ASSISTANT_STT_END, {"text": heard})
                 self._event(Ev.VOICE_ASSISTANT_INTENT_START)
-                conv = await self._conversation()
+                conv = await self._conversation(building)
 
                 async def stream_when_ready():
-                    await run.first_audio.wait()
+                    # At the first sentence, not its audio: the box connects and ffmpeg starts while it is spoken.
+                    await run.tts_started.wait()
                     self._event(Ev.VOICE_ASSISTANT_INTENT_PROGRESS, {"tts_start_streaming": "1"})
+                    await run.first_audio.wait()
                     logger.info(f"{self.room}: first audio {(time.perf_counter() - t_heard) * 1000:.0f} ms after "
                                 f"the transcript")
                 progress = asyncio.create_task(stream_when_ready())
@@ -621,6 +752,8 @@ class Satellite:
                 self._event(Ev.VOICE_ASSISTANT_RUN_END)
                 logger.info(f"{self.room}: said {said!r}")
         except asyncio.CancelledError:
+            logger.info(f"{self.room}: run {run.id} stopped")
+            self.feed.put(LiveEvent(channel="satellite", type="state", state="idle"))
             run.out.put_nowait(None)
             if turn:
                 turn.outcome = "cut_short"
@@ -779,4 +912,5 @@ async def main():
 
 if __name__ == "__main__":
     argparse.ArgumentParser(description=__doc__.splitlines()[0]).parse_args()
+    faulthandler.register(signal.SIGUSR1)      # kill -USR1 <pid>: every thread's stack into the log
     asyncio.run(main())

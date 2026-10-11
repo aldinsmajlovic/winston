@@ -44,7 +44,7 @@ from winston.config.schema import WinstonConfig
 from winston.core.brain import Brain, Clock, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
 from winston.core.announce import note, nudge_note, subscribe
-from winston.core.guard import ClaimGuard
+from winston.core.guard import ClaimGuard, GuardSentences
 from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.rooms import MicGate, RoomLink, area, http_sync, mic_events, wake_phrases
@@ -105,11 +105,20 @@ async def transcribe(pcm: np.ndarray, extra: list[str]) -> str:
 class SpeechTTS(OpenAITTSService):
     """OpenAI's speech protocol with any voice name. Pipecat only lets OpenAI's own names through,
     but a local server names its clips by path ("vctk/p226_023", "friends/erik"). Text with nothing
-    to say is skipped."""
+    to say never gets here (SpokenText)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Speaks each sentence the guard passes on at once (Pipecat 1.11 takes no aggregator argument).
+        self._text_aggregator = GuardSentences(aggregation_type=self._text_aggregation_mode)
+
+    @property
+    def chunk_size(self) -> int:
+        # 0.24 s, three 80 ms Breeze frames: Pipecat's 0.5 s held the first sound back about 240 ms.
+        # Two frames ran dry under a large prefill. Whole samples, so np.frombuffer('<i2') never splits one.
+        return int(self.sample_rate * 0.24) * 2
 
     async def run_tts(self, text: str, context_id: str):
-        if not any(c.isalnum() for c in text):      # the LLM sometimes streams a lone "." before a tool call
-            return
         if self._settings.voice in VALID_VOICES:
             async for f in super().run_tts(text, context_id):
                 yield f

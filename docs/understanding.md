@@ -182,8 +182,15 @@ end of speech to the text. A turn model alone is not enough there: Smart Turn, a
 as in the browser, cut 4 of 60 synthetic requests short at a comma ("Okay, turn it off."), sure of
 itself each time (0.67 to 0.97), and the box closes its mic when the request ends, so the rest is
 lost. Since 2026-10-08 the box transcribes at the first 0.3 s of a pause instead, in case it is the
-end, which takes about 0.2 s off every request and cuts nobody off. A turn model is measured on the
-recorded turns before it may end a request sooner.
+end, which takes about 0.2 s off every request. A turn model is measured on the recorded turns before
+it may end a request sooner.
+
+The fixed pause cut people off the other way: with `end_silence_secs` at 0.6 s, stopping to think
+mid-sentence ended the request ("Can you make uh", "Um can you can tell me"). Since 2026-10-11 Smart
+Turn may only make the box wait longer, never shorter: it judges the request at that 0.3 s pause, and
+one it calls unfinished gets `unfinished_silence_secs` (2.5 s) of quiet before it ends. On the recorded
+turns the three cut-offs of that day scored 0.01 and almost every finished request scored above 0.6;
+the few finished ones under 0.5 ("Make it cozy in here.", 0.21) pay up to 1.9 s more.
 
 ## 4. For him?
 

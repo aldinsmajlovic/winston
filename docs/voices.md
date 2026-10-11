@@ -400,7 +400,7 @@ Which part costs the words, beside the brain with its context cut to 24k (60 lin
 | 4 | 4 | 128 | 5.1% | 0.43 | 4.1 GB |
 | 4 | 8 | 128 | 5.0% | 0.41 | 4.0 GB |
 | 4 | 8 | 32 | 4.1% | 0.39 | 4.1 GB |
-| 8 | 8 | | failed: torchao's 8-bit product breaks CUDA graph capture | | |
+| 8 | 8 | | not scored; captures since October, 27% slower than bf16 (11 October, below) | | |
 
 The text encoder in 8 bits changes nothing, so the 4-bit backbone is what garbles words; finer
 scales win back about a point. An 8-bit backbone would need its own capturable layer and about
@@ -457,3 +457,27 @@ tenth 0.26 s), RTF 0.41. The slowest lines start with "[sigh]", which Breeze bre
 the first word. Word errors read 5.8%, but the two lines Parakeet heard as nothing were said right:
 moving the clip's end by a few hundredths of a second, it hears them whole. That is the
 measurement's noise, not the voice.
+
+### Starting sooner, 11 October
+
+Two holds in Winston's own client came before every first sound, on the box and in the browser:
+
+- **Half a second of audio first.** Pipecat reads the speech server's stream in 0.5 s pieces, and
+  httpx yields nothing until a piece is full, so the first sound waited 220 to 250 ms past the
+  server's first byte. `SpeechTTS` now reads 0.24 s, three of Breeze's 80 ms frames. Two frames ran
+  dry while the brain read a 2000-token prompt beside it.
+- **The second sentence.** Pipecat's sentence splitter waits for the next letter after a full stop,
+  and behind the claim guard that letter came only with the next sentence, so the first sentence was
+  spoken once the second was written, often at the end of the reply. `GuardSentences` (core/guard.py)
+  speaks each sentence the guard passes on at once; NLTK still keeps "Mr." with its name and "10.6"
+  whole. Over half of the box's replies have more than one sentence, and they gain 150 to 400 ms.
+
+On the fake box, the same requests went from 619 to 297 ms ("One moment." on a home request), 655 to
+348 ms and 1381 to 693 ms from the transcript to the first audio.
+
+An audit that day also took back three changes made earlier that day: the pause after a sentence is
+0.25 s again (0.12 s shortened the full stops and started nothing sooner, since the next sentence's
+audio is ready before the pause ends); the backbone goes back to bf16 (in 8 bits it generated 27%
+slower, 0.57 against 0.45 s per second of speech, first byte 164 against 154 ms, and nobody had
+listened to it); and the brain's value cache goes back to q8_0 (q4_0 freed 192 MB, not the 370 to
+750 MB claimed, and gave no speed on this card).

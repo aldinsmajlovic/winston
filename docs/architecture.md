@@ -50,11 +50,13 @@ flowchart TB
   the LLM in every channel. A firm claim of an action or a memory change ("I've set", "has been sent",
   "done", "noted", "I've forgotten") needs a tool call in that turn or the one before. Looser wording ("is
   now", "is still", "turning") counts only when the sentence names something he can act on: an exposed
-  Home Assistant name, alias or entity id, or a light word. A passive memory change ("has been removed",
+  Home Assistant name, alias or entity id, or a light word, and "dimming" or "setting" yields to advice
+  ("I'd suggest dimming the lights" claims nothing). A passive memory change ("has been removed",
   "has been updated") counts only when no tool ran that turn. The guard passes the reply on a sentence at a time (dropping a
   stray `</think>` the model sometimes writes with thinking off, and saying the answer once when he repeats it after
   one: each sentence waits until the next text shows up) and judges each one as it finishes; the model calls tools before it speaks, so a backed claim goes straight
-  through. An unbacked claim is held back and never said. When a reply drops a claim, or ends on a
+  through. The voice speaks each sentence the guard passes on at once (`GuardSentences`), not after the
+  next one is written. An unbacked claim is held back and never said. When a reply drops a claim, or ends on a
   promise to act that no call kept ("Let me turn them on."), the guard asks the model once more with a
   user-role note marked "not said by the user" (at most once per user turn; such notes, like
   announcements, do not start a turn). If the retry fails too, he says a soft line instead ("Sorry, that
