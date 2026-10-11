@@ -34,8 +34,8 @@ half the model on the CPU. On a card with room, expect it to be closer to the vL
 
 `winston check brain` runs the requests in `data/trials/brain.yaml` (template in
 `examples/trials/brain.yaml`) through the text channel with thinking off, as over voice, each in a
-fresh conversation. A case passes when every expected tool was called, no forbidden one was, and the
-claim guard stayed quiet; lights the cases touch are put back. `--runs 3` repeats the set, results
+fresh conversation. A case passes when every expected tool was called and no forbidden one was;
+lights the cases touch are put back. `--runs 3` repeats the set, results
 land in `data/logs/brain_trials/`. Switch the brain on the Brain page, run it again, compare.
 
 On the reference box (2026-09-23), 14 requests, three rounds each:

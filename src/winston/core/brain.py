@@ -229,7 +229,7 @@ def name_forms(bare: str) -> set[str]:
 
 
 def acted(messages: list) -> bool:
-    """Whether an acting tool has succeeded since the newest user message (the guard's notes aside)."""
+    """Whether an acting tool has succeeded since the newest user message (the house's notes aside)."""
     names, results = {}, []
     for m in reversed(messages):
         if not isinstance(m, dict):
@@ -277,7 +277,7 @@ async def _calling(tool: str, args: dict | None = None):
 
 
 def last_said(messages: list) -> str | None:
-    """The newest thing the user said in a request's messages, skipping the guard's retry note; a tool
+    """The newest thing the user said in a request's messages, skipping the house's notes; a tool
     result after it keeps the same turn, so a request's follow-up call thinks like its first."""
     for m in reversed(messages):
         if isinstance(m, dict) and m.get("role") == "user" and isinstance(m.get("content"), str):

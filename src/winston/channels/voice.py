@@ -45,7 +45,7 @@ from winston.config.schema import WinstonConfig
 from winston.core.brain import HOME_LINES, Brain, Clock, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
 from winston.core.announce import note, nudge_note, subscribe
-from winston.core.guard import ClaimGuard, GuardSentences
+from winston.core.reply import ReplyFilter, ReplySentences
 from winston.core.hints import Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core.rooms import MicGate, RoomLink, area, http_sync, mic_events, wake_phrases
@@ -135,8 +135,8 @@ class SpeechTTS(OpenAITTSService):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # Speaks each sentence the guard passes on at once (Pipecat 1.11 takes no aggregator argument).
-        self._text_aggregator = GuardSentences(aggregation_type=self._text_aggregation_mode)
+        # Speaks each sentence the reply filter passes on at once (Pipecat 1.11 takes no aggregator argument).
+        self._text_aggregator = ReplySentences(aggregation_type=self._text_aggregation_mode)
 
     @property
     def chunk_size(self) -> int:
@@ -233,8 +233,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         vad_analyzer=vad,
         user_turn_strategies=UserTurnStrategies(stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=turn_end)]),
     ))
-    guard = ClaimGuard(CFG, channel="voice")
-    turns = SpokenTurns(TURNS, room, busy=lambda: guard.retrying or not brain.verifier.idle)
+    turns = SpokenTurns(TURNS, room, busy=lambda: not brain.verifier.idle)
     watch = SpeechWatch()
     link = RoomLink(room, f"voice:{uuid.uuid4().hex[:8]}", http_sync(CFG)) if room else None
     gate = MicGate(wake_phrases(CFG) if room else None)
@@ -260,7 +259,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         Mentions(CFG),          # nudges for the next conversation and the briefing, after his answer
         *([link.before] if link else []),           # the room's conversation in, this session's out
         brain.llm,              # context -> streamed text, tool calls
-        guard,                  # holds back claims no tool call backs, retries once
+        ReplyFilter(),          # sentence at a time, no stray </think>
         tts,                    # sentences -> pcm
         transport.output(),     # speaker audio to the browser
         aggregators.assistant(),
@@ -268,7 +267,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     ])
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
-        observers=[guard.observer, brain.verifier.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
+        observers=[brain.verifier.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
                    ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), watch,
                    turns],
         idle_timeout_secs=None,

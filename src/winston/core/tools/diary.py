@@ -6,7 +6,6 @@ from pipecat.services.llm_service import FunctionCallParams
 
 from winston.config.schema import WinstonConfig
 from winston.core.diary import Diary
-from winston.core.guard import set_tier
 
 
 def make_diary_tool(cfg: WinstonConfig):
@@ -31,7 +30,6 @@ def make_diary_tool(cfg: WinstonConfig):
                  "note": "This is a past diary entry. Recount it as a memory, not as current actions."})
         return await params.result_callback({"date": resolved, "result": "No diary entry for that day."})
 
-    set_tier("get_diary", "act")
     schema = FunctionSchema(
         name="get_diary",
         description="Look up what happened on a past day: what was asked, what you did in the house, "

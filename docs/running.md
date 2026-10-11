@@ -38,9 +38,9 @@ asked questions.
 
 `.venv/bin/python tests/conversations.py [name ...]` talks to the voice pipeline headless in eighteen
 scripted conversations (vague requests, things he cannot do, Swedish, talking over him, prompt
-injection, the claim guard's retry and more) and prints each transcript: what speech-to-text heard,
-tool calls, what he said (a failed retry's soft line included) and time to first audio. Actions are
-stubbed and the guard's records go to the temp dir, so the house and `data/` are untouched. It judges
+injection, a promise he might not keep and more) and prints each transcript: what speech-to-text heard,
+tool calls, what he said and time to first audio. Actions are stubbed and the tool log goes to the temp
+dir, so the house and `data/` are untouched. It judges
 nothing; read the transcripts.
 
 `uv run python tests/extensions_voice.py` measures spoken turns against the running engines while an

@@ -102,8 +102,8 @@ something it plugs into.
 is enough), our own TTS server, voice cloning, wake word training, Discord, the dashboard, and settings
 polish before there is much to set.
 
-**Kept from today's Winston:** `verify.py` (checking outcomes), memory as Markdown in git, the guard and
-tiered actions, announcements with follow-ups, measure before optimizing, the docs discipline. Most of
+**Kept from today's Winston:** `verify.py` (checking outcomes), memory as Markdown in git, tiered
+actions, announcements with follow-ups, measure before optimizing, the docs discipline. Most of
 it lifts across rather than being rewritten.
 
 **How it went so far:** Winston went wide early. M4 started before M2's real-mic check and before M3 had

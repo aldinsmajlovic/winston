@@ -46,23 +46,13 @@ flowchart TB
   LLM server, `subprocess` runs the TTS venv service and the voice channel, `external` points at
   something you already run. The supervisor owns start, stop, health and restart-on-change.
 - **Brain** (`winston/core`): one Pipecat LLM service plus its tools, shared by every channel. Tools come
-  from MCP servers and local plugins. The persona is the system instruction, flattened to one list of rules (the file's sections are for the Memory page), under a title and an identity line made from `assistant.name`. A claim guard sits after
-  the LLM in every channel. A firm claim of an action or a memory change ("I've set", "has been sent",
-  "done", "noted", "I've forgotten") needs a tool call in that turn or the one before. Looser wording ("is
-  now", "is still", "turning") counts only when the sentence names something he can act on: an exposed
-  Home Assistant name, alias or entity id, or a light word, and "dimming" or "setting" yields to advice
-  ("I'd suggest dimming the lights" claims nothing). A passive memory change ("has been removed",
-  "has been updated") counts only when no tool ran that turn. The guard passes the reply on a sentence at a time (dropping a
-  stray `</think>` the model sometimes writes with thinking off, and saying the answer once when he repeats it after
-  one: each sentence waits until the next text shows up) and judges each one as it finishes; the model calls tools before it speaks, so a backed claim goes straight
-  through. The voice speaks each sentence the guard passes on at once (`GuardSentences`), not after the
-  next one is written. An unbacked claim is held back and never said. When a reply drops a claim, or ends on a
-  promise to act that no call kept ("Let me turn them on."), the guard asks the model once more with a
-  user-role note marked "not said by the user" (at most once per user turn; such notes, like
-  announcements, do not start a turn). If the retry fails too, he says a soft line instead ("Sorry, that
-  didn't go through. Shall I do it now?"). Channels wait for a pending retry before closing a reply, the
-  Talk page shows only what the guard let through, and every guard event is logged with what he heard,
-  `retried` and `retry_backed`. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
+  from MCP servers and local plugins. The persona is the system instruction, flattened to one list of rules (the file's sections are for the Memory page), under a title and an identity line made from `assistant.name`. A reply filter (`core/reply.py`) sits
+  after the LLM in every channel and passes the reply on a sentence at a time, dropping a stray
+  `</think>` the model sometimes writes with thinking off and saying the answer once when he repeats it
+  after one (each sentence waits until the next text shows up). The voice speaks each sentence the filter
+  passes on at once (`ReplySentences`), not after the next one is written. Nothing checks the reply's
+  wording against the tool calls: the claim guard that did was removed on 2026-10-11 (decisions.md).
+  Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
   starts; the `remember` tool adds to them. The diary (`core/diary.py`) writes a few lines about each
   day from the turn record using the background LLM after midnight; the last two days go into the
   prompt and a `get_diary` tool answers questions about older ones. Thinking is set per channel (`llm.thinking`); on the spoken

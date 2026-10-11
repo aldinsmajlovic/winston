@@ -119,7 +119,6 @@ async def register(brain, channel: str) -> list[str]:
     brain.tools_signature = signature(tools, speaking)
     if speaking:
         guard.set_tier("follow_up", guard.ACT)
-        guard.set_noting("follow_up")
         brain.add_tool(*make_follow_up_tool(brain.cfg, channel))
         names.append("follow_up")
     return names

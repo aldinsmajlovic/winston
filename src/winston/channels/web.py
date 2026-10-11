@@ -1,6 +1,6 @@
 """Web chat: typing on the Talk page. Runs inside winstond, one conversation for the household and
 one per room a page is set to (shared with that room's box, core/rooms.py), with the same brain,
-tools and claim guard as every other channel. Everything it says goes to the live feed;
+tools and reply filter as every other channel. Everything it says goes to the live feed;
 `POST /api/chat` only queues the message.
 
 A conversation starts fresh after channels.web.session_idle_mins, and after a config save."""

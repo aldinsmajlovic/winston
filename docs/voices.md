@@ -467,9 +467,9 @@ Two holds in Winston's own client came before every first sound, on the box and 
   server's first byte. `SpeechTTS` now reads 0.24 s, three of Breeze's 80 ms frames. Two frames ran
   dry while the brain read a 2000-token prompt beside it.
 - **The second sentence.** Pipecat's sentence splitter waits for the next letter after a full stop,
-  and behind the claim guard that letter came only with the next sentence, so the first sentence was
-  spoken once the second was written, often at the end of the reply. `GuardSentences` (core/guard.py)
-  speaks each sentence the guard passes on at once; NLTK still keeps "Mr." with its name and "10.6"
+  and behind the reply filter that letter came only with the next sentence, so the first sentence was
+  spoken once the second was written, often at the end of the reply. `ReplySentences` (core/reply.py)
+  speaks each sentence the filter passes on at once; NLTK still keeps "Mr." with its name and "10.6"
   whole. Over half of the box's replies have more than one sentence, and they gain 150 to 400 ms.
 
 On the fake box, the same requests went from 619 to 297 ms ("One moment." on a home request), 655 to

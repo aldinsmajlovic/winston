@@ -290,7 +290,7 @@ def remember(cfg: WinstonConfig, topic: str, fact: str, replaces: str | None = N
              until: str | None = None) -> dict:
     """Append a fact, or with replaces change the fact that reads so. until is the last day it
     matters (YYYY-MM-DD or words, see until_date); a future relative date in the fact sets it too.
-    Returns {"stored": ...} or {"error": ...} (the claim guard reads "error")."""
+    Returns {"stored": ...} or {"error": ...} (guard.result_ok reads "error")."""
     if topic not in topics(cfg):
         return {"error": f"unknown topic {topic!r}; use one of {topics(cfg)}"}
     today = date.today()

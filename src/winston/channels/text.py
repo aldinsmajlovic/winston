@@ -18,7 +18,7 @@ from pipecat.workers.runner import WorkerRunner
 from winston.config.schema import WinstonConfig
 from winston.core.announce import note
 from winston.core.brain import Brain, Clock, ToolCallLogObserver
-from winston.core.guard import ClaimGuard
+from winston.core.reply import ReplyFilter
 from winston.core.rooms import RoomLink
 from winston.core.speak_up import Mentions
 from winston.extension_host.client import tools_changed
@@ -27,16 +27,15 @@ QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-
 
 
 class TurnTracker(BaseObserver):
-    """Knows when a reply is really over: no LLM response end for QUIET_SECS, no tool call still
-    running and no claim guard retry on its way. Observers see every frame, including the
-    function-call frames that never travel downstream past the LLM."""
-    def __init__(self, guard: ClaimGuard | None = None):
-        super().__init__(); self.last_end = None; self.pending: set[str] = set(); self.guard = guard
+    """Knows when a reply is really over: no LLM response end for QUIET_SECS and no tool call still
+    running. Observers see every frame, including the function-call frames that never travel
+    downstream past the LLM."""
+    def __init__(self):
+        super().__init__(); self.last_end = None; self.pending: set[str] = set()
 
     @property
     def over(self) -> bool:
-        return bool(self.last_end and not self.pending and not (self.guard and self.guard.retrying)
-                    and time.perf_counter() - self.last_end > QUIET_SECS)
+        return bool(self.last_end and not self.pending and time.perf_counter() - self.last_end > QUIET_SECS)
 
     async def on_push_frame(self, data: FramePushed):
         f = data.frame
@@ -75,10 +74,10 @@ class Printer(FrameProcessor):
 
 
 class TextSession:
-    """One conversation over text: the brain, the claim guard and the tool log, minus STT and TTS.
+    """One conversation over text: the brain, the reply filter and the tool log, minus STT and TTS.
     `winston talk` runs one; the Discord channel runs one per conversation. A spoken channel passes
-    what comes after the printer (`outputs`: a TTS and where its audio goes), its own `tools`, and
-    `spoken` for the claim guard. A check or trial passes `mentions=False`, so it does not take the household's
+    what comes after the printer (`outputs`: a TTS and where its audio goes) and its own `tools`.
+    A check or trial passes `mentions=False`, so it does not take the household's
     nudges and briefing (a replay once took the day's briefing, and he never said it to anyone).
 
         s = TextSession(cfg, channel="discord"); await s.start()
@@ -86,12 +85,12 @@ class TextSession:
 
     def __init__(self, cfg: WinstonConfig, channel: str = "text", echo: bool = False, observers: list | None = None,
                  room: RoomLink | None = None, area: str | None = None, brain_channel: str = "text",
-                 outputs: list | None = None, tools: list | None = None, spoken: bool = False, mentions: bool = True):
+                 outputs: list | None = None, tools: list | None = None, mentions: bool = True):
         self.cfg, self.channel, self.echo, self.room, self.area = cfg, channel, echo, room, area
         self.mentions = mentions
         self.brain_channel = brain_channel   # whose thinking the brain uses: a replayed spoken turn's own channel
         self._extra = observers or []
-        self._outputs, self._tools, self._spoken = outputs or [], tools or [], spoken
+        self._outputs, self._tools = outputs or [], tools or []
         self.last_used = time.monotonic()
         self._lock = asyncio.Lock()          # one question at a time; a second waits its turn
         # Where a state-check correction goes besides the context and the terminal: a Discord DM, the
@@ -105,13 +104,12 @@ class TextSession:
         for schema, handler in self._tools:
             self.brain.add_tool(schema, handler)
         agg = LLMContextAggregatorPair(self.brain.new_context())
-        guard = ClaimGuard(cfg, channel=self.channel, spoken=self._spoken)
-        self._tracker = TurnTracker(guard); self.printer = Printer(self._tracker, self.echo)
+        self._tracker = TurnTracker(); self.printer = Printer(self._tracker, self.echo)
         before, after = ([self.room.before], [self.room.after]) if self.room else ([], [])
-        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), *([Mentions(cfg)] if self.mentions else []), *before, self.brain.llm, guard,
+        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), *([Mentions(cfg)] if self.mentions else []), *before, self.brain.llm, ReplyFilter(),
                                                 self.printer, *self._outputs, agg.assistant(), *after]),
                                       params=PipelineParams(enable_metrics=False),
-                                      observers=[guard.observer, self.brain.verifier.observer,
+                                      observers=[self.brain.verifier.observer,
                                                  ToolCallLogObserver(cfg, channel=self.channel),
                                                  self._tracker, *self._extra],
                                       idle_timeout_secs=None)

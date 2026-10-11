@@ -288,7 +288,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         await brain.start()
         names = [t.name for t in brain.tools.standard_tools]
         expect("a brain gets the extension tools after its own", names[-len(tools):] == [t["name"] for t in tools], names)
-        expect("the guard knows their tiers", guard.tool_tier("probe_seen") == guard.READ
+        expect("their tiers are known", guard.tool_tier("probe_seen") == guard.READ
                and guard.tool_tier("probe_switch_off") == guard.ACT and guard.tool_tier("probe_wipe") == guard.ACT)
 
         class Params:

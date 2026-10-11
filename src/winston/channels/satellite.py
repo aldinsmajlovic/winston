@@ -7,7 +7,7 @@ Winston takes the role Home Assistant normally has: an ESPHome API client (aioes
 subscribes to the box's voice assistant. The box hears its own wake word (microWakeWord: okay_nabu,
 hey_jarvis, hey_mycroft on stock firmware) and then streams 16 kHz microphone audio here. Winston
 decides when the request is over (Silero VAD, Smart Turn), transcribes it, runs the brain with its tools and
-the claim guard, and speaks. The box plays replies from a URL, as it does Home Assistant's
+the reply filter, and speaks. The box plays replies from a URL, as it does Home Assistant's
 streaming TTS: RUN_START carries the URL, INTENT_PROGRESS with tts_start_streaming tells it to start
 fetching once the first sentence goes to the voice, and this process serves that URL as a stream that
 grows while the reply is synthesized. Every reply sets continue_conversation, so the box
@@ -168,8 +168,8 @@ class Speaker(FrameProcessor):
 
 
 class Conversation(TextSession):
-    """One box's conversation: a TextSession that speaks, through the TTS and the Speaker after the claim
-    guard, kept between wake-ups until it goes stale (text.stale)."""
+    """One box's conversation: a TextSession that speaks, through the TTS and the Speaker after the reply
+    filter, kept between wake-ups until it goes stale (text.stale)."""
 
     def __init__(self, cfg: WinstonConfig, room: str, feed: FeedPoster, previous: Callable[[], str | None] | None = None):
         self.feed = feed
@@ -178,7 +178,7 @@ class Conversation(TextSession):
         tools = [make_use_voice_tool(cfg, channel="satellite")]     # a voice cloned in the browser
         if previous and cfg.logging.turns.enabled:
             tools.append(make_mark_tool(cfg, previous))   # "that's not what I said"
-        super().__init__(cfg, channel="satellite", brain_channel="satellite", spoken=True, tools=tools,
+        super().__init__(cfg, channel="satellite", brain_channel="satellite", tools=tools,
                          room=RoomLink(room, f"box:{room}:{uuid.uuid4().hex[:6]}", http_sync(cfg)),
                          area=area(cfg, room), outputs=[build_tts(cfg), self.speaker],
                          observers=[LiveObserver("satellite", feed.put, spoken=True), self.turns])

@@ -76,8 +76,7 @@ to the old fact as he sees it in his prompt; "forget that Omar visits" is `forge
 "Forgotten: ..." so he says what went, with no question first (every change is a commit, and the
 page has Undo). Both match the stored fact exactly (case, a trailing full stop and a quoted stamp
 aside), never the closest one: on no match the tool answers with the topic's facts and he calls again
-with one of them. The claim guard counts "I've forgotten that" or "noted" as a memory claim, backed
-only by `remember` or `forget` in that turn or the one before.
+with one of them.
 
 The tools list the topics with their descriptions, read when a conversation starts, so a topic added
 or described on the page is offered from the next conversation without a restart.

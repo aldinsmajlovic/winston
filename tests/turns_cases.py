@@ -129,7 +129,7 @@ async def browser_turns(folder: Path):
 
 async def reply_over(folder: Path):
     """A turn is written once his reply is over, however long a tool takes: not while a tool runs, not
-    while he speaks, not while busy (the guard retrying, a state check reading)."""
+    while he speaks, not while busy (a state check reading)."""
     turns_mod.SETTLE_SECS = 0.05
     log = TurnLog(cfg(folder), "voice")
     busy = [False]

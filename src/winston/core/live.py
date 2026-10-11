@@ -28,7 +28,8 @@ from pydantic import BaseModel
 
 from winston.config.schema import WinstonConfig
 from winston.core.common import Once, key
-from winston.core.guard import ClaimGuard, result_ok
+from winston.core.guard import result_ok
+from winston.core.reply import ReplyFilter
 
 State = Literal["idle", "listening", "thinking", "speaking"]
 
@@ -163,8 +164,8 @@ def tool_label(name: str, args: dict | None, status: str) -> str:
 
 class LiveObserver(BaseObserver):
     """Turns one pipeline's frames into feed events. `spoken` channels get their idle and speaking
-    states from the bot's audio; text channels are idle when the reply ends, no tool is running and
-    no guard retry is coming. The reply is what the pipeline's ClaimGuard lets through."""
+    states from the bot's audio; text channels are idle when the reply ends and no tool is running.
+    The reply is what the pipeline's ReplyFilter lets through."""
 
     def __init__(self, channel: str, sink: Callable[[LiveEvent], object], spoken: bool = False):
         super().__init__()
@@ -188,9 +189,9 @@ class LiveObserver(BaseObserver):
 
     async def on_push_frame(self, data: FramePushed):
         f = data.frame
-        # Reply text and its end count only as the claim guard passes them on, not on their way in:
-        # what it holds back is never said, and it may add to a reply before ending it.
-        if isinstance(f, (LLMTextFrame, LLMFullResponseEndFrame)) and isinstance(data.destination, ClaimGuard):
+        # Reply text and its end count only as the reply filter passes them on, not on their way in:
+        # a stray </think> and what it repeats are never said.
+        if isinstance(f, (LLMTextFrame, LLMFullResponseEndFrame)) and isinstance(data.destination, ReplyFilter):
             return
         # Speech counts once past a gate that may drop it (core/rooms.py), not on its way in.
         if isinstance(f, TranscriptionFrame) and getattr(data.destination, "may_drop_speech", False):
@@ -215,7 +216,7 @@ class LiveObserver(BaseObserver):
                 self._emit("reply", reply=self._reply, text=text)
         elif isinstance(f, LLMFullResponseEndFrame):
             self._end_reply()
-            if not self._spoken and not self._calls and not getattr(data.source, "retrying", False):
+            if not self._spoken and not self._calls:
                 self._state("idle")
         elif isinstance(f, FunctionCallsStartedFrame):
             self._end_reply()

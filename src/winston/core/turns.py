@@ -49,7 +49,6 @@ from pipecat.services.llm_service import FunctionCallParams
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
-from winston.core import guard
 from winston.core.common import Once
 from winston.core.guard import result_ok
 from winston.core.hints import Heard
@@ -252,8 +251,8 @@ class SpokenTurns(TurnObserver):
     turn (it never reached him), so words count once past it, as in the live feed.
 
     A turn is written when the next one starts, when the session ends, or once his reply is over: the
-    last response has ended, no tool call is running, he has stopped speaking, and `busy` (the claim
-    guard retrying, a state check still reading) is false, with nothing new for SETTLE_SECS. Nothing
+    last response has ended, no tool call is running, he has stopped speaking, and `busy` (a state check
+    still reading) is false, with nothing new for SETTLE_SECS. Nothing
     here depends on how long a model or a tool takes; a slow one keeps its turn open. It runs while the
     log keeps anything (`TurnLog.active`); the audio is held only when the turn record is on."""
 
@@ -467,7 +466,6 @@ def make_mark_tool(cfg: WinstonConfig, previous: Callable[[], str | None]):
     turn that he answered or let pass, the one before the turn that asks for the mark. He confirms in his
     own words, from the result."""
     store = TurnStore(cfg)
-    guard.set_noting("mark_mistake")         # "Noted, sir." is backed by it
 
     async def mark_mistake(params: FunctionCallParams):
         a = params.arguments

@@ -1,7 +1,7 @@
 """Brain trials: the same typed requests against whatever brain the config names, so two models
 (or two servers) can be compared on tool use and speed. Each case runs in a fresh conversation
 through the text channel with thinking off (as over voice), and passes when every expected tool
-was called and the claim guard stayed quiet. Lights touched by the cases are put back afterwards.
+was called and no forbidden one. Lights touched by the cases are put back afterwards.
 
 Cases are personal (entity names, phrasing), so they live in data/trials/brain.yaml;
 examples/trials/brain.yaml is the template. Results go to data/logs/brain_trials/.
@@ -63,7 +63,7 @@ def restore(before: dict):
 
 
 class Watch(BaseObserver):
-    """First and last reply text after a request. The claim guard is read from its log records."""
+    """First and last reply text after a request."""
     def __init__(self):
         super().__init__(); self.t0 = None; self.first = self.last = None
 
@@ -107,12 +107,11 @@ async def run_case(case: dict) -> dict:
     await asyncio.sleep(0.5)
     log = tool_log_since(ts)
     called = [d["tool"] for d in log if d["event"] == "call"]
-    guard = any(d["event"] == "guard" for d in log)
     missing = [e for e in case.get("expect", []) if not matches(e, called)]
     forbidden = [e for e in case.get("forbid", []) if matches(e, called)]
     restore(before)
-    return {"name": case["name"], "ok": not missing and not forbidden and not guard, "called": called,
-            "missing": missing, "forbidden": forbidden, "guard": guard, "turns": turns}
+    return {"name": case["name"], "ok": not missing and not forbidden, "called": called,
+            "missing": missing, "forbidden": forbidden, "turns": turns}
 
 
 async def main():
@@ -127,8 +126,7 @@ async def main():
             last = res["turns"][-1]
             sec = lambda v: f"{v:.2f}s" if v else "  -  "
             why = ", ".join(filter(None, [f"missing {res['missing']}" if res["missing"] else "",
-                                          f"forbidden {res['forbidden']}" if res["forbidden"] else "",
-                                          "claim guard" if res["guard"] else ""]))
+                                          f"forbidden {res['forbidden']}" if res["forbidden"] else ""]))
             print(f"{'PASS' if res['ok'] else 'FAIL'}  {res['name']:<28} first {sec(last['first_text_s'])}  done {sec(last['done_s'])}  "
                   f"{why}\n      tools {res['called']}\n      said  {last['reply'][:160]!r}")
     passed = sum(r["ok"] for r in results)

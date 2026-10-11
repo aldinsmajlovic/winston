@@ -555,9 +555,7 @@ parts of the day (morning 08:00, afternoon 15:00, evening 19:00, tonight 20:00; 
 code still cannot read ("tomorrow after work" with nothing in memory) becomes "when home" on that
 day, with `speak_up.fallback_time` (18:00) if you are already home. The tool answers with what it
 set, so he says the real time. Extensions read times the same way through a `When` argument or
-`ctx.parse_when`. The claim guard counts "I'll remind you" as a promise, backed only by a `later`
-call or an act tool call in that turn, and a bare "Noted" as backed by `follow_up` as well as by
-`remember`.
+`ctx.parse_when`.
 
 The brain has `follow_up` whenever an extension that is switched on declares a kind; a conversation
 keeps the tools it started with, so one started before such an extension was switched on gets its
@@ -827,5 +825,5 @@ hours). A restricted call waiting for you shows on the Talk page with Confirm an
   messaging channel is wanted.
 - **Anything that needs the microphone or speaker audio** (cloning, intercom, sound detection, playing
   radio): a later part of the standard, designed with the first feature that needs it for its own sake.
-- **The core**: memory, rooms, the claim guard, the persona, speaking up and announcements, and Home
+- **The core**: memory, rooms, the persona, speaking up and announcements, and Home
   Assistant, which extensions reach through `ctx.ha`.
