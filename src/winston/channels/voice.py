@@ -13,6 +13,7 @@ import time
 import uuid
 import wave
 
+import httpx
 import numpy as np
 import soxr
 from loguru import logger
@@ -41,7 +42,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from winston.config import load, resolve
 from winston.config.schema import WinstonConfig
-from winston.core.brain import Brain, Clock, ToolCallLogObserver, api_key
+from winston.core.brain import HOME_LINES, Brain, Clock, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.guard import ClaimGuard, GuardSentences
@@ -102,6 +103,31 @@ async def transcribe(pcm: np.ndarray, extra: list[str]) -> str:
     return await hearing().transcribe(pcm, 16000, label="clone: STT", extra=extra)
 
 
+# Takes of the lines said by code while he thinks about a home request (HOME_LINES), rendered while the
+# speech server is idle and played in turn, TAKES per line so the same take does not come round soon. A
+# live render shared the GPU with the thinking it covers and slowed it by about 0.4 s. A line in another
+# voice (a clone) is still rendered live.
+TAKES = 3
+_takes: dict[tuple[str, str], list[bytes]] = {}       # (voice, line): 16-bit PCM at the TTS rate
+_turn: dict[tuple[str, str], int] = {}
+
+
+async def prerender(cfg: WinstonConfig = CFG):
+    """Fill the takes of HOME_LINES in cfg.tts.voice; filled lines are skipped."""
+    c = cfg.tts
+    try:
+        async with httpx.AsyncClient(base_url=c.base_url, timeout=60) as h:
+            for line in HOME_LINES:
+                takes = _takes.setdefault((c.voice, line), [])
+                while len(takes) < TAKES:
+                    r = await h.post("/audio/speech", json={"input": line, "voice": c.voice, "model": "winston-tts",
+                                                           "response_format": "pcm"})
+                    r.raise_for_status()
+                    takes.append(r.content)
+    except Exception as e:                                                  # noqa: BLE001
+        logger.warning(f"lines for thinking not rendered ahead, they are rendered live: {e}")
+
+
 class SpeechTTS(OpenAITTSService):
     """OpenAI's speech protocol with any voice name. Pipecat only lets OpenAI's own names through,
     but a local server names its clips by path ("vctk/p226_023", "friends/erik"). Text with nothing
@@ -119,6 +145,14 @@ class SpeechTTS(OpenAITTSService):
         return int(self.sample_rate * 0.24) * 2
 
     async def run_tts(self, text: str, context_id: str):
+        key = (self._settings.voice, text.strip())
+        if takes := _takes.get(key):
+            i = _turn.get(key, 0); _turn[key] = i + 1
+            pcm = takes[i % len(takes)]
+            await self.stop_ttfb_metrics()
+            for j in range(0, len(pcm), self.chunk_size):
+                yield TTSAudioRawFrame(pcm[j:j + self.chunk_size], self.sample_rate, 1, context_id=context_id)
+            return
         if self._settings.voice in VALID_VOICES:
             async for f in super().run_tts(text, context_id):
                 yield f
@@ -304,6 +338,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         # history, and the model took "Winston online." for an answer (2026-10-01).
         await worker.queue_frames([TTSSpeakFrame(f"{CFG.assistant.name} online.", append_to_context=False)])
         warming.add(t := asyncio.create_task(brain.warm())); t.add_done_callback(warming.discard)
+        warming.add(t := asyncio.create_task(prerender())); t.add_done_callback(warming.discard)
         if CFG.announce.enabled:
             listener = asyncio.create_task(announcements())
 

@@ -65,7 +65,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from winston.channels.clone import make_use_voice_tool
 from winston.channels.text import TextSession, stale
-from winston.channels.voice import build_tts, load_chime
+from winston.channels.voice import build_tts, load_chime, prerender
 from winston.config import load
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.hints import Heard, Hearing
@@ -291,6 +291,7 @@ class Satellite:
                     f"{info.esphome_version})")
         if self.conversation is None:            # ready before the first wake word, prompt already read
             await asyncio.shield(self._build(warm=True))
+        self._prerender = asyncio.create_task(prerender(self.cfg))     # the lines he says while he thinks
         if self._prewarming is None or self._prewarming.done():
             self._prewarming = asyncio.create_task(self._prewarm())
         self._unsub = self.client.subscribe_voice_assistant(

@@ -68,9 +68,12 @@ flowchart TB
   prompt and a `get_diary` tool answers questions about older ones. Thinking is set per channel (`llm.thinking`); on the spoken
   channels, where it is off, a request about the home (an exposed name or alias, a light word, or a verb
   like "turn" or "dim") thinks anyway (`llm.thinking.home`, at `llm.thinking.home_effort`, medium by
-  default), and he first says a butler's line by code ("One moment.", "Let me see to that."), pushed
-  straight to the TTS so it covers the thinking. Without it the 27B sometimes said a light was on without
-  calling a tool. Home Assistant tools that take a name and an area get the area dropped when the named
+  default) while it decides what to call, not while it answers from the result, and he first says a
+  butler's line by code ("One moment.", "Let me see to that."), pushed straight to the TTS so it covers
+  the thinking. The lines are rendered ahead, three takes each played in turn (`voice.prerender`), so
+  their synthesis does not share the GPU with the thinking. Without thinking the 27B sometimes said a
+  light was on without calling a tool, and on 2026-10-11 it still got 38 of 43 home requests right
+  against 43 of 43. Home Assistant tools that take a name and an area get the area dropped when the named
   device is in another one (`rooms.scoped_by_name`).
 - **Adapters** (`winston/plugins`): speech to text, found through the `winston.stt` entry point group, so a
   third-party package adds one without touching core. `parakeet` runs in the voice process;

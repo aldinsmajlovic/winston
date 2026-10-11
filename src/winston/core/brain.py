@@ -292,7 +292,8 @@ class WinstonLLM(OpenAILLMService):
     tool 18 of 24 times ("Kitchen lights are on." with no call; once the main room lights for "turn off
     the living room lights"), on 24 of 24, about 3 s slower. The effort comes from
     llm.thinking.home_effort: on 2026-09-27 medium was as right as the template's default xhigh (21 of
-    24 each) with a median turn of 3.3 s against 5.5 s. Once per user message it says one of
+    24 each) with a median turn of 3.3 s against 5.5 s. Only the first pass of a request thinks, not the
+    answer after its tool results (2026-10-11). Once per user message it says one of
     HOME_LINES first (or the named entity's own say_first), pushed straight to the TTS: queued at the
     pipeline's start it would wait behind the thinking it is meant to cover. For an entity with
     quiet_after, once one of the turn's actions has worked there is no reply at all and `ended` is set,
@@ -340,7 +341,9 @@ class WinstonLLM(OpenAILLMService):
         if self._no_tools:
             logger.warning(f"{rounds} rounds of tool calls for one request: this one answers without tools")
         said = last_said(messages) if self._own or self._home else None
-        self._think = bool(said and self._home and self._home.search(key(said)))
+        # Only the pass that decides what to call thinks. After the tool results the answer is a sentence:
+        # thinking there cost 0.5 s a home turn and changed no outcome in the trials of 2026-10-11.
+        self._think = bool(said and self._home and self._home.search(key(said)) and not rounds)
         own = next((o for o in self._own if said and o.pattern.search(key(said))), None)
         if own and own.quiet and acted(messages):
             self.ended, self._think = True, False

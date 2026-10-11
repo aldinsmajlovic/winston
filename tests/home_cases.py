@@ -92,6 +92,26 @@ async def shortcut():
     check("a quiet shortcut says nothing after", [c async for c in after], [])
     check("and ends the turn", llm.ended, True)
 
+    # A home request thinks while it decides what to call, not while it answers from the result.
+    parent, thought = type(llm).__mro__[1], []
+
+    async def record(self, context):
+        thought.append(self._think)
+
+        async def nothing():
+            return
+            yield
+        return nothing()
+    real, parent.get_chat_completions = parent.get_chat_completions, record
+    lamp = [{"role": "user", "content": "[21:00] turn off the shelf lamp"}]
+    off = [{"role": "assistant", "tool_calls": [{"id": "c1", "type": "function",
+                                                 "function": {"name": "intent__HassTurnOff", "arguments": "{}"}}]},
+           {"role": "tool", "tool_call_id": "c1", "content": '{"success": true}'}]
+    await llm.get_chat_completions(LLMContext(lamp))
+    await llm.get_chat_completions(LLMContext(lamp + off))
+    parent.get_chat_completions = real
+    check("a home request thinks before its call, not after the result", thought, [True, False])
+
 asyncio.run(shortcut())
 
 finish_checks("home: home requests, first lines, quiet after and shortcuts ok")
