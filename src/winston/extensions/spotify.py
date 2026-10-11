@@ -364,9 +364,18 @@ async def handle_event(ctx, ev: dict) -> None:
 async def events(ctx):
     from websockets.asyncio.client import connect
     await asyncio.sleep(2)
-    async with connect(f"ws://127.0.0.1:{ctx.settings.api_port}/events") as ws:
-        async for raw in ws:
-            await handle_event(ctx, json.loads(raw))
+    while True:
+        try:
+            s = await call(ctx, "GET", "/status")
+            if s and not s.get("paused") and not s.get("stopped") and s.get("track"):
+                await handle_event(ctx, {"type": "metadata", "data": s["track"]})
+                await handle_event(ctx, {"type": "playing"})
+        except NotReady:
+            pass
+        async with connect(f"ws://127.0.0.1:{ctx.settings.api_port}/events") as ws:
+            async for raw in ws:
+                await handle_event(ctx, json.loads(raw))
+        await asyncio.sleep(2)
 
 
 # tools
