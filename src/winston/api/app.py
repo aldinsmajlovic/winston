@@ -6,7 +6,7 @@ import json
 import re
 import uuid
 from collections import OrderedDict
-from datetime import date
+from datetime import date, datetime, timedelta
 import subprocess
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
@@ -539,6 +539,18 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             spawn(nudges.follow_up(ident, "dismiss", channel="phone"))
     extensions.scheduler.on_phone_action = phone_action
 
+    async def _diary_loop():
+        """Write any missing diary entries on startup, then check again after midnight."""
+        from winston.core.diary import Diary
+        diary = Diary(cfg)
+        await asyncio.sleep(10)      # let the LLM engine start first
+        await diary.write_pending(talking=feed.talking)
+        while True:
+            now = datetime.now()
+            tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=5, second=0, microsecond=0)
+            await asyncio.sleep((tomorrow - now).total_seconds())
+            await diary.write_pending(talking=feed.talking)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if autostart:
@@ -548,6 +560,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         extensions.scheduler.start(jobs=autostart)      # Home Assistant's events either way: announcements
         if autostart:
             nudges.start()
+            spawn(_diary_loop())
         async with mcp_out.session_manager.run():
             yield
         await nudges.stop()
@@ -857,6 +870,27 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         except ValueError as e:
             raise HTTPException(400, str(e))
         return Ok()
+
+    # Diary
+
+    class DiaryEntry(BaseModel):
+        date: str
+        text: str
+
+    @app.get("/api/diary", summary="Diary entries, newest first")
+    async def get_diary(limit: int = Query(14, ge=1, le=365)) -> list[DiaryEntry]:
+        from winston.core.diary import Diary
+        diary = Diary(app.state.cfg)
+        return [DiaryEntry(date=d, text=t) for d, t in diary.entries(limit)]
+
+    @app.get("/api/diary/{day}", summary="One diary entry by date")
+    async def get_diary_day(day: str) -> DiaryEntry:
+        from winston.core.diary import Diary
+        diary = Diary(app.state.cfg)
+        text = diary.entry(day)
+        if not text:
+            raise HTTPException(404, f"No diary entry for {day}")
+        return DiaryEntry(date=day, text=text)
 
     def memory_call(fn, *args):
         try:

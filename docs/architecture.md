@@ -17,7 +17,7 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
   runs a brain (voice, Discord, satellite), so a new channel joins every brain setting in one place.
   Speech and hearing settings restart voice and satellite; the web channel is rebuilt on every save.
 - **Presets over hand-written engine blocks.** `config/presets.py` names the engine and model choices per
-  slot (vLLM, llama.cpp, Ollama, hosted; Chatterbox, Pocket TTS, Qwen3-TTS, VoxCPM2, Gepard, hosted) and composes them into hardware profiles.
+  slot (vLLM, llama.cpp, Ollama, hosted; Chatterbox, Pocket TTS, Qwen3-TTS, VoxCPM2, Gepard, Breeze TTS 2, hosted) and composes them into hardware profiles.
   The UI offers them as dropdowns, `winston init --profile` writes one, and the config stays the truth.
 - **Choices come from where the truth lives.** A field names a live list in the schema (`options`);
   `api/options.py` fills it from the brain's server, Home Assistant, the data directory or a provider's
@@ -61,7 +61,9 @@ flowchart TB
   didn't go through. Shall I do it now?"). Channels wait for a pending retry before closing a reply, the
   Talk page shows only what the guard let through, and every guard event is logged with what he heard,
   `retried` and `retry_backed`. Remembered facts (`data/memory/`) and the reply language (`assistant.language`) are appended to the persona when a session
-  starts; the `remember` tool adds to them. Thinking is set per channel (`llm.thinking`); on the spoken
+  starts; the `remember` tool adds to them. The diary (`core/diary.py`) writes a few lines about each
+  day from the turn record using the background LLM after midnight; the last two days go into the
+  prompt and a `get_diary` tool answers questions about older ones. Thinking is set per channel (`llm.thinking`); on the spoken
   channels, where it is off, a request about the home (an exposed name or alias, a light word, or a verb
   like "turn" or "dim") thinks anyway (`llm.thinking.home`, at `llm.thinking.home_effort`, medium by
   default), and he first says a butler's line by code ("One moment.", "Let me see to that."), pushed

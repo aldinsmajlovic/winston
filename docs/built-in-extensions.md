@@ -1,11 +1,12 @@
 # Built-in extensions
 
-Four extensions come with Winston, in `src/winston/extensions/`, each written against the public
+Five extensions come with Winston, in `src/winston/extensions/`, each written against the public
 SDK alone ([extensions](extensions.md)): nothing in the core knows them by name. They are off until
 you switch them on, on the Extensions page or with `winston ext enable ID`.
 
 | Extension | Speaks up | His tools | Reaches |
 | --- | --- | --- | --- |
+| **Awareness** (`awareness`) | "Goodnight": after a busy day, when the evening goes quiet | None | winstond (reads the day's turns) |
 | **Hevy** (`hevy`) | "Time to train": no workout for 3 days, when you are home; firmer from day 5 | `hevy_get_training` | api.hevyapp.com |
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
@@ -13,6 +14,14 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
 `winston check unit`.
+
+## Awareness
+
+Small things Winston notices on his own. No tools, no settings, no outside services.
+
+**Goodnight.** After 21:00 (or before 06:00), when there have been at least three answered turns
+today and then 30 or more minutes of silence, Winston says goodnight. One per night, expires at
+06:00. Checks every 15 minutes. The nudge reads the day's turns from winstond's API.
 
 ## Hevy
 

@@ -40,8 +40,9 @@ port 8880 in Chatterbox's place:
 | Qwen3-TTS 1.7B (`services/tts-qwen3`) | GPU, about 6.5 GB | a clip and its words | 24 kHz | Slower than real time on a 3090 beside the 27B brain |
 | VoxCPM2 (`services/tts-voxcpm2`) | GPU, about 6.9 GB | a clip and its words | 48 kHz | Nearly fills a 24 GB card beside the 27B brain |
 | Gepard 1.1 (`services/tts-gepard`) | GPU, about 2.2 GB | a clip alone | 22.05 kHz | Fastest to start, but drops and garbles more words |
+| Breeze TTS 2 (`services/tts-breeze2`) | GPU, about 5.9 GB | a clip and its words | 24 kHz | The most natural in blind pairs; beside the 27B brain only with Parakeet hearing; non-commercial weights |
 
-Only one GPU voice fits beside the brain, so picking one stops the other. Qwen3-TTS and VoxCPM2 clone
+Only one GPU voice fits beside the brain, so picking one stops the other. Qwen3-TTS, VoxCPM2 and Breeze clone
 from the clip's words as well: a `.txt` beside the clip if there is one, otherwise Parakeet
 transcribes it once. How they compare is under [Benchmark](#benchmark).
 
@@ -364,8 +365,8 @@ Speech Arena (1215 Elo, above ElevenLabs v3). Its weights are for research and n
 only, which a home assistant is; its inference code (Apache-2.0) is not a package, so
 `services/tts-breeze2` clones it at a pinned commit (the server's docstring has the command). It
 clones from a clip and its words, streams itself and takes tags in parentheses, "(laugh)", which the
-server writes Chatterbox's "[laugh]" into. It is a benchmark candidate only, not a Voice preset: it
-does not fit beside the brain.
+server writes Chatterbox's "[laugh]" into. It was a benchmark candidate until it became the voice on
+10 October ([below](#breeze-tts-2-as-the-voice-10-october)).
 
 Same 20 lines and three voices, run with the brain, voice and hearing stopped, since its bf16 weights
 alone ran out of the 6.7 GB the voice and hearing leave:
@@ -422,3 +423,37 @@ Turbo stays. The Breeze that fits beside the brain is about even with it, at the
 full card, a smaller brain context and weaker results in the voice Winston uses; only near full
 precision (about 6.5 GB) is it clearly better, which would mean giving up Qwen3-ASR's hearing.
 `services/tts-breeze2` stays as a candidate for a better quantization, a newer model or more memory.
+
+### Breeze TTS 2 as the voice, 10 October
+
+Aldin chose the near full precision Breeze over Qwen3-ASR's hearing, so the Voice page has a Breeze
+TTS 2 preset and hearing is back on Parakeet. The preset keeps the backbone and depth decoder in
+bf16 and puts only the text encoder in 8 bits (`--text-encoder-bits 8`, which changed nothing in
+the 4-bit runs). That builds the model in RAM and leaves the text lookup tables and the unused codec
+copy there, so it takes 5.9 GB on the card instead of the all-bf16 build's 9.1 GB. With Qwen3-ASR
+stopped, the 27B at 32k leaves 6.5 GB. Sentences are chained as above.
+
+Measured as it runs, on port 8880 beside the brain (`bench.py breeze2-live=http://127.0.0.1:8880`,
+same 20 lines and three voices):
+
+| Engine | First sound | Real-time factor | Word errors | GPU memory | Card at its peak |
+| --- | --- | --- | --- | --- | --- |
+| Chatterbox-Turbo, streamed | 0.45 s | 0.34 | 3.4% | 4.2 GB | 21.3 GB |
+| Breeze TTS 2, the preset | 0.18 s | 0.44 | 3.5% | 6.1 GB | 24.0 GB of 24.6 |
+
+It starts in less than half Turbo's time. Its word errors are more than the 1.9% of the all-bf16 build,
+and chaining is part of that: in the 4-bit runs it went from 4.1% to 4.8%. The card is left with
+about 0.6 GB at its peak, so a bigger brain context or a GPU hearing engine does not fit beside it.
+Chatterbox stays a preset; picking it and Qwen3-ASR 0.6B on the Voice page goes back.
+
+Aldin heard the next sentence start right on the last one's final sound. Breeze ends a sentence
+about 0.04 s after its last sound, against Turbo's 0.16 s, and Winston sends a reply a sentence at a
+time, so its pauses at full stops were mostly under 0.1 s (Turbo's 0.16 to 0.4 s). The Breeze server
+now adds `--pause-secs` of silence after each sentence, 0.25 s by default, which makes a full stop
+0.30 to 0.32 s. Change it in the engine's command (Advanced) to taste.
+
+Measured again with the pause (`breeze2-pause`): first byte 0.14 s, first sound 0.18 s (slowest
+tenth 0.26 s), RTF 0.41. The slowest lines start with "[sigh]", which Breeze breathes quietly before
+the first word. Word errors read 5.8%, but the two lines Parakeet heard as nothing were said right:
+moving the clip's end by a few hundredths of a second, it hears them whole. That is the
+measurement's noise, not the voice.

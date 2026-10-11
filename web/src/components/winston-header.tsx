@@ -8,6 +8,7 @@ const LINKS = [
   { to: '/', label: 'Talk' },
   { to: '/turns', label: 'Turns' },
   { to: '/memory', label: 'Memory' },
+  { to: '/diary', label: 'Diary' },
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/status', label: 'Settings' },
 ]

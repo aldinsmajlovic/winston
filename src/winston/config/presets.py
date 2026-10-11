@@ -137,6 +137,20 @@ TTS: list[Fragment] = [
           "words than the others.")),
     )),
     {
+        "id": "breeze2", "icon": "huggingface", "title": "Breeze TTS 2 on GPU", "needs": ["cuda"],
+        "hint": "Clones from a clip and its words; the most natural of the local voices in blind pairs. About 5.9 GB "
+                "of VRAM: beside the 27B brain only with Parakeet hearing. Weights for non-commercial use only.",
+        "engine": {
+            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
+            "cwd": "{repo}/services/tts-breeze2",
+            "cmd": ["{repo}/services/tts-breeze2/.venv/bin/python", "server.py",
+                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880",
+                    "--fast", "backbone_decode", "depth_decoder", "codec", "--text-encoder-bits", "8"],
+        },
+        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
+                             "voice": "vctk/p254_023", "sample_rate": 24000}},
+    },
+    {
         "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI speech URL)", "needs": ["internet"],
         "hint": "Any server speaking the OpenAI speech protocol. The key goes in .env. Speech leaves the LAN.",
         "engine": {"driver": "external", "url": "https://api.openai.com", "port": 443, "health": "",

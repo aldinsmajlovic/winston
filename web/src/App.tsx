@@ -9,6 +9,7 @@ import EnginePage from '@/pages/engine'
 import EnginesPage from '@/pages/engines'
 import ExtensionsPage from '@/pages/extensions'
 import HomeAssistantPage from '@/pages/home-assistant'
+import DiaryPage from '@/pages/diary'
 import MemoryPage from '@/pages/memory'
 import TurnsPage from '@/pages/turns'
 import StatusPage from '@/pages/status'
@@ -35,6 +36,7 @@ export default function App() {
       <Route path="/" element={<TalkPage />} />
       <Route path="/turns" element={<TurnsPage />} />
       <Route path="/memory" element={<MemoryPage />} />
+      <Route path="/diary" element={<DiaryPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route element={<SettingsLayout />}>
         <Route path="/status" element={<StatusPage />} />

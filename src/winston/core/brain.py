@@ -37,10 +37,12 @@ from winston.config.schema import WinstonConfig
 from winston.core import persona as persona_file
 from winston.core import directory, guard, region
 from winston.core.common import Once, entity_names, key, log_event, rewrap, words_pattern
+from winston.core.diary import Diary
 from winston.core.memory import make_memory_tools, prompt_block
 from winston.core.rooms import make_start_over_tool, plain_words, scoped_by_name
 from winston.core.tools.ask_claude import make_ask_claude_tool
 from winston.core.tools.clone_hint import make_clone_hint_tool
+from winston.core.tools.diary import make_diary_tool
 from winston.core.tools.messaging import make_send_message_tool
 from winston.core.tools.sensors import make_sensor_tool
 from winston.core.tools.web_search import make_web_search_tool
@@ -89,13 +91,33 @@ class Clock(FrameProcessor):
 _STAMP = re.compile(r"\[\d\d:\d\d(, room: [^\]]+)?\] ")
 
 
-def persona(cfg: WinstonConfig, house: str = "") -> str:
+def _vocal_events(cfg: WinstonConfig, channel: str) -> str:
+    """When the TTS engine supports inline vocal events, tell the model it can use them in spoken
+    replies. Breeze TTS 2 renders (laugh), (sigh), (cough), (clears throat); the speech server
+    rewrites [tag] to (tag), so the model writes [sigh] and the server handles the rest."""
+    if channel not in SPOKEN:
+        return ""
+    engine = cfg.engines.get("tts")
+    if not engine:
+        return ""
+    cwd = engine.cwd or ""
+    cmd = " ".join(engine.cmd) if engine.cmd else ""
+    if "tts-breeze2" not in cwd and "tts-breeze2" not in cmd:
+        return ""
+    return ("Your voice can express [sigh], [laugh], [cough] and [clears throat] inline. "
+            "Use them sparingly and only where a person would: a [sigh] before reluctant news, "
+            "a [laugh] when something is genuinely funny. Never force them.")
+
+
+def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice") -> str:
     """The persona file, the remembered facts, notes from running extensions, the map of the house
     (directory.house_map), the region and the reply language, read when a session's LLM is built.
     The language comes last: a line in the persona lost to the user's language every time (asked in
     Swedish, he answered in Swedish 8 of 8); at the end of the prompt it holds."""
     text = persona_file.prompt_text(cfg).strip()
-    parts = [text, prompt_block(cfg), extension_texts.prompt_block(cfg), house, region.prompt_block(cfg), today(),
+    diary = Diary(cfg).recent()
+    parts = [text, prompt_block(cfg), extension_texts.prompt_block(cfg), house, region.prompt_block(cfg),
+             _vocal_events(cfg, channel), diary, today(),
              f"The user may speak another language, like Swedish: understand it and do what they ask, as you "
              f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
              f"only {cfg.assistant.language}."]
@@ -378,7 +400,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "") -> Op
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=c.model,
-            system_instruction=persona(cfg, house),   # must live in Settings; a bare kwarg is ignored when settings= is given
+            system_instruction=persona(cfg, house, channel),   # must live in Settings; a bare kwarg is ignored when settings= is given
             temperature=s.temperature, top_p=s.top_p, presence_penalty=s.presence_penalty,
             max_completion_tokens=s.max_tokens,
             extra={"extra_body": body} if body else {},
@@ -422,7 +444,8 @@ class Brain:
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
         for local in (make_sensor_tool(self.cfg), *make_memory_tools(self.cfg), make_web_search_tool(self.cfg),
-                      make_ask_claude_tool(self.cfg), make_send_message_tool(self.cfg), make_start_over_tool()):
+                      make_ask_claude_tool(self.cfg), make_send_message_tool(self.cfg), make_start_over_tool(),
+                      make_diary_tool(self.cfg)):
             if local:
                 schema, handler = local
                 self.llm.register_function(schema.name, handler)

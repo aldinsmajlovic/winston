@@ -228,6 +228,69 @@ def turns_marked():
     print(f"{len(rows)} marked")
 
 
+diary_app = typer.Typer(help="Winston's diary: a few lines about each day, written from the turn record.",
+                        invoke_without_command=True, no_args_is_help=False)
+app.add_typer(diary_app, name="diary")
+
+
+@diary_app.callback()
+def diary_list(day: str = typer.Option(None, help="Show a specific day's entry, YYYY-MM-DD."),
+               last: int = typer.Option(7, help="How many recent entries to show.")):
+    """Show diary entries."""
+    from winston.core.diary import Diary
+    cfg = load()
+    diary = Diary(cfg)
+    if day:
+        text = diary.entry(day)
+        if not text:
+            print(f"No diary entry for {day}."); return
+        print(f"\n{day}\n{'=' * len(day)}\n{text}")
+    else:
+        entries = diary.entries(last)
+        if not entries:
+            print("No diary entries yet."); return
+        for d, text in reversed(entries):
+            print(f"\n{d}\n{'=' * len(d)}\n{text}")
+    print()
+
+
+@diary_app.command("write")
+def diary_write(day: str = typer.Option(None, help="The day to write, YYYY-MM-DD; yesterday when left out.")):
+    """Write a diary entry for a day (needs the LLM engine running)."""
+    import asyncio
+    from datetime import date as d, timedelta as td
+    from winston.core.diary import Diary
+    cfg = load()
+    diary = Diary(cfg)
+    target = day or (d.today() - td(1)).isoformat()
+
+    async def run():
+        text = await diary.write(target)
+        if text:
+            print(f"\n{target}\n{'=' * len(target)}\n{text}\n")
+        else:
+            print(f"No turns on {target} to write about.")
+    asyncio.run(run())
+
+
+@diary_app.command("pending")
+def diary_pending():
+    """Write entries for any recent days that have turns but no entry yet."""
+    import asyncio
+    from winston.core.diary import Diary
+    cfg = load()
+    diary = Diary(cfg)
+    missing = diary.days_without()
+    if not missing:
+        print("All recent days have entries."); return
+    print(f"Writing entries for: {', '.join(missing)}")
+
+    async def run():
+        await diary.write_pending()
+    asyncio.run(run())
+    print("Done.")
+
+
 @app.command()
 def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | brain | clone | turns | all"),
           with_: Path = typer.Option(None, "--with", help="turns: a config file laid over the config, a candidate "

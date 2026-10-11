@@ -29,6 +29,9 @@ one in the same voice gets that sentence, its words and its codec frames, append
 its reference: it carries on from what was just said, and the clip stays first so the voice cannot
 drift from it. Only the one sentence before is kept.
 
+Breeze ends a sentence about 0.04 s after its last sound (Turbo about 0.16 s), so the next one started
+right on top of it; --pause-secs of silence goes after each sentence.
+
 Its tags are in parentheses, "(laugh)", so Chatterbox's "[laugh]" is rewritten to them; upstream
 says tags take effect more reliably with a guidance scale above 1, which runs two branches.
 """
@@ -90,7 +93,7 @@ class Breeze2Engine:
     builtin_voices: tuple[str, ...] = ()
 
     def __init__(self, model_id: str, device: str, cfg: float, seed: int, fast: list[str], bits: tuple[int, int, int],
-                 chain_secs: float):
+                 chain_secs: float, pause_secs: float):
         from breeze_infer import templates
         from breeze_infer.runtime import load_runtime, update_generation_config_for_breeze
         from huggingface_hub import snapshot_download
@@ -120,6 +123,7 @@ class Breeze2Engine:
         self.model, self.cfg, self.seed, self.chain_secs = model_id, cfg, seed, chain_secs
         self._last: dict[str, tuple[str, torch.Tensor, float]] = {}   # clip -> last sentence, its frames, when
         self.sample_rate = self.runtime.sample_rate
+        self._pause = np.zeros(int(pause_secs * self.sample_rate), np.float32)
 
     def prepare(self, clip: Path):
         from breeze_infer.audio import encode_prompt_audio
@@ -146,8 +150,9 @@ class Breeze2Engine:
                                                                       token_observer=frames.append))
             if stream:
                 yield from chunks
+                yield self._pause
             else:
-                yield np.concatenate(list(chunks))
+                yield np.concatenate([*chunks, self._pause])
         if frames:      # not reached when the sentence was cut off; the one before stays the reference
             made = torch.stack(frames).to("cpu", torch.int16)
             made = made[(made != self.tts.config.codebook_pad_token_id).any(dim=1)]
@@ -162,6 +167,8 @@ def main():
     ap.add_argument("--seed", type=int, default=42, help="sampling seed per sentence, upstream's default")
     ap.add_argument("--chain-secs", type=float, default=30.0,
                     help="a sentence this soon after the last one in its voice carries on from it (0: never)")
+    ap.add_argument("--pause-secs", type=float, default=0.25,
+                    help="silence after each sentence: Breeze ends one about 0.04 s after its last sound")
     ap.add_argument("--fast", nargs="*", default=[], choices=STAGES, help="stages to capture as CUDA graphs")
     ap.add_argument("--backbone-bits", type=int, default=16, choices=(4, 8, 16), help="below 16 builds in RAM (docstring)")
     ap.add_argument("--text-encoder-bits", type=int, default=16, choices=(4, 8, 16), help="below 16 builds in RAM")
@@ -170,7 +177,8 @@ def main():
     ss.setup_logging()
     t0 = time.perf_counter()
     bits = (args.backbone_bits, args.text_encoder_bits, args.int4_group)
-    engine = Breeze2Engine(args.model, args.device, args.cfg, args.seed, args.fast, bits, args.chain_secs)
+    engine = Breeze2Engine(args.model, args.device, args.cfg, args.seed, args.fast, bits, args.chain_secs,
+                          args.pause_secs)
     log.info("model %s loaded on %s in %.1f s, %d Hz, fast %s, bits %s", args.model, args.device,
              time.perf_counter() - t0, engine.sample_rate, args.fast or "off", bits)
     ss.serve(engine, args)
