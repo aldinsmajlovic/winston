@@ -154,7 +154,7 @@ def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
 
 
 # A request to change something ("turn it off", "dim it a bit more") names no device every time.
-_HOME_VERBS = re.compile(r"\b(?:turn|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler)\b")
+_HOME_VERBS = re.compile(r"\b(?:turn(?!\s+(?:up|down)\b)|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler)\b")
 # Said by code while he thinks about a home request, so the wait is not silence. One after the other.
 HOME_LINES = ("One moment.", "Let me see to that.", "Certainly, one moment.", "Let me look at that.")
 # The reply cap when he thinks about a home request: on the box "Can you turn on the lights in uh the living

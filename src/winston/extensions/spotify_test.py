@@ -192,8 +192,30 @@ async def test_the_speakers_follow_spotify_and_a_pause_loses_nothing():
     assert len(seeks) == 1 and seeks[0]["relative"] and -1500 <= seeks[0]["position"] <= -1400, seeks
     await handle(ctx, {"type": "playing", "data": {"resume": True}})
     await handle(ctx, {"type": "stopped", "data": {}})
+    assert [a for a, *_ in h.speakers] == ["play", "stop", "play"], h.speakers    # deferred, not yet stopped
+    await asyncio.sleep(0.6)
     assert [a for a, *_ in h.speakers] == ["play", "stop", "play", "stop"], h.speakers
     assert len([p for m, p, b in rx.calls if p == "/player/seek"]) == 1     # a stop has nothing to go back to
+    await h.close()
+
+
+async def test_a_track_change_keeps_the_speakers_connected():
+    rx = Receiver()
+    h = harness(rx)
+    module = h.ext.tools["play"].fn.__globals__
+    handle, state = module["handle_event"], module["state"]
+    ctx = h.rt.ctx
+    await h.status()
+    await handle(ctx, {"type": "metadata", "data": {"name": "Get Lucky", "artist_names": ["Daft Punk"]}})
+    await handle(ctx, {"type": "playing", "data": {}})
+    assert [a for a, *_ in h.speakers] == ["play"], h.speakers
+    await handle(ctx, {"type": "stopped", "data": {}})
+    assert [a for a, *_ in h.speakers] == ["play"], h.speakers            # still connected: deferred
+    await handle(ctx, {"type": "metadata", "data": {"name": "Harder", "artist_names": ["Daft Punk"]}})
+    await handle(ctx, {"type": "playing", "data": {}})
+    assert [a for a, *_ in h.speakers] == ["play"], h.speakers            # never disconnected
+    await asyncio.sleep(0.6)
+    assert [a for a, *_ in h.speakers] == ["play"], h.speakers            # the deferred stop was cancelled
     await h.close()
 
 
@@ -255,8 +277,8 @@ async def test_the_relay_keeps_two_seconds_ahead_of_playback():
     state.clients.add(q)
     await pace(read, sleep=sleep, clock=lambda: now[0])
     assert q.qsize() == 5
-    assert slept == [1.0, 1.0, 1.0], slept                          # the first two seconds at once, then real time
-    assert state.ring_bytes <= 2.5 * bps + bps
+    assert slept == [0.5, 1.0, 1.0, 1.0], slept                     # the first 1.5 s at once, then real time
+    assert state.ring_bytes <= 2.0 * bps + bps
     await h.close()
 
 

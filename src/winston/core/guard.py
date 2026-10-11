@@ -294,6 +294,7 @@ def _content(message) -> str:
 # A sentence ends at . ! ? (and any closing quote or bracket) followed by white space, or at a line
 # break. "10.6 million" does not end one; the last sentence ends with the response.
 _SENTENCE_END = re.compile(r"[.!?][\"')\]]*\s+|\n+")
+_SENTENCE_FINAL = re.compile(r"[.!?][\"')\]]*$")
 _THINK_TAG = re.compile(r"</?think>")         # with thinking off the model sometimes writes one
 _CLOSE_THINK = "</think>"
 
@@ -366,6 +367,11 @@ class ClaimGuard(FrameProcessor):
         rest = self._buf.strip()
         if rest and not _CLOSE_THINK.startswith(rest):
             await self._settle_last()
+            if _SENTENCE_FINAL.search(rest):
+                sentence, self._buf = _THINK_TAG.sub("", self._buf), ""
+                if sentence.strip():
+                    await self._after_tag(sentence)
+                    self._last = sentence
 
     async def _settle_last(self):
         if self._last is not None:

@@ -52,7 +52,7 @@ ARCHIVE = f"https://github.com/devgianlu/go-librespot/releases/download/v{VERSIO
 SHA256 = "9d2b8b2c85606f5c8e75f9f48910d711cab7406f3582091126b3f3063ee0282e"   # GitHub's digest, 2026-09-30
 RATE, CHANNELS = 44100, 2
 BPS = RATE * CHANNELS * 2           # s16le
-LEAD = 2.0                          # seconds the relay reads ahead of playback: the box's buffer
+LEAD = 1.5                          # seconds the relay reads ahead of playback: the box's buffer
 PIPE = 16384                        # bytes the receiver may write ahead of the relay: a tenth of a second
 CHUNK = 8192                        # bytes per read
 BOX_WAIT = 5.0                      # seconds the relay holds the music for a box that is connecting
@@ -91,6 +91,7 @@ class State:
         self.now: dict = {}                 # the track, from the receiver's metadata
         self.pending: dict | None = None    # a party armed by party(), to fire when the music starts
         self.party: dict | None = None      # the running party's lights, to stop and restore when it ends
+        self.deferred_stop: asyncio.Task | None = None
 
 
 state = State()
@@ -335,6 +336,9 @@ async def handle_event(ctx, ev: dict) -> None:
         if track and data.get("uri") and data["uri"] != track:     # the party's song is over: the next one plays
             await end_party(ctx)
     elif kind == "playing":
+        if state.deferred_stop and not state.deferred_stop.done():
+            state.deferred_stop.cancel()
+            state.deferred_stop = None
         if not state.on:
             title = f"{state.now.get('name')} by {', '.join(state.now.get('artists', []))}" if state.now else "Spotify"
             state.on = True                 # before the box connects, so the relay waits for it
@@ -346,24 +350,39 @@ async def handle_event(ctx, ev: dict) -> None:
                 asyncio.create_task(start_party_lights(ctx, state.party))    # after its delay, off the events loop
             else:
                 ctx.log.warning("party: no box took the stream; not starting the lights")
-    elif kind in ("paused", "stopped", "inactive") and state.on:    # a skip or the next song is "playing" alone
-        state.on = False
-        unheard = max(0.0, state.until - time.monotonic()) + flush() / BPS
-        state.ring.clear()
-        state.ring_bytes = 0
-        for q in list(state.clients):       # the box's stream ends here; the next one starts clean
-            end(q)
-        await ctx.speakers.stop()
-        if kind == "paused" and unheard >= 0.2:
-            # The stop dropped what the box had not played: Spotify goes back to where he stopped hearing.
-            await call(ctx, "POST", "/player/seek", position=-round(unheard * 1000), relative=True)
-        await end_party(ctx)                # the party's music stopped: end the light show and put the room back
+    elif kind in ("paused", "stopped", "inactive") and state.on:
+        if kind == "paused":
+            state.on = False
+            unheard = max(0.0, state.until - time.monotonic()) + flush() / BPS
+            state.ring.clear()
+            state.ring_bytes = 0
+            for q in list(state.clients):
+                end(q)
+            await ctx.speakers.stop()
+            if unheard >= 0.2:
+                await call(ctx, "POST", "/player/seek", position=-round(unheard * 1000), relative=True)
+            await end_party(ctx)
+        else:
+            # Deferred: a track change sends stopped then playing within ~200 ms
+            async def _deferred():
+                await asyncio.sleep(0.5)
+                state.on = False
+                flush()
+                state.ring.clear()
+                state.ring_bytes = 0
+                for q in list(state.clients):
+                    end(q)
+                await ctx.speakers.stop()
+                await end_party(ctx)
+            if state.deferred_stop and not state.deferred_stop.done():
+                state.deferred_stop.cancel()
+            state.deferred_stop = asyncio.create_task(_deferred())
 
 
 @ext.background
 async def events(ctx):
     from websockets.asyncio.client import connect
-    await asyncio.sleep(2)
+    await asyncio.sleep(0.5)
     while True:
         try:
             s = await call(ctx, "GET", "/status")
@@ -456,10 +475,9 @@ def in_library(ctx, what: str, kind: str | None, exact: bool) -> dict | None:
 
 @ext.tool(tier="read")
 async def my_music(ctx) -> dict:
-    """His Spotify library: playlists, top artists, saved albums and liked songs. Call this before
-    playing something for a mood or vibe request ("something chill", "upbeat music", "sad songs")
-    so you can pick an artist or playlist that fits from what he actually listens to, then play it
-    as a radio (radio=true) for an endless personalized stream."""
+    """His Spotify library: playlists, top artists, saved albums and liked songs. Call this when he
+    asks what he has, wants to browse his library, or asks for a mood or vibe ("something chill",
+    "play something energetic") so you can pick an artist that fits from what he listens to."""
     lib = ctx.store.get("library") or {}
     return {k: [item["name"] for item in items] for k, items in lib.items()}
 
@@ -483,11 +501,19 @@ async def app_token(ctx) -> str | None:
     return _app_token["token"]
 
 
+_search_cache: dict[tuple, tuple[dict, float]] = {}
+_SEARCH_TTL = 300
+
+
 async def search(ctx, what: str, kind: str | None) -> dict:
     """What to play: in his library by its exact name, else Spotify's best match (the thing named
     exactly, else the top track), else in his library by part of its name."""
     if (item := in_library(ctx, what, kind, exact=True)) is not None:
         return item
+    cache_key = (_norm(what), kind)
+    cached = _search_cache.get(cache_key)
+    if cached and time.time() - cached[1] < _SEARCH_TTL:
+        return cached[0]
     token = await app_token(ctx)
     if token is None:
         if (item := in_library(ctx, what, kind, exact=False)) is not None:
@@ -505,10 +531,14 @@ async def search(ctx, what: str, kind: str | None) -> dict:
         items = [i for i in (found.get(f"{t}s") or {}).get("items") or [] if i]
         exact = next((i for i in items if _norm(i.get("name", "")) == want), None)
         if exact or (kind == t and items):
-            return {"type": t, **(exact or items[0])}
+            result = {"type": t, **(exact or items[0])}
+            _search_cache[cache_key] = (result, time.time())
+            return result
     tracks = [i for i in (found.get("tracks") or {}).get("items") or [] if i]
     if tracks:
-        return {"type": "track", **tracks[0]}
+        result = {"type": "track", **tracks[0]}
+        _search_cache[cache_key] = (result, time.time())
+        return result
     raise ValueError(f"nothing on Spotify for {what!r}")
 
 
@@ -534,17 +564,20 @@ async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playli
                radio: bool = False) -> str:
     """Play music from Spotify on the speakers: a song, an artist, an album, or a playlist (his own
     library first). With radio, Spotify builds a personalized endless stream seeded from the artist
-    or song, drawing on his listening history. For a mood or vibe request, call my_music first to
-    pick an artist that fits, then play it as radio. It moves Spotify playback here from any other
-    device.
+    or song, drawing on his listening history. For a mood or vibe request ("something chill",
+    "upbeat music"), call my_music() first, pick an artist that fits the mood from his library,
+    then play(what=that_artist, radio=true) so Spotify seeds the station from his taste.
 
     Args:
         what: What he asked for, as said: "Daft Punk", "Get Lucky", "my running playlist".
+            For mood requests, the artist you picked from my_music().
         kind: Only when he said which: a track, an artist, an album or a playlist.
-        radio: True for an endless personalized stream seeded from the artist or song. Use for mood
-            or vibe requests after picking an artist from my_music.
+        radio: True for an endless personalized stream seeded from the artist or song.
     """
     await ready(ctx)
+    vol = await call(ctx, "GET", "/player/volume")
+    if (vol or {}).get("value", 60) == 0:
+        await call(ctx, "POST", "/player/volume", volume=60)
     state.pending = None                # another song: a party's lights stop with its music
     await end_party(ctx)
     if re.search(r"\bmy\b", what, re.IGNORECASE) and (own := in_library(ctx, what, kind, exact=False)) is not None:
