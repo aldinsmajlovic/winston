@@ -93,17 +93,24 @@ music. The stock firmware has no pause on that player, so a pause stops the stre
 satellite channel cuts the stream; winstond keeps what is playing and hands it to the channel when it is
 back, so the music picks up again and the next song still reaches the box.
 
-### Ending a conversation, and button only
+### Ending a conversation, and the button
 
 - **"Stop", "that's all", "never mind"** (or "be quiet", "not you", "nothing") in that listening
   window end the conversation without a reply, and the box goes back to waiting for the wake word.
   "No" and "thank you" on their own are answers and get one.
 - **"Stop" or a press of the button while he talks** stops him, and the box does not listen again
   afterwards (the stock firmware's stop word).
-- **A long press** (hold the button a second) switches the box to **button only**: the wake word is
-  off, a short press starts a request, and he never listens after a reply. He says "Very well. I shall
-  listen only when you press the button." Another long press switches the wake word back on. Meant
-  for a party or the TV. The box keeps the choice through restarts of it and of Winston.
+- **Hold to talk** (Winston's firmware): hold the button; after a second the box plays its long
+  press sound and listens. Talk, and let go when you are done. The request ends there, however long
+  you pause in it, plus 0.3 s for a last word cut short. For a request with pauses to think in it, or
+  a noisy room. After the reply he listens on as after any request, unless the box is button only.
+  A request stops at 20 s. A hold never resets the box: the stock factory reset (its warning at 10 s,
+  the reset on letting go after 22 s) is skipped while the button is in use, as when you turn the dial
+  with it held. To reset the box, switch the mute on first, then hold the button.
+- **A double press** switches the box to **button only**: the wake word is off, a short press or a
+  hold starts a request, and he never listens after a reply. He says "Very well. I shall listen only
+  when you press the button." Another double press switches the wake word back on. Meant for a party
+  or the TV. The box keeps the choice through restarts of it and of Winston.
 - **The mute switch** on the side cuts the microphones altogether. Two red LEDs by the microphones
   mean it is on; a red ring slowly twinkling means Winston is not connected.
 
@@ -132,6 +139,10 @@ keeps what the box has.
   INTENT_PROGRESS with `tts_start_streaming` tells the box to start fetching, and Winston serves a
   48 kHz WAV that grows while he speaks.
 - **Turn based**: the box stops its microphone at STT_VAD_END and plays the reply; no barge-in.
+- **A stop from the box is an abort** (checked 2026-10-11): `voice_assistant.stop` while it listens
+  tells the client to abort and the box goes idle without playing a reply. So hold to talk does not
+  stop the box on release; the box starts the run without silence detection (no `USE_VAD` flag) and
+  reports its button, and Winston ends the request when the button is let go.
 - Measured on the real box (2026-09-25, from this machine over Wi-Fi): first audio 0.7 to 0.9 s after
   the transcript, speech recognition about 0.2 s for 2.5 s of speech.
 - Measured against the fake box: first audio 1.8 to 2.3 s after the end of speech, of which 0.8 s
@@ -144,8 +155,11 @@ keeps what the box has.
 ## Winston's firmware: "Okay Winston"
 
 `services/voice-pe/voice-pe-winston.yaml` is the official factory firmware at a pinned release plus
-the `okay_winston` model from `assets/wake/`; nothing else changes, and Wi-Fi set over USB survives
-the flash. Build and flash with the box on USB:
+the `okay_winston` model from `assets/wake/` and hold to talk: the stock long press also starts a
+request without silence detection and sets the firmware's `dial_touched`, which keeps the factory
+reset off until the button is let go, and the center button is named so the box reports it. Nothing
+else changes, and Wi-Fi set over USB survives the flash. On stock firmware a hold does nothing; a
+double press still switches button only. Build and flash with the box on USB:
 
 ```sh
 cd services/voice-pe

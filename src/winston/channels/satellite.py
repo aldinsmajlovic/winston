@@ -14,9 +14,11 @@ the reply is synthesized. Every reply sets continue_conversation, so the box
 listens again without the wake word: follow_up_secs for more (8 s after a question); silence then
 ends the run as a wake with nothing said does, and so does a dismissal ("stop", "that's all").
 
-A long press on the box's button switches it to button only and back: the wake word goes off, a press
+A double press on the box's button switches it to button only and back: the wake word goes off, a press
 starts a request and he never listens after a reply. The box keeps the choice (its wake words are
-saved on it), so an empty wake word list on connect means button only.
+saved on it), so an empty wake word list on connect means button only. Holding the button is hold to
+talk (Winston's firmware): the box starts the run without silence detection (no USE_VAD flag) and
+reports the button, and the request ends when it is let go, however long the pauses in it.
 
 Each box's key in config is its room. The box's conversation is the room's, shared with browser
 sessions set to that room, and a wake holds the room's mic until the reply has played, so a browser
@@ -46,8 +48,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import soxr
-from aioesphomeapi import (APIClient, Event, EventInfo, MediaPlayerCommand, MediaPlayerInfo, ReconnectLogic, SelectInfo,
-                            VoiceAssistantAudioSettings)
+from aioesphomeapi import (APIClient, BinarySensorInfo, BinarySensorState, Event, EventInfo, MediaPlayerCommand,
+                            MediaPlayerInfo, ReconnectLogic, SelectInfo, VoiceAssistantAudioSettings,
+                            VoiceAssistantCommandFlag)
 from aioesphomeapi import VoiceAssistantEventType as Ev
 from aiohttp import web
 from loguru import logger
@@ -79,7 +82,8 @@ HOLD_SECS = 15.0                 # the room's mic lease while a run is on, renew
 RENEW_SECS = 5.0
 TAIL_SECS = 1.5                  # after the reply has played: the box's speaker and the room settle
 FOLLOW_UP_SECS = 4.0             # after a question: until the box starts listening again
-# Said on the box after a long press switched how it listens.
+RELEASE_TAIL_SECS = 0.3          # hold to talk: audio kept after the button is let go, for a last word cut early
+# Said on the box after a double press switched how it listens.
 BUTTON_ONLY_LINE = "Very well. I shall listen only when you press the button."
 WAKE_WORD_LINE = "Very well. I am listening for my name again."
 
@@ -111,7 +115,8 @@ class Run:
     audio_secs: float = 0.0                                 # reply audio sent to the box so far
     audio_start: float = 0.0                                # perf_counter() of the first of it
     follow_up: bool = False                                 # started by the box after a reply, no wake word
-    start: str = "wake"                                     # wake, follow_up or button, for the turn record
+    hold: bool = False                                      # hold to talk: ends when the button is let go
+    start: str = "wake"                                     # wake, follow_up, button or hold, for the turn record
     start_timeout: float = START_TIMEOUT_SECS               # no speech this long after the start: give up
 
     def playing_for(self) -> float:
@@ -239,8 +244,9 @@ class Satellite:
         self._lock = asyncio.Lock()
         self.mic = MicLease(cfg, room)
         self.button_only = False            # no wake word on the box: a press starts a request, no follow-ups
-        self._wake_words: list[str] = []    # what a long press switches back on
-        self._long_press: int | None = None  # key of the box's button event entity
+        self._wake_words: list[str] = []    # what a double press switches back on
+        self._button: int | None = None     # key of the box's button event entity
+        self._center: int | None = None     # key of the button itself (Winston's firmware), for hold to talk
         self._switching: asyncio.Task | None = None
         self._listener: asyncio.Task | None = None          # announcements and nudges while connected
         self._media_key: int | None = None                  # the box's media player (not the one replies use)
@@ -284,16 +290,18 @@ class Satellite:
             self._wake_words = use or list(conf.active_wake_words) or ids[:1]
             self.button_only = not conf.active_wake_words
             if self.button_only:
-                logger.info(f"{self.room}: button only (no wake word on); a long press switches the wake word on")
+                logger.info(f"{self.room}: button only (no wake word on); a double press switches the wake word on")
             elif use:
                 await self.client.set_voice_assistant_configuration(use)
                 logger.info(f"{self.room}: wake word {', '.join(use)}")
         try:
             ents, _ = await self.client.list_entities_services()
             self._media_key = next((e.key for e in ents if isinstance(e, MediaPlayerInfo)), None)
-            self._long_press = next((e.key for e in ents if isinstance(e, EventInfo) and "long_press" in e.event_types),
-                                    None)
-            if self._long_press is not None:
+            self._button = next((e.key for e in ents if isinstance(e, EventInfo) and "double_press" in e.event_types),
+                                None)
+            self._center = next((e.key for e in ents if isinstance(e, BinarySensorInfo)
+                                 and e.object_id == "center_button"), None)
+            if self._button is not None or self._center is not None:
                 self.client.subscribe_states(self._on_state)
             if want := self.dev.wake_sensitivity:
                 sel = next((e for e in ents if isinstance(e, SelectInfo) and e.object_id == "wake_word_sensitivity"),
@@ -311,14 +319,17 @@ class Satellite:
             self._listener = asyncio.create_task(self._speak_up())
 
     def _on_state(self, state):
-        long_press = isinstance(state, Event) and state.key == self._long_press and state.event_type == "long_press"
-        if long_press and (self._switching is None or self._switching.done()):
+        double = isinstance(state, Event) and state.key == self._button and state.event_type == "double_press"
+        if double and (self._switching is None or self._switching.done()):
             self._switching = asyncio.create_task(self.switch_listening())
+        let_go = isinstance(state, BinarySensorState) and state.key == self._center and not state.state
+        if let_go and self.run and self.run.hold:
+            asyncio.get_running_loop().call_later(RELEASE_TAIL_SECS, self.run.mic.put_nowait, None)
 
     async def switch_listening(self):
-        """A long press: the wake word off (button only) or back on, and a line on the box to say which."""
+        """A double press: the wake word off (button only) or back on, and a line on the box to say which."""
         if self.button_only and not self._wake_words:
-            logger.warning(f"{self.room}: long press, but no wake word to switch on")
+            logger.warning(f"{self.room}: double press, but no wake word to switch on")
             return
         self.button_only = not self.button_only
         self._follow_until = 0.0
@@ -328,7 +339,7 @@ class Satellite:
             logger.warning(f"{self.room}: could not switch the wake word: {e}")
             self.button_only = not self.button_only
             return
-        logger.info(f"{self.room}: long press, " + ("button only" if self.button_only else
+        logger.info(f"{self.room}: double press, " + ("button only" if self.button_only else
                                                     f"wake word {', '.join(self._wake_words)} on"))
         await self.speak({"type": "line", "text": BUTTON_ONLY_LINE if self.button_only else WAKE_WORD_LINE},
                          chime=False)
@@ -446,11 +457,15 @@ class Satellite:
         # The box listening on after a reply; it names the last wake word then too, so only the time tells.
         if time.monotonic() < self._follow_until:
             self.run.follow_up, self.run.start_timeout = True, self._follow_secs
-        self.run.start = "follow_up" if self.run.follow_up else "wake" if wake_word else "button"
+        # A follow-up reuses the last start's silence detection on the box, so after a hold it has no flag either.
+        self.run.hold = not flags & VoiceAssistantCommandFlag.USE_VAD and not self.run.follow_up
+        self.run.start = ("follow_up" if self.run.follow_up else "wake" if wake_word else
+                          "hold" if self.run.hold else "button")
         self._follow_until = 0.0
         self.mic.hold(HOLD_SECS)                # a browser in the room stops listening before the request
         self.audio.runs[self.run.id] = self.run
-        how = "follow-up" if self.run.follow_up else f"wake word {wake_word!r}" if wake_word else "button"
+        how = ("follow-up" if self.run.follow_up else f"wake word {wake_word!r}" if wake_word else
+               "hold to talk" if self.run.hold else "button")
         logger.info(f"{self.room}: {how}, run {self.run.id}")
         self.task = asyncio.create_task(self._serve(self.run))
         return 0                      # 0: audio over the API connection, not UDP
@@ -494,7 +509,8 @@ class Satellite:
                         guess.cancel(); guess = None
                 if any(voiced):
                     quiet = len(voiced) - 1 - max(i for i, v in enumerate(voiced) if v)
-                    if quiet >= end:
+                    # A hold to talk ends only when the button is let go (_on_state), whatever the pause.
+                    if not run.hold and quiet >= end:
                         break
                     if quiet >= guess_at and guess is None:
                         guess = asyncio.create_task(self._transcribe(buf[:len(voiced) * VAD_FRAME].copy()))

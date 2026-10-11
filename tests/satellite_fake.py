@@ -12,10 +12,11 @@ without a wake word (channels.satellite.follow_up_secs), an answer there is take
 and silence there ends the run with the no-speech error, which takes the real box back to idle.
 Then: "that's all" there ends the conversation without a reply; a nudge (speaking up) is played as an
 announcement with the chime first and his own wording after it, and the box listens on, so an answer
-needs no wake word; a long press switches the box to button only (no wake word, a spoken line, a press
-gets a reply without a follow-up), a reconnect finds it still button only, and a second long press
-switches the wake word back on. Every turn is kept in a turn record in a temporary folder, with its
-audio, how it started (wake word, follow-up, button) and how it ended."""
+needs no wake word; a double press switches the box to button only (no wake word, a spoken line, a press
+gets a reply without a follow-up); a hold to talk (no silence detection) with a 3 s pause in it ends only
+when the button is let go and is heard whole; a reconnect finds it still button only, and a second
+double press switches the wake word back on. Every turn is kept in a turn record in a temporary folder,
+with its audio, how it started (wake word, follow-up, button, hold) and how it ended."""
 import asyncio
 import json
 import sys
@@ -45,7 +46,7 @@ from loguru import logger  # noqa: E402
 
 logger.remove(); logger.add(sys.stderr, level="INFO")
 PORT, HTTP_PORT = 16053, 18702
-LONG_PRESS_KEY = 4242
+BUTTON_KEY, CENTER_KEY = 4242, 4243
 TYPE_OF = {cls: n for n, cls in MESSAGE_TYPE_TO_PROTO.items()}
 USER = "vctk/p226_023"
 FLAGS = (Feature.VOICE_ASSISTANT | Feature.API_AUDIO | Feature.ANNOUNCE | Feature.START_CONVERSATION
@@ -115,8 +116,10 @@ class FakeVoicePE:
                                             model="Home Assistant Voice PE", esphome_version="2026.9.0",
                                             mac_address="00:00:00:00:00:01", voice_assistant_feature_flags=FLAGS))
         elif isinstance(msg, pb.ListEntitiesRequest):
-            self.send(pb.ListEntitiesEventResponse(object_id="button_press", key=LONG_PRESS_KEY, name="Button press",
+            self.send(pb.ListEntitiesEventResponse(object_id="button_press", key=BUTTON_KEY, name="Button press",
                                                    event_types=["double_press", "triple_press", "long_press"]))
+            self.send(pb.ListEntitiesBinarySensorResponse(object_id="center_button", key=CENTER_KEY,
+                                                          name="Center button"))
             self.send(pb.ListEntitiesDoneResponse())
         elif isinstance(msg, pb.SubscribeStatesRequest):
             self.states = True
@@ -156,8 +159,8 @@ class FakeVoicePE:
                                "start_conversation": start_conversation})
         self.send(pb.VoiceAssistantAnnounceFinished(success=True))
 
-    def long_press(self):
-        self.send(pb.EventResponse(key=LONG_PRESS_KEY, event_type="long_press"))
+    def double_press(self):
+        self.send(pb.EventResponse(key=BUTTON_KEY, event_type="double_press"))
 
     async def wait_event(self, ev: Ev, since: int, timeout: float = 60) -> dict | None:
         t0 = time.perf_counter()
@@ -174,12 +177,13 @@ class FakeVoicePE:
                 pass
         return None
 
-    async def converse(self, audio: np.ndarray, wake_word: str | None, on_audio=None) -> dict:
+    async def converse(self, audio: np.ndarray, wake_word: str | None, on_audio=None, hold: bool = False) -> dict:
         """One run as the box does it: request start, stream the mic until STT_VAD_END, play the reply.
-        on_audio gets the reply's WAV bytes as they arrive (tests/rooms_voice.py plays them into a room)."""
+        on_audio gets the reply's WAV bytes as they arrive (tests/rooms_voice.py plays them into a room).
+        hold: a hold to talk, started without silence detection and let go when the audio has been said."""
         since = len(self.events)
         self.response.clear()
-        self.send(pb.VoiceAssistantRequest(start=True, conversation_id="", flags=1 if wake_word else 0,
+        self.send(pb.VoiceAssistantRequest(start=True, conversation_id="", flags=0 if hold else 1,   # 1: USE_VAD
                                            audio_settings=pb.VoiceAssistantAudioSettings(), wake_word_phrase=wake_word or ""))
         await asyncio.wait_for(self.response.wait(), 10)
         chunk = 512                                         # 32 ms at 16 kHz, like the box
@@ -190,6 +194,8 @@ class FakeVoicePE:
             piece = pcm[i:i + chunk] if i < len(pcm) else silence
             if i >= len(pcm) and t_end is None:
                 t_end = time.perf_counter()
+                if hold:
+                    self.send(pb.BinarySensorStateResponse(key=CENTER_KEY, state=False))
             self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=piece.tobytes()))
             i += chunk
             await asyncio.sleep(chunk / 16000)
@@ -283,8 +289,9 @@ async def main() -> int:
     ok &= "ERROR" in r["order"] and r["order"][-1] == "RUN_END"
 
     r = await box.converse(synth_user_audio("What time is it?", USER)[0], "hey_jarvis")
-    r2 = await box.converse(synth_user_audio("That's all, thanks.", USER)[0], None)      # in the follow-up window
-    print(f"\n> That's all, thanks. (after {r['said']!r})\n  heard {r2['heard']!r}, said {r2['said']!r}\n"
+    # Not "thanks": some of the TTS's renditions of it are heard as "things".
+    r2 = await box.converse(synth_user_audio("That's all, thank you.", USER)[0], None)   # in the follow-up window
+    print(f"\n> That's all, thank you. (after {r['said']!r})\n  heard {r2['heard']!r}, said {r2['said']!r}\n"
           f"  {' '.join(r2['order'])}")
     ok &= r["follow_up"] and not r2["said"] and r2["order"][-2:] == ["ERROR", "RUN_END"]
 
@@ -311,13 +318,13 @@ async def main() -> int:
 
     async def pressed(want: list[str], line: str) -> bool:
         n = len(box.announced)
-        box.long_press()
+        box.double_press()
         for _ in range(300):
             if len(box.announced) > n:
                 break
             await asyncio.sleep(0.1)
         said = box.announced[n] if len(box.announced) > n else {}
-        print(f"\n> (long press)\n  wake words {box.active_wake_words}, said {said.get('text')!r}, "
+        print(f"\n> (double press)\n  wake words {box.active_wake_words}, said {said.get('text')!r}, "
               f"{said.get('audio_secs', 0):.1f} s of audio")
         return box.active_wake_words == want and said.get("text") == line and said.get("audio_secs", 0) > 0.5
 
@@ -327,11 +334,18 @@ async def main() -> int:
     print(f"\n> What time is it? (button)\n  said {r['said']!r}, follow-up {r['follow_up']}")
     ok &= bool(r["said"]) and not r["follow_up"]
 
+    # Hold to talk: a pause longer than any end of speech, and the request still ends only when let go.
+    first, rest = "What time is it", "in London?"
+    r = await box.converse(np.concatenate([synth_user_audio(first, USER)[0], np.zeros(16000 * 3, np.int16),
+                                           synth_user_audio(rest, USER)[0]]), None, hold=True)
+    print(f"\n> {first} (3 s pause) {rest} (hold to talk)\n  heard {r['heard']!r}\n  said  {r['said']!r}")
+    ok &= "london" in (r["heard"] or "").lower() and bool(r["said"])
+
     await satellite.stop()
     satellite = sat.Satellite(cfg, room, cfg.channels.satellite.devices[room], audio, stt, NoFeed())
     await satellite.connect()
     for _ in range(50):
-        if satellite._long_press is not None:
+        if satellite._button is not None:
             break
         await asyncio.sleep(0.1)
     print(f"\n> (reconnect)\n  button only {satellite.button_only}, wake words {box.active_wake_words}")
@@ -365,6 +379,7 @@ def recorded(folder: Path) -> bool:
     lamp = next((t for t in lines if "shelf lamp" in t["heard"].lower()), {})
     ok &= any(c.get("ok") for c in lamp.get("tools", []))                     # the stubbed action, with its result
     ok &= any(t["start"] == "button" and t["said"] for t in lines)
+    ok &= has("london", "hold", "answered")
     ok &= all(t["first_audio_ms"] for t in lines if t["outcome"] == "answered" and t["said"])
     print(f"  {'ok' if ok else 'NOT as expected'}")
     return ok

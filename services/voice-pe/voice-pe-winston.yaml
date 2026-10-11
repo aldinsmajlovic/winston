@@ -1,6 +1,6 @@
 # Voice PE firmware with "Okay Winston": the official factory firmware at a pinned release, plus
-# the okay_winston microWakeWord model from assets/wake/. Everything else (Wi-Fi setup over USB and
-# Bluetooth, LEDs, dial, mute switch, media player) is the stock firmware. See docs/voice-pe.md.
+# the okay_winston microWakeWord model from assets/wake/ and hold to talk. Everything else (Wi-Fi setup
+# over USB and Bluetooth, LEDs, dial, mute switch, media player) is the stock firmware. See docs/voice-pe.md.
 #
 #   uvx esphome compile voice-pe-winston.yaml
 #   uvx esphome upload voice-pe-winston.yaml --device /dev/ttyACM0
@@ -41,3 +41,31 @@ select:
           id(hey_mycroft).set_probability_cutoff(237);  // 0.93
           id(okay_winston).set_probability_cutoff(179); // 0.70
         }
+
+# Hold to talk. The stock long press (a second) starts a request without the box's silence detection,
+# which Winston reads as "ends when the button is let go" (the USE_VAD flag is off). voice_assistant.stop
+# would abort the run (the box goes idle and plays no reply), so the box only reports the button and
+# Winston ends the request. Naming center_button exposes it; it was internal.
+# The stock factory reset (a warning at 10 s, the reset on letting go after 22 s) is skipped while
+# dial_touched is set, as when the dial is used with the button; a hold to talk sets it too, so a long
+# request never resets the box. Muted, a hold does not talk, so the reset still works there.
+binary_sensor:
+  - id: !extend center_button
+    name: Center button
+    on_release:
+      - lambda: id(dial_touched) = false;
+      - script.execute: control_leds
+
+event:
+  - id: !extend button_press_event
+    on_event:
+      - if:
+          condition:
+            and:
+              - lambda: return event_type == "long_press";
+              - switch.is_off: master_mute_switch
+              - not: voice_assistant.is_running
+          then:
+            - lambda: id(dial_touched) = true;
+            - voice_assistant.start:
+                silence_detection: false
