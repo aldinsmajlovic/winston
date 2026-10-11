@@ -384,7 +384,7 @@ def recorded(folder: Path) -> bool:
         return any(words in t["heard"].lower() and t["start"] == start and t["outcome"] == outcome for t in lines)
     audio_ok = bool(lines) and all(t.get("audio") and next(folder.glob(f"*/{t['audio']}"), None) for t in lines)
     ok = audio_ok and has("what time", "wake", "answered") and has("that's all", "follow_up", "dismissed") \
-        and has("i know", "follow_up", "answered")
+        and has("thanks", "follow_up", "answered")         # "Thanks, I know." after the nudge; "I know" is often misheard
     if any("warm" in t["heard"].lower() for t in lines):    # asked only when he answered with a question
         ok &= has("warm", "follow_up", "answered")
     lamp = next((t for t in lines if "shelf lamp" in t["heard"].lower()), {})
