@@ -8,13 +8,10 @@ import BrainPage from '@/pages/brain'
 import ChannelsPage from '@/pages/channels'
 import DashboardPage from '@/pages/dashboard'
 import EnginePage from '@/pages/engine'
-import EnginesPage from '@/pages/engines'
 import ExtensionsPage from '@/pages/extensions'
 import HomeAssistantPage from '@/pages/home-assistant'
-import DiaryPage from '@/pages/diary'
 import MemoryPage from '@/pages/memory'
 import TurnsPage from '@/pages/turns'
-import StatusPage from '@/pages/status'
 import SystemPage from '@/pages/system'
 import TalkPage from '@/pages/talk'
 import VoicePage from '@/pages/voice'
@@ -41,10 +38,10 @@ export default function App() {
       <Route path="/" element={<TalkPage />} />
       <Route path="/turns" element={<TurnsPage />} />
       <Route path="/memory" element={<MemoryPage />} />
-      <Route path="/diary" element={<DiaryPage />} />
+      <Route path="/diary" element={<Navigate to="/turns" replace />} />
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route element={<SettingsLayout />}>
-        <Route path="/status" element={<StatusPage />} />
+        <Route path="/status" element={<Navigate to="/system" replace />} />
         <Route path="/models" element={<Navigate to="/brain" replace />} />
         <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/brain" element={<BrainPage />} />
@@ -53,9 +50,9 @@ export default function App() {
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/home-assistant" element={<HomeAssistantPage />} />
         <Route path="/extensions" element={<ExtensionsPage />} />
-        <Route path="/engines" element={<EnginesPage />} />
-        <Route path="/engines/:name" element={<EnginePage />} />
+        <Route path="/engines" element={<Navigate to="/system" replace />} />
         <Route path="/system" element={<SystemPage />} />
+        <Route path="/system/engines/:name" element={<EnginePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

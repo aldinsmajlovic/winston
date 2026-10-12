@@ -10,7 +10,7 @@ in `channels.discord.contacts` (name to Discord user id) and you ("me").
 2. Discord: Settings, Advanced, Developer Mode on; right-click yourself, Copy User ID.
 3. Settings, Channels, Discord: paste the token into Bot token (stored as `DISCORD_BOT_TOKEN` in
    `data/.env`, never shown again), pick or paste yourself under Your Discord user id
-   (`channels.discord.allowed_user`), switch it on and save, then start discord from the Status page.
+   (`channels.discord.allowed_user`), switch it on and save, then start discord from the System page.
    By hand: `DISCORD_BOT_TOKEN=...` in `data/.env` and `allowed_user: "<id>"` under `channels.discord`.
 
 The user id is not a secret, so it lives in config. Older configs that keep it in `data/.env` as
@@ -25,12 +25,12 @@ or with a warning icon saying why it was not found. Listing needs Server Members
 the warning icon says so. Without a token the user field is a plain text box for a pasted id (its (i)
 says where to copy one), and so is Your Discord user id.
 
-The Discord card's title shows the channel's state icon from the Status page; hover it for the
+The Discord card's title shows the channel's state icon from the System page; hover it for the
 detail, such as a missing token.
 
 If the token or your user id is missing, winstond does not start the channel: `winston status` and
-the Status page show discord in error with `DISCORD_BOT_TOKEN empty in data/.env` (or whichever
-variables it lacks). Set them and start it again from the Status page or `winston restart discord`.
+the System page show discord in error with `DISCORD_BOT_TOKEN empty in data/.env` (or whichever
+variables it lacks). Set them and start it again from the System page or `winston restart discord`.
 A token Discord rejects makes the process exit; the status then shows the exit code and the last log
 line, and `data/logs/discord.log` has the rest.
 

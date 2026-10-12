@@ -2811,7 +2811,7 @@ export interface components {
             presence_penalty?: number;
             /**
              * Max tokens
-             * @description Longest reply in tokens. Spoken replies are short; this is a safety cap.
+             * @description Longest reply in tokens. Spoken replies are short; this is a safety cap. A turn he thinks on gets at least 2048, since the thinking counts too.
              * @default 512
              */
             max_tokens?: number;
@@ -3311,6 +3311,11 @@ export interface components {
             days: string[];
             /** Turns */
             turns: components["schemas"]["TurnRecord"][];
+            /**
+             * Diary
+             * @description His diary entry for the day, once he has written it
+             */
+            diary?: string | null;
         };
         /** TurnMark */
         TurnMark: {

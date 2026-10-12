@@ -220,23 +220,7 @@ export default function TalkPage() {
       <WinstonHeader
         name={status.data?.assistant ?? ''}
         state={state}
-        actions={
-          <>
-            <RoomPicker room={room} onChange={setRoom} disabled={talking} />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Read replies aloud"
-              aria-pressed={readAloud}
-              title={readAloud ? 'Reading replies aloud' : 'Read replies aloud'}
-              onClick={speech.toggle}
-              className={cn('rounded-full', !readAloud && 'text-muted-foreground')}
-            >
-              {readAloud ? <Volume2 className="size-5" /> : <VolumeOff className="size-5" />}
-            </Button>
-          </>
-        }
+        actions={<RoomPicker room={room} onChange={setRoom} disabled={talking} />}
       />
 
       <main className="w-full flex-1 overflow-y-auto">
@@ -265,13 +249,27 @@ export default function TalkPage() {
         >
           <MessageSquarePlus className="size-6" />
         </Button>
-        <Input
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder={`Message ${status.data?.assistant ?? ''}`}
-          aria-label="Message"
-          className="h-14 flex-1 rounded-full border-0 bg-card px-6 text-base shadow-none md:text-base"
-        />
+        <div className="relative flex-1">
+          <Input
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            placeholder={`Message ${status.data?.assistant ?? ''}`}
+            aria-label="Message"
+            className="h-14 rounded-full border-0 bg-card pr-14 pl-6 text-base shadow-none md:text-base"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Read replies aloud"
+            aria-pressed={readAloud}
+            title={readAloud ? 'Reading typed replies aloud' : 'Read typed replies aloud'}
+            onClick={speech.toggle}
+            className={cn('absolute top-1/2 right-2 -translate-y-1/2 rounded-full', !readAloud && 'text-muted-foreground')}
+          >
+            {readAloud ? <Volume2 className="size-5" /> : <VolumeOff className="size-5" />}
+          </Button>
+        </div>
         {text.trim() ? (
           <Button type="submit" size="icon" aria-label="Send" className="size-14 rounded-full">
             <ArrowUp className="size-6" />

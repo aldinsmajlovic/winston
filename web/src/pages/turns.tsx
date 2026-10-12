@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Mic, Play, Square } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Mic, NotebookPen, Play, Square } from 'lucide-react'
 import { Link } from 'react-router'
 import { $api, type TurnRecord } from '@/api/client'
 import { presence, useLive } from '@/api/live'
@@ -162,10 +162,23 @@ export default function TurnsPage() {
             <Skeleton className="h-10 w-2/3 self-end rounded-2xl" />
             <Skeleton className="h-5 w-3/4" />
           </div>
-        ) : shown.length === 0 ? (
-          <span className="text-muted-foreground">{markedOnly ? 'Nothing marked yet.' : 'None yet.'}</span>
         ) : (
-          shown.map((t) => <Turn key={t.id} turn={t} showDay={markedOnly} player={player} />)
+          <>
+            {!markedOnly && data.diary ? (
+              <article className="flex flex-col gap-2">
+                <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <NotebookPen className="size-4" />
+                  His diary
+                </span>
+                <p className="text-lg/relaxed whitespace-pre-wrap">{data.diary}</p>
+              </article>
+            ) : null}
+            {shown.length === 0 ? (
+              <span className="text-muted-foreground">{markedOnly ? 'Nothing marked yet.' : 'None yet.'}</span>
+            ) : (
+              shown.map((t) => <Turn key={t.id} turn={t} showDay={markedOnly} player={player} />)
+            )}
+          </>
         )}
       </main>
     </div>

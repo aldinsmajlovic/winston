@@ -39,11 +39,12 @@ transport), connecting through winstond to the voice channel.
 - His presence is his logo, one component, `Presence`, driven by his state (idle, listening,
   thinking, speaking); see [identity](identity.md). Pages never draw their own version of it.
 - Voice and typing sit side by side at the bottom: a text field and one round talk button, with New
-  conversation before the field as a quiet round icon button of the same size.
-- Links to Talk, Turns, Memory, Dashboard and Settings are plain text at the top right, not a sidebar,
-  the current one in the text colour. On Talk they follow one speaker icon button that reads typed
-  replies aloud, and before it the room picker (a house icon and the room's name, "No room" by
-  default, plain text in the links' size), shown once a box is set up. `WinstonHeader` draws this for every page on Winston's side.
+  conversation before the field as a quiet round icon button of the same size. A speaker icon at the
+  field's right end reads typed replies aloud.
+- His logo and name at the top left lead back to Talk. Turns, Memory, Dashboard and Settings are icon
+  buttons at the top right, their names in tooltips, the current one on a quiet background. On Talk the
+  room picker comes before them (a house icon and the room's name, "No room" by default, plain text),
+  shown once a box is set up. `WinstonHeader` draws this for every page on Winston's side.
 - Memory reads like his notes: "How he behaves" first (his rules, with "Only you can change these"
   and the technical instructions folded), then one heading per topic with an (i) for its
   description, facts as plain lines as stored, the date muted at the end and a muted outline "Until
@@ -53,12 +54,13 @@ transport), connecting through winstond to the voice channel.
   greyed, under "Expired (n)" after the topics, with "Clear expired" (confirm once, Undo). Search at
   the top; a quiet size line at the bottom that counts only what is in his prompt. Forget, remove
   and edit all on "How he behaves" offer Undo in their toast. With memory off, one muted line under the search says he does not use these and
-  links to Tools.
+  links to Assistant.
 - A line you said aloud (browser or box) gets a flag on its hover once its turn is kept: Misheard (asks
   what you actually said), Not talking to him, Wrong thing, Too slow; the toast offers Undo. A marked line
   keeps its flag, in the destructive colour, the mark in its tooltip. `TurnMarkControl` draws it on Talk
   and Turns alike.
-- Turns is the turn record as a conversation, one day at a time: a muted line per turn with the time,
+- Turns is the turn record as a conversation, one day at a time, under his diary entry for that day
+  (a muted line with a notebook icon, then the entry as plain text): a muted line per turn with the time,
   the room (or Browser), how it started and the time to his first word, and a play button for what he
   heard; then your words in the bubble with the flag, "Heard first as ..." when the hint-word fix
   changed them, the mark in muted text, the tools and his reply as on Talk, and a muted line when it
@@ -71,7 +73,7 @@ transport), connecting through winstond to the voice channel.
 
 ## Settings
 
-- Only shadcn components and the three page templates: settings page, status page, list page.
+- Only shadcn components and the page templates: settings page and list page.
 - Labels, values and controls. Every field's explanation sits behind an (i) beside its label, opened
   by hover or tap, never as text under the control. The schema's `description` is the text; a field
   without one is a gap to fill.
@@ -98,8 +100,7 @@ transport), connecting through winstond to the voice channel.
   stays under Advanced.
 - A map in a form (contacts, engine environment, volumes) is a table with an Add icon and a dialog,
   column titles from the schema (`key_title`, `value_title`), trash with Undo in its toast. A page keeps
-  its own table only where it adds what the generic one cannot: Home Assistant's entities (below) and
-  Tools' sensors (label and state sensor filled in from the picked value sensor).
+  its own table only where it adds what the generic one cannot: Home Assistant's entities (below).
 - The Home Assistant page shows the path from Home Assistant to Winston as data, in four cards. It
   draws its own tables and never uses `KeyedMapField` for the list. Connection holds the form fields,
   with three icons beside the title: reachable (the version in the tooltip), MCP server loaded, and in
@@ -120,7 +121,7 @@ transport), connecting through winstond to the voice channel.
 - A list that cannot be fetched (no token yet, the server down) leaves a plain text box with a warning
   icon whose tooltip gives the reason; a value the list does not hold is looked up by itself when the
   list works, and shown with a warning icon when it is not found.
-- Something a section needs that is not a config field (what Ask Claude signs in with, its key) is a
+- Something a section needs that is not a config field is a
   row after that section's form (`SectionForm`'s children), with the same label and (i) as the fields.
 - A control that acts on a field without being one (a play button beside Voice, "Play a sample" on the
   Streaming heading) is an adornment: the page passes `SectionForm` `adornments`, keyed by the dotted
@@ -173,6 +174,8 @@ is exempt. `pnpm api` regenerates the client from `winston api schema`.
   shared across pages, and the save flow: a dry-run patch, confirm the changes by page and the
   restarts with their cost, `PATCH /api/config` with If-Match, write pasted keys (`useSecretsDraft`),
   restart. A conflict reloads and keeps the edits on top.
-- Status page: `pages/status.tsx`. `StateIcon` for state, icon actions, one gauge.
-- List page: `ListPage` or `DataTable` plus `ItemDialog` for keyed maps (entities, sensors, engines).
+- System page: `pages/system.tsx`, a settings page that starts with what runs: every engine and channel
+  with `StateIcon`, icon actions and an engine's Enabled switch (a row opens the engine's settings, or
+  Channels), then the GPU gauge, then Logging (and Control under Advanced).
+- List page: `ListPage` or `DataTable` plus `ItemDialog` for keyed maps (entities, engines).
   Maps inside a form are drawn by `KeyedMapField` from the schema, not by the page.

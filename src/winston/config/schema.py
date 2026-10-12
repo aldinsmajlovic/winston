@@ -150,7 +150,8 @@ class Sampling(Model):
                                                 "chat default is 1.5; 0 calls tools more reliably.",
                                     json_schema_extra=ui("advanced"))
     max_tokens: int = Field(512, ge=16, title="Max tokens",
-                            description="Longest reply in tokens. Spoken replies are short; this is a safety cap.",
+                            description="Longest reply in tokens. Spoken replies are short; this is a safety cap. "
+                                        "A turn he thinks on gets at least 2048, since the thinking counts too.",
                             json_schema_extra=ui("advanced"))
 
 

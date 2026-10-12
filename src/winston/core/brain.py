@@ -158,9 +158,10 @@ def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
 _HOME_VERBS = re.compile(r"\b(?:turn(?!\s+(?:up|down)\b)|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler)\b")
 # Said by code while he thinks about a home request, so the wait is not silence. One after the other.
 HOME_LINES = ("One moment.", "Let me see to that.", "Certainly, one moment.", "Let me look at that.")
-# The reply cap when he thinks about a home request: on the box "Can you turn on the lights in uh the living
-# room?" spent all of max_tokens (512) thinking and said nothing after the line.
-HOME_THINK_TOKENS = 2048
+# The reply cap whenever he thinks, since the thinking counts against it: on the box "Can you turn on the lights
+# in uh the living room?" spent all of max_tokens (512) thinking and said nothing after the line, and on the
+# Talk page (2026-10-12) three typed questions did the same and got no reply at all.
+THINK_TOKENS = 2048
 
 
 def home_request(cfg: WinstonConfig) -> re.Pattern:
@@ -386,7 +387,7 @@ class WinstonLLM(OpenAILLMService):
             params["extra_body"] = body
             for k in ("max_tokens", "max_completion_tokens"):
                 if isinstance(params.get(k), int):
-                    params[k] = max(params[k], HOME_THINK_TOKENS)
+                    params[k] = max(params[k], THINK_TOKENS)
         return params
 
 
@@ -406,7 +407,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "") -> Op
             model=c.model,
             system_instruction=persona(cfg, house, channel),   # must live in Settings; a bare kwarg is ignored when settings= is given
             temperature=s.temperature, top_p=s.top_p, presence_penalty=s.presence_penalty,
-            max_completion_tokens=s.max_tokens,
+            max_completion_tokens=max(s.max_tokens, THINK_TOKENS) if thinking_for(cfg, channel) else s.max_tokens,
             extra={"extra_body": body} if body else {},
         ),
     )

@@ -67,7 +67,7 @@ turn whole in `data/turns/<day>/`: its audio and what was heard, done and said, 
 
 ## Status and errors
 
-`winston status` and the Status page show each engine and channel as healthy, starting, unhealthy
+`winston status` and the System page show each engine and channel as healthy, starting, unhealthy
 (running, health check failing), stopped or error. An error says why, and stays until you start or
 stop that engine again:
 
@@ -93,10 +93,10 @@ stop that engine again:
 Talk page: everything Winston hears, says and does on any channel (typed here, spoken through the
 talk button or the voice page), each tool call as one line, and announcements. Type and press Enter,
 or press the round button to talk; it connects the browser's mic to the voice channel through
-winstond, and press it again to hang up. The speaker button at the top reads typed replies aloud in
+winstond, and press it again to hang up. The speaker icon in the message field reads typed replies aloud in
 Winston's voice through the browser, a sentence at a time as the reply streams in (off by default,
 remembered per browser); spoken turns already are. Typed messages form one conversation that starts fresh
-after `channels.web.session_idle_mins` (30) and after a settings save. The room picker beside it puts
+after `channels.web.session_idle_mins` (30) and after a settings save. The room picker at the top puts
 this browser in a room with a Voice PE box: one conversation and one mic for both ([rooms](rooms.md)). Browsers only give the mic to
 `localhost` or HTTPS, so talking from another device needs HTTPS on the LAN. The page keeps the last
 few hundred events while winstond runs; it is not a transcript archive (the tool log is the record).
@@ -106,7 +106,7 @@ few hundred events while winstond runs; it is not a transcript archive (the tool
   <img src="images/dashboard-light.png" alt="Dashboard mode: Winston's logo large, speaking, with the question and his answer under it" width="720">
 </picture>
 
-Dashboard mode, at http://localhost:8700/dashboard (the Dashboard link on the Talk page), is the
+Dashboard mode, at http://localhost:8700/dashboard (the screen icon at the top of the Talk page), is the
 same feed full screen for a wall tablet; `/dashboard?room=main room` puts it in a box's room
 ([rooms](rooms.md)). Tap the logo to talk and again to hang up. The line under it
 follows his state; what you said and his answer show while he is busy and for 20 seconds after. An
@@ -116,13 +116,14 @@ add a Webpage card pointing at the dashboard URL; if Home Assistant itself is on
 blocks a plain `http://` page inside it, so Winston needs HTTPS too.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/status-dark.png">
-  <img src="images/status-light.png" alt="The Status page: engines, their health and the GPU" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="images/system-dark.png">
+  <img src="images/system-light.png" alt="The System page: engines and channels with their health and actions, the GPU, and Logging" width="720">
 </picture>
 
-Settings is the link at the top right. Status lists every engine and channel with how it runs, icon
-actions and the GPU; hover a state icon for its detail (an error's reason). A changed icon in its
-header lists what only the next `winston up` applies.
+Settings is the gear at the top right; it opens on System, which lists every engine and channel with
+how it runs, icon actions and an engine's Enabled switch, then the GPU and the logging settings. Hover
+a state icon for its detail (an error's reason). A row opens that engine's settings (or Channels), the
+Add icon adds an engine, and a changed icon in the header lists what only the next `winston up` applies.
 Brain picks the engine from presets (vLLM, llama.cpp, Ollama, hosted) and the model from two lists:
 Running, what the brain's server reports, and Downloaded, what the chosen engine can load from the
 Hugging Face cache on this machine; Voice does the same for speaking (voices from `data/voices/` and the TTS server) and
@@ -144,7 +145,6 @@ server down) leaves a plain text box with a warning icon; hover it for the reaso
 | Brain model | Running: the brain's server (`/models`), following an unsaved base URL. Downloaded: the Hugging Face cache the engine reads, with each model's size on disk |
 | Voice | clips in `data/voices/` and the TTS server's built-in voices |
 | Speech-to-text model | the models onnx-asr knows, downloaded ones marked |
-| Web search and Claude models | the Gemini API; the Anthropic API when `ANTHROPIC_API_KEY` is set, else a built-in list |
 | Home Assistant entities, sensors, domains | Home Assistant's states, with each entity's name, state and an icon for its type |
 | Your Discord user id, contacts | the members of the bot's servers, a pasted id looked up ([Discord](discord.md)) |
 | Discord user id variable (older configs) | the names in `data/.env`, with an icon for set or empty; values never leave winstond |
@@ -157,7 +157,7 @@ editable but greyed. Keys are never shown: a key field says Set or Not set with 
 pasted key that Save writes to `data/.env`, and its x removes the stored one; the variable name it is
 stored under is Advanced. Maps (Discord contacts, an engine's environment and volumes) are tables with
 an Add icon, a dialog per entry and trash with Undo. Channel cards show the channel's state icon from
-the Status page.
+the System page.
 
 Home Assistant shows whether it answers at the URL with the token.
 

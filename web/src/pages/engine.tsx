@@ -13,13 +13,13 @@ export default function EnginePage() {
   const s = useSettings([path])
   if (s.loading) return <PageSkeleton title={name} />
   const engine = s.page.value.engines?.[name]
-  if (!engine) return <Navigate to="/engines" replace />
+  if (!engine) return <Navigate to="/system" replace />
   return (
     <SettingsPage
       title={name}
       page={s.page}
       actions={
-        <IconButton label="Engines" size="icon" onClick={() => navigate('/engines')}>
+        <IconButton label="System" size="icon" onClick={() => navigate('/system')}>
           <ArrowLeft />
         </IconButton>
       }

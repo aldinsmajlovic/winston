@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, BookOpen, Bot, Brain, Cpu, Mic, Monitor, Moon, Puzzle, Radio, Settings, Sun } from 'lucide-react'
+import { ArrowLeft, BookOpen, Bot, Brain, Mic, Monitor, Moon, Puzzle, Radio, Server, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
@@ -30,15 +30,13 @@ function HomeAssistantLogo() {
 }
 
 const nav = [
-  { to: '/status', label: 'Status', Icon: Activity },
+  { to: '/system', label: 'System', Icon: Server },
   { to: '/assistant', label: 'Assistant', Icon: Bot },
   { to: '/brain', label: 'Brain', Icon: Brain },
   { to: '/voice', label: 'Voice', Icon: Mic },
   { to: '/channels', label: 'Channels', Icon: Radio },
   { to: '/home-assistant', label: 'Home Assistant', Icon: HomeAssistantLogo },
   { to: '/extensions', label: 'Extensions', Icon: Puzzle },
-  { to: '/engines', label: 'Engines', Icon: Cpu },
-  { to: '/system', label: 'System', Icon: Settings },
 ]
 
 function ThemeMenu() {

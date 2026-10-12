@@ -186,6 +186,7 @@ class TurnDay(BaseModel):
     day: str
     days: list[str] = Field(description="Every day with turns, newest first")
     turns: list[TurnRecord]
+    diary: str | None = Field(None, description="His diary entry for the day, once he has written it")
 
 
 class ClonedVoice(BaseModel):
@@ -828,8 +829,10 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         store = turn_store()
         days = store.days()
         day = day or (days[0] if days else date.today().isoformat())
+        from winston.core.diary import Diary
         try:
-            return TurnDay(enabled=store.enabled, day=day, days=days, turns=labelled(store.day(day)))
+            return TurnDay(enabled=store.enabled, day=day, days=days, turns=labelled(store.day(day)),
+                           diary=Diary(app.state.cfg).entry(day))
         except ValueError as e:
             raise HTTPException(400, str(e))
 

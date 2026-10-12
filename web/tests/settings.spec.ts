@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Runs against the throwaway winstond `pnpm smoke` starts: WINSTON_DATA is its copy of data/, with the
 // engines and channels switched off and one external engine, `smoke`, that nothing runs.
 const data = process.env.WINSTON_DATA ?? ''
-const pages = ['/status', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/extensions', '/engines', '/system']
+const pages = ['/system', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/extensions']
 
 test.describe.configure({ mode: 'serial' })
 
@@ -187,7 +187,7 @@ test('a field for hosted engines is left out for a local one', async ({ page }) 
 })
 
 test('Save only leaves a Restart button for the running engine', async ({ page }) => {
-  await open(page, '/engines/smoke')
+  await open(page, '/system/engines/smoke')
   await advanced(page)
   const header = page.locator('header')
   await expect(header.getByRole('button', { name: 'Restart' })).toHaveCount(0)

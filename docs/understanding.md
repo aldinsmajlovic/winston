@@ -7,7 +7,7 @@ part 3's hearing slot. Each part becomes the reference for itself as it is built
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/turns-dark.png">
-  <img src="images/turns-light.png" alt="The Turns page: a day's spoken turns, two of them marked" width="720">
+  <img src="images/turns-light.png" alt="The Turns page: his diary entry for the day, then that day's spoken turns, two of them marked" width="720">
 </picture>
 
 ## Why
@@ -71,8 +71,8 @@ Every turn is kept, so mistakes can be found, marked and used to test the next c
   not call as `--expect` and `--forbid` (the brain trials' substrings). The kinds are `misheard`,
   `not_addressed`, `wrong_action` and `too_slow`. A marked turn is copied with its audio into
   `data/turns/marked/`, kept until unmarked. On the page: a flag on the hover of any line you said
-  aloud, on Talk (the box's words show there too now) and on Turns, the turn record a day at a time with
-  what he heard played back and a Marked view across days. Still to come: a turn you corrected in the
+  aloud, on Talk (the box's words show there too now) and on Turns, the turn record a day at a time (under his diary
+  entry for that day) with what he heard played back and a Marked view across days. Still to come: a turn you corrected in the
   next breath ("no, the living room, not the main room") offered for marking on its own.
 - **The test** (built). `winston check turns` replays the marked turns through the current setup, or a
   candidate with `--with FILE` (a config file laid over yours: another speech engine, another model,

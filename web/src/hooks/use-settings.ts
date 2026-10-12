@@ -86,15 +86,14 @@ export type SettingsPageInfo = { to: string; label: string; sections: string[][]
 export const settingsPages: SettingsPageInfo[] = [
   { to: '/assistant', label: 'Assistant', sections: [['assistant'], ['region'], ['memory']] },
   { to: '/brain', label: 'Brain', sections: [['llm'], ['engines', 'llm']] },
-  { to: '/voice', label: 'Voice', sections: [['tts'], ['stt'], ['vad'], ['engines', 'tts']] },
+  { to: '/voice', label: 'Voice', sections: [['tts'], ['stt'], ['vad'], ['engines', 'tts'], ['engines', 'stt']] },
   { to: '/channels', label: 'Channels', sections: [['channels'], ['announce']] },
   { to: '/home-assistant', label: 'Home Assistant', sections: [['providers']] },
   { to: '/extensions', label: 'Extensions', sections: [['extensions'], ['speak_up']] },
-  { to: '/engines', label: 'Engines', sections: [['engines']] },
-  { to: '/system', label: 'System', sections: [['logging'], ['control'], ['version']] },
+  { to: '/system', label: 'System', sections: [['logging'], ['control'], ['version'], ['engines']] },
 ]
 
-/** Every page that shows a path, most specific first (engines.llm is on Brain and on Engines). */
+/** Every page that shows a path, most specific first (engines.llm is on Brain and on System). */
 export function pagesOf(path: Path): SettingsPageInfo[] {
   return settingsPages.filter((p) => p.sections.some((s) => startsWith(path, s) || startsWith(s, path)))
 }
