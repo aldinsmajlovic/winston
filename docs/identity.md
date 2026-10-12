@@ -10,8 +10,9 @@ one component, `web/src/components/presence.tsx`, so he looks and moves the same
 
 `assistant.name` on the Assistant page is the one source of his name. The system prompt opens with it
 ("# Mira", then "Your name is Mira."), ahead of the persona's own rules, and the rest follows it: the
-consent line for a cloned voice, the voice and message tool descriptions, the hint words, the Talk and
-Memory headers, `winston talk` and the greeting. The product keeps its name: the package, the
+consent line for a cloned voice, the voice and message tool descriptions, the hint words, the diary
+(written as him, in the manner his persona describes), the Talk and Memory headers, the browser tab,
+`winston talk` and the greeting. The product keeps its name: the package, the
 `winston` command, `winstond` and this logo.
 
 His persona is your text, so a rename does not change it silently. When you save a new name and
@@ -19,8 +20,9 @@ His persona is your text, so a rename does not change it silently. When you save
 by default. Kept checked, the old name is rewritten as a whole word only ("Winston" and "Winston's",
 never `winston` or `winstond`) and the previous file is kept as `persona.md.bak`. Unchecked, the file
 stays as it is and the prompt still opens with the new name. A rename restarts the voice, satellite
-and Discord channels. The wake word on a Voice PE is set per box and does not change with the name
-([Voice PE](voice-pe.md)).
+and Discord channels. Two names do not change with his: the wake word on a Voice PE, set per box
+([Voice PE](voice-pe.md)), and the Spotify speaker's name, a setting of its own ([built-in
+extensions](built-in-extensions.md#spotify)).
 
 ## The mark
 

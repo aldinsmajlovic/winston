@@ -83,7 +83,7 @@ export function AppSidebar() {
             <SidebarMenuButton asChild className="font-semibold">
               <NavLink to="/">
                 <ArrowLeft />
-                <span>{status.data?.assistant ?? 'Winston'}</span>
+                <span>{status.data?.assistant ?? ''}</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>

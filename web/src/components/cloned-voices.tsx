@@ -49,7 +49,7 @@ const useClones = () => $api.useQuery('get', '/api/voices/clones')
 
 /** Friends' voices the assistant cloned when asked, each with the recording of them agreeing to it. */
 export function ClonedVoices({ current }: Props) {
-  const name = $api.useQuery('get', '/api/status').data?.assistant ?? 'Winston'
+  const name = $api.useQuery('get', '/api/status').data?.assistant ?? ''
   const clones = useClones()
   const remove = $api.useMutation('delete', '/api/voices/clones/{slug}')
   const ask = useConfirm()

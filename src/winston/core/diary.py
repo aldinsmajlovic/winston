@@ -22,6 +22,7 @@ from openai import AsyncOpenAI
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
+from winston.core import persona
 from winston.core.turns import TurnStore, _read_lines
 
 
@@ -38,7 +39,7 @@ def _turns_for(cfg: WinstonConfig, day: str) -> list[dict]:
     return sorted(_read_lines(folder), key=lambda t: t.get("ts", 0))
 
 
-def _format_turns(turns: list[dict]) -> str:
+def _format_turns(turns: list[dict], name: str) -> str:
     """The day's turns as a readable log for the LLM to summarize."""
     lines = []
     for t in turns:
@@ -58,7 +59,7 @@ def _format_turns(turns: list[dict]) -> str:
         if tools:
             parts.append(f"Tools: {', '.join(tools)}")
         if said:
-            parts.append(f"Winston: {said}")
+            parts.append(f"{name}: {said}")
         if outcome == "silent":
             parts.append("(stayed silent)")
         if outcome == "dismissed":
@@ -68,19 +69,19 @@ def _format_turns(turns: list[dict]) -> str:
 
 
 DIARY_PROMPT = """\
-You are Winston, a butler and voice assistant. Below is the log of every spoken interaction \
+You are {name}, a voice assistant. Below is the log of every spoken interaction \
 today ({date}, {weekday}). Write a diary entry: a few lines about the day in your own voice, \
 as if reflecting at the end of the evening. What was asked, what you did in the house, \
 anything you were asked to remember, and any moments that stood out.
 
 Rules:
-- Write in first person as Winston. Keep the butler character.
+- Write in first person as {name}, in your own manner.
 - Three to six sentences. No headers, no lists, no timestamps.
 - Mention specific things (songs played, lights set, people mentioned) but naturally, not as a log.
 - If very little happened, say so briefly. An empty day is one line.
 - Do not invent anything not in the log.
 
-The log:
+{manner}The log:
 
 {log}"""
 
@@ -141,14 +142,16 @@ class Diary:
             logger.info(f"diary: no turns on {day}, skipping")
             return None
 
-        log_text = _format_turns(answered)
+        log_text = _format_turns(answered, self.cfg.assistant.name)
         try:
             d = date.fromisoformat(day)
             weekday = d.strftime("%A")
         except ValueError:
             weekday = ""
 
-        prompt = DIARY_PROMPT.format(date=day, weekday=weekday, log=log_text)
+        manner = "".join(f"- {r}\n" for r in persona.read(self.cfg)["behaviour"])
+        prompt = DIARY_PROMPT.format(name=self.cfg.assistant.name, date=day, weekday=weekday, log=log_text,
+                                     manner=f"Your manner:\n{manner}\n" if manner else "")
         text = await self._ask(prompt, talking=talking)
         if not text:
             return None

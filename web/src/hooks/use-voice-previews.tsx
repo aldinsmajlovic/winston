@@ -59,7 +59,7 @@ export function useVoicePreviews(page: SettingsState): Record<string, ReactNode>
   const draft = page.value
   const pending = status?.engines.some((e) => e.name === 'tts' && e.config_changed) ?? false
   const blocked = engineDiffers(draft, saved, pending)
-  const name = draft.assistant?.name || status?.assistant || 'Winston'
+  const name = draft.assistant?.name || status?.assistant || ''
   const voice = draft.tts?.voice || undefined
   const { streaming, problem } = draftStreaming(page)
   const tag = JSON.stringify({ voice, streaming })

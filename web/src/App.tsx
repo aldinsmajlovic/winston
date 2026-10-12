@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router'
+import { $api } from '@/api/client'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import AssistantPage from '@/pages/assistant'
@@ -30,6 +32,10 @@ function SettingsLayout() {
 }
 
 export default function App() {
+  const name = $api.useQuery('get', '/api/status').data?.assistant
+  useEffect(() => {
+    if (name) document.title = name
+  }, [name])
   return (
     <Routes>
       <Route path="/" element={<TalkPage />} />

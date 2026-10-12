@@ -218,7 +218,7 @@ export default function TalkPage() {
   return (
     <div className="flex h-svh flex-col items-center">
       <WinstonHeader
-        name={status.data?.assistant ?? 'Winston'}
+        name={status.data?.assistant ?? ''}
         state={state}
         actions={
           <>
@@ -268,7 +268,7 @@ export default function TalkPage() {
         <Input
           value={text}
           onChange={(event) => setText(event.target.value)}
-          placeholder={`Message ${status.data?.assistant ?? 'Winston'}`}
+          placeholder={`Message ${status.data?.assistant ?? ''}`}
           aria-label="Message"
           className="h-14 flex-1 rounded-full border-0 bg-card px-6 text-base shadow-none md:text-base"
         />

@@ -118,7 +118,7 @@ export default function TurnsPage() {
 
   return (
     <div className="flex min-h-svh flex-col items-center">
-      <WinstonHeader name={status.data?.assistant ?? 'Winston'} state={presence(feed, now)} />
+      <WinstonHeader name={status.data?.assistant ?? ''} state={presence(feed, now)} />
       <main className="flex w-full max-w-3xl flex-1 flex-col gap-7 px-4 pb-8">
         <div className="flex items-center gap-2">
           {markedOnly ? (

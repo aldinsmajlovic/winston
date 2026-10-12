@@ -19,7 +19,7 @@ export function Presence({ state, className }: { state: MarkState; className?: s
   const glint = useRef<SVGPathElement>(null)
   const glow = useRef<SVGRectElement>(null)
   const live = useRef({ state, since: 0, frame: REST, raf: 0 })
-  const name = $api.useQuery('get', '/api/status').data?.assistant ?? 'Winston'
+  const name = $api.useQuery('get', '/api/status').data?.assistant ?? ''
 
   useEffect(() => {
     const still = matchMedia('(prefers-reduced-motion: reduce)').matches
