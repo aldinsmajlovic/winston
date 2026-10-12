@@ -16,6 +16,31 @@ Hearing is Parakeet TDT 0.6B v3 through ONNX on the CPU in every profile. Voice 
 taking and the wake word are CPU work too. Home control never leaves the LAN in any profile; the
 hosted profile sends only the conversation text to the model provider.
 
+## Recommended on a 24 GB card
+
+What the reference box (an RTX 3090) runs. Each slot was measured against what else fits beside the
+other two:
+
+| Slot | Pick | VRAM | Instead of | Why |
+|---|---|---|---|---|
+| Brain | Qwen3.8-27B at 4 bits on llama.cpp (`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`), MTP drafting, 32K context, thinking only before a home action | 17 GB | Qwen3.5-9B on vLLM | 42 of 42 brain trials against 36 of 42, first reply text in 0.94 s against 0.87 s. No vision. |
+| Voice | Breeze TTS 2 (Voice preset `breeze2`) | 6 GB | Chatterbox-Turbo, streamed (3 GB) | Won 9 of 10 blind pairs (as an all-bf16 build); first sound in 0.18 s against 0.45 s ([voices](voices.md#breeze-tts-2-as-the-voice-10-october)). |
+| Hearing | Parakeet TDT 0.6B v3, int8, on the CPU | none | Qwen3-ASR 0.6B (2.2 GB) | Qwen3-ASR hears better but does not fit beside Breeze. |
+
+The card sits at 23.9 of 24.6 GB. On the Voice PE box since 11 October, from the end of speech to
+the first sound: 1.28 s median for a plain question (20 turns), 2.4 s when he uses a tool (39 turns),
+and 2.3 s to confirm a home request.
+
+No profile sets this up, since Breeze's weights are for research and non-commercial use only. Start
+from `nvidia-24gb-27b`, run `uv sync` in `services/tts-breeze2`, and pick Breeze TTS 2 on the Voice
+page. The reference box also swaps in huihui-ai's abliterated build of the same 27B (refusals
+removed, MTP layer kept): the same brain trials and speed, 0.25 GB more.
+
+**With 2 GB more** (a 32 GB card, or a second GPU for hearing), add Qwen3-ASR 0.6B. Against
+Parakeet it got a hint word right 9 times of 9 against 6, and had 6.3% word errors against 18.3%
+with other people talking in the background, for 0.09 s more per request
+([voices](voices.md#hearing-engines)).
+
 ## Measured (2026-09-23)
 
 | | `nvidia-24gb` | `ollama` on the same box, GPU already full |
