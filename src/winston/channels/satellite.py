@@ -35,7 +35,10 @@ its echo cancellation takes out what it plays, through its speaker or its jack.
 
 Only one client can hold a box's voice assistant, first come first served (ESPHome's
 voice_assistant.cpp): take the box out of Home Assistant's voice pipeline, or HA wins.
-Turn based for now: the stock firmware stops listening while it plays (docs/voice-pe.md)."""
+
+Barge-in: Winston's firmware keeps streaming the echo-cancelled microphone after the request, so speech
+over a reply stops him and becomes the next request (Satellite._watch). The stock firmware stops its
+microphone there, and a box running it stays turn based (docs/voice-pe.md)."""
 import argparse
 import asyncio
 import faulthandler
@@ -59,8 +62,9 @@ from aiohttp import web
 from loguru import logger
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import (Frame, LLMMessagesAppendFrame, TTSAudioRawFrame, TTSSpeakFrame, TTSStartedFrame,
-                                   TTSStoppedFrame, TTSTextFrame)
+from pipecat.audio.vad.vad_analyzer import VADParams, VADState
+from pipecat.frames.frames import (Frame, InterruptionFrame, InterruptionWorkerFrame, LLMMessagesAppendFrame,
+                                   TTSAudioRawFrame, TTSSpeakFrame, TTSStartedFrame, TTSStoppedFrame, TTSTextFrame)
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
 from winston.channels.clone import make_use_voice_tool
@@ -91,6 +95,7 @@ TAIL_SECS = 1.5                  # after the reply has played: the box's speaker
 FOLLOW_UP_SECS = 4.0             # after a question: until the box starts listening again
 RELEASE_TAIL_SECS = 0.3          # hold to talk: audio kept after the button is let go, for a last word cut early
 PREWARM_SECS = 60.0              # how often an idle box checks whether a new conversation's prompt changed
+PREROLL_SECS = 0.5               # barge-in: audio from before speech over a reply was certain, for its first word
 # Said on the box after a double press switched how it listens.
 BUTTON_ONLY_LINE = "Very well. I shall listen only when you press the button."
 WAKE_WORD_LINE = "Very well. I am listening for my name again."
@@ -127,6 +132,7 @@ class Run:
     hold: bool = False                                      # hold to talk: ends when the button is let go
     start: str = "wake"                                     # wake, follow_up, button or hold, for the turn record
     start_timeout: float = START_TIMEOUT_SECS               # no speech this long after the start: give up
+    interrupted: bool = False                               # talked over while the reply played (Satellite._watch)
 
     def playing_for(self) -> float:
         """Seconds of the reply the box has yet to play, if it plays from its first audio in real time."""
@@ -162,7 +168,7 @@ class Speaker(FrameProcessor):
             self.busy = True
             if self.run:
                 self.run.tts_started.set()
-        elif isinstance(frame, TTSStoppedFrame):
+        elif isinstance(frame, (TTSStoppedFrame, InterruptionFrame)):    # a reply cut short has no TTS stop
             self.busy = False
         await self.push_frame(frame, direction)
 
@@ -273,6 +279,8 @@ class Satellite:
         self._listener: asyncio.Task | None = None          # announcements and nudges while connected
         self._media_key: int | None = None                  # the box's media player (not the one replies use)
         self._media: dict | None = None                     # what plays on it now: {"id", "ext", "title"}
+        self._watching: asyncio.Task | None = None          # the playing reply's barge-in watch (_watch)
+        self._carry: list[np.ndarray] | None = None         # what was said over the reply, for the next run
 
     async def connect(self):
         self._reconnect = ReconnectLogic(client=self.client, on_connect=self._on_connect,
@@ -466,6 +474,8 @@ class Satellite:
             self._listener = None
         if self.task:
             self.task.cancel()
+        if self._watching:
+            self._watching.cancel()
 
     def _event(self, ev: Ev, data: dict[str, str] | None = None):
         try:
@@ -477,6 +487,9 @@ class Satellite:
                             wake_word: str | None) -> int | None:
         if self.task and not self.task.done():
             self.task.cancel()
+        if self._watching:
+            self._watching.cancel()
+        old, carry, self._carry = self.run, self._carry, None
         self.run = Run()
         # The box listening on after a reply; it names the last wake word then too, so only the time tells.
         if time.monotonic() < self._follow_until:
@@ -485,11 +498,20 @@ class Satellite:
         self.run.hold = not flags & VoiceAssistantCommandFlag.USE_VAD and not self.run.follow_up
         self.run.start = ("follow_up" if self.run.follow_up else "wake" if wake_word else
                           "hold" if self.run.hold else "button")
+        if carry is not None and self.run.follow_up and old is not None:
+            # He was talked over (_watch): the request began over his reply. That audio first, then what the
+            # box sent since, before this start; nothing is lost between the two runs.
+            while not old.mic.empty():
+                carry.append(old.mic.get_nowait())
+            for chunk in carry:
+                if chunk is not None:
+                    self.run.mic.put_nowait(chunk)
+            self.run.start = "barge_in"
         self._follow_until = 0.0
         self.mic.hold(HOLD_SECS)                # a browser in the room stops listening before the request
         self.audio.runs[self.run.id] = self.run
-        how = ("follow-up" if self.run.follow_up else f"wake word {wake_word!r}" if wake_word else
-               "hold to talk" if self.run.hold else "button")
+        how = ("barge-in" if self.run.start == "barge_in" else "follow-up" if self.run.follow_up else
+               f"wake word {wake_word!r}" if wake_word else "hold to talk" if self.run.hold else "button")
         logger.info(f"{self.room}: {how}, run {self.run.id}")
         self.task = asyncio.create_task(self._serve(self.run))
         return 0                      # 0: audio over the API connection, not UDP
@@ -501,8 +523,15 @@ class Satellite:
     async def _handle_stop(self, abort: bool):
         logger.info(f"{self.room}: the box {'aborted' if abort else 'ended'} the request"
                     f"{'' if self.task and not self.task.done() else ' (no run)'}")
-        if abort and self.task:
-            self.task.cancel()
+        if abort:
+            if self.task:
+                self.task.cancel()
+            if self._watching:
+                self._watching.cancel()
+            self._carry = None
+            # Stopped while he thought, the box would wait for a reply that never comes (with Winston's
+            # firmware, its microphone on). The end of the run takes it back to idle; anywhere else it is a no-op.
+            self._event(Ev.VOICE_ASSISTANT_RUN_END)
         elif self.run:
             self.run.mic.put_nowait(None)
 
@@ -678,6 +707,58 @@ class Satellite:
             await asyncio.sleep(RENEW_SECS)
             self.mic.hold(HOLD_SECS)
 
+    async def _watch(self, run: Run, conv: Conversation):
+        """The box's microphone while his reply plays. Winston's firmware keeps streaming it, echo-cancelled,
+        after the request; the stock firmware stops it and nothing comes. Speech for barge_in_secs, by the
+        browser path's rule (Silero at Pipecat's thresholds), stops him: the box is told to listen on and to
+        stop playing, the reply and the brain behind it are cut, and what was said, from PREROLL_SECS before
+        it was certain, goes to the box's next run (_handle_start). A new start or an abort cancels it."""
+        try:
+            await self._watch_for_speech(run, conv)
+        except Exception:                                                   # noqa: BLE001
+            logger.exception(f"{self.room}: barge-in failed")
+
+    async def _watch_for_speech(self, run: Run, conv: Conversation):
+        while not run.mic.empty():              # said while he thought, not over his voice
+            run.mic.get_nowait()
+        # Built off the loop: loading the model takes 40 ms, and this starts with the first audio of the reply.
+        sat = self.cfg.channels.satellite
+        vad = await asyncio.to_thread(SileroVADAnalyzer, params=VADParams(start_secs=sat.barge_in_secs,
+                                                                          min_volume=sat.barge_in_volume))
+        vad.set_sample_rate(MIC_RATE)
+        before = np.zeros(0, np.int16)
+        heard = speech = longest = 0.0          # for tuning barge_in_secs: the longest speech over his voice
+        loudest = 0.0                           # and barge_in_volume: Pipecat's smoothed volume, its last value
+        try:
+            while True:
+                chunk = await run.mic.get()
+                if chunk is None:
+                    return
+                before = np.concatenate([before, chunk])[-int(PREROLL_SECS * MIC_RATE):]
+                state = await vad.analyze_audio(chunk.tobytes())
+                heard += len(chunk) / MIC_RATE
+                speech = speech + len(chunk) / MIC_RATE if state != VADState.QUIET else 0.0
+                longest = max(longest, speech)
+                loudest = max(loudest, vad._prev_volume)
+                if state == VADState.SPEAKING:
+                    break
+        finally:
+            await vad.cleanup()
+            if heard:
+                logger.info(f"{self.room}: {heard:.1f} s heard over the reply, speech {longest:.2f} s at most, "
+                            f"volume {loudest:.2f} at most")
+        logger.info(f"{self.room}: talked over, {run.playing_for():.1f} s of the reply left unplayed")
+        run.interrupted, self._carry = True, [before]
+        self._follow_secs, self._follow_until = START_TIMEOUT_SECS, time.monotonic() + FOLLOW_WAIT_SECS
+        # In this order: listen on after the reply; the run's own end never sent, since it would reach the box
+        # in the next run; then the reply stopped, which ends it on the box and starts that run.
+        self._event(Ev.VOICE_ASSISTANT_INTENT_END, {"conversation_id": self.room, "continue_conversation": "1"})
+        if self.task and not self.task.done():
+            self.task.cancel()
+        if self._media_key is not None:
+            self.client.media_player_command(self._media_key, command=MediaPlayerCommand.STOP, announcement=True)
+        await conv._worker.queue_frame(InterruptionWorkerFrame(), FrameDirection.UPSTREAM)
+
     async def _serve(self, run: Run):
         url = f"{self.audio.base_url(self.dev.host)}/reply/{run.id}.flac"
         holding = asyncio.create_task(self._hold())
@@ -732,6 +813,8 @@ class Satellite:
                     await run.first_audio.wait()
                     logger.info(f"{self.room}: first audio {(time.perf_counter() - t_heard) * 1000:.0f} ms after "
                                 f"the transcript")
+                    if self.cfg.channels.satellite.barge_in_secs > 0 and not self.button_only:
+                        self._watching = asyncio.create_task(self._watch(run, conv))
                 progress = asyncio.create_task(stream_when_ready())
                 conv.brain.llm.ended = False
                 conv.turns.turn = turn
@@ -757,7 +840,7 @@ class Satellite:
             self.feed.put(LiveEvent(channel="satellite", type="state", state="idle"))
             run.out.put_nowait(None)
             if turn:
-                turn.outcome = "cut_short"
+                turn.outcome = "interrupted" if run.interrupted else "cut_short"
             raise
         except Exception as e:                                              # noqa: BLE001
             logger.exception(f"{self.room}: run failed")
@@ -857,8 +940,11 @@ class AudioServer:
         resp = web.StreamResponse(headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
         await resp.prepare(request)
         await resp.write(wav_header(OUT_RATE))
-        while (chunk := await run.out.get()) is not None:
-            await resp.write(chunk)
+        try:
+            while (chunk := await run.out.get()) is not None:
+                await resp.write(chunk)
+        except ConnectionResetError:       # stopped by the box: talked over
+            return resp
         run.out.put_nowait(None)           # a second fetch of the same URL ends too
         return resp
 

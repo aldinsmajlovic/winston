@@ -17,7 +17,10 @@ needs no wake word; a double press switches the box to button only (no wake word
 gets a reply without a follow-up); a hold to talk (no silence detection) with a 3 s pause in it ends only
 when the button is let go and is heard whole; a reconnect finds it still button only, and a second
 double press switches the wake word back on. Every turn is kept in a turn record in a temporary folder,
-with its audio, how it started (wake word, follow-up, button, hold) and how it ended."""
+with its audio, how it started (wake word, follow-up, button, hold) and how it ended.
+Barge-in, as with Winston's firmware (the mic streams on through the reply): "What time is it?" said
+over a long reply stops it within about half a second (a media STOP), the box is told to listen on and
+not that the reply is over, and the next run hears the question whole and answers it."""
 import asyncio
 import json
 import sys
@@ -47,7 +50,7 @@ from loguru import logger  # noqa: E402
 
 logger.remove(); logger.add(sys.stderr, level="INFO")
 PORT, HTTP_PORT = 16053, 18702
-BUTTON_KEY, CENTER_KEY = 4242, 4243
+BUTTON_KEY, CENTER_KEY, MEDIA_KEY = 4242, 4243, 4244
 TYPE_OF = {cls: n for n, cls in MESSAGE_TYPE_TO_PROTO.items()}
 USER = "vctk/p226_023"
 FLAGS = (Feature.VOICE_ASSISTANT | Feature.API_AUDIO | Feature.ANNOUNCE | Feature.START_CONVERSATION
@@ -85,6 +88,7 @@ class FakeVoicePE:
         self.active_wake_words: list[str] = []
         self.states = False                                 # states subscribed: button events go out
         self.announced: list[dict] = []
+        self.stopped = asyncio.Event()                      # the reply was stopped (a media STOP)
 
     def send(self, msg):
         payload = msg.SerializeToString()
@@ -121,11 +125,17 @@ class FakeVoicePE:
                                                    event_types=["double_press", "triple_press", "long_press"]))
             self.send(pb.ListEntitiesBinarySensorResponse(object_id="center_button", key=CENTER_KEY,
                                                           name="Center button"))
+            self.send(pb.ListEntitiesMediaPlayerResponse(object_id="media_player", key=MEDIA_KEY,
+                                                         name="Media Player", supports_pause=True))
             self.send(pb.ListEntitiesDoneResponse())
         elif isinstance(msg, pb.SubscribeStatesRequest):
             self.states = True
         elif isinstance(msg, pb.VoiceAssistantAnnounceRequest):
             asyncio.get_running_loop().create_task(self.announce(msg.media_id, msg.text, msg.start_conversation))
+        elif isinstance(msg, pb.MediaPlayerCommandRequest):
+            # A reply's stop is an announcement's; music the brain chose to play is stopped without it.
+            if msg.has_command and msg.command == pb.MEDIA_PLAYER_COMMAND_STOP and msg.announcement:
+                self.stopped.set()
         elif isinstance(msg, pb.PingRequest):
             self.send(pb.PingResponse())
         elif isinstance(msg, pb.DisconnectRequest):
@@ -224,6 +234,79 @@ class FakeVoicePE:
                 "audio_secs": max(0, len(wav) - 44) / 2 / sat.OUT_RATE,
                 "first_audio_ms": round((t_first - t_end) * 1000) if t_first and t_end else None,
                 "order": [e.name.removeprefix("VOICE_ASSISTANT_") for _, e, _ in self.events[since:]]}
+
+    async def talk_over(self, request: np.ndarray, over: np.ndarray, after: float) -> dict:
+        """Winston's firmware: a run whose microphone streams on after the request, through his thinking and
+        his reply, in real time. over is said after s into the reply as played. When the reply is stopped,
+        the box ends it and, told to listen on, starts the next run without a wake word, holding the mic's
+        audio meanwhile as its ring buffer does, then plays that run's reply."""
+        chunk, pending, held = 512, np.concatenate([np.zeros(4000, np.int16), request]), []
+        paused = False
+
+        async def mic():
+            nonlocal pending
+            while True:
+                piece = pending[:chunk] if len(pending) else np.zeros(chunk, np.int16)
+                pending = pending[chunk:]
+                if len(piece) < chunk:
+                    piece = np.concatenate([piece, np.zeros(chunk - len(piece), np.int16)])
+                if paused:
+                    held.append(piece)
+                else:
+                    self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=piece.tobytes()))
+                await asyncio.sleep(chunk / 16000)
+
+        async def play(url: str, first: asyncio.Event):
+            async with aiohttp.ClientSession() as s, s.get(url.replace(".flac", ".wav")) as r:
+                async for part in r.content.iter_any():
+                    first.set()
+
+        since = len(self.events)
+        self.response.clear(); self.stopped.clear()
+        self.send(pb.VoiceAssistantRequest(start=True, conversation_id="", flags=1, wake_word_phrase="hey_jarvis",
+                                           audio_settings=pb.VoiceAssistantAudioSettings()))
+        await asyncio.wait_for(self.response.wait(), 10)
+        streaming = asyncio.create_task(mic())
+        try:
+            await self.wait_event(Ev.VOICE_ASSISTANT_INTENT_PROGRESS, since)
+            url = next(d for _, e, d in self.events[since:] if e == Ev.VOICE_ASSISTANT_RUN_START)["url"]
+            first = asyncio.Event()
+            playing = asyncio.create_task(play(url, first))
+            await asyncio.wait_for(first.wait(), 30)
+            await asyncio.sleep(after)
+            lead = int(np.argmax(np.abs(over) > 1000))      # where the voice starts in the clip
+            pending = over
+            t_voice = time.perf_counter() + lead / 16000
+            try:
+                await asyncio.wait_for(self.stopped.wait(), 5)
+                stop_ms = round((time.perf_counter() - t_voice) * 1000)
+            except TimeoutError:
+                stop_ms = None
+            playing.cancel()
+            first_run = [(e, d) for _, e, d in self.events[since:]]
+            listen_on = any(e == Ev.VOICE_ASSISTANT_INTENT_END and d.get("continue_conversation") == "1"
+                            for e, d in first_run)
+            if stop_ms is None or not listen_on:
+                return {"stop_ms": stop_ms, "listen_on": listen_on, "first_run": first_run}
+            paused = True                                   # the box ends the reply and starts the next run
+            await asyncio.sleep(0.05)
+            since2 = len(self.events)
+            self.response.clear()
+            self.send(pb.VoiceAssistantRequest(start=True, conversation_id="", flags=1, wake_word_phrase="",
+                                               audio_settings=pb.VoiceAssistantAudioSettings()))
+            await asyncio.wait_for(self.response.wait(), 10)
+            for piece in held:
+                self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=piece.tobytes()))
+            paused = False
+            heard = await self.wait_event(Ev.VOICE_ASSISTANT_STT_END, since2)
+            if await self.wait_event(Ev.VOICE_ASSISTANT_INTENT_PROGRESS, since2):
+                await play(next(d for _, e, d in self.events[since2:] if e == Ev.VOICE_ASSISTANT_RUN_START)["url"],
+                           asyncio.Event())
+            spoken = await self.wait_event(Ev.VOICE_ASSISTANT_TTS_START, since2) or {}
+            return {"stop_ms": stop_ms, "listen_on": listen_on, "first_run": first_run,
+                    "heard": (heard or {}).get("text"), "said": spoken.get("text")}
+        finally:
+            streaming.cancel()
 
 
 async def main() -> int:
@@ -327,6 +410,19 @@ async def main() -> int:
     print(f"  > Thanks, I know. (no wake word)\n    heard {r['heard']!r}\n    said  {r['said']!r}")
     ok &= bool(r["heard"]) and bool(r["said"])
 
+    # Barge-in: talked over 1.5 s into a long reply. Stopped within about half a second, the box told to listen
+    # on and never that the reply is over, and the question carried whole into the next run.
+    satellite._follow_until = 0.0
+    r = await box.talk_over(synth_user_audio("Tell me a bedtime story about a lighthouse, in four sentences.", USER)[0],
+                            synth_user_audio("What time is it?", USER)[0], after=1.5)
+    order = [e.name.removeprefix("VOICE_ASSISTANT_") for e, _ in r["first_run"]]
+    print(f"\n> (a long reply, talked over after 1.5 s: What time is it?)\n  stopped {r['stop_ms']} ms after the "
+          f"voice began, listen on {r['listen_on']}\n  {' '.join(order)}\n  then heard {r.get('heard')!r}\n"
+          f"  said  {r.get('said')!r}")
+    ok &= r["stop_ms"] is not None and r["stop_ms"] < 700 and r["listen_on"]
+    ok &= "TTS_END" not in order and "RUN_END" not in order
+    ok &= "what time" in (r.get("heard") or "").lower() and bool(r.get("said"))
+
     async def pressed(want: list[str], line: str) -> bool:
         n = len(box.announced)
         box.double_press()
@@ -391,6 +487,7 @@ def recorded(folder: Path) -> bool:
     ok &= any(c.get("ok") for c in lamp.get("tools", []))                     # the stubbed action, with its result
     ok &= any(t["start"] == "button" and t["said"] for t in lines)
     ok &= has("london", "hold", "answered")
+    ok &= has("lighthouse", "wake", "interrupted") and has("what time", "barge_in", "answered")
     ok &= all(t["first_audio_ms"] for t in lines if t["outcome"] == "answered" and t["said"])
     print(f"  {'ok' if ok else 'NOT as expected'}")
     return ok

@@ -15,7 +15,9 @@ import { capitalize } from '@/lib/format'
 import { markText } from '@/lib/marks'
 import { cn } from '@/lib/utils'
 
-const START: Record<string, string> = { wake: 'Wake word', follow_up: 'Follow-up', button: 'Button', speech: '' }
+const START: Record<string, string> = {
+  wake: 'Wake word', follow_up: 'Follow-up', barge_in: 'Talked over him', button: 'Button', speech: '',
+}
 
 /** How a turn ended when it was not a plain answer. */
 const OUTCOME: Record<string, string> = {
@@ -23,6 +25,7 @@ const OUTCOME: Record<string, string> = {
   dismissed: 'Ended the conversation',
   nothing_heard: 'Nothing heard',
   cut_short: 'Cut short',
+  interrupted: 'Interrupted',
   failed: 'Failed',
 }
 

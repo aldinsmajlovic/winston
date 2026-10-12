@@ -1,10 +1,10 @@
 # Voice PE firmware with "Okay Winston": the official factory firmware at a pinned release, plus
-# the okay_winston microWakeWord model from assets/wake/, hold to talk and no Wi-Fi modem sleep. Everything
+# the okay_winston microWakeWord model from assets/wake/, hold to talk, no Wi-Fi modem sleep and barge-in. Everything
 # else (Wi-Fi setup over USB and Bluetooth, LEDs, dial, mute switch, media player) is the stock firmware.
 # See docs/voice-pe.md.
 #
-#   uvx esphome compile voice-pe-winston.yaml
-#   uvx esphome upload voice-pe-winston.yaml --device /dev/ttyACM0
+#   uvx esphome@2026.9.1 compile voice-pe-winston.yaml
+#   uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device /dev/ttyACM0
 packages:
   voice_pe: github://esphome/home-assistant-voice-pe/home-assistant-voice.factory.yaml@26.9.0
 
@@ -12,6 +12,16 @@ esphome:
   project:
     name: Nabu Casa.Home Assistant Voice PE
     version: 26.9.0-winston
+
+# Barge-in: ESPHome's voice_assistant from the release this builds with (2026.9.1, hence the pinned esphome
+# below), changed only where it says "Winston:". The microphone stays on after the end of the request and its
+# echo-cancelled audio keeps going to Winston while he thinks and talks; he stops the reply when he hears you.
+# Home Assistant as the client would get that audio too and has no use for it.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [voice_assistant]
 
 micro_wake_word:
   models:

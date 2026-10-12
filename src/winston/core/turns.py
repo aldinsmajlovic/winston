@@ -4,11 +4,12 @@ used to test the next change (docs/understanding.md, part 1). Off unless logging
     <data>/turns/2026-10-07/satellite.jsonl   one JSON line per turn, a file per channel process
     <data>/turns/2026-10-07/<id>.flac         the audio the speech engine heard, as it heard it
 
-A line holds: id, ts (when the speech ended), channel, room, start (wake, follow_up or button on a box,
-speech in a browser), secs of audio, heard, raw (what the engine said before the hint-word fix, only when
-it differs), engine, stt_ms, first_token_ms and first_audio_ms (from the end of speech), tools (name,
-args, ok, result), said (what was spoken, fillers and corrections included), outcome (answered: he
-spoke or acted; silent; dismissed; nothing_heard) and audio (the file's name).
+A line holds: id, ts (when the speech ended), channel, room, start (wake, follow_up, barge_in, button or
+hold on a box, speech in a browser), secs of audio, heard, raw (what the engine said before the
+hint-word fix, only when it differs), engine, stt_ms, first_token_ms and first_audio_ms (from the end of
+speech), tools (name, args, ok, result), said (what was spoken, fillers and corrections included),
+outcome (answered: he spoke or acted; silent; dismissed; nothing_heard; interrupted: talked over on a
+box) and audio (the file's name).
 
 A box's turn is begun and written by the satellite channel around one request. A browser's turns are
 cut from the pipeline's frames by SpokenTurns: a turn starts with the first words past the room's mic

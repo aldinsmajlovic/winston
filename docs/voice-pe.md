@@ -111,6 +111,14 @@ back, so the music picks up again and the next song still reaches the box.
   hold starts a request, and he never listens after a reply. He says "Very well. I shall listen only
   when you press the button." Another double press switches the wake word back on. Meant for a party
   or the TV. The box keeps the choice through restarts of it and of Winston.
+- **Talking over him** (Winston's firmware) stops him within about half a second, and what you say
+  is the next request, no wake word needed. It takes `barge_in_secs` of speech (0.3 s) over his voice:
+  make it longer if his own voice or the room stops him, 0 to switch it off. Not in button only, where
+  the TV or a party would stop him. On stock firmware the box stays turn based. Speech also has to
+  reach `barge_in_volume` (0.6, Pipecat's default): lower it if talking from across the room does not
+  stop him, raise it if his own voice does. Each reply logs how much speech the box heard over it and
+  how loud (`2.4 s heard over the reply, speech 0.00 s at most, volume 0.31 at most`), the numbers to
+  set them by.
 - **The mute switch** on the side cuts the microphones altogether. Two red LEDs by the microphones
   mean it is on; a red ring slowly twinkling means Winston is not connected.
 
@@ -139,6 +147,7 @@ keeps what the box has.
   INTENT_PROGRESS with `tts_start_streaming` tells the box to start fetching, and Winston serves a
   48 kHz WAV that grows while he speaks.
 - **Turn based**: the box stops its microphone at STT_VAD_END and plays the reply; no barge-in.
+  Winston's firmware keeps the microphone on through the reply (below).
 - **A stop from the box is an abort** (checked 2026-10-11): `voice_assistant.stop` while it listens
   tells the client to abort and the box goes idle without playing a reply. So hold to talk does not
   stop the box on release; the box starts the run without silence detection (no `USE_VAD` flag) and
@@ -172,7 +181,7 @@ keeps what the box has.
 ## Winston's firmware: "Okay Winston"
 
 `services/voice-pe/voice-pe-winston.yaml` is the official factory firmware at a pinned release plus
-the `okay_winston` model from `assets/wake/` and hold to talk: the stock long press also starts a
+the `okay_winston` model from `assets/wake/`, barge-in and hold to talk: the stock long press also starts a
 request without silence detection and sets the firmware's `dial_touched`, which keeps the factory
 reset off until the button is let go, and the center button is named so the box reports it. Its
 Wi-Fi never naps: the factory's light power save made the box wake for packets every 307 ms, so it
@@ -182,13 +191,28 @@ double press still switches button only. Build and flash with the box on USB:
 
 ```sh
 cd services/voice-pe
-uvx esphome compile voice-pe-winston.yaml     # first build 15 to 30 min, downloads the toolchain
-uvx esphome upload voice-pe-winston.yaml --device /dev/ttyACM0
+uvx esphome@2026.9.1 compile voice-pe-winston.yaml     # first build 15 to 30 min, downloads the toolchain
+uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device /dev/ttyACM0
 ```
 
 then set `wake_word: okay_winston` for the box. Later builds go over the network:
-`uvx esphome upload voice-pe-winston.yaml --device <box address>` (13 s; the box needs TCP 3232 open
-from this machine). Back up the box first
+`uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device <box address>` (17 s; the box needs TCP
+3232 open from this machine).
+
+Barge-in is a copy of ESPHome's `voice_assistant` component in `services/voice-pe/components/`,
+taken from ESPHome 2026.9.1 and changed only where it says `Winston:`. It keeps ESPHome's license
+(GPLv3 for the C++, MIT for the Python), in `components/LICENSE`, not the repo's Apache 2.0. The stock component stops the
+microphone when the request ends (STT_VAD_END) and streams nothing while it waits for the reply and
+plays it. The copy leaves the microphone on and keeps streaming its echo-cancelled audio to Winston in
+those two states, and stops it when the run goes idle. Winston listens to it while the reply plays
+with the browser path's voice detection (Silero, at Pipecat's thresholds, the volume floor set by
+`barge_in_volume`). On `barge_in_secs` of speech
+he tells the box to listen on after the reply, stops its playback (a media player stop, the same as
+the box's own "Stop") and cuts the reply and the brain behind it. The audio from half a second before
+he was sure goes to the run the box starts next, so the first word is not lost. A build must use
+ESPHome 2026.9.1 (`uvx esphome@2026.9.1`), the release the copy comes from. Moving to a newer one means
+copying its component again and redoing those changes. Home Assistant as the client would get the
+extra audio and has no use for it. Back up the box first
 (`uvx esptool --port /dev/ttyACM0 read-flash 0 0x1000000 backup.bin`); writing that file back at 0
 restores it exactly.
 
@@ -215,9 +239,11 @@ calibration, is `okay_winston_eval.json`.
 2. **Streaming during playback.** The same stock firmware already listens for the word "Stop" during
    playback, on the device, through the echo cancellation, so the microphone is usable while it
    talks. Step two is a firmware configuration that keeps streaming that audio to Winston during
-   playback instead of only running the on-device stop word. Nobody has been found to have done it;
-   likely, not certain. With it: barge-in, and the full browser experience in a room. Offer the
-   configuration upstream to ESPHome rather than keeping it Winston-only.
+   playback instead of only running the on-device stop word. Built 2026-10-12 as a patched
+   `voice_assistant` in Winston's firmware (above). Offer it upstream to ESPHome rather than keeping
+   it Winston-only; Home Assistant's own barge-in
+   ([core#182776](https://github.com/home-assistant/core/pull/182776)) is still a draft for cloud live
+   models.
 3. **Fallback** if step two is blocked: the plan's original satellite (Pi plus a speakerphone), where
    barge-in is the same as the browser path. Its wake word is ready: `assets/wake/hey_winston.onnx`,
    "Hey Winston" for openWakeWord. The trainer that made it is in git history at commit 746e994
@@ -260,10 +286,29 @@ defensible position.
 
 ## Next step
 
-The first box runs Winston's firmware and wakes on Okay Winston, turn based. It woke 70 to 80% of
-the time at the fixed 0.95 threshold, against 98.6% on the trainer's synthetic voices; since
-2026-09-27 it runs `Moderately sensitive` (0.85). Next: count misses and false wakes at that setting,
-retrain with real takes of the household's voices if it is still short, then attempt step two.
+The first box runs Winston's firmware and wakes on Okay Winston, with barge-in since 2026-10-12. It woke
+70 to 80% of the time at the fixed 0.95 threshold, against 98.6% on the trainer's synthetic voices;
+since 2026-09-27 it ran `Moderately sensitive` (0.85), and since 2026-10-12 `Very sensitive` (0.70). Next: talk over him on the real box, at normal
+and at loud volume, and set `barge_in_secs` and `barge_in_volume` from the logged speech over his voice; count misses and
+false wakes, and retrain with real takes of the household's voices if it is still short.
+
+### Okay Winston at a distance
+
+Reported 2026-10-12: Okay Winston wakes badly from across the room (before the `Very sensitive`
+test). Most likely the model rather than the box. It learned from Piper voices only and its 98.6% is
+on more of the same, never on a real voice at a distance. Okay Nabu's thresholds were set on real
+far-field recordings (DipCo), and it has real voices in its training. To do, at home:
+
+1. **Model or box.** Set `wake_word: okay_nabu` for the box and say it from the spots where Okay
+   Winston misses. If Nabu wakes and Winston does not, it is the model. If both miss, look at the
+   placement (shelf, corner) and the noise (fan, TV).
+2. **Very sensitive (0.70)**, set but not yet tried. The firmware can go lower, with more false wakes
+   from household talk; the Swedish "hej" followed by a name is the one to watch.
+3. **Retrain with real takes from the box.** 50 to 100 "Okay Winston" said at 1, 3 and 5 m from the
+   sofa, kitchen and doorway, normal and tired or mumbled, by hold to talk so the audio comes through the
+   box's own microphones into the turn record. Also about an hour of the room as negatives (TV,
+   household talk). The trainer takes real samples as uploads; a run took 36 min on the RTX 3090.
+   Missing: a way to export those takes from the turn record as a training set.
 
 Sources consulted: https://www.home-assistant.io/voice-pe/ ,
 https://esphome.io/components/voice_assistant/ , https://github.com/esphome/aioesphomeapi ,

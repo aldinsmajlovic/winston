@@ -415,6 +415,16 @@ class SatelliteChannel(Model):
     follow_up_secs: float = Field(6.0, ge=0.0, le=20.0, title="Listen after a reply (s)",
                                   description="After every reply the box listens this long for more, without the "
                                               "wake word (at least 8 s after a question). 0: only after a question.")
+    barge_in_secs: float = Field(0.3, ge=0.0, le=2.0, title="Speech that interrupts him (s)",
+                                 description="Talking over a reply this long stops him, and what you say is the "
+                                             "next request. Needs Winston's firmware on the box. Longer if his own "
+                                             "voice or the room stops him; 0: never.",
+                                 json_schema_extra=ui("advanced"))
+    barge_in_volume: float = Field(0.6, ge=0.0, le=1.0, title="Loudness that interrupts him",
+                                   description="How loud talking over a reply must be to count. Lower if "
+                                               "speaking across the room does not stop him, higher if his own "
+                                               "voice does.",
+                                   json_schema_extra=ui("advanced"))
     session_idle_mins: int = Field(10, ge=1, title="Conversation resets after (min)",
                                    description="Idle minutes before a room's conversation starts fresh: its box "
                                                "and the browser sessions set to that room share one.",

@@ -1271,6 +1271,8 @@ export interface components {
              *       "end_silence_secs": 0.8,
              *       "unfinished_silence_secs": 2.5,
              *       "follow_up_secs": 6,
+             *       "barge_in_secs": 0.3,
+             *       "barge_in_volume": 0.6,
              *       "session_idle_mins": 10
              *     }
              */
@@ -2899,6 +2901,18 @@ export interface components {
              */
             follow_up_secs?: number;
             /**
+             * Speech that interrupts him (s)
+             * @description Talking over a reply this long stops him, and what you say is the next request. Needs Winston's firmware on the box. Longer if his own voice or the room stops him; 0: never.
+             * @default 0.3
+             */
+            barge_in_secs?: number;
+            /**
+             * Loudness that interrupts him
+             * @description How loud talking over a reply must be to count. Lower if speaking across the room does not stop him, higher if his own voice does.
+             * @default 0.6
+             */
+            barge_in_volume?: number;
+            /**
              * Conversation resets after (min)
              * @description Idle minutes before a room's conversation starts fresh: its box and the browser sessions set to that room share one.
              * @default 10
@@ -3739,6 +3753,8 @@ export interface components {
              *         "token_env": "DISCORD_BOT_TOKEN"
              *       },
              *       "satellite": {
+             *         "barge_in_secs": 0.3,
+             *         "barge_in_volume": 0.6,
              *         "devices": {},
              *         "enabled": false,
              *         "end_silence_secs": 0.8,
