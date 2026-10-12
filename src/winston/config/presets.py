@@ -32,6 +32,7 @@ _LLAMACPP_ARGS = [
     "-ctk", "q8_0", "-ctv", "q8_0",
     "--no-mmproj",                               # text only; the vision projector is another 0.9 GB
     "--jinja",
+    "--cache-ram", "2048",                       # old prompts in host RAM (default 8 GB); the talk stays on the card
     "--spec-type", "draft-mtp", "--spec-draft-n-max", "2",   # the GGUF's own MTP layer: 44 -> 60-80 tokens/s
 ]
 
