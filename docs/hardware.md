@@ -115,8 +115,10 @@ why the default profile takes minutes the first time and about 3 minutes after t
 downloads on first start. It runs two conversations at once with 16K of context each and a q8 cache,
 and drafts with the model's own MTP layer (`--spec-type draft-mtp`), which needs a GGUF that keeps
 that layer; remove those two arguments for one that does not. Thinking is switched with the same
-`enable_thinking` template flag as vLLM. The first request after a start reads the 2,900-token
-system prompt in about 2.3 s; after that it is cached.
+`enable_thinking` template flag as vLLM. The system prompt with its tools is about 9.4k tokens, and
+the 27B reads it cold in 7.5 to 10.6 s, so Winston has it read ahead: a Voice PE box when it connects
+and again when the prompt changes while it is idle, the browser voice channel when you connect. The
+first real turn then starts from the cache in about 0.15 s.
 
 **Ollama.** Speaks the OpenAI protocol at `/v1`. Thinking is switched per request with
 `reasoning_effort`, which is what `llm.thinking.control: reasoning_effort` sends. Ollama ignores

@@ -17,21 +17,22 @@ by default, and any part can be swapped for a hosted service.
 
 ## Features
 
-- **Local first.** Speech recognition, the language model and the voice run on one GPU, or on Ollama
-  and the CPU. Each can point at a hosted API instead.
+- **Local first.** The language model and the voice share one GPU and speech recognition runs on the
+  CPU, or everything runs on Ollama and the CPU. Each can point at a hosted API instead.
 - **Fast.** About 1.3 s from the end of a plain question to his first word, and you can talk over him.
 - **Controls your home** through Home Assistant's MCP server, then checks the device really changed
   and corrects himself when it did not.
-- **In every room.** The browser, a wall tablet, and Home Assistant's Voice PE with an
-  "Okay Winston" wake word. Start a conversation at one and finish it at another.
+- **In every room.** The browser, with a full-screen dashboard for a wall screen, and Home Assistant's
+  Voice PE with an "Okay Winston" wake word. Start a conversation at the box and finish it on the
+  screen beside it.
 - **Remembers** what you tell him, in plain Markdown you can read and edit, and writes a diary of each
   day you can ask him about.
 - **Speaks up.** Announcements from Home Assistant, a word before what is on your calendar, and
   reminders reach the room you are in or your phone; in quiet hours only what you asked for.
 - **Extensible.** Add a tool in one Python file or connect any MCP server. Your calendar, news,
   reminders, things to do later ("clean the kitchen when I leave"), Hevy and Spotify come built in,
-  and a small server on each of your computers lets him open apps, files and pages there and tell you
-  how it is doing.
+  and a small server on each of your Linux computers lets him open apps, files and pages there and
+  tell you how it is doing.
 - **Borrows a voice.** A friend agrees out loud and talks for fifteen seconds; Winston can then speak
   as them.
 
