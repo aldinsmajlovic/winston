@@ -132,7 +132,7 @@ beside each label that explains the field (and, for an engine, what the chosen p
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/brain-dark.png">
-  <img src="images/brain-light.png" alt="The Brain page: the model list open, with the running model and the downloaded ones, a vLLM-only repo greyed" width="720">
+  <img src="images/brain-light.png" alt="The Brain page: the model list open, with the running model and the downloaded ones" width="720">
 </picture>
 
 Anything a machine already knows is a searchable dropdown filled from `/api/options/{name}`, and a
