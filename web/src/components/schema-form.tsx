@@ -45,6 +45,8 @@ const uiSchema: UiSchema = { 'ui:submitButtonOptions': { norender: true } }
 export type FormContext = {
   /** Set a value anywhere in the config draft (a pasted key writes its variable name). */
   setAt?: (path: Path, value: unknown) => void
+  /** The whole config draft, for a field that reads a sibling (hint words read their removed list). */
+  config?: unknown
   /** Errors about a nested object, by the id of its title, shown beside the title. */
   titleErrors?: Record<string, string[]>
 }

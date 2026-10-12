@@ -813,8 +813,8 @@ export default function MemoryPage() {
         {data?.enabled === false ? (
           <span className="-mt-3 px-4 text-muted-foreground">
             He does not use these while memory is off. Turn it on in{' '}
-            <Link to="/tools" className="underline underline-offset-4 hover:text-foreground">
-              Tools
+            <Link to="/assistant" className="underline underline-offset-4 hover:text-foreground">
+              Assistant
             </Link>
             .
           </span>

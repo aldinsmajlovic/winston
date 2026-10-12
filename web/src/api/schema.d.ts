@@ -920,7 +920,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Variables in data/.env the config names, and the two Claude ones: set or not, never values */
+        /** Variables in data/.env the config and the extensions name: set or not, never values */
         get: operations["list_secrets_api_secrets_get"];
         put?: never;
         post?: never;
@@ -943,23 +943,6 @@ export interface paths {
         post?: never;
         /** Remove a secret from data/.env (localhost only) */
         delete: operations["delete_secret_api_secrets__name__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/tools/ask_claude/auth": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** What ask_claude signs in with, in the Claude CLI's order: API key, token, this machine's login */
-        get: operations["ask_claude_auth_api_tools_ask_claude_auth_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -989,7 +972,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, memory_topics, extension_tools, llm_models, voices, gemini_models, claude_models, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
+        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, memory_topics, extension_tools, llm_models, voices, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -1148,40 +1131,6 @@ export interface components {
              */
             source?: string;
         };
-        /** AskClaudeConfig */
-        AskClaudeConfig: {
-            /**
-             * Enabled
-             * @description Hand hard questions to Claude. Uses the Claude Code login on this machine, CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. Only the question leaves the house.
-             * @default false
-             */
-            enabled?: boolean;
-            /**
-             * Model
-             * @description Claude model the question goes to. Opus is best at hard questions, Sonnet and Haiku are faster and cheaper.
-             * @default claude-opus-5
-             */
-            model?: string;
-            /**
-             * Effort
-             * @description Reasoning effort. Low answered in about 3 to 5 s; each step up is slower.
-             * @default low
-             * @enum {string}
-             */
-            effort?: "low" | "medium" | "high";
-            /**
-             * Budget per day (USD)
-             * @description Past it the tool refuses until midnight. A Max 5x plan's monthly Agent SDK credit is 100 USD.
-             * @default 3
-             */
-            max_usd_per_day?: number;
-            /**
-             * Budget per question (USD)
-             * @description Hard cap for one question; a longer answer is cut off.
-             * @default 0.5
-             */
-            max_usd_per_question?: number;
-        };
         /** AssistantConfig */
         AssistantConfig: {
             /**
@@ -1236,6 +1185,22 @@ export interface components {
             outside: boolean;
             /** Filler */
             filler?: string | null;
+            /**
+             * Filler After
+             * @default 1
+             */
+            filler_after?: number;
+            /**
+             * Title
+             * @description Its extension's name, for the tool's line on Talk
+             * @default
+             */
+            title?: string;
+            /**
+             * Icon
+             * @description Its extension's icon (lucide)
+             */
+            icon?: string | null;
             /**
              * Timeout
              * @default 10
@@ -1322,18 +1287,6 @@ export interface components {
              * @default false
              */
             disabled?: boolean;
-        };
-        /** ClaudeAuth */
-        ClaudeAuth: {
-            /**
-             * Source
-             * @enum {string}
-             */
-            source: "api_key" | "oauth_token" | "login" | "none";
-            /** Variable */
-            variable: string | null;
-            /** Label */
-            label: string;
         };
         /** ClearedFact */
         ClearedFact: {
@@ -2347,7 +2300,7 @@ export interface components {
          * LiveEvent
          * @description One thing that happened. Which fields are set depends on `type`:
          *     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
-         *     tool: call, name, status, label, ms. announcement: text. error: text.
+         *     tool: call, name, status, label, ms, icon (an extension's). announcement: text. error: text.
          *     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
          *     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
          *     ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
@@ -2389,6 +2342,8 @@ export interface components {
             status?: ("running" | "ok" | "error" | "waiting" | "declined" | "expired") | null;
             /** Label */
             label?: string | null;
+            /** Icon */
+            icon?: string | null;
             /** Ms */
             ms?: number | null;
             /** Room */
@@ -2819,9 +2774,14 @@ export interface components {
             quantization?: string | null;
             /**
              * Hint words
-             * @description Names and words he should hear right. His name, cloned voices, Discord contacts and names from the Home Assistant list are added by themselves; add the rest here, one word each, such as room names in another language.
+             * @description Names and words he should hear right. His name, cloned voices, Discord contacts and names from the Home Assistant list are added by themselves (remove one with its x); add the rest here, one word each, such as room names in another language.
              */
             hint_words?: string[];
+            /**
+             * Removed hint words
+             * @description Words he would add by himself that you took out; the Hint words field writes these.
+             */
+            hint_words_removed?: string[];
             /**
              * Fix close misspellings
              * @description After speech to text, a word that sounds like a hint word and is spelled close to it becomes that word, so a misheard name comes out right. Common English words are never changed, and every change is logged as before and after.
@@ -2979,19 +2939,6 @@ export interface components {
         SecretValue: {
             /** Value */
             value: string;
-        };
-        /** SensorPair */
-        SensorPair: {
-            /**
-             * Value sensor
-             * @description Entity id of the value sensor.
-             */
-            level: string;
-            /**
-             * State sensor
-             * @description Optional companion state sensor (charging, etc.).
-             */
-            state?: string | null;
         };
         /** Shortcut */
         Shortcut: {
@@ -3333,42 +3280,6 @@ export interface components {
             /** Offer */
             offer: boolean;
         };
-        /** ToolsConfig */
-        ToolsConfig: {
-            /**
-             * Sensors
-             * @description Watched sensors by label; readings come with their age.
-             */
-            sensors?: {
-                [key: string]: components["schemas"]["SensorPair"];
-            };
-            /**
-             * Web search
-             * @description A cloud search for current facts: news, opening hours, prices.
-             * @default {
-             *       "enabled": false,
-             *       "provider": "gemini",
-             *       "model": "gemini-3.5-flash-lite",
-             *       "thinking": "minimal",
-             *       "api_key_env": "GEMINI_API_KEY",
-             *       "max_per_day": 100,
-             *       "timeout": 15
-             *     }
-             */
-            web_search?: components["schemas"]["WebSearchConfig"];
-            /**
-             * Ask Claude
-             * @description Claude in the cloud for questions too hard for the local brain.
-             * @default {
-             *       "enabled": false,
-             *       "model": "claude-opus-5",
-             *       "effort": "low",
-             *       "max_usd_per_day": 3,
-             *       "max_usd_per_question": 0.5
-             *     }
-             */
-            ask_claude?: components["schemas"]["AskClaudeConfig"];
-        };
         /** TopicRename */
         TopicRename: {
             /** Title */
@@ -3522,6 +3433,11 @@ export interface components {
              * @default
              */
             label?: string;
+            /**
+             * Icon
+             * @description Its extension's icon (lucide), for an extension's tool
+             */
+            icon?: string | null;
         };
         /**
          * TurnsConfig
@@ -3627,59 +3543,12 @@ export interface components {
              */
             session_idle_mins?: number;
         };
-        /** WebSearchConfig */
-        WebSearchConfig: {
-            /**
-             * Enabled
-             * @description Let him look up current facts on the web. Only the search question leaves the house.
-             * @default false
-             */
-            enabled?: boolean;
-            /**
-             * Provider
-             * @description Search backend. gemini: Gemini with Google Search grounding (needs billing enabled on the key).
-             * @default gemini
-             * @constant
-             */
-            provider?: "gemini";
-            /**
-             * Model
-             * @description Flash-Lite answers in about 1.4 s, Flash in 2.3 s (minimal thinking, measured 2026-09-23).
-             * @default gemini-3.5-flash-lite
-             */
-            model?: string;
-            /**
-             * Thinking
-             * @description Reasoning at the search model. Each step up costs about a second.
-             * @default minimal
-             * @enum {string}
-             */
-            thinking?: "minimal" | "low" | "medium" | "high";
-            /**
-             * Key variable
-             * @description The variable in data/.env that holds the Gemini API key.
-             * @default GEMINI_API_KEY
-             */
-            api_key_env?: string;
-            /**
-             * Searches per day
-             * @description Hard cap; past it the tool refuses until midnight.
-             * @default 100
-             */
-            max_per_day?: number;
-            /**
-             * Timeout (s)
-             * @description Seconds before a search gives up and he says it could not look it up.
-             * @default 15
-             */
-            timeout?: number;
-        };
         /** WinstonConfig */
         WinstonConfig: {
             /**
              * Version
              * @description Config file format version. Winston sets it.
-             * @default 1
+             * @default 2
              */
             version?: number;
             /**
@@ -3708,6 +3577,7 @@ export interface components {
              *       "model": "nemo-parakeet-tdt-0.6b-v3",
              *       "quantization": "int8",
              *       "hint_words": [],
+             *       "hint_words_removed": [],
              *       "fix_misspellings": true
              *     }
              */
@@ -3771,28 +3641,6 @@ export interface components {
             channels?: components["schemas"]["Channels"];
             /** @default {} */
             providers?: components["schemas"]["Providers"];
-            /**
-             * @default {
-             *       "sensors": {},
-             *       "web_search": {
-             *         "api_key_env": "GEMINI_API_KEY",
-             *         "enabled": false,
-             *         "max_per_day": 100,
-             *         "model": "gemini-3.5-flash-lite",
-             *         "provider": "gemini",
-             *         "thinking": "minimal",
-             *         "timeout": 15
-             *       },
-             *       "ask_claude": {
-             *         "effort": "low",
-             *         "enabled": false,
-             *         "max_usd_per_day": 3,
-             *         "max_usd_per_question": 0.5,
-             *         "model": "claude-opus-5"
-             *       }
-             *     }
-             */
-            tools?: components["schemas"]["ToolsConfig"];
             /**
              * @default {
              *       "enabled": true,
@@ -5746,26 +5594,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    ask_claude_auth_api_tools_ask_claude_auth_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ClaudeAuth"];
                 };
             };
         };

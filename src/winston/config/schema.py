@@ -236,9 +236,13 @@ class STTConfig(Model):
     hint_words: list[str] = Field(default_factory=list, title="Hint words",
                                   description="Names and words he should hear right. His name, cloned voices, "
                                               "Discord contacts and names from the Home Assistant list are added by "
-                                              "themselves; add the rest here, one word each, such as room names in "
-                                              "another language.",
+                                              "themselves (remove one with its x); add the rest here, one word "
+                                              "each, such as room names in another language.",
                                   json_schema_extra=ui(widget="hint_words"))
+    hint_words_removed: list[str] = Field(default_factory=list, title="Removed hint words",
+                                          description="Words he would add by himself that you took out; the "
+                                                      "Hint words field writes these.",
+                                          json_schema_extra=ui(hidden=True))
     fix_misspellings: bool = Field(True, title="Fix close misspellings",
                                    description="After speech to text, a word that sounds like a hint word and is "
                                                "spelled close to it becomes that word, so a misheard name comes "
@@ -518,71 +522,6 @@ class Providers(Model):
         return ha if ha is not None and ha.enabled else None
 
 
-class SensorPair(Model):
-    model_config = section("{brains}")
-    level: str = Field(title="Value sensor", description="Entity id of the value sensor.",
-                       json_schema_extra=ui(options="ha_entities", options_query={"domain": "sensor"}))
-    state: str | None = Field(None, title="State sensor",
-                              description="Optional companion state sensor (charging, etc.).",
-                              json_schema_extra=ui(options="ha_entities",
-                                                   options_query={"domain": "sensor,binary_sensor"}))
-
-
-class WebSearchConfig(Model):
-    model_config = section("{brains}", enabled_by="enabled", icon="gemini")
-    enabled: bool = Field(False, description="Let him look up current facts on the web. Only the search question "
-                                             "leaves the house.")
-    provider: Literal["gemini"] = Field("gemini", description="Search backend. gemini: Gemini with Google Search "
-                                                              "grounding (needs billing enabled on the key).",
-                                        json_schema_extra=ui(hidden=True, labels={"gemini": "Gemini with Google Search"},
-                                                             icons={"gemini": "gemini"}))
-    model: str = Field("gemini-3.5-flash-lite", description="Flash-Lite answers in about 1.4 s, Flash in 2.3 s "
-                                                             "(minimal thinking, measured 2026-09-23).",
-                       json_schema_extra=ui("advanced", options="gemini_models"))
-    thinking: Literal["minimal", "low", "medium", "high"] = Field("minimal", description="Reasoning at the search "
-                                                                  "model. Each step up costs about a second.",
-                                                                  json_schema_extra=ui("advanced"))
-    api_key_env: str = Field("GEMINI_API_KEY", title="Key variable",
-                             description="The variable in data/.env that holds the Gemini API key.",
-                             json_schema_extra=ui("advanced", secret=secret("GEMINI_API_KEY", "API key")))
-    max_per_day: int = Field(100, ge=0, title="Searches per day",
-                             description="Hard cap; past it the tool refuses until midnight.")
-    timeout: float = Field(15.0, ge=1, title="Timeout (s)",
-                           description="Seconds before a search gives up and he says it could not look it up.",
-                           json_schema_extra=ui("advanced"))
-
-
-class AskClaudeConfig(Model):
-    model_config = section("{brains}", enabled_by="enabled", icon="claude")
-    enabled: bool = Field(False,
-                          description="Hand hard questions to Claude. Uses the Claude Code login on this machine, "
-                                             "CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY. "
-                                             "Only the question leaves the house.")
-    model: str = Field("claude-opus-5",
-                       description="Claude model the question goes to. Opus is best at hard questions, Sonnet and "
-                                   "Haiku are faster and cheaper.",
-                       json_schema_extra=ui("advanced", options="claude_models"))
-    effort: Literal["low", "medium", "high"] = Field("low", description="Reasoning effort. Low answered in about 3 to "
-                                                     "5 s; each step up is slower.", json_schema_extra=ui("advanced"))
-    max_usd_per_day: float = Field(3.0, ge=0, title="Budget per day (USD)",
-                                   description="Past it the tool refuses until midnight. A Max 5x plan's monthly "
-                                               "Agent SDK credit is 100 USD.")
-    max_usd_per_question: float = Field(0.5, gt=0, title="Budget per question (USD)",
-                                        description="Hard cap for one question; a longer answer is cut off.",
-                                        json_schema_extra=ui("advanced"))
-
-
-class ToolsConfig(Model):
-    model_config = section("{brains}")
-    sensors: dict[str, SensorPair] = Field(default_factory=dict, title="Sensors",
-                                           description="Watched sensors by label; readings come with their age.",
-                                           json_schema_extra=ui(key_title="Label"))
-    web_search: WebSearchConfig = Field(WebSearchConfig(), title="Web search",
-                                        description="A cloud search for current facts: news, opening hours, prices.")
-    ask_claude: AskClaudeConfig = Field(AskClaudeConfig(), title="Ask Claude",
-                                        description="Claude in the cloud for questions too hard for the local brain.")
-
-
 class MemoryConfig(Model):
     model_config = section("{brains}", enabled_by="enabled")
     enabled: bool = Field(True,
@@ -759,8 +698,26 @@ class Shortcut(Model):
                                           "a scene with music that speaks for itself. A failure is still reported.")
 
 
+def _tools_to_extensions(data: dict[str, Any]) -> dict[str, Any]:
+    """Version 2 (2026-10-12): the tools section became the built-in extensions sensors, web and claude, with the
+    same settings. A Claude API key in the environment, without a token, stays the key Ask Claude uses."""
+    tools, ext = data.pop("tools", None) or {}, dict(data.get("extensions") or {})
+    if tools.get("sensors"):
+        ext.setdefault("sensors", {"enabled": True, "settings": {"sensors": tools["sensors"]}})
+    if web := tools.get("web_search"):
+        ext.setdefault("web", {"enabled": bool(web.get("enabled")), "settings": {
+            "api_key": web.get("api_key_env", "GEMINI_API_KEY"),
+            **{k: web[k] for k in ("model", "thinking", "max_per_day") if k in web}}})
+    if claude := tools.get("ask_claude"):
+        api_key = bool(os.environ.get("ANTHROPIC_API_KEY")) and not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")
+        ext.setdefault("claude", {"enabled": bool(claude.get("enabled")), "settings": {
+            **({"key": "ANTHROPIC_API_KEY"} if api_key else {}),
+            **{k: claude[k] for k in ("model", "effort", "max_usd_per_day", "max_usd_per_question") if k in claude}}})
+    return {**data, "extensions": ext, "version": 2}
+
+
 class WinstonConfig(Model):
-    version: int = Field(1, description="Config file format version. Winston sets it.",
+    version: int = Field(2, description="Config file format version. Winston sets it.",
                          json_schema_extra=ui("advanced"))
     assistant: AssistantConfig = AssistantConfig()
     region: RegionConfig = Field(default_factory=RegionConfig, title="Region")
@@ -774,7 +731,6 @@ class WinstonConfig(Model):
     vad: VADConfig = Field(VADConfig(), title="Voice activity")
     channels: Channels = Channels()
     providers: Providers = Providers()
-    tools: ToolsConfig = ToolsConfig()
     memory: MemoryConfig = MemoryConfig()
     announce: AnnounceConfig = AnnounceConfig()
     extensions: dict[str, ExtensionConfig] = Field(default_factory=dict, title="Extensions",
@@ -789,3 +745,11 @@ class WinstonConfig(Model):
                                       json_schema_extra=ui(restarts=["{brains}"]))   # a list: its items' section is not read
     logging: LoggingConfig = LoggingConfig()
     control: ControlConfig = ControlConfig()
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate(cls, data: Any) -> Any:
+        """An older file's settings in today's places, so it loads; the next save writes it as today's."""
+        if isinstance(data, dict) and int(data.get("version", 1)) < 2:
+            data = _tools_to_extensions(dict(data))
+        return data

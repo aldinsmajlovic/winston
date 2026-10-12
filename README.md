@@ -58,7 +58,8 @@ uv run winston up                         # everything; Ctrl-C stops it
 ```
 
 Open http://localhost:8700, paste your Home Assistant URL and token in settings, and talk.
-Optional keys (web search, Claude, Discord) are listed in [tools](docs/tools.md).
+Optional keys (web search, Claude, Discord) go on the extension card or page that uses them: see
+[built-in extensions](docs/built-in-extensions.md) and [Discord](docs/discord.md).
 
 ## Documentation
 

@@ -416,11 +416,14 @@ class Host:
                 choice = ec.tools.get(t["name"])
                 if choice is not None and not choice.enabled:
                     continue
+                manifest = self.described.get(ext_id, {}).get("manifest", {})
                 out.append({"name": brain_name(ext_id, t["name"]), "extension": ext_id, "tool": t["name"],
+                            "title": manifest.get("name") or ext_id, "icon": manifest.get("icon"),
                             "description": t["description"],
                             "parameters": self._resolve_parameters(ext_id, t["input_schema"]),
                             "tier": (choice.tier if choice and choice.tier else t["tier"]),
-                            "outside": t["outside"], "filler": t.get("filler"), "timeout": t.get("timeout", 10)})
+                            "outside": t["outside"], "filler": t.get("filler"), "filler_after": t.get("filler_after", 1),
+                            "timeout": t.get("timeout", 10)})
         return out
 
     def offered_tools(self) -> list[dict[str, Any]]:

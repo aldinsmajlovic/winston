@@ -73,6 +73,7 @@ class ToolSpec:
     outside: bool
     timeout: float
     filler: str | None
+    filler_after: float
     description: str
     arg_docs: dict[str, str]
 
@@ -198,11 +199,13 @@ class Extension:
     # tools
 
     def tool(self, tier: Tier, name: str | None = None, outside: bool = True, timeout: float = 10,
-             filler: str | None = None) -> Callable[[Callable], Callable]:
+             filler: str | None = None, filler_after: float = 1) -> Callable[[Callable], Callable]:
         if tier not in ("read", "act", "restricted"):
             raise ValueError(f"tier must be read, act or restricted, not {tier!r}")
         if not 0 < timeout <= 60:
             raise ValueError("a tool's timeout is at most 60 s")
+        if filler_after < 0:
+            raise ValueError("filler_after is seconds, 0 or more")
 
         def add(fn: Callable) -> Callable:
             _need_async(fn)
@@ -214,7 +217,8 @@ class Extension:
             description, arg_docs = _doc(fn)
             if not description:
                 raise ValueError(f"tool {tool_name!r} needs a docstring: its first paragraph describes it")
-            self.tools[tool_name] = ToolSpec(tool_name, fn, tier, outside, timeout, filler, description, arg_docs)
+            self.tools[tool_name] = ToolSpec(tool_name, fn, tier, outside, timeout, filler, filler_after,
+                                             description, arg_docs)
             return fn
         return add
 

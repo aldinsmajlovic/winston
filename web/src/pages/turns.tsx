@@ -82,7 +82,7 @@ function Turn({ turn, showDay, player }: { turn: TurnRecord; showDay: boolean; p
         </div>
       ) : null}
       {(turn.tools ?? []).map((tool, i) => (
-        <ToolLine key={i} name={tool.name} label={tool.label || tool.name} status={tool.ok === false ? 'error' : 'ok'} />
+        <ToolLine key={i} name={tool.name} label={tool.label || tool.name} status={tool.ok === false ? 'error' : 'ok'} icon={tool.icon} />
       ))}
       {turn.said ? <p className="max-w-[85%] text-lg/relaxed whitespace-pre-wrap">{turn.said}</p> : null}
       {outcome ? <span className="text-sm text-muted-foreground">{outcome}</span> : null}

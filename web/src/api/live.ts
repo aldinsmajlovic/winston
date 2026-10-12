@@ -16,7 +16,7 @@ export const clock = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], 
 export type Item =
   | { kind: 'user'; id: string; text: string; channel: string; turn?: string } // turn: its id in the turn record, once kept
   | { kind: 'reply'; id: string; text: string; done: boolean; channel: string }
-  | { kind: 'tool'; id: string; name: string; label: string; status: NonNullable<LiveEvent['status']> }
+  | { kind: 'tool'; id: string; name: string; label: string; status: NonNullable<LiveEvent['status']>; icon?: string | null }
   | { kind: 'announcement'; id: string; text: string; ts: number }
   | { kind: 'error'; id: string; text: string }
   | { kind: 'confirm'; id: string; label: string; status: NonNullable<LiveEvent['status']>; outcome: string }
@@ -62,7 +62,7 @@ function apply(feed: Feed, ev: LiveEvent): Feed {
       return { ...feed, items: replace(ev.reply ?? '', (item) => (item.kind === 'reply' ? { ...item, done: true } : item)) }
     case 'tool': {
       const key = ev.call ?? id
-      const tool: Item = { kind: 'tool', id: key, name: ev.name ?? '', label: ev.label ?? ev.name ?? '', status: ev.status ?? 'running' }
+      const tool: Item = { kind: 'tool', id: key, name: ev.name ?? '', label: ev.label ?? ev.name ?? '', status: ev.status ?? 'running', icon: ev.icon }
       return feed.items.some((item) => item.id === key)
         ? { ...feed, items: replace(key, () => tool) }
         : { ...feed, items: [...feed.items, tool] }

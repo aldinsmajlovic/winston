@@ -2,6 +2,7 @@
 
     uv run python tests/profiles_load.py
 """
+import os
 import sys
 from pathlib import Path
 
@@ -45,5 +46,20 @@ if got != {"tts"}:
     failed += 1; print(f"FAIL chunk length restarts {got}, want tts")
 else:
     print("ok   changing the chunk length restarts tts")
+# A version 1 file's tools section loads as the built-in extensions, with the same settings.
+v1 = {"version": 1, "llm": {"model": "x"}, "extensions": {"hevy": {"enabled": True}}, "tools": {
+    "sensors": {"Phone": {"level": "sensor.phone_battery_level"}},
+    "web_search": {"enabled": True, "provider": "gemini", "api_key_env": "GEMINI_API_KEY", "max_per_day": 50, "timeout": 15},
+    "ask_claude": {"enabled": False, "model": "claude-opus-5-5", "max_usd_per_day": 2.0}}}
+os.environ.pop("ANTHROPIC_API_KEY", None)                           # else it stays Ask Claude's key
+ext = WinstonConfig.model_validate(v1).model_dump(mode="json")["extensions"]
+want = {"hevy": (True, {}), "sensors": (True, {"sensors": {"Phone": {"level": "sensor.phone_battery_level"}}}),
+        "web": (True, {"api_key": "GEMINI_API_KEY", "max_per_day": 50}),
+        "claude": (False, {"model": "claude-opus-5-5", "max_usd_per_day": 2.0})}
+got = {k: (v["enabled"], v["settings"]) for k, v in ext.items()}
+if got != want:
+    failed += 1; print(f"FAIL version 1 tools: {got}")
+else:
+    print("ok   a version 1 tools section loads as the built-in extensions")
 print("\nall profiles and presets load" if not failed else f"\n{failed} failed")
 sys.exit(1 if failed else 0)

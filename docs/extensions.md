@@ -1,12 +1,13 @@
 # Extensions
 
 Approved 2026-09-29. Built: everything on this page but entities reaching Home Assistant, which wait
-for Winston's integration (UI track step 3 in the [plan](plan.md)). Seven extensions come with Winston,
-written on this standard alone: Agenda, Awareness, Hevy, Later, News, Reminders and Spotify
-([built-in extensions](built-in-extensions.md)). Added within v1 on 2026-10-10, for
+for Winston's integration (UI track step 3 in the [plan](plan.md)). Ten extensions come with Winston,
+written on this standard alone: Agenda, Ask Claude, Awareness, Hevy, Later, News, Reminders, Sensors,
+Spotify and Web search ([built-in extensions](built-in-extensions.md)). Added within v1 on 2026-10-10, for
 [computers](computer.md) and the vulnerabilities extension: a token for MCP servers over HTTP, the
 `devices` permission, and picking another extension's tool in settings. Added on 2026-10-11: the
-`tools` permission (calling the brain's own tools, for Later) and the diary through `memory`.
+`tools` permission (calling the brain's own tools, for Later) and the diary through `memory`. Added on
+2026-10-12, when web search and Ask Claude moved from the core onto the standard: `filler_after` on a tool.
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs
@@ -15,7 +16,7 @@ no secrets but the ones its own settings name. A personal one is a single file i
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/extensions-dark.png">
-  <img src="images/extensions-light.png" alt="The Extensions page: Speaking up, and cards for a coin flipper and an MCP server with their tools, tiers and switches" width="720">
+  <img src="images/extensions-light.png" alt="The Extensions page: Speaking up, and the Agenda card with what it may reach, its settings, its tool and its kind of speaking up" width="720">
 </picture>
 
 ## The smallest one
@@ -359,7 +360,7 @@ The options (`deliver`, `where`, `repeat`, `may_be_urgent`, `requested`, `outsid
 
 ### Tool decorator
 
-`@ext.tool(tier, name=None, outside=True, timeout=10, filler=None)` on
+`@ext.tool(tier, name=None, outside=True, timeout=10, filler=None, filler_after=1)` on
 `async def f(ctx, arg: T, other: T | None = None)`. Arguments are `str`, `int`, `float`, `bool`, a
 `Literal`, `date`, `datetime`, `When`, or a list of these; `T | None = None` makes one optional. A
 `When` is read by the core as `follow_up` reads times ("at six", "in 20 minutes", "tomorrow
@@ -617,9 +618,12 @@ extension, its check and the facts, 6 of 6.
 - **Results** travel as one JSON text, so a list or a string arrives as exactly what the tool
   returned, and are cut at 4,000 characters with a note.
 - **Time**: 10 s by default, up to 60 s with `timeout=`. `filler="Let me check."` is said on the
-  spoken channels when a result takes more than a second.
+  spoken channels when a result takes more than `filler_after` seconds (1); `filler_after=0` says it
+  as the call starts, for a tool that is always slow (a web search).
 - **Prompt cost**: each extension's tool schemas and context are counted on its card and in a total,
   like memory's size meter.
+- **On Talk and Turns** a call is one line with the extension's icon, its name and the call's first text
+  argument: "Web search: population of Sarajevo".
 
 ## Home Assistant entities
 
@@ -817,7 +821,7 @@ editing one's code restarts it on a running Winston.
 
 ## The Extensions page
 
-In the settings sidebar after Tools, under the Speaking up card: you (the person entity that says
+In the settings sidebar after Home Assistant, under the Speaking up card: you (the person entity that says
 whether you are home), your phone (Home Assistant's notify service for it), spoken nudges a day and
 when the briefing starts; the parts of the day and "after work" are under Advanced. A card per extension: its icon, name and state, a shield on anything not built in,
 Log, Restart and its switch in the title; then what it may reach (read before switching it on), a

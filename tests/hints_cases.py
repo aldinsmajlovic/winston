@@ -51,6 +51,11 @@ expect("an extra word for one transcription", "Omar" in [h.word for h in hints(c
 off = cfg.model_copy(deep=True)
 off.channels.discord.enabled = False
 expect("no contacts while Discord is off", "Erik" not in [h.word for h in hints(off)])
+off = cfg.model_copy(deep=True)
+off.stt.hint_words_removed = ["hektar", "Maria"]
+expect("a removed automatic word is left out", not {"Hektar", "Maria"} & {h.word for h in hints(off)})
+off.stt.hint_words.append("Hektar")
+expect("and comes back as yours when you add it", any(h.word == "Hektar" and h.source == "yours" for h in hints(off)))
 
 # corrections
 W = words + ["Aldin", "Sara", "Omar"]

@@ -394,6 +394,7 @@ class Runtime:
             t = self.mcp_tool(spec)
             tools.append({"name": spec.name, "description": spec.description, "tier": spec.tier,
                           "outside": spec.outside, "timeout": spec.timeout, "filler": spec.filler,
+                          "filler_after": spec.filler_after,
                           "input_schema": t.parameters})
         return {
             "manifest": ext.manifest.model_dump(),

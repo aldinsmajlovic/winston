@@ -145,6 +145,9 @@ class BrainTool(BaseModel):
     tier: str
     outside: bool
     filler: str | None = None
+    filler_after: float = 1
+    title: str = Field("", description="Its extension's name, for the tool's line on Talk")
+    icon: str | None = Field(None, description="Its extension's icon (lucide)")
     timeout: float = 10
 
 

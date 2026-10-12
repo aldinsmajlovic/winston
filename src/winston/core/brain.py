@@ -40,12 +40,9 @@ from winston.core.common import Once, entity_names, key, log_event, rewrap, word
 from winston.core.diary import Diary
 from winston.core.memory import make_memory_tools, prompt_block
 from winston.core.rooms import make_start_over_tool, plain_words, scoped_by_name
-from winston.core.tools.ask_claude import make_ask_claude_tool
 from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.diary import make_diary_tool
 from winston.core.tools.messaging import make_send_message_tool
-from winston.core.tools.sensors import make_sensor_tool
-from winston.core.tools.web_search import make_web_search_tool
 from winston.extension_host import client as extension_tools
 from winston.extension_host import texts as extension_texts
 from winston.core.verify import Verifier
@@ -94,7 +91,9 @@ _STAMP = re.compile(r"\[\d\d:\d\d(, room: [^\]]+)?\] ")
 def _vocal_events(cfg: WinstonConfig, channel: str) -> str:
     """When the TTS engine supports inline vocal events, tell the model it can use them in spoken
     replies. Breeze TTS 2 renders (laugh), (sigh), (cough), (clears throat); the speech server
-    rewrites [tag] to (tag), so the model writes [sigh] and the server handles the rest."""
+    rewrites [tag] to (tag), so the model writes [sigh] and the server handles the rest. Asked to use
+    them "sparingly", the 27B wrote none in 159 turns on the box and 0 of 28 chatty replies; the
+    examples and "most have room for one" are what get them written."""
     if channel not in SPOKEN:
         return ""
     engine = cfg.engines.get("tts")
@@ -104,9 +103,11 @@ def _vocal_events(cfg: WinstonConfig, channel: str) -> str:
     cmd = " ".join(engine.cmd) if engine.cmd else ""
     if "tts-breeze2" not in cwd and "tts-breeze2" not in cmd:
         return ""
-    return ("Your voice can express [sigh], [laugh], [cough] and [clears throat] inline. "
-            "Use them sparingly and only where a person would: a [sigh] before reluctant news, "
-            "a [laugh] when something is genuinely funny. Never force them.")
+    return ("Your voice turns [sigh], [laugh], [cough] and [clears throat] into real sounds when you write them "
+            "in a reply. Use them the way a person would: a [laugh] after a joke, yours or his, a [sigh] before "
+            "bad news or with sympathy, a [clears throat] before a correction or something formal. For example "
+            "\"[laugh] I walked right into that one, sir.\" or \"[sigh] Rain all weekend, I'm afraid.\" "
+            "Most conversational replies have room for one; a bare confirmation (\"Done, sir.\") has none.")
 
 
 def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice") -> str:
@@ -422,7 +423,7 @@ class Brain:
         # verifier.observer to its pipeline (core/verify.py).
         self.verifier = Verifier(cfg, channel)
         self._areas: dict[str, str] = {}
-        # A spoken channel sets this to say a line (an extension tool's filler when it is slow).
+        # A spoken channel sets this to say a line (an extension tool's filler while it runs).
         self.on_slow: Callable[[str], Awaitable[None]] | None = None
         self.tools_signature: str | None = None     # the extension tools it started with (extension_host.client)
 
@@ -446,8 +447,7 @@ class Brain:
             self._scope_by_name()
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
-        for local in (make_sensor_tool(self.cfg), *make_memory_tools(self.cfg), make_web_search_tool(self.cfg),
-                      make_ask_claude_tool(self.cfg), make_send_message_tool(self.cfg), make_start_over_tool(),
+        for local in (*make_memory_tools(self.cfg), make_send_message_tool(self.cfg), make_start_over_tool(),
                       make_diary_tool(self.cfg)):
             if local:
                 schema, handler = local

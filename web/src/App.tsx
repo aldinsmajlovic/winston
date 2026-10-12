@@ -15,7 +15,6 @@ import TurnsPage from '@/pages/turns'
 import StatusPage from '@/pages/status'
 import SystemPage from '@/pages/system'
 import TalkPage from '@/pages/talk'
-import ToolsPage from '@/pages/tools'
 import VoicePage from '@/pages/voice'
 
 /** Settings: the sidebar and its pages, behind the Talk page. */
@@ -47,7 +46,6 @@ export default function App() {
         <Route path="/speech" element={<Navigate to="/voice" replace />} />
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/home-assistant" element={<HomeAssistantPage />} />
-        <Route path="/tools" element={<ToolsPage />} />
         <Route path="/extensions" element={<ExtensionsPage />} />
         <Route path="/engines" element={<EnginesPage />} />
         <Route path="/engines/:name" element={<EnginePage />} />

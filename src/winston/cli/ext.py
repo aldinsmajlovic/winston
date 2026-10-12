@@ -242,12 +242,13 @@ def test(which: str = typer.Argument(..., metavar="ID_OR_PATH",
 
     from winston.extension_host.sources import Source, command, discover
     path = Path(which)
-    if not path.exists():
+    if not tests_for(path) and "/" not in which and not which.endswith(".py"):     # an id ("web" is also a folder here)
         src = discover(load()).get(which)
-        if src is None or not src.target or ":" in src.target and not Path(src.target).exists():
+        if src is not None and src.target and not (":" in src.target and not Path(src.target).exists()):
+            path = Path(src.target)
+        elif not path.exists():
             print(f"no extension {which} with files to test here")
             raise typer.Exit(1)
-        path = Path(src.target)
     if not tests_for(path):
         print(f"no tests for {which} (a {path.stem}_test.py beside it, or test_*.py in its folder)")
         raise typer.Exit(1)

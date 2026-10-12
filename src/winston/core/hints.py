@@ -93,12 +93,15 @@ def automatic(cfg: WinstonConfig, clone_names: list[str] | None = None) -> list[
 
 
 def hints(cfg: WinstonConfig, extra: list[str] | tuple[str, ...] = (), clone_names: list[str] | None = None) -> list[Hint]:
-    """Every hint word once (the first source wins), the user's own last."""
+    """Every hint word once (the first source wins), the user's own last. An automatic word the user
+    removed (stt.hint_words_removed) is left out."""
     seen: set[str] = set()
     out: list[Hint] = []
+    removed = {_fold(w) for w in cfg.stt.hint_words_removed}
+    auto = [h for h in automatic(cfg, clone_names) if _fold(h.word) not in removed]
     mine = [Hint(w.strip(), "yours") for w in cfg.stt.hint_words if w.strip()]
     extras = [Hint(_display(w), "voice") for n in extra for w in n.split() if len(_fold(w)) >= MIN_LETTERS]
-    for h in [*automatic(cfg, clone_names), *extras, *mine]:
+    for h in [*auto, *extras, *mine]:
         if (k := _fold(h.word)) and k not in seen:
             seen.add(k)
             out.append(h)

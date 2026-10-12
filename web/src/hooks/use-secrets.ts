@@ -44,7 +44,6 @@ export function discardSecrets(names?: string[]) {
 }
 
 export const secretsKey = $api.queryOptions('get', '/api/secrets').queryKey
-const claudeAuthKey = $api.queryOptions('get', '/api/tools/ask_claude/auth').queryKey
 
 /** Which variables are set (never their values), what names them and what reads them. */
 export function useSecretStatus() {
@@ -85,7 +84,6 @@ export function useSecretsDraft() {
 
   const refresh = useCallback(() => {
     void client.invalidateQueries({ queryKey: secretsKey })
-    void client.invalidateQueries({ queryKey: claudeAuthKey })
     void client.invalidateQueries({ queryKey: statusKey })
     // Lists that need a key (Discord users with the bot token) can answer now.
     void client.invalidateQueries({ queryKey: ['get', '/api/options/{name}'] })

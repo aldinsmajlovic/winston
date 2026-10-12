@@ -34,8 +34,8 @@ transport), connecting through winstond to the voice channel.
 ## Winston
 
 - The conversation is the page. You on the right in a soft bubble, Winston on the left as plain text.
-  Tool calls are one muted line with an icon ("Searched the web for ..."), announcements a line with
-  a bell and the time.
+  Tool calls are one muted line with an icon ("Turned on Kitchen lights"; an extension's with its own icon,
+  "Web search: population of Sarajevo"), announcements a line with a bell and the time.
 - His presence is his logo, one component, `Presence`, driven by his state (idle, listening,
   thinking, speaking); see [identity](identity.md). Pages never draw their own version of it.
 - Voice and typing sit side by side at the bottom: a text field and one round talk button, with New

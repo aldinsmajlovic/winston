@@ -35,7 +35,7 @@ links to it.
 | `docs/computer.md` | The computer server: opening things, status, logs and updates on each computer |
 | `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
-| `docs/built-in-extensions.md` | The extensions that come with Winston: Hevy, news, reminders |
+| `docs/built-in-extensions.md` | The extensions that come with Winston |
 | `docs/plan.md` | Milestones and their status |
 | `docs/decisions.md` | What changed and why, one line each |
 

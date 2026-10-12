@@ -26,10 +26,6 @@ from winston.providers.home_assistant import HomeAssistant, state_text
 
 TIMEOUT = 4
 
-# Fallback when the Anthropic model list cannot be read (no API key: ask_claude runs on a login).
-CLAUDE_MODELS = ["claude-opus-5", "claude-opus-5-5", "claude-sonnet-5", "claude-fable-5-1", "claude-haiku-4-5"]
-
-
 class Choice(BaseModel):
     value: str
     label: str
@@ -367,49 +363,6 @@ async def _voices(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="voices", choices=choices, source=f"{voices} and {url}", ok=ok)
 
 
-async def _gemini_models(cfg: WinstonConfig, params: dict) -> Options:
-    key = _secret(cfg.tools.web_search.api_key_env)
-    if not key:
-        return Options(name="gemini_models", choices=[], source=f"{cfg.tools.web_search.api_key_env} is not set", ok=False)
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get("https://generativelanguage.googleapis.com/v1beta/models",
-                            params={"pageSize": 1000}, headers={"x-goog-api-key": key})
-        r.raise_for_status()
-        choices = []
-        for m in r.json().get("models", []):
-            name = m.get("name", "").removeprefix("models/")
-            if not name.startswith("gemini") or "generateContent" not in m.get("supportedGenerationMethods", []):
-                continue
-            if any(k in name for k in ("image", "tts", "audio", "live", "embedding", "robotics", "computer-use")):
-                continue            # not text models; search needs a plain chat model
-            choices.append(Choice(value=name, label=m.get("displayName") or name, hint=name, icon="gemini",
-                                  group="Flash-Lite" if "lite" in name else "Flash" if "flash" in name else "Pro"
-                                  if "pro" in name else "Other"))
-        choices.sort(key=lambda c: (c.group, c.value))
-        return Options(name="gemini_models", choices=choices, source="Gemini API")
-    except Exception as e:                                              # noqa: BLE001
-        return Options(name="gemini_models", choices=[], source=f"Gemini API: {type(e).__name__}", ok=False)
-
-
-async def _claude_models(cfg: WinstonConfig, params: dict) -> Options:
-    fallback = Options(name="claude_models", source="built-in list",
-                       choices=[Choice(value=m, label=m, icon="claude") for m in CLAUDE_MODELS])
-    key = _secret("ANTHROPIC_API_KEY")
-    if not key:
-        return fallback
-    try:
-        async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get("https://api.anthropic.com/v1/models", params={"limit": 100},
-                            headers={"x-api-key": key, "anthropic-version": "2023-06-01"})
-        r.raise_for_status()
-        choices = [Choice(value=m["id"], label=m.get("display_name") or m["id"], hint=m["id"], icon="claude")
-                   for m in r.json().get("data", [])]
-        return Options(name="claude_models", choices=choices, source="Anthropic API") if choices else fallback
-    except Exception:                                                   # noqa: BLE001
-        return fallback
-
-
 def _ha(cfg: WinstonConfig):
     """The Home Assistant settings, or None when there are none or they are switched off."""
     return cfg.providers.ha
@@ -575,7 +528,7 @@ def _extension_tools(cfg: WinstonConfig, params: dict) -> Options:
 PROVIDERS = {
     "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
     "hint_words": _hint_words, "memory_topics": _memory_topics, "extension_tools": _extension_tools,
-    "llm_models": _llm_models, "voices": _voices, "gemini_models": _gemini_models, "claude_models": _claude_models,
+    "llm_models": _llm_models, "voices": _voices,
     "ha_entities": _ha_entities, "ha_domains": _ha_domains, "ha_notify": _ha_notify, "ha_areas": _ha_areas, "discord_users": _discord_users,
 }
 

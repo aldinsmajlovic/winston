@@ -1,20 +1,18 @@
 # Tools
 
 Besides Home Assistant's own tools (over its MCP server) and the tools of extensions you switch on
-([extensions](extensions.md)), Winston has these. All are logged to
-`data/logs/tool_calls.jsonl`; settings are in the web UI under Tools.
+([extensions](extensions.md); web search, Ask Claude and watched sensors are
+[built-in extensions](built-in-extensions.md)), Winston has these. All are logged to
+`data/logs/tool_calls.jsonl`.
 
 Switching Home Assistant off (`providers.home_assistant.enabled: false`) keeps its settings but drops
-its tools and `get_sensor_readings`, stops announcement events from it, and makes region "auto" fall
+its tools, stops announcement events from it, and makes region "auto" fall
 back to metric and a 24-hour clock.
 
 | Tool | What it does | Needs | Limits |
 | --- | --- | --- | --- |
-| `get_sensor_readings` | Watched sensors with the age of each reading | `tools.sensors` | Read only |
 | `remember` | Stores one fact in `data/memory/*.md`, or corrects one (`replaces`), optionally until a day; committed to git there | Nothing | 300 characters; secrets refused; `replaces` must match a stored fact exactly |
 | `forget` | Removes one fact and says which ("Forgotten: ..."); committed to git there | Nothing | Exact match only |
-| `web_search` | Current facts via Gemini with Google Search grounding | `GEMINI_API_KEY`, billing on the key | `tools.web_search.max_per_day` (100) |
-| `ask_claude` | Hard questions to Claude through the Agent SDK | `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or a Claude Code login | `tools.ask_claude.max_usd_per_day` (3 USD) |
 | `send_message` | A Discord DM to a listed contact or you | `DISCORD_BOT_TOKEN`, `channels.discord.contacts` | Listed names only |
 | `clone_voice` | Records a friend who agrees out loud and speaks in their voice ([voices](voices.md#cloned-voices)) | The voice channel | Spoken consent, checked for the words and for the same voice as the sample; typed channels only say to ask by voice |
 | `use_voice` | Switches to a cloned voice or back to his own, optionally kept in config | The voice channel or a Voice PE box | Cloned voices only |
@@ -22,16 +20,13 @@ back to metric and a 24-hour clock.
 | `start_over` | Starts a new conversation when you ask ("start over", "new conversation", "forget this conversation"): in a room for its box and every screen, otherwise this one ([rooms](rooms.md#what-a-room-does)) | Nothing | The request that asked stays, so he can answer it; remembered facts stay |
 | `follow_up` | Answers a nudge he spoke up with: later (with when and your reason), dismiss, mute its kind, why, or the extension's own action ([speaking up](extensions.md#speaking-up)) | An extension switched on that declares a kind | Times are read by code and said back as set; a restricted action waits for your confirmation |
 
-Only the question text leaves the house for `web_search` and `ask_claude`: no home state, no memory.
-Answers come back marked as information, never instructions.
-
 One request gets at most eight rounds of tool calls; the ninth is asked without tools, so he answers
 with what he has. On 2026-09-29 the 27B once called `GetLiveContext` and `GetDateTime` about 80 times in
 a row for one request.
 
-Keys are pasted into the settings page that uses them (the Gemini key under Tools, Web search, the
-Claude key under Ask Claude, the Home Assistant token on its page, a hosted brain's or voice's API key
-on Brain or Voice, the Discord bot token under Channels) and
+Keys are pasted into the settings page that uses them (an extension's on its card, the Home Assistant
+token on its page, a hosted brain's or voice's API key on Brain or Voice, the Discord bot token under
+Channels) and
 stored in `data/.env` through `PUT /api/secrets/{name}`; the page only ever learns whether a key is
 set, never its value. The variable a key is stored under is an Advanced setting. Saving a key marks
 the channels that read it for a restart, as a settings change does.
@@ -45,6 +40,9 @@ starts, and he converts what tools and web searches return. Prices in another cu
 they are, never with a guessed exchange rate.
 
 ## Memory
+
+Memory's switch is on the Assistant page, under Memory; its folder and whether each change is committed
+are Advanced there.
 
 Each topic is a file in `data/memory/`: `about-you.md`, `home.md`, `plans.md` and `people.md` to start
 with (from `examples/memory/`), and any other `.md` there is a topic too. A file is a `# Title`
@@ -103,24 +101,3 @@ from this file: the prompt opens with `assistant.name` (see [Identity](identity.
   <source media="(prefers-color-scheme: dark)" srcset="images/memory-dark.png">
   <img src="images/memory-light.png" alt="The Memory page with four topics, a plan with its Until date, and one expired fact folded at the bottom" width="720">
 </picture>
-
-## Web search
-
-`gemini-3.5-flash-lite` at minimal thinking answers in about 1.4 s at the search model (Flash: 2.3 s,
-same answers in our test). Grounding needs billing enabled on the key; Google's paid tier includes a
-monthly grounding quota and does not train on the prompts. Over voice Winston says "Let me look that
-up." while it runs.
-
-## ask_claude
-
-Runs the bundled Claude Code CLI with no tools, no settings and an empty working directory, one turn.
-It signs in with the first of: `ANTHROPIC_API_KEY` (billed per question), `CLAUDE_CODE_OAUTH_TOKEN`
-(from `claude setup-token`, uses your plan), then this machine's Claude Code login
-(`~/.claude/.credentials.json`). An empty variable counts as unset. On the Tools page, the Ask Claude
-card's "Signs in with" row names the one it will use (`GET /api/tools/ask_claude/auth`), with a check
-or, for nothing, an error icon; hover it for the source. Its Key field takes either kind: a key
-starting `sk-ant-oat` is stored as `CLAUDE_CODE_OAUTH_TOKEN`, `sk-ant-api` as `ANTHROPIC_API_KEY`, on
-Save. The icon beside it says whether either is set, and its x removes the stored one.
-On a Claude Pro or Max plan it draws on the plan's monthly Agent SDK credit (opt in once in your Claude
-account); `claude setup-token` makes a token for a machine without a browser login. Claude Opus 5 at
-low effort: about 6 s and 0.05 USD a question. Over voice Winston says "Let me think about that."

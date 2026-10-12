@@ -1,7 +1,7 @@
 """Secrets in data/.env, set and removed from the web UI. The config names variables (fields with
 `secret` metadata in the schema); this module says which of them hold a value and writes new values,
-never reading one back out. Only names the config points at (or a schema default for such a field) and
-the two Claude names can be written, and only through a winstond that listens on this machine alone.
+never reading one back out. Only names the config points at (or a schema default for such a field) can
+be written, and only through a winstond that listens on this machine alone.
 
 Plan §6 rule 5: no secrets in prompts, and none in API responses either."""
 import ipaddress
@@ -18,9 +18,6 @@ from loguru import logger
 from winston.config import data_dir
 from winston.config.restarts import _deref, restarts_for
 
-CLAUDE_NAMES = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
-CLAUDE_PREFIX = {"ANTHROPIC_API_KEY": "sk-ant-api", "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat"}
-CLAUDE_PATH = ["tools", "ask_claude"]
 NAME = re.compile(r"^[A-Z][A-Z0-9_]{1,63}$")
 # Variables that steer processes rather than hold a credential: never writable from the UI.
 DENY = {"PATH", "HOME", "USER", "LOGNAME", "SHELL", "PWD", "TMPDIR", "TEMP", "TMP", "LANG", "TERM", "DISPLAY",
@@ -97,8 +94,7 @@ def restarts(config: dict, schema: dict, paths: list[list[str]]) -> set[str]:
     """What must restart to read a new value of a variable these fields name: the same as changing them."""
     out: set[str] = set()
     for path in paths:
-        target = path if path != CLAUDE_PATH else CLAUDE_PATH + ["model"]
-        out |= restarts_for(config, _set_in(config, target, "\0changed"), schema)
+        out |= restarts_for(config, _set_in(config, path, "\0changed"), schema)
     return out
 
 
@@ -117,8 +113,7 @@ def is_set(name: str) -> bool:
 
 
 def allowed(name: str, config: dict, schema: dict) -> bool:
-    return not denied(name) and (name in CLAUDE_NAMES or name in references(config, schema)
-                                 or name in schema_defaults(schema))
+    return not denied(name) and (name in references(config, schema) or name in schema_defaults(schema))
 
 
 def check_value(name: str, value: str):
@@ -130,8 +125,6 @@ def check_value(name: str, value: str):
         raise HTTPException(422, "one line only")
     if "${" in value:
         raise HTTPException(422, "a key cannot hold ${; data/.env would expand it into another variable")
-    if (prefix := CLAUDE_PREFIX.get(name)) and not value.startswith(prefix):
-        raise HTTPException(422, f"{name} takes a key starting {prefix}")
 
 
 def _loopback(host: str) -> bool:

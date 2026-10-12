@@ -98,7 +98,7 @@ export function deref(schema: JsonSchema, root: JsonSchema): JsonSchema {
 }
 
 /** The schema of a nested section, e.g. ['providers', 'home_assistant']. A key that is not a
- * property resolves through additionalProperties, so ['tools', 'sensors', 'item'] is one sensor. */
+ * property resolves through additionalProperties, so ['engines', 'item'] is one engine. */
 export function section(root: JsonSchema, path: string[]): JsonSchema {
   let current = deref(root, root)
   for (const key of path) {

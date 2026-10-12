@@ -37,7 +37,7 @@ State = Literal["idle", "listening", "thinking", "speaking"]
 class LiveEvent(BaseModel):
     """One thing that happened. Which fields are set depends on `type`:
     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
-    tool: call, name, status, label, ms. announcement: text. error: text.
+    tool: call, name, status, label, ms, icon (an extension's). announcement: text. error: text.
     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
     ok, error, declined or expired), text (the outcome): a restricted tool waiting for you to confirm it.
@@ -58,6 +58,7 @@ class LiveEvent(BaseModel):
     name: str | None = None
     status: Literal["running", "ok", "error", "waiting", "declined", "expired"] | None = None
     label: str | None = None
+    icon: str | None = None
     ms: int | None = None
     room: str | None = None
     held_by: str | None = None
@@ -138,9 +139,6 @@ _VERBS = {
     "hasslightset": ("Setting {t}", "Set {t}", "Could not set {t}"),
     "getlivecontext": ("Checking the home", "Checked the home", "Could not check the home"),
     "getdatetime": ("Checking the time", "Checked the time", "Could not check the time"),
-    "get_sensor_readings": ("Reading sensors", "Read sensors", "Could not read sensors"),
-    "web_search": ("Searching the web for {q}", "Searched the web for {q}", "Web search failed"),
-    "ask_claude": ("Asking Claude", "Asked Claude", "Could not reach Claude"),
     "remember": ("Remembering {q}", "Remembered {q}", "Could not remember that"),
     "forget": ("Forgetting {q}", "Forgot {q}", "Could not forget that"),
     "send_message": ("Messaging {t}", "Messaged {t}", "Could not message {t}"),
@@ -149,9 +147,27 @@ _VERBS = {
 }
 
 
+# Extension tools by the name the brain sees: their extension's name and icon, as winstond lists them.
+EXTENSION_TOOLS: dict[str, tuple[str, str | None]] = {}
+
+
+def know_extension_tools(tools: list[dict]) -> None:
+    for t in tools:
+        EXTENSION_TOOLS[t["name"]] = (t.get("title") or t["extension"], t.get("icon"))
+
+
+def tool_icon(name: str) -> str | None:
+    return EXTENSION_TOOLS.get(name, ("", None))[1]
+
+
 def tool_label(name: str, args: dict | None, status: str) -> str:
-    """"Turned on Kitchen lights", "Searched the web for population of Sarajevo"."""
+    """"Turned on Kitchen lights"; an extension's tool by its extension and first text argument, "Web search:
+    population of Sarajevo"."""
     args = args if isinstance(args, dict) else {}
+    if name in EXTENSION_TOOLS:
+        title = EXTENSION_TOOLS[name][0]
+        detail = next((v.strip() for v in args.values() if isinstance(v, str) and v.strip()), "")
+        return f"{title} failed" if status == "error" else f"{title}: {detail}" if detail else title
     base = name.split("__")[-1]
     target = args.get("name") or args.get("to") or args.get("area") or "something"
     if not args.get("name") and args.get("area") and args.get("domain"):
@@ -226,14 +242,14 @@ class LiveObserver(BaseObserver):
                 args = c.arguments if isinstance(c.arguments, dict) else {}
                 self._calls[c.tool_call_id] = (time.perf_counter(), c.function_name, args)
                 self._emit("tool", call=c.tool_call_id, name=c.function_name, status="running",
-                           label=tool_label(c.function_name, args, "running"))
+                           label=tool_label(c.function_name, args, "running"), icon=tool_icon(c.function_name))
         elif isinstance(f, FunctionCallResultFrame):
             if not self._called(("result", f.tool_call_id)):
                 return
             t0, name, args = self._calls.pop(f.tool_call_id, (time.perf_counter(), f.function_name, {}))
             status = "ok" if result_ok(f.result) and not f.error else "error"
             self._emit("tool", call=f.tool_call_id, name=name, status=status, label=tool_label(name, args, status),
-                       ms=round((time.perf_counter() - t0) * 1000))
+                       icon=tool_icon(name), ms=round((time.perf_counter() - t0) * 1000))
         elif isinstance(f, BotStartedSpeakingFrame):
             self._state("speaking")
         elif isinstance(f, BotStoppedSpeakingFrame):

@@ -1,18 +1,21 @@
 # Built-in extensions
 
-Seven extensions come with Winston, in `src/winston/extensions/`, each written against the public
+Ten extensions come with Winston, in `src/winston/extensions/`, each written against the public
 SDK alone ([extensions](extensions.md)): nothing in the core knows them by name. They are off until
 you switch them on, on the Extensions page or with `winston ext enable ID`.
 
 | Extension | Speaks up | His tools | Reaches |
 | --- | --- | --- | --- |
 | **Agenda** (`agenda`) | "Coming up": 30 minutes before each event; "Today's events" in the briefing | `agenda_upcoming` | Home Assistant (read: the calendars you pick) |
+| **Ask Claude** (`claude`) | Nothing | `claude_ask` | Claude (api.anthropic.com), through the Claude Code CLI |
 | **Awareness** (`awareness`) | "Goodnight": after a busy day, when the evening goes quiet | None | winstond (reads the day's turns) |
 | **Hevy** (`hevy`) | "Time to train": no workout for 3 days, when you are home; firmer from day 5 | `hevy_get_training` | api.hevyapp.com |
 | **Later** (`later`) | "Done as asked", "Could not do it" | `later_add`, `later_waiting`, `later_cancel` | The brain's tools (act), presence, Home Assistant (read) |
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model, memory (read) |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
+| **Sensors** (`sensors`) | Nothing | `sensors_get_readings` | Home Assistant (read: the sensors you pick) |
 | **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_queue`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
+| **Web search** (`web`) | Nothing | `web_search` | Gemini (generativelanguage.googleapis.com) |
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
 `winston check unit`.
@@ -37,6 +40,23 @@ project with the Calendar API, a published consent screen, or the sign-in lapses
 web application OAuth client whose redirect is `https://my.home-assistant.io/redirect/oauth`). Its
 Remote Calendar with Google's private iCal address needs no Google Cloud project, but reads it only
 once a day, too seldom for "in 30 minutes".
+
+## Ask Claude
+
+Hard questions go to Claude: reasoning, explanations, writing, planning, maths. It runs the Claude Code
+CLI bundled with the Claude Agent SDK (in its own environment, made by uv) with no tools, no settings
+and an empty working directory, one turn, so Claude sees only the question, and the answer comes back
+marked as information.
+
+- **Signs in** with the card's key when one is set: a token from `claude setup-token` (`sk-ant-oat...`)
+  draws on a Claude Pro or Max plan's monthly Agent SDK credit (opt in once in your Claude account),
+  an API key (`sk-ant-api...`) is billed per question. With no key, this machine's Claude Code login
+  (`~/.claude/.credentials.json`). The status line says which, and what was spent today.
+- **Budget**: `max_usd_per_day` (3 USD), from the cost the SDK reports, and `max_usd_per_question`
+  (0.5 USD, Advanced).
+- **`claude_ask`**: says "Let me think about that." as the call starts. Claude Opus 5 at low effort
+  (`model` and `effort` are Advanced): 4.4 s and 0.04 USD for an explanation through the brain
+  on 2026-10-12.
 
 ## Awareness
 
@@ -137,6 +157,16 @@ minutes"), and survives a restart. A repeating one (daily, weekdays, weekly) kee
 clock across daylight saving and moves on once said. The same reminder asked for twice is set once.
 **Entity**: the next reminder, as a timestamp.
 
+## Sensors
+
+Sensors you pick, such as phone batteries, with how long ago each last changed: Home Assistant's live
+context has no timestamps, so a reading can be hours old without him knowing. Each entry on the card
+has a label, a value sensor and an optional state sensor (charging); picking them lets Sensors read
+them, exposed to the brain or not.
+
+- **`sensors_get_readings`**: "Phone: 91% (discharging), last changed 45 minutes ago" for each, and he
+  says how old a reading is past about 30 minutes. 34 ms through the brain.
+
 ## Spotify
 
 Spotify on the speakers: the box in the room you are in, and whatever is plugged into its jack. It runs
@@ -171,6 +201,18 @@ Assistant permission set to act, and the light script and restore scene exposed 
 Not Home Assistant's Spotify integration or Music Assistant: the integration is a remote for devices
 that already are Spotify Connect speakers and cannot search, and the box is not one; Music Assistant
 reaches a box through Home Assistant, which would take the box's microphone from Winston.
+
+## Web search
+
+Current facts the brain cannot know: populations, prices, exchange rates, results, news. Gemini with
+Google Search grounding reads the pages and answers in a sentence or two, so the brain never sees raw
+web text, and only the question leaves the house. It needs a Gemini API key from aistudio.google.com
+(stored as `GEMINI_API_KEY`) with billing enabled; grounding answers 429 without it. Google's paid tier
+includes a monthly grounding quota and does not train on the prompts.
+
+- **`web_search`**: says "Let me look that up." as the call starts; at most `max_per_day` (100) a day.
+  `gemini-3.5-flash-lite` at minimal thinking answers in about 1.4 s at the search model (Flash: 2.3 s,
+  same answers in our test; `model` and `thinking` are Advanced). Through the brain on 2026-10-12: 1.3 s.
 
 ## Vulnerabilities
 

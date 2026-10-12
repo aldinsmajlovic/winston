@@ -1,4 +1,4 @@
-import { Activity, ArrowLeft, BookOpen, Bot, Brain, Cpu, Mic, Monitor, Moon, Puzzle, Radio, Settings, Sun, Wrench } from 'lucide-react'
+import { Activity, ArrowLeft, BookOpen, Bot, Brain, Cpu, Mic, Monitor, Moon, Puzzle, Radio, Settings, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
@@ -36,7 +36,6 @@ const nav = [
   { to: '/voice', label: 'Voice', Icon: Mic },
   { to: '/channels', label: 'Channels', Icon: Radio },
   { to: '/home-assistant', label: 'Home Assistant', Icon: HomeAssistantLogo },
-  { to: '/tools', label: 'Tools', Icon: Wrench },
   { to: '/extensions', label: 'Extensions', Icon: Puzzle },
   { to: '/engines', label: 'Engines', Icon: Cpu },
   { to: '/system', label: 'System', Icon: Settings },

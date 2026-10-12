@@ -238,16 +238,6 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     link = RoomLink(room, f"voice:{uuid.uuid4().hex[:8]}", http_sync(CFG)) if room else None
     gate = MicGate(wake_phrases(CFG) if room else None)
 
-    @brain.llm.event_handler("on_function_calls_started")
-    async def on_function_calls_started(service, function_calls):
-        # A web search or a question to Claude takes seconds; say so instead of leaving silence. Spoken by code, not the
-        # model, so it cannot turn into a claim about the answer.
-        names = {c.function_name for c in function_calls}
-        if "ask_claude" in names:
-            await worker.queue_frames([TTSSpeakFrame("Let me think about that.")])
-        elif "web_search" in names:
-            await worker.queue_frames([TTSSpeakFrame("Let me look that up.")])
-
     pipeline = Pipeline([
         transport.input(),      # mic audio from the browser
         gate.audio,             # silence while the room's box has the mic
@@ -283,7 +273,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     brain.verifier.deliver = correct
 
     async def filler(text: str):
-        """An extension tool is slow: its own line covers the wait, spoken by code, never kept as said."""
+        """An extension tool's own line covers its wait, spoken by code, never kept as said."""
         await worker.queue_frames([TTSSpeakFrame(text, append_to_context=False)])
     brain.on_slow = filler
 

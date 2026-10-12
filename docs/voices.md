@@ -274,8 +274,10 @@ STT 1.20s audio -> 'Hey Winson.' -> 'Hey Winston.' (Winson -> Winston) in 180 ms
 ```
 
 On the Voice page, Hearing shows the automatic words with their source's icon (the source in the
-tooltip), yours with a Remove x, and a box to add more; the (i) on Hint words says what the current
-engine does with them. `tests/hints_cases.py` (in `winston check unit`) checks the list, the
+tooltip), yours after them, and a box to add more; the (i) on Hint words says what the current engine
+does with them. Every word has a Remove x. Removing one of the automatic words crosses it out with an
+Add back button and stores it in `stt.hint_words_removed`, so it stays out when its source lists it
+again (a lamp alias that keeps getting misheard into other words, say). `tests/hints_cases.py` (in `winston check unit`) checks the list, the
 corrections and 200 ordinary English sentences that must come through unchanged. "I modeled in" for
 "I'm" and a name is out of reach: every word in it is a common one.
 
@@ -481,3 +483,27 @@ audio is ready before the pause ends); the backbone goes back to bf16 (in 8 bits
 slower, 0.57 against 0.45 s per second of speech, first byte 164 against 154 ms, and nobody had
 listened to it); and the brain's value cache goes back to q8_0 (q4_0 freed 192 MB, not the 370 to
 750 MB claimed, and gave no speed on this card).
+
+### Sounding like a person, 12 October
+
+With Breeze as the voice, spoken channels get a line in the prompt (`core/brain.py:_vocal_events`)
+saying the voice turns `[sigh]`, `[laugh]`, `[cough]` and `[clears throat]` into sounds. Asked to use
+them "sparingly", the 27B wrote none: 0 of 159 turns on the box on 10 to 12 October, 0 of 28 chatty
+test replies. The line now gives when each fits, two examples, and "most conversational replies have
+room for one". Fillers are the persona's: "Hm,", "Well,", "Oh," now and then, an "uh" where a word
+is reached for. On the same 14 requests twice, thinking off: a tag in 6 of 28 (none on "Thanks,
+that's all"), an opener or filler in 11 of 28. An "uh" or "um" is still rare (1 of 28 at best);
+asking harder made him open every reply with "Oh," or "Well," and copy the example word for word.
+
+At guidance 1.0 (Breeze's default, one branch) a tag takes most of the time: the same line with
+`[sigh]` or `[clears throat]` ran 0.7 to 1.4 s longer in 6 of 6 tries, with `[laugh]` in 1 of 3.
+Upstream says a guidance scale above 1 makes tags more reliable; it runs two branches, and the card
+has about 1 GB free, so it is not tried yet.
+
+The words themselves read as written: more "it is" and "I am" than contractions (19 to 13), 11 stock
+lines ("sorry to hear that", "did you know", "truly") and 6 of 64 sentences under five words. Two
+rules in the persona (`examples/persona.md` has them): speak, don't write (always contract, mix a
+two-word sentence with a longer one, fragments and asides are fine), and skip the stock lines, reacting
+to the thing itself instead. Same 28 replies: 0 uncontracted to 42 contracted, 6 stock lines, median
+sentence 9 words instead of 12. An example reply in the rule was copied nearly word for word ("Dead
+again? You and that code, sir."), so the rule describes the reaction instead of showing one.

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import { fieldId, useSectionErrors } from '@/api/field-errors'
 import { KindIcon } from '@/components/kind-icon'
 import { SchemaForm, type FormContext } from '@/components/schema-form'
@@ -44,12 +44,19 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
     [schema, path],
   )
   const errors = useSectionErrors(path, isObject)
+  // rjsf skips redrawing a field whose props are deep-equal and counts every function as equal, so a
+  // field can hold an old setAt; it reaches the current page through the ref.
+  const latest = useRef(page)
+  useLayoutEffect(() => {
+    latest.current = page
+  })
   const context = useMemo<FormContext>(
     () => ({
-      setAt: (at, next) => page.update((c) => setIn(c, at, next)),
+      setAt: (at, next) => latest.current.update((c) => setIn(c, at, next)),
+      config: value,
       titleErrors: errors.byTitle,
     }),
-    [page, errors.byTitle],
+    [value, errors.byTitle],
   )
   const byId = Object.fromEntries(Object.entries(adornments ?? {}).map(([key, node]) => [fieldId([...path, ...key.split('.')]), node]))
   const own = errors.own.map((msg) => (

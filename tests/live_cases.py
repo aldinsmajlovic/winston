@@ -11,18 +11,24 @@ from pipecat.frames.frames import (FunctionCallFromLLM, FunctionCallResultFrame,
 from pipecat.observers.base_observer import FramePushed
 from pipecat.processors.frame_processor import FrameDirection
 
-from winston.core.live import Feed, LiveEvent, LiveObserver, tool_label
+from winston.core.live import Feed, LiveEvent, LiveObserver, know_extension_tools, tool_icon, tool_label
 
 LABELS = [
     ("intent__HassTurnOn", {"name": "Kitchen lights"}, "ok", "Turned on Kitchen lights"),
     ("intent__HassTurnOff", {"area": "Living Room", "domain": ["light"]}, "running", "Turning off Living Room lights"),
     ("light__HassLightSet", {"name": "living room lights", "brightness": 50}, "error", "Could not set living room lights"),
     ("homeassistant__GetLiveContext", {"area": "Living Room"}, "ok", "Checked the home"),
-    ("web_search", {"query": "population of Sarajevo"}, "ok", "Searched the web for population of Sarajevo"),
+    ("forget", {"fact": "Omar visits on Fridays"}, "ok", "Forgot Omar visits on Fridays"),
     ("some_new_tool", {}, "ok", "Used some_new_tool"),
 ]
 for name, args, status, want in LABELS:
     check(f"label {name}", tool_label(name, args, status), want)
+# An extension's tool, by its extension's name and first text argument, with its icon.
+know_extension_tools([{"name": "web_search", "extension": "web", "title": "Web search", "icon": "search"}])
+check("label of an extension's tool", tool_label("web_search", {"query": "population of Sarajevo"}, "ok"),
+      "Web search: population of Sarajevo")
+check("an extension's tool failing", tool_label("web_search", {"query": "x"}, "error"), "Web search failed")
+check("its icon", tool_icon("web_search"), "search")
 
 # History: pieces of one reply become one event; a tool's result updates its running event.
 feed = Feed(keep=10)

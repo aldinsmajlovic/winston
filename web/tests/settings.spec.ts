@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Runs against the throwaway winstond `pnpm smoke` starts: WINSTON_DATA is its copy of data/, with the
 // engines and channels switched off and one external engine, `smoke`, that nothing runs.
 const data = process.env.WINSTON_DATA ?? ''
-const pages = ['/status', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/tools', '/extensions', '/engines', '/system']
+const pages = ['/status', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/extensions', '/engines', '/system']
 
 test.describe.configure({ mode: 'serial' })
 
@@ -292,13 +292,19 @@ test('the Voice page plays the unsaved voice and streaming, and not an unsaved e
   expect(errors).toEqual([])
 })
 
-test('the Hearing card shows his hint words and saves only yours', async ({ page }) => {
+test('the Hearing card shows his hint words, removes his and saves yours', async ({ page }) => {
   const errors = watchErrors(page)
   await open(page, '/voice')
   const name = String(/^ {2}name: (.+)$/m.exec(readFileSync(join(data, 'config.yaml'), 'utf8'))?.[1] ?? 'Winston')
   const words = page.locator('#cfg_stt_hint_words')
   await expect(words.getByText(name, { exact: true })).toBeVisible()
-  await expect(words.getByRole('button', { name: `Remove ${name}` })).toHaveCount(0)
+  await words.getByRole('button', { name: `Remove ${name}` }).click()
+  await save(page)
+  const removed = new RegExp(`hint_words_removed:\\n\\s*- ${name}`)
+  await expect.poll(() => removed.test(readFileSync(join(data, 'config.yaml'), 'utf8'))).toBe(true)
+  await words.getByRole('button', { name: `Add back ${name}` }).click()
+  await save(page)
+  await expect.poll(() => removed.test(readFileSync(join(data, 'config.yaml'), 'utf8'))).toBe(false)
   const add = page.locator('#cfg_stt_hint_words-add')
   await add.fill(name.toLowerCase())
   await expect(words.getByText('Already in the list')).toBeVisible()

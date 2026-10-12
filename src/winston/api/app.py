@@ -36,9 +36,8 @@ from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.brain import api_key
 from winston.core import memory, persona, region, speaker, turns, voices
-from winston.core.live import Feed, LiveEvent, tool_label
+from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
 from winston.core.rooms import MicHold, Rooms, RoomState, SyncRequest, SyncResult
-from winston.core.tools.ask_claude import auth_source
 from winston.engines.supervisor import Supervisor
 from winston.extension_host.api import router as extensions_router
 from winston.extension_host.host import Host, Pending
@@ -156,6 +155,7 @@ class TurnTool(BaseModel):
     ok: bool | None = None
     result: str | None = None
     label: str = Field("", description="How the live feed words it: \"Turned on Kitchen lights\"")
+    icon: str | None = Field(None, description="Its extension's icon (lucide), for an extension's tool")
 
 
 class TurnRecord(BaseModel):
@@ -334,12 +334,6 @@ class SecretResult(BaseModel):
     restarts: list[str]             # marked as waiting for a restart (config_changed in status)
 
 
-class ClaudeAuth(BaseModel):
-    source: Literal["api_key", "oauth_token", "login", "none"]
-    variable: str | None            # the variable it reads, for api_key and oauth_token
-    label: str
-
-
 class Preset(BaseModel):
     id: str
     title: str
@@ -409,8 +403,6 @@ def _if_match(header: str | None) -> str | None:
 
 RENAME_PERSONA = ("When the change renames him: also rewrite the old name as a whole word in his persona file "
                   "(persona_rename in the dry run lists where), keeping persona.md.bak")
-CLAUDE_LABELS = {"api_key": "API key (ANTHROPIC_API_KEY)", "oauth_token": "Token from claude setup-token",
-                 "login": "Claude Code login on this machine", "none": "Nothing"}
 MISSING = object()
 
 
@@ -827,8 +819,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     def labelled(rows: list[dict]) -> list[dict]:
         """Each tool call worded as the live feed words it, for the page."""
-        return [{**t, "tools": [{**c, "label": tool_label(c["name"], c.get("args"), "error" if c.get("ok") is False else "ok")}
-                                for c in t.get("tools", [])]} for t in rows]
+        know_extension_tools(extensions.brain_tools())
+        return [{**t, "tools": [{**c, "label": tool_label(c["name"], c.get("args"), "error" if c.get("ok") is False else "ok"),
+                                 "icon": tool_icon(c["name"])} for c in t.get("tools", [])]} for t in rows]
 
     @app.get("/api/turns", response_model=TurnDay, summary="A day's spoken turns: heard, done, said, and any mark")
     async def turns_day(day: str | None = Query(None, description="YYYY-MM-DD; the newest day with turns if left out")):
@@ -1115,21 +1108,19 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             for field, var in extensions.secret_fields(ext_id).items():
                 if var == name and ["extensions", ext_id, "settings", field] not in refs.get(name, []):
                     refs.setdefault(name, []).append(["extensions", ext_id, "settings", field])
-        claude = name in secrets.CLAUDE_NAMES
-        used = refs.get(name, []) + ([secrets.CLAUDE_PATH] if claude else [])
-        # a feature switched off reads nothing: no restart for it (ask_claude, Home Assistant, a channel)
+        used = refs.get(name, [])
+        # a feature switched off reads nothing: no restart for it (an extension, Home Assistant, a channel)
         live = [u for u in used if not any(get_in(dump, u[:i] + ["enabled"]) is False for i in range(1, len(u) + 1))]
         affects = secrets.restarts(dump, schema, live)
         return SecretStatus(name=name, set=secrets.is_set(name), used_by=used,
                             restarts=sorted(r for r in affects if r in sup.items or r == "control"))
 
     @app.get("/api/secrets", response_model=list[SecretStatus],
-             summary="Variables in data/.env the config names, and the two Claude ones: set or not, never values")
+             summary="Variables in data/.env the config and the extensions name: set or not, never values")
     async def list_secrets():
         dump = _dump(app.state.cfg)
         ext_vars = [v for i in extensions.described for v in extensions.secret_fields(i).values()]
-        names = sorted({*secrets.references(dump, full_schema()), *ext_vars}) + [n for n in secrets.CLAUDE_NAMES]
-        return [secret_status(n, dump) for n in dict.fromkeys(names)]
+        return [secret_status(n, dump) for n in sorted({*secrets.references(dump, full_schema()), *ext_vars})]
 
     async def secret_changed(name: str) -> SecretResult:
         dump = _dump(app.state.cfg)
@@ -1137,7 +1128,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         sup.mark_stale(r for r in st.restarts if r != "control")
         if "control" in st.restarts:
             control_secrets.add(name)
-        if set(st.restarts) & set(BRAIN_CHANNELS) or name in secrets.CLAUDE_NAMES:
+        if set(st.restarts) & set(BRAIN_CHANNELS):
             await web.reset(app.state.cfg)          # the Talk page's brain reads keys when it is built
         await extensions.secret_changed(name)
         return SecretResult(name=name, set=st.set, restarts=st.restarts)
@@ -1163,12 +1154,6 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def delete_secret(name: str):
         secrets.remove(name)
         return await secret_changed(name)
-
-    @app.get("/api/tools/ask_claude/auth", response_model=ClaudeAuth,
-             summary="What ask_claude signs in with, in the Claude CLI's order: API key, token, this machine's login")
-    async def ask_claude_auth():
-        source, variable = auth_source()
-        return ClaudeAuth(source=source, variable=variable, label=CLAUDE_LABELS[source])
 
     @app.get("/api/presets", response_model=Presets,
              summary="Engine and model presets the UI offers per slot, and the hardware profiles")

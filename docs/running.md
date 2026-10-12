@@ -159,8 +159,7 @@ stored under is Advanced. Maps (Discord contacts, an engine's environment and vo
 an Add icon, a dialog per entry and trash with Undo. Channel cards show the channel's state icon from
 the Status page.
 
-Home Assistant shows whether it answers at the URL with the token. Adding a sensor on the Tools
-page fills its label from Home Assistant and finds its state sensor (`_level` to `_state`).
+Home Assistant shows whether it answers at the URL with the token.
 
 Edits are one draft across all pages until saved or discarded; a dot in the sidebar marks each page
 with unsaved edits, and closing the tab asks first. Save sends only the changed fields
@@ -233,7 +232,8 @@ exactly that list. Details in [Home Assistant](home-assistant.md).
 ## Announcements, Discord, tools, extensions
 
 Winston speaking on its own is in [announcements](announcements.md), the Discord channel in
-[discord](discord.md), and memory, web search, `ask_claude` and `send_message` in [tools](tools.md).
+[discord](discord.md), memory and `send_message` in [tools](tools.md), and web search, Ask Claude and
+watched sensors in [built-in extensions](built-in-extensions.md).
 Extensions, and the Extensions page under Settings, are in [extensions](extensions.md): each runs as
 its own process, gets only its own keys, and its tools reach every channel's brain; one marked "Offer
 to other apps" is also listed for Claude Code at http://127.0.0.1:8700/mcp.

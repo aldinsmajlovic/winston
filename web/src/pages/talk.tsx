@@ -115,7 +115,7 @@ function Line({ item, marks }: { item: Item; marks: Map<string, TurnMark> }) {
     case 'reply':
       return item.text.trim() ? <p className="max-w-[85%] text-lg/relaxed whitespace-pre-wrap">{item.text.trim()}</p> : null
     case 'tool':
-      return <ToolLine name={item.name} label={item.label} status={item.status} />
+      return <ToolLine name={item.name} label={item.label} status={item.status} icon={item.icon} />
     case 'announcement':
       return (
         <div className="flex items-center gap-2.5 text-sm text-muted-foreground">

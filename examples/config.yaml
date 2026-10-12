@@ -1,4 +1,4 @@
-version: 1
+version: 2
 assistant:
   name: Winston
   persona: persona.md
@@ -89,9 +89,6 @@ providers:
     mcp_path: /api/mcp
     expose_domains: [person, weather, todo]
     expose: {}                 # entity_id: {name: ..., aliases: [...]}; see docs/running.md
-
-tools:
-  sensors: {}                # "label": {level: sensor.x_battery_level, state: sensor.x_battery_state}
 
 memory: {dir: memory, commit_on_write: true}
 logging: {tool_calls: logs/tool_calls.jsonl, latency: logs/latency.jsonl}

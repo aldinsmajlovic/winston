@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { BellOff, CircleAlert, MemoryStick, MessageSquareText, Plus, RotateCw, ScrollText, ShieldAlert } from 'lucide-react'
-import { DynamicIcon, iconNames, type IconName } from 'lucide-react/dynamic'
 import { $api, type ExtensionView } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
@@ -9,6 +8,7 @@ import { PageSkeleton } from '@/components/page'
 import { SecretField } from '@/components/secret-field'
 import { SectionForm } from '@/components/section-form'
 import { StateIcon } from '@/components/state-icon'
+import { ExtensionIcon } from '@/components/tool-line'
 import { StatusTip } from '@/components/status-tip'
 import { SettingsPage } from '@/components/templates/settings-page'
 import { Badge } from '@/components/ui/badge'
@@ -83,11 +83,6 @@ function reach(e: ExtensionView): string[] {
   if (p.llm) out.push('The background model')
   for (const other of (p.extensions as string[] | undefined) ?? []) out.push(`Tools of ${other}`)
   return out
-}
-
-function ExtensionIcon({ name }: { name: string }) {
-  const icon = (iconNames as readonly string[]).includes(name) ? (name as IconName) : 'puzzle'
-  return <DynamicIcon name={icon} className="size-4 shrink-0" />
 }
 
 function LogDialog({ id, open, onOpenChange }: { id: string; open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -321,7 +316,7 @@ function ExtensionCard({ e, page }: Props) {
     <Card>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          <ExtensionIcon name={e.icon ?? 'puzzle'} />
+          <ExtensionIcon name={e.icon} />
           {e.name}
           <StateIcon state={STATE[e.state as keyof typeof STATE] ?? 'stopped'} detail={e.problem || e.detail || e.state} />
           {e.origin !== 'built-in' && (

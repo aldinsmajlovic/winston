@@ -344,6 +344,10 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         p = Params({"seconds": 1})
         await ext_client.make_handler(app.state.cfg, slow, "voice", lambda: say)(p)
         expect("a slow tool's filler is said once it takes over a second", said == ["One moment, sir."], said)
+        said.clear()
+        at_once = {**spec, "filler": "Let me look.", "filler_after": 0}
+        await ext_client.make_handler(app.state.cfg, at_once, "voice", lambda: say)(Params({"entity_id": "light.taklampa"}))
+        expect("with filler_after 0 it is said as the call starts, however quick", said == ["Let me look."], said)
         await brain.close()
 
         t1 = time.perf_counter()
