@@ -22,9 +22,8 @@ by default, and any part can be swapped for a hosted service.
 - **Fast.** About 1.3 s from the end of a plain question to his first word, and you can talk over him.
 - **Controls your home** through Home Assistant's MCP server, then checks the device really changed
   and corrects himself when it did not.
-- **Works with Home Assistant Voice Preview Edition.** Nabu Casa's speaker becomes Winston's ears and
-  voice in a room, tested on a real box, on its stock firmware or on Winston's with an "Okay Winston"
-  wake word. The browser adds a full-screen dashboard for a wall screen: start a conversation at the
+- **In every room.** A [Voice Preview Edition](#works-with-home-assistant-voice-preview-edition) per
+  room, and the browser with a full-screen dashboard for a wall screen. Start a conversation at the
   box and finish it on the screen beside it.
 - **Remembers** what you tell him, in plain Markdown you can read and edit, and writes a diary of each
   day you can ask him about.
@@ -36,6 +35,21 @@ by default, and any part can be swapped for a hosted service.
   tell you how it is doing.
 - **Borrows a voice.** A friend agrees out loud and talks for fifteen seconds; Winston can then speak
   as them.
+
+## Works with Home Assistant Voice Preview Edition
+
+<img align="right" src="https://www.home-assistant.io/images/voice-pe/vpe-top.webp" alt="Home Assistant Voice Preview Edition, top view" width="110">
+
+Nabu Casa's [Voice Preview Edition](https://www.home-assistant.io/voice-pe/) is a small speaker
+with two microphones, hardware echo cancelling, a mute switch and a jack for a better speaker.
+Winston connects to it directly in place of Assist: keep the box, and it gets his brain, voice and
+memory. Tested on a real one: the wake word, your request and his spoken reply, the lights, his
+announcements and Spotify through its speaker. Winston's own firmware for it adds an "Okay Winston"
+wake word and holding the button to talk through pauses.
+
+Setup, with or without Home Assistant adopting the box: [Voice PE](docs/voice-pe.md).
+
+<sub>Photo: [Home Assistant](https://www.home-assistant.io/voice-pe/), CC BY-NC-SA 4.0.</sub>
 
 ## Status
 
