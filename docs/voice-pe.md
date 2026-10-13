@@ -118,7 +118,9 @@ back, so the music picks up again and the next song still reaches the box.
   reach `barge_in_volume` (0.6, Pipecat's default): lower it if talking from across the room does not
   stop him, raise it if his own voice does. Each reply logs how much speech the box heard over it and
   how loud (`2.4 s heard over the reply, speech 0.00 s at most, volume 0.31 at most`), the numbers to
-  set them by.
+  set them by. On the first real box (2026-10-13) his own voice stopped him a second into a reply and
+  once crashed the box, so it is off there (`barge_in_secs: 0`) until Winston listens on the quieter
+  microphone channel; details in [the plan](plan.md#m3-next-steps-added-2026-09-25-in-this-order).
 - **The mute switch** on the side cuts the microphones altogether. Two red LEDs by the microphones
   mean it is on; a red ring slowly twinkling means Winston is not connected.
 
@@ -288,8 +290,9 @@ defensible position.
 
 The first box runs Winston's firmware and wakes on Okay Winston, with barge-in since 2026-10-12. It woke
 70 to 80% of the time at the fixed 0.95 threshold, against 98.6% on the trainer's synthetic voices;
-since 2026-09-27 it ran `Moderately sensitive` (0.85), and since 2026-10-12 `Very sensitive` (0.70). Next: talk over him on the real box, at normal
-and at loud volume, and set `barge_in_secs` and `barge_in_volume` from the logged speech over his voice; count misses and
+since 2026-09-27 it ran `Moderately sensitive` (0.85), and since 2026-10-12 `Very sensitive` (0.70). Barge-in
+failed on its own voice on 2026-10-13 and is off. Next: watch the second microphone channel for speech over a reply,
+end the reply stream before stopping the player (the stop that crashed the box came mid-stream); count misses and
 false wakes, and retrain with real takes of the household's voices if it is still short.
 
 ### Okay Winston at a distance

@@ -22,9 +22,10 @@ by default, and any part can be swapped for a hosted service.
 - **Fast.** About 1.3 s from the end of a plain question to his first word, and you can talk over him.
 - **Controls your home** through Home Assistant's MCP server, then checks the device really changed
   and corrects himself when it did not.
-- **In every room.** The browser, with a full-screen dashboard for a wall screen, and Home Assistant's
-  Voice PE with an "Okay Winston" wake word. Start a conversation at the box and finish it on the
-  screen beside it.
+- **Works with Home Assistant Voice Preview Edition.** Nabu Casa's speaker becomes Winston's ears and
+  voice in a room, tested on a real box, on its stock firmware or on Winston's with an "Okay Winston"
+  wake word. The browser adds a full-screen dashboard for a wall screen: start a conversation at the
+  box and finish it on the screen beside it.
 - **Remembers** what you tell him, in plain Markdown you can read and edit, and writes a diary of each
   day you can ask him about.
 - **Speaks up.** Announcements from Home Assistant, a word before what is on your calendar, and
@@ -38,8 +39,8 @@ by default, and any part can be swapped for a hosted service.
 
 ## Status
 
-Early. Voice, Home Assistant, the web UI, memory, extensions and the Voice PE work; Discord is built
-but not yet tested against Discord. Progress is tracked in [the plan](docs/plan.md).
+Early. Voice, Home Assistant, the web UI, memory, extensions and the Voice PE work. Not yet: talking
+over him on the Voice PE, and Discord against the real Discord. Progress is in [the plan](docs/plan.md).
 
 ## Quickstart
 
