@@ -728,8 +728,9 @@ flowchart LR
 - **The background model yields to conversations.** `ctx.llm.ask` keeps to a slot of its own on the
   model server (llama.cpp's last one, when it has more than one), so it never takes the one that
   holds a conversation's cached prompt, and it waits while anyone is talking to him (until 30 s of
-  quiet); a call under way when a conversation starts is stopped and asked again after it. It gives
-  up after 45 s of waiting, with an error saying so. Measured with the 27B and an extension asking
+  quiet); a call under way when a conversation starts is stopped and asked again after it. Right
+  after winstond starts the model it also waits for it to load. It gives up after 45 s of waiting,
+  with an error saying so. Measured with the 27B and an extension asking
   one story after another (`tests/background_llm_voice.py`): unpinned and unyielding, a spoken turn's
   median first audio went from 982 ms to 2147 ms, and the first turn took 8.4 s, its prompt evicted;
   with the slot alone, 892 ms to 1782 ms; yielding as well, 976 ms quiet and 1004 ms with every turn

@@ -5,7 +5,7 @@
 # description = "Small things Winston notices on his own: a goodnight when the evening goes quiet."
 # icon = "eye"
 # api = 1
-# permissions = { network = ["localhost"] }
+# permissions = { network = ["localhost", "127.0.0.1"] }
 # ///
 """Unprompted moments: things Winston says without being asked.
 

@@ -418,6 +418,12 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     extensions = Host(cfg, api=cfg.control.url)
     extension_services = ExtensionServices(extensions)
     extension_services.talking = feed.talking             # background model calls yield to conversations
+
+    def llm_up() -> bool:
+        """The brain's server (engines.llm) is healthy, or Winston neither runs nor checks one."""
+        m = sup.items.get("llm")
+        return m is None or m.state == "healthy"
+    extension_services.llm_up = llm_up                    # and wait for it to load
     extensions.on_feed = lambda ev: feed.publish(LiveEvent(**ev))
     extensions.scheduler = Scheduler(extensions, extension_services)
     mcp_out = outward_mcp(extensions)
@@ -538,7 +544,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         """Write any missing diary entries on startup, then check again after midnight."""
         from winston.core.diary import Diary
         diary = Diary(cfg)
-        await asyncio.sleep(10)      # let the LLM engine start first
+        while not llm_up():          # the LLM engine loads first
+            await asyncio.sleep(2)
         await diary.write_pending(talking=feed.talking)
         while True:
             now = datetime.now()

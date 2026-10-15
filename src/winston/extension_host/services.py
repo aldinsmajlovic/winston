@@ -63,6 +63,7 @@ class Services:
         self._ha_services: tuple[float, dict[str, dict[str, Any]]] | None = None
         self._slot: tuple[float, str, int | None] = (0.0, "", None)     # (when read, for which server, slot)
         self.talking: Callable[[], bool] = lambda: False                # set by winstond: a conversation runs
+        self.llm_up: Callable[[], bool] = lambda: True                  # set by winstond: the brain's server is healthy
 
     @property
     def cfg(self) -> WinstonConfig:
@@ -345,14 +346,16 @@ class Services:
         return slot
 
     async def _ask(self, prompt: str, schema: dict | None, max_tokens: int) -> Any:
-        """Yields to conversations: waits while one runs, and a call under way when one starts is
+        """Waits for the brain's server to be up (it loads for seconds after winstond starts it).
+        Yields to conversations: waits while one runs, and a call under way when one starts is
         stopped (the server drops it) and asked again once it is over. Measured with the slot alone: a
         spoken turn's median first audio still went from 892 ms to 1782 ms while an extension asked."""
         deadline = time.monotonic() + ASK_BUDGET
         while True:
-            while self.talking():
+            while self.talking() or not self.llm_up():
                 if time.monotonic() > deadline:
-                    raise Failed("a conversation is running and background calls wait for it; try again later")
+                    raise Failed("the model is not up yet; try again later" if not self.llm_up() else
+                                 "a conversation is running and background calls wait for it; try again later")
                 await asyncio.sleep(0.2)
             ask = asyncio.create_task(self._ask_once(prompt, schema, max_tokens))
             while not ask.done() and not self.talking():
