@@ -417,6 +417,11 @@ class SatelliteChannel(Model):
                                                        "thinks the sentence is unfinished, so a pause to think "
                                                        "does not cut you off.",
                                            json_schema_extra=ui("advanced"))
+    chat_silence_secs: float = Field(1.5, ge=0.3, le=5.0, title="Pause in a conversation (s)",
+                                     description="Silence that ends a finished-sounding sentence when you "
+                                                 "answer him after a reply that did nothing in the house, so "
+                                                 "you can stop to think between sentences.",
+                                     json_schema_extra=ui("advanced"))
     follow_up_secs: float = Field(6.0, ge=0.0, le=20.0, title="Listen after a reply (s)",
                                   description="After every reply the box listens this long for more, without the "
                                               "wake word (at least 8 s after a question). 0: only after a question.")

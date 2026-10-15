@@ -7,6 +7,7 @@ no LLM, no Home Assistant.
 import asyncio
 from types import SimpleNamespace
 
+import numpy as np
 from harness import check, finish_checks
 
 from winston.channels import satellite as sat
@@ -129,6 +130,43 @@ async def main():
     check("failed build: tried once more", (c.used, s.conversation is c), (True, True))
 
 
+async def pause_ends(text: str, finished: bool = True, follow_up: bool = False, chatting: bool = False) -> float:
+    """Seconds of quiet after 1 s of speech that end a request, with Smart Turn's verdict and the words stubbed."""
+    s = box()
+    s._chatting, s._vad = chatting, SimpleNamespace(voice_confidence=lambda b: float(any(b)))
+    s._sounds_finished = lambda pcm: finished
+
+    async def transcribe(pcm):
+        return SimpleNamespace(text=text)
+    s._transcribe = transcribe
+    run = sat.Run(follow_up=follow_up)
+    speech, frame = int(sat.MIC_RATE), np.zeros(sat.VAD_FRAME, np.int16)
+    run.mic.put_nowait(np.full(speech, 1000, np.int16))
+
+    async def feed():
+        for _ in range(200):                # 6.4 s of quiet, slow enough for the verdict to land in the pause
+            run.mic.put_nowait(frame)
+            await asyncio.sleep(0.01)
+    feeding = asyncio.create_task(feed())
+    buf, _ = await s._listen(run)
+    feeding.cancel()
+    return round((len(buf) - speech) / sat.MIC_RATE, 1)
+
+
+async def pauses():
+    c = WinstonConfig.model_validate({"llm": {"model": "x"}}).channels.satellite
+    end, unfinished, chat = (round(x, 1) for x in (c.end_silence_secs, c.unfinished_silence_secs, c.chat_silence_secs))
+    check("finished and a full stop: the short pause", await pause_ends("Turn off the lights."), end)
+    check("finished but no full stop: the long pause", await pause_ends("Tell me about"), unfinished)
+    check("an ellipsis is no full stop", await pause_ends("I was wondering like..."), unfinished)
+    check("unfinished, whatever the words", await pause_ends("Fine.", finished=False), unfinished)
+    check("answering a reply that talked: the chat pause",
+          await pause_ends("I was thinking about that.", follow_up=True, chatting=True), chat)
+    check("answering a reply that acted: the short pause", await pause_ends("Even warmer.", follow_up=True), end)
+
+
 asyncio.run(main())
+asyncio.run(pauses())
 finish_checks("satellite: one build at a time, a cut-short wake's build kept, prewarm only on a changed prompt "
-              "and never in a wake's way, a failed build tried again ok")
+              "and never in a wake's way, a failed build tried again, a pause ends a request only when it sounds "
+              "finished and ends a sentence, longer in a chat ok")

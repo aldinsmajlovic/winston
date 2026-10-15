@@ -192,6 +192,17 @@ one it calls unfinished gets `unfinished_silence_secs` (2.5 s) of quiet before i
 turns the three cut-offs of that day scored 0.01 and almost every finished request scored above 0.6;
 the few finished ones under 0.5 ("Make it cozy in here.", 0.21) pay up to 1.9 s more.
 
+Smart Turn was still sure of itself on a trailing word: "Tell me about" and "Cool. Um I was wondering
+like" scored 0.97 and ended at 0.6 s. Since 2026-10-16 a pause ends a request soon only when the words
+end a sentence too: the speech engine punctuates what it hears, and a transcript without a full stop,
+question mark or exclamation mark (an ellipsis does not count) waits `unfinished_silence_secs`. The text
+is needed for the reply anyway, so a finished request loses nothing. On the box's log, 15 of the 146
+requests Smart Turn called finished had no full stop: four were cut-offs, five were complete ("Play wild
+horses by the Rolling Stones") and now wait up to 1.9 s more, the rest went on anyway. Answering a reply
+that did nothing in the house (talk, not "even warmer") waits `chat_silence_secs` (1.5 s) after a
+finished sentence, so a conversation leaves room to think between sentences. And a request stops at
+60 s, not 20 s, which had cut three long thoughts off mid-sentence.
+
 ## 4. For him?
 
 Every turn gets a decision before the brain sees it: for him, not for him, or unsure.

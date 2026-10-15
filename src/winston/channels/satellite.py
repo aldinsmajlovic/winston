@@ -43,6 +43,7 @@ import argparse
 import asyncio
 import faulthandler
 import os
+import re
 import signal
 import socket
 import struct
@@ -74,7 +75,7 @@ from winston.config import load
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.hints import Heard, Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver
-from winston.core import directory
+from winston.core import directory, guard
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.brain import persona
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
@@ -88,7 +89,9 @@ VAD_FRAME = 512                  # Silero's window at 16 kHz
 GUESS_SECS = 0.3                 # a pause this long starts transcribing, in case it is the end
 START_TIMEOUT_SECS = 8.0         # no speech after the wake word: give up (also the least after a question)
 FOLLOW_WAIT_SECS = 20.0          # a follow-up run must start this soon after the reply has played
-MAX_REQUEST_SECS = 20.0
+MAX_REQUEST_SECS = 60.0          # a stuck request (the TV): 20 s cut him off mid-thought three times
+# The words end a sentence: what the speech engine punctuates as said to the end. Not an ellipsis.
+SENTENCE_END = re.compile(r"(?<!\.)[.!?。！？][\"'”’)\]]*$")
 HOLD_SECS = 15.0                 # the room's mic lease while a run is on, renewed every RENEW_SECS
 RENEW_SECS = 5.0
 TAIL_SECS = 1.5                  # after the reply has played: the box's speaker and the room settle
@@ -260,6 +263,7 @@ class Satellite:
         self.run: Run | None = None
         self._follow_until = 0.0            # monotonic time until which a start without a wake word is a follow-up
         self._follow_secs = START_TIMEOUT_SECS
+        self._chatting = False              # his last reply only talked: a follow-up gets chat_silence_secs
         self.task: asyncio.Task | None = None
         self.conversation: Conversation | None = None
         self._building: asyncio.Task | None = None          # bringing the conversation up to date, one at a time
@@ -538,12 +542,14 @@ class Satellite:
     async def _listen(self, run: Run) -> tuple[np.ndarray, asyncio.Task | None] | None:
         """Microphone audio until the request is over. At the first GUESS_SECS of a pause the audio so far
         is transcribed, so the text is ready if the pause turns out to be the end, and Smart Turn judges
-        whether it sounds finished: end_silence_secs of quiet then ends a finished one, an unfinished one
-        ("Can you tell me what to have in my living room because") gets unfinished_silence_secs. Speech
-        after the pause throws both away. Returns the audio and that transcription."""
+        whether it sounds finished (_finished). end_silence_secs of quiet then ends a finished one, or
+        chat_silence_secs when he answers a reply that only talked; an unfinished one ("Can you tell me
+        what to have in my living room because") gets unfinished_silence_secs. Speech after the pause
+        throws both away. Returns the audio and that transcription."""
         buf, voiced = np.zeros(0, np.int16), []
         sat = self.cfg.channels.satellite
-        end = int(sat.end_silence_secs * MIC_RATE / VAD_FRAME)
+        end = int((sat.chat_silence_secs if run.follow_up and self._chatting else sat.end_silence_secs)
+                  * MIC_RATE / VAD_FRAME)
         unfinished = max(end, int(sat.unfinished_silence_secs * MIC_RATE / VAD_FRAME))     # longer, never shorter
         guess_at = int(GUESS_SECS * MIC_RATE / VAD_FRAME)
         guess: asyncio.Task | None = None
@@ -572,8 +578,8 @@ class Satellite:
                     if quiet >= guess_at and guess is None:
                         pcm = buf[:len(voiced) * VAD_FRAME].copy()
                         guess = asyncio.create_task(self._transcribe(pcm))
-                        finished = asyncio.create_task(asyncio.to_thread(self._sounds_finished, pcm))
-                    # Until Smart Turn has answered (about 80 ms) the pause counts as unfinished.
+                        finished = asyncio.create_task(self._finished(pcm, guess))
+                    # Until Smart Turn and the text are in (about 0.1 to 0.4 s) the pause counts as unfinished.
                     # A hold to talk ends only when the button is let go (_on_state), whatever the pause.
                     if not run.hold and quiet >= (end if finished and finished.done() and finished.result()
                                                   else unfinished):
@@ -589,6 +595,21 @@ class Satellite:
         last = max(i for i, v in enumerate(voiced) if v)
         run.speech_end = time.time() - (len(buf) - (last + 1) * VAD_FRAME) / MIC_RATE
         return buf, guess
+
+    async def _finished(self, pcm: np.ndarray, guess: asyncio.Task) -> bool:
+        """Whether a pause may end the request soon: Smart Turn hears it finished and its words end a sentence.
+        Smart Turn alone called "Tell me about" and "I was wondering like" finished (0.97); the speech engine
+        left both without a full stop. The text is needed for the reply anyway, so waiting for it costs little."""
+        if not await asyncio.to_thread(self._sounds_finished, pcm):
+            return False
+        try:
+            text = (await guess).text.strip()
+        except Exception:                                                   # noqa: BLE001
+            return True                     # the request's own transcription reports it
+        if text and not SENTENCE_END.search(text):
+            logger.info(f"{self.room}: no full stop after {text[-30:]!r}, waiting longer")
+            return False
+        return True
 
     def _sounds_finished(self, pcm: np.ndarray) -> bool:
         """Smart Turn's verdict on the request so far, ending in a pause (it reads the last 8 s)."""
@@ -821,6 +842,8 @@ class Satellite:
                 said = await conv.reply(heard, run)
                 progress.cancel()
                 run.out.put_nowait(None)
+                # A reply that acted invites a quick tweak ("even warmer"); one that only talked, a conversation.
+                self._chatting = not (turn and any(guard.tool_tier(t["name"]) == guard.ACT for t in turn.tools))
                 question = said.rstrip().endswith("?")
                 wait = max(START_TIMEOUT_SECS, self.cfg.channels.satellite.follow_up_secs) if question \
                     else self.cfg.channels.satellite.follow_up_secs

@@ -104,7 +104,7 @@ back, so the music picks up again and the next song still reaches the box.
   press sound and listens. Talk, and let go when you are done. The request ends there, however long
   you pause in it, plus 0.3 s for a last word cut short. For a request with pauses to think in it, or
   a noisy room. After the reply he listens on as after any request, unless the box is button only.
-  A request stops at 20 s. A hold never resets the box: the stock factory reset (its warning at 10 s,
+  A request stops at 60 s. A hold never resets the box: the stock factory reset (its warning at 10 s,
   the reset on letting go after 22 s) is skipped while the button is in use, as when you turn the dial
   with it held. To reset the box, switch the mute on first, then hold the button.
 - **A double press** switches the box to **button only**: the wake word is off, a short press or a
@@ -166,6 +166,11 @@ keeps what the box has.
   `end_silence_secs`; one that does not ("Can you tell me what to have in my living room because")
   waits `unfinished_silence_secs` (2.5 s), so a pause to think does not cut you off. Each verdict is
   logged (`sounds finished 0.01`).
+- Since 2026-10-16 the words must end a sentence too: a transcript without a full stop ("Tell me
+  about") waits `unfinished_silence_secs`, whatever Smart Turn says (logged as `no full stop`). Answering
+  a reply that only talked, a finished sentence waits `chat_silence_secs` (1.5 s) instead of
+  `end_silence_secs`, so you can stop to think in a conversation; after a reply that acted, a quick
+  "even warmer" still ends at `end_silence_secs`. See [understanding](understanding.md#3-hearing).
 - Since 2026-10-11 the box is told to start fetching (`tts_start_streaming`) when the first sentence
   goes to the voice, as Home Assistant does, not when its audio exists, so the box connects and
   ffmpeg starts while it is spoken. A lone "." before a tool call never starts a reply.
