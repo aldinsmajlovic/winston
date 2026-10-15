@@ -188,15 +188,17 @@ next goes into Spotify's queue, after the one playing; with nothing playing it p
    settings page on the card, or in `data/.env` as `LISTENBRAINZ_TOKEN`. It needs the app from step 3.
 
 **Mixes.** Ask for a mood ("something chill", "something upbeat") and he picks three to six artists
-from your library that fit it, and `spotify_mix` builds the list from two of them. Those two seed
+from your library that fit it, and `spotify_mix` builds the list from two of them. Ask for a genre
+("some drum and bass") and the genre's MusicBrainz tag goes in too, with only your artists of that
+genre, or none: songs tagged with it, not with similar tags. Those two seed
 ListenBrainz's [LB Radio](https://troi.readthedocs.io/en/latest/lb_radio.html) in easy mode: their
 songs and songs by artists like them, a different list every time. Each song is found on Spotify by
 its title and artist (one whose best match is by someone else is left out), the first plays and the
 rest are queued, about 20 songs. The last eight seeds are remembered: a mix starts from artists not
 used lately, else from those used longest ago, so the same chill artists take turns. An artist MusicBrainz does not know by that name is
 skipped for the next. Without a token he plays Spotify's radio from one artist that fits, as before.
-Not used: LB Radio's tags on their own (they gave obscure free-archive songs, or drifted to unrelated
-tags in hard mode), and its `stats` and `recs`, which need your listening history on ListenBrainz.
+Not used: tags for moods ("chill" gave obscure free-archive songs, or drifted to unrelated tags in hard
+mode), and LB Radio's `stats` and `recs`, which need your listening history on ListenBrainz.
 
 Spotify gives such receivers its 320 kbps stream; the box gets it as 48 kHz 16-bit stereo FLAC
 ([Voice PE](voice-pe.md#music)). Pause, play and skip in the app or by voice, and the box follows: a

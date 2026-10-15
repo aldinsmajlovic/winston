@@ -347,4 +347,7 @@ async def test_a_mix_starts_from_two_fresh_artists_and_plays_only_their_songs_fo
     assert "Air" not in [p for m, p, b in rx.calls if m == "LB"][-1]
     await h.tool("mix", artists=["Air", "Justice", "Daft Punk"])     # all used: the longest ago go first
     assert "artist:(Air)" in [p for m, p, b in rx.calls if m == "LB"][-1]
+    said = await h.tool("mix", artists=[], genre="drum and bass")    # a genre he has no artists of
+    assert [p for m, p, b in rx.calls if m == "LB"][-1] == "tag:(drum and bass)::nosim"
+    assert said.startswith("Playing a mix from drum and bass, 2 songs"), said
     await h.close()
