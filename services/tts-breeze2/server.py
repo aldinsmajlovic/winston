@@ -22,6 +22,13 @@ upstream's generate() uses stay in RAM, and the rest, the depth decoder included
 community GGUF port found a quantized depth decoder drifts muffled on long speech). Both in 4 bits:
 3.8 GB on the card at the same speed, but more word errors (5.1% against 1.9%).
 
+The codec (fp32, 586 MiB) is split. Its encoder turns a voice's clip into codes once per voice, so it
+runs on the CPU: 150 MiB off the card, and no 407 MiB spike while a 20 s clip encodes (beside the 27B
+that spike failed every sentence in the voice). It takes 0.9 s against 0.6 s, and its codes match the
+card's with TF32 off; the card's TF32 convolutions changed 2.8% of them, all in the fine codebooks. The
+decoder runs in fp16, 218 MiB less: its output is 52 dB below fp32's on a 20 s clip, against the
+codec's own 6.3 dB from the clip; bf16 was 34 dB.
+
 Every sentence is a separate generation (the speech server splits a request at sentence ends, and
 Winston sends a reply a sentence at a time), and Breeze's voice can change between two of them, heard
 in the benchmark as the voice shifting at a full stop. So a sentence within --chain-secs of the last
@@ -35,6 +42,7 @@ right on top of it; --pause-secs of silence goes after each sentence.
 Its tags are in parentheses, "(laugh)", so Chatterbox's "[laugh]" is rewritten to them; upstream
 says tags take effect more reliably with a guidance scale above 1, which runs two branches.
 """
+import os
 import re
 import sys
 import time
@@ -42,6 +50,9 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+
+# Beside the 27B the card has little to spare: torch then holds no half-used blocks it cannot hand on (100 MiB).
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import torch
 
 here = Path(__file__).resolve().parent
@@ -106,6 +117,15 @@ class Breeze2Engine:
         else:
             self.tokenizer, self.tts, self.codec = load_runtime(ckpt, device=device, attn_implementation="eager")
         update_generation_config_for_breeze(self.tts)
+        # The codec's encoder runs once per voice (prepare), so it runs on the CPU (docstring); the card keeps the
+        # decoder, in fp16. Converted off the card, so its fp32 copy leaves no holes there.
+        from qwen_tts import Qwen3TTSTokenizer
+        self._encoder = Qwen3TTSTokenizer.from_pretrained(str(ckpt / "audio_tokenizer"), device_map="cpu")
+        self._encoder.model.decoder = None
+        self.codec.model.encoder = None
+        self.codec.model.cpu().half()
+        torch.cuda.empty_cache()
+        self.codec.model.to(device)
         # upstream's api.py values
         config = FastStreamingConfig(max_new_tokens=1500, max_seq_len=2048, repetition_penalty=1.1,
                                      **{f"fast_{s}": s in fast for s in STAGES})
@@ -127,7 +147,7 @@ class Breeze2Engine:
 
     def prepare(self, clip: Path):
         from breeze_infer.audio import encode_prompt_audio
-        return str(clip), ss.transcript(clip), encode_prompt_audio(self.codec, clip)
+        return str(clip), ss.transcript(clip), encode_prompt_audio(self._encoder, clip)
 
     def stream_for(self, req: ss.SpeechRequest, on: bool) -> bool:
         return on

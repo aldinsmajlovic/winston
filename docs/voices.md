@@ -507,3 +507,28 @@ two-word sentence with a longer one, fragments and asides are fine), and skip th
 to the thing itself instead. Same 28 replies: 0 uncontracted to 42 contracted, 6 stock lines, median
 sentence 9 words instead of 12. An example reply in the rule was copied nearly word for word ("Dead
 again? You and that code, sir."), so the rule describes the reaction instead of showing one.
+
+### Room on the card, 15 October
+
+From 12 October Breeze went silent in the clip voice now and then: a story, a briefing, a good night
+story, every sentence an error. The abliterated 27B took 250 MB more than unsloth's, and preparing a
+voice (encoding its 20 s clip to codec frames, once per voice per start) needs 407 MB more for a
+moment. That did not fit beside the desktop, and a voice that failed to prepare was tried again on
+every sentence. Short replies in the default voice, prepared at start, still played.
+
+The codec (fp32, 586 MB) is now split. Its encoder runs on the CPU: 0.9 s instead of 0.6 s per voice,
+no spike, and its codes match the card's exactly once the card's TF32 convolutions are off (with them
+on, 2.8% of the codes differed, all in the fine codebooks). The decoder runs in fp16: on the same
+codes its output is 52 dB below fp32's, where the codec's own reconstruction is 6.3 dB from the clip;
+bf16 was 34 dB and was not used. The server also sets torch's expandable segments.
+
+| Breeze server, 27B card | GPU memory, steady | Preparing a voice |
+| --- | --- | --- |
+| Before | 5944 MB | 407 MB more |
+| Encoder on the CPU, decoder in fp16 | 5480 MB | nothing more |
+| Plus expandable segments (now) | 5380 MB | nothing more |
+
+With Winston up the card went from 24092 to 23387 of 24576 MB. Tried on the brain and not kept: an
+8-bit draft cache for MTP (its cache 128 to 68 MB, its compute buffer 114 to 224 MB, a net loss) and
+`-ub 256` (48 MB); both gave the same text at the same speed. The brain's 17.1 GB is 14.4 GB of weights, 1.1 GB
+of attention cache, 0.9 GB of recurrent state for the two slots, and buffers.

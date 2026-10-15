@@ -139,7 +139,7 @@ TTS: list[Fragment] = [
     )),
     {
         "id": "breeze2", "icon": "huggingface", "title": "Breeze TTS 2 on GPU", "needs": ["cuda"],
-        "hint": "Clones from a clip and its words; the most natural of the local voices in blind pairs. About 5.9 GB "
+        "hint": "Clones from a clip and its words; the most natural of the local voices in blind pairs. About 5.4 GB "
                 "of VRAM: beside the 27B brain only with Parakeet hearing. Weights for non-commercial use only.",
         "engine": {
             "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
