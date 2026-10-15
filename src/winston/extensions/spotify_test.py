@@ -13,7 +13,7 @@ from winston_sdk.testing import FakeHA, Harness
 
 HERE = Path(__file__).parent / "spotify.py"
 PLAYER = "media_player.spotify_someone"
-KEYS = {"client_id": "app-id", "client_secret": "app-secret"}
+KEYS = {"client_id": "app-id", "client_secret": "app-secret", "listenbrainz_token": "lb-token"}
 
 
 class Receiver:
@@ -43,7 +43,22 @@ class Receiver:
             assert request.headers["authorization"] == "Bearer app"
             q = dict(parse_qsl(request.url.query.decode()))
             self.calls[-1] = ("SEARCH", q["type"], {"q": q["q"]})
+            if q["q"].startswith("track:"):     # a mix's song: Spotify's best match is always by Daft Punk
+                title = q["q"].removeprefix("track:").split(" artist:")[0]
+                return httpx.Response(200, json={"tracks": {"items": [{"uri": f"spotify:track:{title}", "name": title,
+                                                                       "artists": [{"name": "Daft Punk"}]}]}})
             return httpx.Response(200, json={f"{t}s": self.found.get(f"{t}s", {"items": []}) for t in q["type"].split(",")})
+        if request.url.host == "api.listenbrainz.org":
+            assert request.headers["authorization"] == "Token lb-token"
+            prompt = dict(parse_qsl(request.url.query.decode()))["prompt"]
+            self.calls[-1] = ("LB", prompt, None)
+            if "artist:(Nobody)" in prompt:
+                return httpx.Response(400, json={"code": 400, "error": "LB Radio generation failed: Artist Nobody "
+                                                                       "could not be looked up. Please use exact spelling."})
+            songs = [("Daft Punk feat. Pharrell Williams", "Get Lucky (radio edit)"), ("Daft Punk", "One More Time"),
+                     ("Daft Punk", "One More Time [2001]"), ("Someone Else", "Not on Spotify")]
+            return httpx.Response(200, json={"payload": {"jspf": {"playlist": {"track": [
+                {"creator": c, "title": t} for c, t in songs]}}}})
         if path == "/auth/code":
             return httpx.Response(200, json=self.pairing) if self.pairing else httpx.Response(204)
         if path == "/":
@@ -81,7 +96,7 @@ def library_ha() -> FakeHA:
 
 def harness(rx: Receiver, keys: bool = True, library: bool = False) -> Harness:
     return Harness(HERE, settings={"library": PLAYER} if library else {}, background=False,
-                   secrets=KEYS if keys else {"client_id": "", "client_secret": ""},
+                   secrets=KEYS if keys else {"client_id": "", "client_secret": "", "listenbrainz_token": ""},
                    http=httpx.MockTransport(rx.handle), ha=library_ha() if library else None)
 
 
@@ -315,4 +330,21 @@ async def test_a_song_queued_plays_next_or_now_when_nothing_plays():
     rx.playing = False
     said = await h.tool("queue", what="get lucky")
     assert said.startswith("Nothing was playing") and played(rx) == ["spotify:track:gl"], said
+    await h.close()
+
+
+async def test_a_mix_starts_from_two_fresh_artists_and_plays_only_their_songs_found_on_spotify():
+    rx = Receiver()
+    h = harness(rx)
+    said = await h.tool("mix", artists=["Nobody", "Air"])
+    lb = [p for m, p, b in rx.calls if m == "LB"]
+    assert len(lb) == 2 and "artist:(Nobody)" in lb[0] and lb[1] == "artist:(Air)", lb
+    assert said == "Playing a mix from Air and artists like them, 2 songs, starting with Get Lucky by Daft Punk.", said
+    assert played(rx) == ["spotify:track:Get Lucky"], rx.calls
+    assert [b["uri"] for m, p, b in rx.calls if p == "/player/add_to_queue"] == ["spotify:track:One More Time"]
+    assert ("SEARCH", "track", {"q": "track:Get Lucky artist:Daft Punk"}) in rx.calls
+    await h.tool("mix", artists=["Air", "Justice", "Daft Punk"])
+    assert "Air" not in [p for m, p, b in rx.calls if m == "LB"][-1]
+    await h.tool("mix", artists=["Air", "Justice", "Daft Punk"])     # all used: the longest ago go first
+    assert "artist:(Air)" in [p for m, p, b in rx.calls if m == "LB"][-1]
     await h.close()

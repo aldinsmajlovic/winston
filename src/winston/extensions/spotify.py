@@ -5,7 +5,7 @@
 # description = "Spotify on your speakers: a Spotify Connect speaker for the app, and play, pause and skip by voice."
 # icon = "music"
 # api = 1
-# permissions = { network = ["127.0.0.1", "api.spotify.com", "accounts.spotify.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"], home_assistant = "act", speakers = true }
+# permissions = { network = ["127.0.0.1", "api.spotify.com", "accounts.spotify.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "api.listenbrainz.org"], home_assistant = "act", speakers = true }
 # ///
 """Spotify on the speakers (the satellite box and whatever is plugged into its jack).
 
@@ -25,7 +25,8 @@ they start again, and the relay waits for the box before it reads on.
 
 Finding what to play: first your own library (playlists, saved albums, top and followed artists, top and
 liked songs), read hourly from Home Assistant's Spotify player when you pick it; then all of Spotify,
-with your own Spotify app's client ID and secret when you add them. Not with the receiver's session
+with your own Spotify app's client ID and secret when you add them. A mix for a mood comes from
+ListenBrainz's LB Radio (a free account's token): two of your artists that fit it and artists like them. Not with the receiver's session
 token: Spotify's Web API answered every call with it with 429, too many requests, on 2026-09-30 (it is
 the shared client of every librespot)."""
 from __future__ import annotations
@@ -35,6 +36,7 @@ import fcntl
 import hashlib
 import json
 import os
+import random
 import re
 import stat
 import struct
@@ -67,6 +69,10 @@ class SpotifySettings(Settings):
                             description="From your app at developer.spotify.com (the one Home Assistant's Spotify "
                                         "integration uses will do), with the secret below: search all of Spotify.")
     client_secret: str = Secret("SPOTIFY_CLIENT_SECRET", title="Client secret variable", label="Client secret")
+    listenbrainz_token: str = Secret("LISTENBRAINZ_TOKEN", title="ListenBrainz token variable",
+                                     label="ListenBrainz token",
+                                     description="From listenbrainz.org/settings (a free account), with the app above: "
+                                                 "a fresh mix for a mood, from your artists and ones like them.")
     bitrate: Literal[320, 160, 96] = Field(320, level="advanced",
                                            description="Spotify's stream: 320 kbps is its best for speakers.")
     api_port: int = Field(3678, ge=1024, le=65535, level="advanced", title="Receiver port",
@@ -477,7 +483,7 @@ def in_library(ctx, what: str, kind: str | None, exact: bool) -> dict | None:
 async def my_music(ctx) -> dict:
     """His Spotify library: playlists, top artists, saved albums and liked songs. Call this when he
     asks what he has, wants to browse his library, or asks for a mood or vibe ("something chill",
-    "play something energetic") so you can pick an artist that fits from what he listens to."""
+    "play something energetic") so you can pick artists that fit from what he listens to, for mix()."""
     lib = ctx.store.get("library") or {}
     return {k: [item["name"] for item in items] for k, items in lib.items()}
 
@@ -559,27 +565,30 @@ def _radio_uri(uri: str) -> str | None:
     return f"spotify:station:{m.group(1)}:{m.group(2)}" if m else None
 
 
+async def start(ctx) -> None:
+    """Before other music: back from muted, and a party's lights stop with its music."""
+    vol = await call(ctx, "GET", "/player/volume")
+    if (vol or {}).get("value", 60) == 0:
+        await call(ctx, "POST", "/player/volume", volume=60)
+    state.pending = None
+    await end_party(ctx)
+
+
 @ext.tool(tier="act", filler="One moment.", timeout=15)
 async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playlist"] | None = None,
                radio: bool = False) -> str:
     """Play music from Spotify on the speakers: a song, an artist, an album, or a playlist (his own
     library first). With radio, Spotify builds a personalized endless stream seeded from the artist
-    or song, drawing on his listening history. For a mood or vibe request ("something chill",
-    "upbeat music"), call my_music() first, pick an artist that fits the mood from his library,
-    then play(what=that_artist, radio=true) so Spotify seeds the station from his taste.
+    or song, drawing on his listening history. For a mood or vibe ("something chill"), use mix(); when
+    it is not set up, play radio from one artist in his library that fits.
 
     Args:
         what: What he asked for, as said: "Daft Punk", "Get Lucky", "my running playlist".
-            For mood requests, the artist you picked from my_music().
         kind: Only when he said which: a track, an artist, an album or a playlist.
         radio: True for an endless personalized stream seeded from the artist or song.
     """
     await ready(ctx)
-    vol = await call(ctx, "GET", "/player/volume")
-    if (vol or {}).get("value", 60) == 0:
-        await call(ctx, "POST", "/player/volume", volume=60)
-    state.pending = None                # another song: a party's lights stop with its music
-    await end_party(ctx)
+    await start(ctx)
     if re.search(r"\bmy\b", what, re.IGNORECASE) and (own := in_library(ctx, what, kind, exact=False)) is not None:
         uri = (radio and _radio_uri(own["uri"])) or own["uri"]
         await call(ctx, "POST", "/player/play", uri=uri)
@@ -589,6 +598,70 @@ async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playli
     station = _radio_uri(uri) if radio else None
     await call(ctx, "POST", "/player/play", uri=station or uri)
     return f"Playing {'radio from ' if station else ''}{_describe(item)}."
+
+
+async def lb_radio(ctx, artists: list[str]) -> tuple[list[dict], list[str]]:
+    """LB Radio's songs from the first two of these artists it knows and ones like them, and those two.
+    Easy mode, their best-known songs, keeps the mix together; medium let German industrial into a chill
+    one. An artist MusicBrainz does not know by that name fails the whole prompt, so the next one stands in."""
+    while artists:
+        seeds = artists[:2]
+        r = await ctx.http.get("https://api.listenbrainz.org/1/explore/lb-radio",
+                               params={"prompt": " ".join(f"artist:({a})" for a in seeds), "mode": "easy"},
+                               headers={"Authorization": f"Token {ctx.settings.listenbrainz_token}"}, timeout=30)
+        if r.status_code == 200:
+            return r.json()["payload"]["jspf"]["playlist"]["track"], seeds
+        error = (r.json() if "json" in r.headers.get("content-type", "") else {}).get("error") or r.text[:120]
+        unknown = re.search(r"Artist (.+) could not be looked up", error)
+        if not unknown or unknown.group(1) not in seeds:
+            raise NotReady(f"ListenBrainz said {r.status_code}: {error}")
+        artists = [a for a in artists if a != unknown.group(1)]
+    return [], []
+
+
+async def on_spotify(ctx, song: dict) -> dict | None:
+    """One of LB Radio's songs on Spotify, by its title without the bracketed part (a remix, a live
+    take, a year) and its artist without the featured ones; None when Spotify's best is someone else's."""
+    title = re.sub(r"\s*[(\[].*?[)\]]", "", song.get("title") or "")
+    by = (song.get("creator") or "").split(" feat. ")[0]
+    try:
+        item = await search(ctx, f"track:{title} artist:{by}", "track")
+    except (ValueError, NotReady):
+        return None
+    return item if any(_norm(a["name"]) in _norm(song.get("creator") or "") for a in item.get("artists") or []) else None
+
+
+@ext.tool(tier="act", filler="One moment.", timeout=30)
+async def mix(ctx, artists: list[str]) -> str:
+    """Play a fresh mix for a mood or vibe ("something chill", "upbeat music", "something different"):
+    call my_music() first, pick three to six artists from his library that fit the mood, and pass them
+    all. Two of them, not the ones used last time, start a list of their songs and songs by artists
+    like them, different every time.
+
+    Args:
+        artists: Three to six artists from my_music() that fit the mood, spelled as listed there.
+    """
+    await ready(ctx)
+    if not ctx.settings.listenbrainz_token or await app_token(ctx) is None:
+        raise NotReady("a mix needs a ListenBrainz token and the Spotify app's client ID and secret on the "
+                       "Spotify card; play radio from an artist instead")
+    recent = ctx.store.get("seeds") or []
+    # never used first, then the longest ago: the same chill artists take turns
+    order = sorted(random.sample(artists, len(artists)), key=lambda a: recent.index(a) if a in recent else -1)
+    radio, seeds = await lb_radio(ctx, order)
+    if not seeds:
+        raise ValueError(f"ListenBrainz knows none of {', '.join(artists)} by those names")
+    ctx.store["seeds"] = (recent + seeds)[-8:]
+    found = await asyncio.gather(*(on_spotify(ctx, s) for s in radio[:25]))
+    songs = list({s["uri"]: s for s in found if s}.values())
+    if not songs:
+        raise ValueError(f"no mix from {', '.join(artists)}: none of LB Radio's songs were found on Spotify")
+    await start(ctx)
+    await call(ctx, "POST", "/player/play", uri=songs[0]["uri"])
+    for s in songs[1:]:
+        await call(ctx, "POST", "/player/add_to_queue", uri=s["uri"])
+    return (f"Playing a mix from {' and '.join(seeds)} and artists like them, {len(songs)} songs, "
+            f"starting with {_describe(songs[0])}.")
 
 
 @ext.tool(tier="act", filler="One moment.", timeout=15)

@@ -14,7 +14,7 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model, memory (read) |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
 | **Sensors** (`sensors`) | Nothing | `sensors_get_readings` | Home Assistant (read: the sensors you pick) |
-| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_queue`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
+| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_mix`, `spotify_queue`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
 | **Web search** (`web`) | Nothing | `web_search` | Gemini (generativelanguage.googleapis.com) |
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
@@ -184,6 +184,19 @@ next goes into Spotify's queue, after the one playing; with nothing playing it p
    `http://127.0.0.1:8700/callback` will do, it is never used) and put its client ID and secret on the
    card, or in `data/.env` as `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. Without them he plays
    from your library only, and says so.
+4. For mixes, make a free account at [ListenBrainz](https://listenbrainz.org) and put the token from its
+   settings page on the card, or in `data/.env` as `LISTENBRAINZ_TOKEN`. It needs the app from step 3.
+
+**Mixes.** Ask for a mood ("something chill", "something upbeat") and he picks three to six artists
+from your library that fit it, and `spotify_mix` builds the list from two of them. Those two seed
+ListenBrainz's [LB Radio](https://troi.readthedocs.io/en/latest/lb_radio.html) in easy mode: their
+songs and songs by artists like them, a different list every time. Each song is found on Spotify by
+its title and artist (one whose best match is by someone else is left out), the first plays and the
+rest are queued, about 20 songs. The last eight seeds are remembered: a mix starts from artists not
+used lately, else from those used longest ago, so the same chill artists take turns. An artist MusicBrainz does not know by that name is
+skipped for the next. Without a token he plays Spotify's radio from one artist that fits, as before.
+Not used: LB Radio's tags on their own (they gave obscure free-archive songs, or drifted to unrelated
+tags in hard mode), and its `stats` and `recs`, which need your listening history on ListenBrainz.
 
 Spotify gives such receivers its 320 kbps stream; the box gets it as 48 kHz 16-bit stereo FLAC
 ([Voice PE](voice-pe.md#music)). Pause, play and skip in the app or by voice, and the box follows: a
