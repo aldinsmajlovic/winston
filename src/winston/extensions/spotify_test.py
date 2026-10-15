@@ -183,8 +183,9 @@ async def test_pause_skip_volume_and_what_is_playing():
     h = harness(rx)
     assert await h.tool("pause") == "Paused."
     assert await h.tool("next_track") == "Next song."
-    assert await h.tool("volume", change="up") == "Music volume 70 of 100."
+    assert await h.tool("volume", change="up") == "Music volume 80 of 100."
     assert await h.tool("volume", level=150) == "Music volume 100 of 100."
+    assert await h.tool("volume", change="down") == "Music volume 75 of 100."
     now = await h.tool("now_playing")
     assert now["song"] == "Get Lucky" and now["artists"] == ["Daft Punk"], now
     assert [p for m, p, b in rx.calls if m == "POST"][:2] == ["/player/pause", "/player/next"]

@@ -757,12 +757,15 @@ async def volume(ctx, level: int | None = None, change: Literal["up", "down"] | 
 
     Args:
         level: 0 to 100.
-        change: "up" or "down", by 10, when he gave no number.
+        change: "up" or "down" a step (about 5 dB), when he gave no number.
     """
+    if change and level is None:
+        # go-librespot plays at the volume squared, so 10 down from 87 was 2 dB and not heard; a quarter of the
+        # volume is about 5 dB at any level.
+        now = (await call(ctx, "GET", "/player/volume")).get("value", 0)
+        level = round(now * 0.75) if change == "down" else max(10, round(now / 0.75))
     if level is not None:
         await call(ctx, "POST", "/player/volume", volume=max(0, min(100, level)))
-    elif change:
-        await call(ctx, "POST", "/player/volume", volume=10 if change == "up" else -10, relative=True)
     now = await call(ctx, "GET", "/player/volume")
     return f"Music volume {now.get('value')} of {now.get('max', 100)}."
 
