@@ -202,8 +202,19 @@ ListenBrainz's [LB Radio](https://troi.readthedocs.io/en/latest/lb_radio.html) i
 songs and songs by artists like them, a different list every time. Each song is found on Spotify by
 its title and artist (one whose best match is by someone else is left out), the first plays and the
 rest are queued, about 20 songs. The last eight seeds are remembered: a mix starts from artists not
-used lately, else from those used longest ago, so the same chill artists take turns. An artist MusicBrainz does not know by that name is
-skipped for the next. Without a token he plays Spotify's radio from one artist that fits, as before.
+used lately, else from those used longest ago, so the same chill artists take turns. An artist
+MusicBrainz does not know by that name is skipped for the next, and remembered, so later mixes do not ask
+about it again. A song's credits count by their first artist ("Fred again.. x Brian Eno"), "&" is "and",
+and one song comes once. Songs already found on Spotify are kept in `songs.json` in the extension's
+folder, so a song that comes back in a later mix costs no search (Spotify gives the app a small daily
+quota). When ListenBrainz does not answer within 10 s, or Spotify is refusing searches, a mood plays
+Spotify's radio from one of your artists instead, which needs no search.
+
+**A mood plays as** (Advanced on the card): `listenbrainz`, the list above; `spotify_radio`, Spotify's
+own radio from one of your artists that fit, shaped by your listening, with no searches at all; or
+`both_in_turn`, one then the other, said the same way, as a blind test: which was which is logged in the
+extension's store (`mood_log`, with the time, the mood and the seeds). A genre always uses ListenBrainz,
+whose radio follows a tag. Without a ListenBrainz token he plays Spotify's radio from one artist that fits.
 Not used: tags for moods ("chill" gave obscure free-archive songs, or drifted to unrelated tags in hard
 mode), and LB Radio's `stats` and `recs`, which need your listening history on ListenBrainz.
 

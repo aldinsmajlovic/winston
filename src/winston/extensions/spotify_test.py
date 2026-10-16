@@ -24,6 +24,7 @@ class Receiver:
         self.playing = True
         self.refusing = 0                       # Spotify's search answers 429 with this Retry-After
         self.answers: dict[str, dict] = {}      # Spotify's answer for one query, else `found`
+        self.lb_slow = False                    # ListenBrainz does not answer
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -58,6 +59,8 @@ class Receiver:
             self.calls[-1] = ("GENRES", path, None)
             return httpx.Response(200, text="classic rock\ndrum and bass\njazz\n")
         if request.url.host == "api.listenbrainz.org":
+            if self.lb_slow:
+                raise httpx.ReadTimeout("no answer", request=request)
             assert request.headers["authorization"] == "Token lb-token"
             prompt = dict(parse_qsl(request.url.query.decode()))["prompt"]
             self.calls[-1] = ("LB", prompt, None)
@@ -109,8 +112,10 @@ def library_ha() -> FakeHA:
     return FakeHA(services={"media_player.browse_media": browse})
 
 
-def harness(rx: Receiver, keys: bool = True, library: bool = False, names: list[str] | None = None) -> Harness:
-    return Harness(HERE, settings={**({"library": PLAYER} if library else {}), **({"names": names} if names else {})},
+def harness(rx: Receiver, keys: bool = True, library: bool = False, names: list[str] | None = None,
+            **settings) -> Harness:
+    return Harness(HERE, settings={**({"library": PLAYER} if library else {}), **({"names": names} if names else {}),
+                                   **settings},
                    background=False,
                    secrets=KEYS if keys else {"client_id": "", "client_secret": "", "listenbrainz_token": ""},
                    http=httpx.MockTransport(rx.handle), ha=library_ha() if library else None)
@@ -516,4 +521,49 @@ async def test_a_genre_said_as_a_name_is_a_genre_and_named_artists_always_seed()
         assert "three to six of his artists" in str(e), e
     assert await h.tool("play") == "Nothing to play was named: ask him what he would like, and suggest a mix that fits."
     await h.close()
+
+
+async def test_a_mood_as_spotify_radio_needs_no_search_and_a_blind_test_takes_turns():
+    rx = Receiver()
+    h = harness(rx, library=True, mood_mixes="spotify_radio")
+    await h.run("library")
+    assert await h.tool("play", mood="chill", artists=["Daft Punk"]) == "Playing radio from Daft Punk, for chill."
+    assert played(rx) == ["spotify:station:artist:dp"] and not any(c[0] in ("SEARCH", "LB") for c in rx.calls), rx.calls
+    await h.close()
+    rx = Receiver()
+    h = harness(rx, library=True, mood_mixes="both_in_turn")
+    await h.run("library")
+    said = [await h.tool("play", mood="chill", artists=["Daft Punk", "Radiohead"]) for _ in range(3)]
+    assert all(x.startswith("Playing a chill mix from ") and "songs" not in x and "radio" not in x for x in said), said
+    log = h.rt.store["mood_log"]
+    assert [e["recipe"] for e in log] == ["listenbrainz", "spotify_radio", "listenbrainz"], log
+    assert log[0]["mood"] == "chill" and log[1]["seeds"], log
+    await h.close()
+
+
+async def test_a_slow_listenbrainz_plays_radio_and_what_was_found_or_unknown_is_kept():
+    rx = Receiver()
+    h = harness(rx, library=True)
+    await h.run("library")
+    await h.tool("play", artists=["Nobody", "Daft Punk"])            # Nobody is not known to ListenBrainz
+    searches = len([c for c in rx.calls if c[0] == "SEARCH"])
+    await h.tool("play", artists=["Nobody", "Daft Punk"])
+    lb = [p for m, p, b in rx.calls if m == "LB"]
+    assert "artist:(Nobody)" not in lb[-1], lb                       # remembered, not asked about again
+    assert len([c for c in rx.calls if c[0] == "SEARCH"]) == searches, rx.calls     # its songs were kept
+    rx.lb_slow = True
+    assert await h.tool("play", mood="chill", artists=["Radiohead"]) == "Playing radio from Radiohead, for chill."
+    assert played(rx)[-1] == "spotify:station:artist:rh", played(rx)
+    rx.lb_slow, rx.refusing = False, 80056
+    try:
+        await h.tool("play", what="Push the Feeling On")              # Spotify starts refusing searches
+    except Exception:                                               # noqa: BLE001
+        pass
+    assert await h.tool("play", mood="chill", artists=["Daft Punk"]) == "Playing radio from Daft Punk, for chill."
+    await h.close()
+
+
+def test_and_is_ampersand():
+    module = Harness(HERE).ext.tools["play"].fn.__globals__
+    assert module["_key"]("Demo & Cease") == module["_key"]("Demo and Cease"), module["_key"]("Demo & Cease")
 
