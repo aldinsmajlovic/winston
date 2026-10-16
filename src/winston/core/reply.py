@@ -27,7 +27,7 @@ _SENTENCE_END = re.compile(r"[.!?][\"')\]]*\s+|\n+")
 _THINK_TAG = re.compile(r"</?think>")
 _CLOSE_THINK = "</think>"
 _CALL = re.compile(r"<tool_call>|<function=")                  # a tool call written as text (Qwen's form)
-_STAMP = re.compile(r"\[\d{1,2}:\d\d(, room: [^\]]*)?\]\s*")     # the clock's stamp (brain.Clock), copied
+_STAMP = re.compile(r"\[\d{1,2}:\d\d(?:, room: [^\];]*)?(?:; [^\]]*)?\]\s*")   # the clock's stamp (brain.Clock), copied
 
 
 def _words(text: str) -> str:

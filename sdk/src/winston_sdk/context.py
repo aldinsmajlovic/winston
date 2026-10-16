@@ -17,6 +17,8 @@ import httpx
 from pydantic import BaseModel
 
 from winston_sdk.errors import NotPermitted
+
+ONGOING = "ongoing.txt"     # ctx.ongoing's line, in the extension's folder; Winston's channels read it each message
 from winston_sdk.nudge import Nudge, NudgeState
 from winston_sdk.when import parse_when
 
@@ -263,6 +265,15 @@ class Ctx:
     @property
     def folder(self) -> Path:
         return self._rt.state_dir
+
+    def ongoing(self, text: str | None) -> None:
+        """What is going on now that he should know with every message ("playing Oh Dove by Men I Trust"),
+        or None once it is over. Up to 160 characters, in front of each thing said to him while it lasts."""
+        path = self.folder / ONGOING
+        if text and text.strip():
+            path.write_text(" ".join(text.split())[:160])
+        else:
+            path.unlink(missing_ok=True)
 
     def now(self) -> datetime:
         return self._rt.clock.now()

@@ -199,6 +199,36 @@ async def stamp():
     check("room stamp", bool(re.fullmatch(r"\[\d\d:\d\d, room: Main Room\] lights off", msgs[1])), True)
     check("stamp pattern knows rooms", bool(_STAMP.match(msgs[1])), True)
 
+    # What extensions say is going on now rides in the stamp, read each message (texts.ongoing).
+    import tempfile
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from winston.core import brain
+    from winston.core.reply import _STAMP as SPOKEN_STAMP
+    from winston.extension_host import texts
+    folder = Path(tempfile.mkdtemp(prefix="winston-ongoing-"))
+    real_dir, texts.state_dir = texts.state_dir, lambda ext_id: folder / ext_id
+    try:
+        (folder / "spotify").mkdir()
+        (folder / "spotify" / "ongoing.txt").write_text("playing  Oh Dove [live]\nby Men I Trust")
+        cfg = SimpleNamespace(extensions={"spotify": SimpleNamespace(enabled=True), "off": SimpleNamespace(enabled=False)})
+        check("an extension's line, without brackets or breaks", texts.ongoing(cfg),
+              [("spotify", "playing Oh Dove (live) by Men I Trust")])
+        out.clear()
+        c = Clock("Main Room", cfg)
+        c.push_frame = lambda f, d=FrameDirection.DOWNSTREAM: out.append(f) or asyncio.sleep(0)
+        await c.process_frame(LLMContextFrame(context=LLMContext([user("who is this?")])), FrameDirection.DOWNSTREAM)
+        said = out[0].context.get_messages()[-1]["content"]
+        check("what is going on is in the stamp", bool(re.fullmatch(
+            r"\[\d\d:\d\d, room: Main Room; spotify: playing Oh Dove \(live\) by Men I Trust\] who is this\?", said)), True)
+        check("and the stamp patterns know it", (bool(_STAMP.match(said)), brain.last_said([{"role": "user", "content": said}]),
+                                                 SPOKEN_STAMP.sub("", said)), (True, "who is this?", "who is this?"))
+        (folder / "spotify" / "ongoing.txt").unlink()
+        check("nothing going on, nothing said", texts.ongoing(cfg), [])
+    finally:
+        texts.state_dir = real_dir
+
 
 def named_device():
     areas = {"window lamps": "Living Room", "shelf lamp": "Main Room"}

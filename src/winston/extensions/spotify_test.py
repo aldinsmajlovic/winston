@@ -54,6 +54,9 @@ class Receiver:
                 return httpx.Response(200, json={"tracks": {"items": [{"uri": f"spotify:track:{title}", "name": title,
                                                                        "artists": [{"name": "Daft Punk"}]}]}})
             return httpx.Response(200, json={f"{t}s": self.found.get(f"{t}s", {"items": []}) for t in q["type"].split(",")})
+        if request.url.host == "musicbrainz.org":
+            self.calls[-1] = ("GENRES", path, None)
+            return httpx.Response(200, text="classic rock\ndrum and bass\njazz\n")
         if request.url.host == "api.listenbrainz.org":
             assert request.headers["authorization"] == "Token lb-token"
             prompt = dict(parse_qsl(request.url.query.decode()))["prompt"]
@@ -207,7 +210,7 @@ async def test_a_refusing_search_is_said_plainly_and_not_asked_again_until_it_li
     assert [c[0] for c in rx.calls].count("SEARCH") == 1, rx.calls
     assert await h.tool("play", what="One more time") == "Playing One More Time."    # his library still plays
     try:
-        await h.tool("mix", artists=["Air"])
+        await h.tool("play", artists=["Air"])
         raise AssertionError("mixed while Spotify refuses")
     except AssertionError:
         raise
@@ -263,9 +266,12 @@ async def test_the_speakers_follow_spotify_and_a_pause_loses_nothing():
     await handle(ctx, {"type": "playing", "data": {}})
     await handle(ctx, {"type": "playing", "data": {"resume": True}})
     assert h.speakers == [("play", "http://127.0.0.1:3679/stream.wav", "Get Lucky by Daft Punk")], h.speakers
+    going = lambda: (h.rt.state_dir / "ongoing.txt").read_text() if (h.rt.state_dir / "ongoing.txt").exists() else None
+    assert going() == "playing Get Lucky by Daft Punk", going()      # in each message's stamp
     state.until = time.monotonic() + 1.5                            # the box has 1.5 s it has not played
     await handle(ctx, {"type": "paused", "data": {}})
     assert [a for a, *_ in h.speakers] == ["play", "stop"], h.speakers     # at once, not when the box runs dry
+    assert going() == "paused on Get Lucky by Daft Punk", going()
     seeks = [b for m, p, b in rx.calls if p == "/player/seek"]
     assert len(seeks) == 1 and seeks[0]["relative"] and -1500 <= seeks[0]["position"] <= -1400, seeks
     await handle(ctx, {"type": "playing", "data": {"resume": True}})
@@ -273,6 +279,7 @@ async def test_the_speakers_follow_spotify_and_a_pause_loses_nothing():
     assert [a for a, *_ in h.speakers] == ["play", "stop", "play"], h.speakers    # deferred, not yet stopped
     await asyncio.sleep(0.6)
     assert [a for a, *_ in h.speakers] == ["play", "stop", "play", "stop"], h.speakers
+    assert going() is None, going()
     assert len([p for m, p, b in rx.calls if p == "/player/seek"]) == 1     # a stop has nothing to go back to
     await h.close()
 
@@ -384,12 +391,12 @@ async def test_the_pipe_is_read_only_as_asked_and_a_pause_drops_the_rest():
 async def test_a_song_queued_plays_next_or_now_when_nothing_plays():
     rx = Receiver()
     h = harness(rx)
-    said = await h.tool("queue", what="get lucky")
+    said = await h.tool("play", what="get lucky", next=True)
     assert said == "Queued Get Lucky by Daft Punk, Pharrell Williams.", said
     assert ("POST", "/player/add_to_queue", {"uri": "spotify:track:gl"}) in rx.calls and played(rx) == []
     assert ("SEARCH", "track", {"q": "get lucky"}) in rx.calls
     rx.playing = False
-    said = await h.tool("queue", what="get lucky")
+    said = await h.tool("play", what="get lucky", next=True)
     assert said.startswith("Nothing was playing") and played(rx) == ["spotify:track:gl"], said
     await h.close()
 
@@ -397,18 +404,18 @@ async def test_a_song_queued_plays_next_or_now_when_nothing_plays():
 async def test_a_mix_starts_from_two_fresh_artists_and_plays_only_their_songs_found_on_spotify():
     rx = Receiver()
     h = harness(rx)
-    said = await h.tool("mix", artists=["Nobody", "Air"])
+    said = await h.tool("play", artists=["Nobody", "Air"])
     lb = [p for m, p, b in rx.calls if m == "LB"]
     assert len(lb) == 2 and "artist:(Nobody)" in lb[0] and lb[1] == "artist:(Air)", lb
     assert said == "Playing a mix from Air and artists like them, 2 songs, starting with Get Lucky by Daft Punk.", said
     assert played(rx) == ["spotify:track:Get Lucky"], rx.calls
     assert [b["uri"] for m, p, b in rx.calls if p == "/player/add_to_queue"] == ["spotify:track:One More Time"]
     assert ("SEARCH", "track", {"q": "track:Get Lucky artist:Daft Punk"}) in rx.calls
-    await h.tool("mix", artists=["Air", "Justice", "Daft Punk"])
+    await h.tool("play", artists=["Air", "Justice", "Daft Punk"])
     assert "Air" not in [p for m, p, b in rx.calls if m == "LB"][-1]
-    await h.tool("mix", artists=["Air", "Justice", "Daft Punk"])     # all used: the longest ago go first
+    await h.tool("play", artists=["Air", "Justice", "Daft Punk"])     # all used: the longest ago go first
     assert "artist:(Air)" in [p for m, p, b in rx.calls if m == "LB"][-1]
-    said = await h.tool("mix", artists=[], genre="drum and bass")    # a genre he has no artists of
+    said = await h.tool("play", artists=[], genre="drum and bass")    # a genre he has no artists of
     assert [p for m, p, b in rx.calls if m == "LB"][-1] == "tag:(drum and bass)::nosim"
     assert said.startswith("Playing a mix from drum and bass, 2 songs"), said
     await h.close()
@@ -443,11 +450,13 @@ async def test_only_a_name_that_is_the_name_plays():
     await h.run("library")
     assert await h.tool("play", what="Creep") == "Playing Creep by Radiohead.", rx.calls
     assert await h.tool("play", what="Wonderwall") == "Playing Wonderwall - Remastered by Oasis."
-    for what in ("drum and bass", "something jolly"):
-        said = await h.tool("play", what=what)
-        assert said.startswith(f"Nothing on Spotify is called {what!r}, so nothing was played. Nearest:"), said
+    said = await h.tool("play", what="drum and bass")              # a genre, as MusicBrainz knows it: a mix
+    assert said.startswith("Playing a mix from drum and bass,"), said
+    said = await h.tool("play", what="something jolly")
+    assert said.startswith("Nothing on Spotify is called 'something jolly', so nothing was played. Nearest:"), said
     assert await h.tool("play", what="Seven Seconds") == "Playing 7 Seconds (feat. Neneh Cherry) by Youssou N'Dour."
-    assert played(rx) == ["spotify:track:creep", "spotify:track:ww", "spotify:track:7s"], played(rx)
+    assert played(rx) == ["spotify:track:creep", "spotify:track:ww", "spotify:track:Get Lucky", "spotify:track:7s"], \
+        played(rx)
     await h.close()
 
 
@@ -466,7 +475,7 @@ async def test_a_song_by_an_artist_is_by_that_artist_or_he_is_told_whose_it_is()
     said = await h.tool("play", what="Big Bad John", by="Johnny Horton")
     assert said == "Playing Big Bad John by Jimmy Dean. Big Bad John is by Jimmy Dean, not Johnny Horton.", said
     assert await h.tool("play", what="One by U2") == "Playing One by U2."         # said as one name
-    assert await h.tool("queue", what="One", by="U2") == "Queued One by U2."
+    assert await h.tool("play", what="One", by="U2", next=True) == "Queued One by U2."
     await h.close()
 
 
@@ -483,5 +492,28 @@ async def test_my_music_stays_in_his_library_and_an_emoji_is_said_by_its_name():
     assert said.startswith("He has no playlist called 'my liked songs' in his library, so nothing was played."), said
     assert not any(c[0] == "SEARCH" for c in rx.calls), rx.calls
     assert "\U0001f941 (drum with drumsticks)" in (await h.tool("my_music"))["playlist"]
+    await h.close()
+
+
+async def test_a_genre_said_as_a_name_is_a_genre_and_named_artists_always_seed():
+    rx = Receiver()
+    h = harness(rx)
+    said = await h.tool("play", what="Jazz")                      # once Queen's album Jazz
+    assert said.startswith("Playing a mix from jazz,"), said
+    assert [p for m, p, b in rx.calls if m == "LB"] == ["tag:(jazz)::nosim"], rx.calls
+    assert await h.tool("play", what="Get Lucky") == "Playing Get Lucky by Daft Punk, Pharrell Williams."
+    said = await h.tool("play", mood="chill", artists=["Air", "Justice", "Daft Punk"], like=["Frank Ocean"])
+    assert said.startswith("Playing a chill mix from Frank Ocean and "), said
+    assert [p for m, p, b in rx.calls if m == "LB"][-1].startswith("artist:(Frank Ocean) artist:("), rx.calls
+    said = await h.tool("play", genre="drum and bass", artists=["Air", "Daft Punk"])    # his artists of other genres
+    assert [p for m, p, b in rx.calls if m == "LB"][-1] == "tag:(drum and bass)::nosim", rx.calls
+    try:
+        await h.tool("play", mood="chill")
+        raise AssertionError("a mood with nothing to start from played")
+    except AssertionError:
+        raise
+    except Exception as e:                                          # noqa: BLE001
+        assert "three to six of his artists" in str(e), e
+    assert await h.tool("play") == "Nothing to play was named: ask him what he would like, and suggest a mix that fits."
     await h.close()
 

@@ -245,7 +245,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         stt,                    # utterance -> text
         gate.text,              # ...and nothing heard then becomes a turn
         aggregators.user(),     # VAD + turn taking; text -> context
-        Clock(area(CFG, room) if room else None),   # the time (and room) in front of the newest user message
+        Clock(area(CFG, room) if room else None, CFG),   # the time, room and what is going on, before each message
         Mentions(CFG),          # nudges for the next conversation and the briefing, after his answer
         *([link.before] if link else []),           # the room's conversation in, this session's out
         brain.llm,              # context -> streamed text, tool calls

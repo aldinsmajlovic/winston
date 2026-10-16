@@ -2,10 +2,14 @@
 it reads memory: a few lines for the prompt (`@ext.context`) and words for speech to text
 (`@ext.hint_words`). winstond writes them when an extension starts and after each of its jobs, and
 removes them when it stops; a channel reads them when a conversation starts, so the prompt stays the
-same for the whole conversation and its cache holds."""
+same for the whole conversation and its cache holds. What is going on now (`ctx.ongoing`, written by the
+extension itself) is read with every message instead, into its stamp (brain.Clock); it goes when the
+extension's process starts or stops, so it is never older than the process that wrote it."""
 from __future__ import annotations
 
 import json
+
+from winston_sdk.context import ONGOING
 
 from winston.config.schema import WinstonConfig
 from winston.extension_host.sources import state_dir
@@ -26,6 +30,25 @@ def write(ext_id: str, context: str | None, words: list[str] | None) -> None:
 
 def clear(ext_id: str) -> None:
     write(ext_id, None, None)
+    clear_ongoing(ext_id)
+
+
+def clear_ongoing(ext_id: str) -> None:
+    (state_dir(ext_id) / ONGOING).unlink(missing_ok=True)
+
+
+def ongoing(cfg: WinstonConfig) -> list[tuple[str, str]]:
+    """(extension id, what is going on now) for each extension switched on that says so, read each message.
+    No brackets or line breaks: it goes inside the message's stamp."""
+    out = []
+    for ext_id in _on(cfg):
+        try:
+            text = (state_dir(ext_id) / ONGOING).read_text()
+        except OSError:
+            continue
+        if text := " ".join(text.replace("[", "(").replace("]", ")").split())[:160]:
+            out.append((ext_id, text))
+    return out
 
 
 def _on(cfg: WinstonConfig) -> list[str]:

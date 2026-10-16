@@ -70,6 +70,11 @@ until an answer follows it, so the model never answers it in place of yours. The
 mic with a lease it renews every 5 s during its turn; a browser session follows the room's mic and
 turns its microphone into silence while the box has it. Details in `core/rooms.py`.
 
+Each message the model sees starts with a stamp: the time, the room, and what extensions say is going on
+now (`[09:30, room: Main Room; spotify: playing Oh Dove by Men I Trust]`, from `ctx.ongoing`), read fresh
+each message. So "who is this?" or "not this one" in a new conversation knows the song, and the stamp stays
+in the history, so the cached prompt does not change.
+
 Each session keeps to a slot of the model server (llama.cpp with more than one, `brain.server_slot`):
 spoken sessions (the box, a browser's voice) the first, typed ones, checks, trials and background calls
 the last. Unpinned, llama.cpp gives a request the slot whose prompt shares the most with it, so a check

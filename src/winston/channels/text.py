@@ -106,7 +106,7 @@ class TextSession:
         agg = LLMContextAggregatorPair(self.brain.new_context())
         self._tracker = TurnTracker(); self.printer = Printer(self._tracker, self.echo)
         before, after = ([self.room.before], [self.room.after]) if self.room else ([], [])
-        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area), *([Mentions(cfg)] if self.mentions else []), *before, self.brain.llm, ReplyFilter(),
+        self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area, cfg), *([Mentions(cfg)] if self.mentions else []), *before, self.brain.llm, ReplyFilter(),
                                                 self.printer, *self._outputs, agg.assistant(), *after]),
                                       params=PipelineParams(enable_metrics=False),
                                       observers=[self.brain.verifier.observer,

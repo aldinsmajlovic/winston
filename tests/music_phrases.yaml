@@ -1,51 +1,55 @@
-# Music requests for `winston check turns --phrases tests/music_phrases.yaml --runs 5`: what the box's
-# brain calls for each, with the music tools as they are now (spotify_play for a name, spotify_mix for a
-# mood or a genre). Generic on purpose; your own phrasings, which are personal, go in data/.
-# expect: every entry is called ("a|b" for either); forbid: none is. Names are substrings of tool names.
+# Music requests for `winston check turns --phrases tests/music_phrases.yaml --runs 10`: what the box's brain
+# calls for each. Generic on purpose; your own phrasings, which are personal, go in data/.
+# expect: every entry is called ("a|b" for either); forbid: none is. Names are substrings of tool names, and
+# "tool(arg)" also needs that argument: spotify_play(what) plays a name, spotify_play(genre) a genre. The
+# expectations hold for both layouts the A/B of 2026-10-16 compared (play, mix and queue as three tools, or
+# one play with fields).
 channel: satellite
 cases:
   # a genre or a mood is never played as a title (Queen's album Jazz, "Drum and Bass Father")
   - say: Play some jazz.
-    expect: [spotify_mix]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(genre)"]
+    forbid: ["spotify_play(what)"]
   - say: Put on some drum and bass.
-    expect: [spotify_mix]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(genre)"]
+    forbid: ["spotify_play(what)"]
   - say: Play dnb.
-    expect: [spotify_mix]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(genre)"]
+    forbid: ["spotify_play(what)"]
   - say: Play something chill.
-    expect: [spotify_mix]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(mood)|spotify_play(artists)"]
+    forbid: ["spotify_play(what)"]
   - say: Something to fall asleep to.
-    expect: [spotify_mix]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(mood)|spotify_play(artists)"]
+    forbid: ["spotify_play(what)", "volume"]
   - say: Play some music.
-    expect: [spotify_mix|spotify_play]
+    expect: ["spotify_mix|spotify_play"]
   # a name is a name
   - say: Play Daft Punk.
-    expect: [spotify_play]
-    forbid: [spotify_mix]
+    expect: ["spotify_play(what)"]
+    forbid: ["spotify_mix", "spotify_play(genre)"]
   - say: Play Get Lucky by Daft Punk.
-    expect: [spotify_play]
-    forbid: [spotify_mix]
+    expect: ["spotify_play(by)"]
+    forbid: ["spotify_mix", "spotify_play(genre)"]
   - say: Play One by U2.
-    expect: [spotify_play]
-    forbid: [spotify_mix]
+    expect: ["spotify_play(by)"]
+    forbid: ["spotify_mix", "spotify_play(genre)"]
   - say: Play my drum emoji playlist.
-    expect: [spotify_play]
-    forbid: [spotify_mix]
+    expect: ["spotify_play(what)"]
+    forbid: ["spotify_mix", "spotify_play(genre)"]
   - say: Play the album Random Access Memories.
-    expect: [spotify_play]
-    forbid: [spotify_mix]
+    expect: ["spotify_play(what)"]
+    forbid: ["spotify_mix", "spotify_play(genre)"]
+  - say: Play Get Lucky next.
+    expect: ["spotify_queue|spotify_play(next)"]
   # two things at once, and late in a conversation
   - say: Play some jazz and turn on the lights.
-    expect: [spotify_mix, HassTurnOn|HassLightSet]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(genre)", "HassTurnOn|HassLightSet"]
+    forbid: ["spotify_play(what)"]
   - before: ["What time is it?", Play Daft Punk., Pause.]
     say: Play some drum and bass and dim the lights a bit.
-    expect: [spotify_mix, HassLightSet|HassTurn]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(genre)", "HassLightSet|HassTurn"]
+    forbid: ["spotify_play(what)"]
   # about what is playing
   - say: Who is this?
     expect: [spotify_now_playing]
@@ -54,12 +58,12 @@ cases:
     expect: [spotify_now_playing]
   - before: [Play something chill.]
     say: Not this one.
-    expect: [spotify_next_track|spotify_mix]
-    forbid: [spotify_play]
+    expect: ["spotify_next_track|spotify_mix|spotify_play(mood)|spotify_play(artists)"]
+    forbid: ["spotify_play(what)"]
   - before: [Play something chill.]
     say: Something more upbeat.
-    expect: [spotify_mix]
-    forbid: [spotify_play]
+    expect: ["spotify_mix|spotify_play(mood)|spotify_play(artists)|spotify_play(genre)"]
+    forbid: ["spotify_play(what)"]
   - before: [Play something chill.]
     say: Save this song.
     forbid: [spotify_play, spotify_mix, spotify_queue, HassListAddItem]

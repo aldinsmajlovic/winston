@@ -118,8 +118,16 @@ def wer(heard: str, ref: str) -> float:
     return d[len(b)] / len(a)
 
 
-def matches(expect: str, called: list[str]) -> bool:
-    return any(alt in name for alt in expect.split("|") for name in called)
+def matches(expect: str, called: list) -> bool:
+    """Whether any alternative ("a|b") was called. `called` holds names, or calls ({name, args}), where
+    "tool(arg)" also needs that argument given: spotify_play(genre) is a genre, spotify_play(what) a name."""
+    for alt in expect.split("|"):
+        name, _, arg = alt.partition("(")
+        for c in called:
+            cname, args = (c, {}) if isinstance(c, str) else (c["name"], c.get("args") or {})
+            if name in cname and (not arg or args.get(arg.rstrip(")")) not in (None, "", [], {})):
+                return True
+    return False
 
 
 def stub(name: str):
@@ -172,7 +180,7 @@ async def ask(cfg: WinstonConfig, channel: str, room: str | None, before: list[s
     return reply, observer.turn
 
 
-def score(want: dict, called: list[str]) -> dict:
+def score(want: dict, called: list) -> dict:
     if not (want.get("expect") or want.get("forbid")):
         return {"right_thing": None}
     missing = [e for e in want.get("expect") or [] if not matches(e, called)]
@@ -192,8 +200,7 @@ async def phrases(cfg: WinstonConfig, name: str, store: TurnStore) -> int:
         for _ in range(args.runs):
             reply, turn = await ask(cfg, channel, room, case.get("before") or [], case["say"])
             calls = [{"name": c["name"], "args": c.get("args")} for c in turn.tools]
-            runs.append({"said": reply, "calls": calls, "first_token_ms": turn.first_token_ms,
-                         **score(case, [c["name"] for c in calls])})
+            runs.append({"said": reply, "calls": calls, "first_token_ms": turn.first_token_ms, **score(case, calls)})
         right = sum(bool(r["right_thing"]) for r in runs)
         seen = collections.Counter(" ".join(c["name"] for c in r["calls"]) or "no tool" for r in runs)
         print(f"{right}/{len(runs)}  {case['say']!r}{'  after ' + str(case['before']) if case.get('before') else ''}\n"

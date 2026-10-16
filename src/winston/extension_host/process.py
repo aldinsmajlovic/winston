@@ -25,6 +25,7 @@ from mcp.shared._httpx_utils import create_mcp_http_client
 from pydantic import BaseModel, ConfigDict
 from winston_sdk.server import request
 
+from winston.extension_host import texts
 from winston.extension_host.sources import Source, base_env, command, state_dir
 
 BACKOFF = (1, 5, 30)
@@ -133,6 +134,7 @@ class ExtensionProcess:
 
     async def _supervise(self) -> None:
         while not self._stop.is_set():
+            texts.clear_ongoing(self.id)        # what it said was going on ended with the process that said it
             self.state = "starting" if not self.crashes else "restarting"
             error = None
             try:

@@ -14,7 +14,7 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model, memory (read) |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
 | **Sensors** (`sensors`) | Nothing | `sensors_get_readings` | Home Assistant (read: the sensors you pick) |
-| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_mix`, `spotify_queue`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
+| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
 | **Web search** (`web`) | Nothing | `web_search` | Gemini (generativelanguage.googleapis.com) |
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
@@ -173,8 +173,13 @@ Spotify on the speakers: the box in the room you are in, and whatever is plugged
 [go-librespot](https://github.com/devgianlu/go-librespot) 0.10.2, an open Spotify Connect receiver
 (downloaded once from GitHub and checked against the release's checksum), so a speaker named Winston
 shows up in the Spotify app. By voice: "play Daft Punk", "play my running playlist", "play Get Lucky
-next", "pause", "next song", "louder", "what's playing?". It needs Spotify Premium. A song asked for
-next goes into Spotify's queue, after the one playing; with nothing playing it plays now.
+next", "something chill", "some jazz", "pause", "next song", "louder", "who is this?". It needs Spotify
+Premium. Anything to hear goes through one tool, `spotify_play`, with what you said in its fields (a
+name, its artist, a genre, a mood, artists you named as the kind you want, "next"), and the code decides
+how to play it, so the brain cannot pick the wrong tool. A song asked for next goes into Spotify's queue,
+after the one playing; with nothing playing it plays now. While something plays, every message he gets
+says so in its stamp ("spotify: playing Oh Dove by Men I Trust"), so "who is this?" or "not this one" knows
+the song, and a request to play is music only, never a light scene.
 
 1. Switch it on. The card shows a code: open spotify.com/pair and enter it, once.
 2. Under **Your library from**, pick Home Assistant's Spotify player. Your playlists, saved albums, top
@@ -188,9 +193,11 @@ next goes into Spotify's queue, after the one playing; with nothing playing it p
    settings page on the card, or in `data/.env` as `LISTENBRAINZ_TOKEN`. It needs the app from step 3.
 
 **Mixes.** Ask for a mood ("something chill", "something upbeat") and he picks three to six artists
-from your library that fit it, and `spotify_mix` builds the list from two of them. Ask for a genre
-("some drum and bass") and the genre's MusicBrainz tag goes in too, with only your artists of that
-genre, or none: songs tagged with it, not with similar tags. Those two seed
+from your library that fit it; the list starts from two of them, and artists you named ("something
+like Frank Ocean") always seed it. Ask for a genre ("some drum and bass") and it comes from the genre's
+MusicBrainz tag alone, with artists you named: songs tagged with it, not with similar tags. A genre said
+as a name ("play jazz") is a genre when MusicBrainz lists it and nothing in your library has the name.
+The seeds start
 ListenBrainz's [LB Radio](https://troi.readthedocs.io/en/latest/lb_radio.html) in easy mode: their
 songs and songs by artists like them, a different list every time. Each song is found on Spotify by
 its title and artist (one whose best match is by someone else is left out), the first plays and the
