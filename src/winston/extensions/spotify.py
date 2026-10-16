@@ -42,6 +42,7 @@ import stat
 import struct
 import tarfile
 import time
+import unicodedata
 from collections import deque
 from typing import Literal
 
@@ -73,6 +74,10 @@ class SpotifySettings(Settings):
                                      label="ListenBrainz token",
                                      description="From listenbrainz.org/settings (a free account), with the app above: "
                                                  "a fresh mix for a mood, from your artists and ones like them.")
+    names: list[str] = Field(default_factory=list, title="Your names for them",
+                             description="What you call your playlists, albums or artists, one per line: the "
+                                         "name, =, then your words for it (🥁 = drum and bass, drums). An emoji "
+                                         "is already known by its own name (\"drum emoji\").")
     bitrate: Literal[320, 160, 96] = Field(320, level="advanced",
                                            description="Spotify's stream: 320 kbps is its best for speakers.")
     api_port: int = Field(3678, ge=1024, le=65535, level="advanced", title="Receiver port",
@@ -443,6 +448,30 @@ def _norm(text: str) -> str:
     return " ".join(re.sub(r"[^\w ]", " ", text.lower()).split())
 
 
+_NUMBERS = dict(zip(map(str, range(21)), ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+                                           "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+                                           "seventeen", "eighteen", "nineteen", "twenty"]))
+
+
+def _key(text: str) -> str:
+    """A name as words to compare: lower case, no punctuation, a number as its word ("7 Seconds" is "Seven
+    Seconds", which once played a cover instead of Youssou N'Dour's), an emoji by its name (his 🥁 playlist is
+    "drum with drumsticks")."""
+    text = "".join(f" {unicodedata.name(c, '')} " if unicodedata.category(c) == "So" else c for c in text)
+    return " ".join(_NUMBERS.get(w, w) for w in _norm(text).split())
+
+
+def _title(name: str) -> str:
+    """A song's title without what Spotify adds to it: "(Radio Edit)", "[feat. ...]", " - 2004 Remaster"."""
+    return _key(re.sub(r"\s*[(\[].*?[)\]]|\s+-\s+.*$", "", name))
+
+
+def _by(item: dict, artist: str) -> bool:
+    """Whether item is by `artist` (one of its artists is, or a credit holds the name: "Madison Acid and TV Girl")."""
+    want = f" {_key(artist)} "
+    return any(want in f" {_key(a['name'])} " or f" {_key(a['name'])} " in want for a in item.get("artists") or [])
+
+
 LIBRARY = {"playlist": ["current_user_playlists"], "album": ["current_user_saved_albums"],
            "artist": ["current_user_top_artists", "current_user_followed_artists"],
            "track": ["current_user_top_tracks", "current_user_saved_tracks"]}
@@ -467,16 +496,52 @@ async def library(ctx):
     ctx.store["library"] = found
 
 
-def in_library(ctx, what: str, kind: str | None, exact: bool) -> dict | None:
-    want = _norm(re.sub(r"\b(my|playlist|album|songs?)\b", " ", what, flags=re.IGNORECASE)) if not exact else _norm(what)
+_MINE = re.compile(r"\b(my|emoji)\b", re.IGNORECASE)
+_NOT_NAME = {"my", "the", "playlist", "album", "song", "songs", "emoji"}
+
+
+def _names(ctx, item: dict) -> list[str]:
+    """What he may call item: its name, and his own words for it (the `names` setting)."""
+    out = [_key(item["name"])]
+    for line in ctx.settings.names or []:
+        name, _, words = line.partition("=")
+        if words and _key(name) == out[0]:
+            out += [_key(w) for w in words.split(",") if _key(w)]
+    return out
+
+
+def in_library(ctx, what: str, kind: str | None, partly: bool | None = None) -> dict | None:
+    """His own by its whole name or one of his names for it first, of any kind; with "my" or "emoji" (or
+    `partly`), also a playlist, album or artist one of whose names has all his words ("my drum playlist", "the
+    drum emoji"), never a song (the plane emoji was "Ca Plane Pour Moi"). "Emoji" means a name with one, and
+    then a word may be part of the emoji's ("plane" of "airplane"). Not the first name that contains his
+    words: "my DJ playlist" played a setlist with DJ in its name instead of his playlist called Dj."""
+    lib = ctx.store.get("library") or {}
+    kinds = [kind] if kind else ["playlist", "artist", "album", "track"]
+    mine = bool(_MINE.search(what)) if partly is None else partly
+    emoji = bool(re.search(r"\bemoji\b", what, re.IGNORECASE))
+    want = " ".join(w for w in _key(what).split() if not (mine and w in _NOT_NAME))
     if not want:
         return None
-    for k in [kind] if kind else ["playlist", "artist", "album", "track"]:
-        for item in (ctx.store.get("library") or {}).get(k, []):
-            name = _norm(item["name"])
-            if name == want or (not exact and want in name):
-                return item
-    return None
+    items = [i for k in kinds for i in lib.get(k, [])]
+    if (exact := next((i for i in items if want in _names(ctx, i)), None)) is not None:
+        return exact
+    if not mine:
+        return None
+    words = want.split()
+
+    def has(name: str, item: dict) -> bool:
+        if emoji:
+            spelled = name.split()
+            return _key(item["name"]) != _norm(item["name"]) and all(any(w in n for n in spelled) for w in words)
+        return set(words) <= set(name.split())
+    return next((i for k in kinds if k != "track" for i in lib.get(k, []) for n in _names(ctx, i) if has(n, i)), None)
+
+
+def _his(ctx, item: dict) -> bool:
+    """Whether item is one of his artists' (or is one of his artists)."""
+    names = {_key(a["name"]) for a in (ctx.store.get("library") or {}).get("artist", [])}
+    return any(_key(a["name"]) in names for a in item.get("artists") or [item])
 
 
 @ext.tool(tier="read")
@@ -485,7 +550,8 @@ async def my_music(ctx) -> dict:
     asks what he has, wants to browse his library, or asks for a mood, a vibe or a genre ("something
     chill", "play something energetic", "drum and bass") so you can pick artists that fit for mix()."""
     lib = ctx.store.get("library") or {}
-    return {k: [item["name"] for item in items] for k, items in lib.items()}
+    named = lambda n: n if _key(n) == _norm(n) else f"{n} ({_key(n)})"     # an emoji said by its name
+    return {k: [named(item["name"]) for item in items] for k, items in lib.items()}
 
 
 _app_token: dict = {}
@@ -524,46 +590,89 @@ def refusing(ctx) -> str | None:
             "not help. Songs, artists and playlists in his library still play by name.")
 
 
-async def search(ctx, what: str, kind: str | None) -> dict:
-    """What to play: in his library by its exact name, else Spotify's best match (the thing named
-    exactly, else the top track), else in his library by part of its name."""
-    if (item := in_library(ctx, what, kind, exact=True)) is not None:
-        return item
-    cache_key = (_norm(what), kind)
-    cached = _search_cache.get(cache_key)
-    if cached and time.time() - cached[1] < _SEARCH_TTL:
-        return cached[0]
-    token = await app_token(ctx)
-    if token is None:
-        if (item := in_library(ctx, what, kind, exact=False)) is not None:
-            return item
-        raise NotReady(f"{what!r} is not in his Spotify library; to search all of Spotify, add a Spotify app's "
-                       "client ID and secret on the Spotify card")
+async def _search(ctx, q: str, types: list[str]) -> dict:
+    """Spotify's answer for q (kept five minutes: the app's quota is small)."""
+    key = (q, tuple(types))
+    if (hit := _search_cache.get(key)) and time.time() - hit[1] < _SEARCH_TTL:
+        return hit[0]
     if (why := refusing(ctx)) is not None:
         raise NotReady(why)
-    types = [kind] if kind else ["artist", "album", "playlist", "track"]
-    r = await ctx.http.get("https://api.spotify.com/v1/search", params={"q": what, "type": ",".join(types), "limit": 5},
+    token = await app_token(ctx)
+    r = await ctx.http.get("https://api.spotify.com/v1/search", params={"q": q, "type": ",".join(types), "limit": 5},
                            headers={"Authorization": f"Bearer {token}"}, timeout=8)
     if r.status_code == 429:
         ctx.store["search_refused_until"] = time.time() + int(r.headers.get("retry-after") or 60)
         raise NotReady(refusing(ctx))
     if r.status_code != 200:
         raise NotReady(f"Spotify's search said {r.status_code}")
-    found = r.json()
-    want = _norm(what)
-    for t in types:
-        items = [i for i in (found.get(f"{t}s") or {}).get("items") or [] if i]
-        exact = next((i for i in items if _norm(i.get("name", "")) == want), None)
-        if exact or (kind == t and items):
-            result = {"type": t, **(exact or items[0])}
-            _search_cache[cache_key] = (result, time.time())
-            return result
-    tracks = [i for i in (found.get("tracks") or {}).get("items") or [] if i]
-    if tracks:
-        result = {"type": "track", **tracks[0]}
-        _search_cache[cache_key] = (result, time.time())
-        return result
-    raise ValueError(f"nothing on Spotify for {what!r}")
+    _search_cache[key] = (r.json(), time.time())
+    return _search_cache[key][0]
+
+
+def _items(found: dict, kind: str) -> list[dict]:
+    return [{"type": kind, **i} for i in (found.get(f"{kind}s") or {}).get("items") or [] if i]
+
+
+async def find_track(ctx, title: str, by: str, thorough: bool = True) -> tuple[dict | None, str | None]:
+    """The song called `title` by `by`, and a line when it is someone else's. Spotify's field search is not
+    to be trusted alone ("track:One artist:U2" answered One Sweet Day by Mariah Carey), so a song counts only
+    with that title and that artist. Thorough, it asks twice more, and when Spotify's first song of that title
+    is by someone else, plays that one and says whose it is ("Big Bad John" is Jimmy Dean's, not Johnny
+    Horton's; Aldin's pick). (None, None) when nothing has that title."""
+    want = _title(title)
+    other = None
+    for q in [f"track:{title} artist:{by}"] + ([f"{title} {by}", title] if thorough else []):
+        named = [t for t in _items(await _search(ctx, q, ["track"]), "track") if _title(t["name"]) == want]
+        if (song := next((t for t in named if _by(t, by)), None)) is not None:
+            return song, None
+        if q == title and named:
+            other = named[0]
+    if other is not None:
+        return other, f"{other['name']} is by {', '.join(a['name'] for a in other.get('artists') or [])}, not {by}"
+    return None, None
+
+
+async def find(ctx, what: str, kind: str | None, by: str | None = None) -> tuple[dict | None, str | None, list[dict]]:
+    """What to play from all of Spotify: (item, a line about it, nearest candidates when nothing fits). Only a
+    name that is the name: a song with that title, an artist with that name, an album or playlist only when he
+    said which; never Spotify's top song for the words ("drum and bass" played "Drum and Bass Father") or a
+    stranger's playlist that happens to be called that ("Something Jolly"). When a song and an artist both
+    have the name, the song if it is one of his artists', else the artist when Spotify's songs for the name are
+    the artist's own ("Daft Punk"), else the song ("Wonderwall" is Oasis's song, not the band Wonderwall). With
+    a kind, the first of that kind whose name has all his words ("random access" is Random Access Memories)."""
+    if await app_token(ctx) is None:
+        if (own := in_library(ctx, what, kind, partly=True)) is not None:      # his library is all there is
+            return own, None, []
+        raise NotReady(f"{what!r} is not in his Spotify library; to search all of Spotify, add a Spotify app's "
+                       "client ID and secret on the Spotify card")
+    if by and kind in (None, "track"):
+        song, note = await find_track(ctx, what, by)
+        return song, note, []
+    found = await _search(ctx, what, [kind] if kind else ["artist", "album", "playlist", "track"])
+    want = _key(what)
+    tracks, artists = _items(found, "track"), _items(found, "artist")
+    if kind:
+        words = set(want.split())
+        pick = next((i for i in _items(found, kind) if (_title(i["name"]) if kind == "track" else _key(i["name"])) == want),
+                    None) or next((i for i in _items(found, kind) if words <= set(_key(i["name"]).split())), None)
+        if pick is not None:
+            return pick, None, []
+    else:
+        named = [t for t in tracks if _title(t["name"]) == want]
+        song = next((t for t in named if _his(ctx, t)), named[0] if named else None)
+        artist = next((a for a in artists if _key(a["name"]) == want), None)
+        if song and artist:
+            own = any(_by(t, artist["name"]) for t in tracks)
+            return (song if _his(ctx, song) or not own else artist), None, []
+        if song or artist:
+            return song or artist, None, []
+        if " by " in what:              # "One by U2", said as one name
+            title, _, artist_name = what.rpartition(" by ")
+            song, note = await find_track(ctx, title, artist_name)
+            if song is not None:
+                return song, note, []
+    near = [i for t in ("track", "artist", "album") for i in _items(found, t)[:1]]
+    return None, None, near
 
 
 def _describe(item: dict) -> str:
@@ -594,28 +703,43 @@ async def start(ctx) -> None:
 
 @ext.tool(tier="act", filler="One moment.", timeout=15)
 async def play(ctx, what: str, kind: Literal["track", "artist", "album", "playlist"] | None = None,
-               radio: bool = False) -> str:
+               by: str | None = None, radio: bool = False) -> str:
     """Play music from Spotify on the speakers: a song, an artist, an album, or a playlist (his own
     library first). With radio, Spotify builds a personalized endless stream seeded from the artist
     or song, drawing on his listening history. For a mood, a vibe or a genre ("something chill", "drum
     and bass"), use mix(); when it is not set up, play radio from one artist in his library that fits.
+    It plays only what is called that: otherwise it answers with the nearest names, to ask him about.
 
     Args:
-        what: What he asked for, as said: "Daft Punk", "Get Lucky", "my running playlist".
+        what: The name alone, as said: "Daft Punk", "Get Lucky", "my running playlist", "drum emoji".
         kind: Only when he said which: a track, an artist, an album or a playlist.
+        by: The artist, when he named one with a song: "Get Lucky by Daft Punk" is what="Get Lucky",
+            by="Daft Punk".
         radio: True for an endless personalized stream seeded from the artist or song.
     """
     await ready(ctx)
+    item, note = in_library(ctx, what, kind), None
+    if item is None and _MINE.search(what):
+        names = [i["name"] for i in (ctx.store.get("library") or {}).get(kind or "playlist", [])]
+        return (f"He has no {kind or 'playlist'} called {what!r} in his library, so nothing was played. "
+                f"His {kind or 'playlist'}s: {', '.join(names[:20]) or 'none'}.")
+    if item is None:
+        item, note, near = await find(ctx, what, kind, by)
+        if item is None:
+            return (f"Nothing on Spotify is called {what!r}{f' by {by}' if by else ''}, so nothing was played."
+                    + (f" Nearest: {'; '.join(_describe(i) for i in near)}." if near else "")
+                    + " A mood or a genre is a mix.")
     await start(ctx)
-    if re.search(r"\bmy\b", what, re.IGNORECASE) and (own := in_library(ctx, what, kind, exact=False)) is not None:
-        uri = (radio and _radio_uri(own["uri"])) or own["uri"]
-        await call(ctx, "POST", "/player/play", uri=uri)
-        return f"Playing {'radio from ' if radio and uri != own['uri'] else 'your '}{own['type']} {own['name']}."
-    item = await search(ctx, what, kind)
     uri = item.get("uri") or item.get("id", "")
     station = _radio_uri(uri) if radio else None
     await call(ctx, "POST", "/player/play", uri=station or uri)
-    return f"Playing {'radio from ' if station else ''}{_describe(item)}."
+    if station:
+        said = f"radio from {_describe(item)}"
+    elif _MINE.search(what) and item["type"] != "artist" and item is in_library(ctx, what, kind):
+        said = f"your {item['type']} {item['name']}"
+    else:
+        said = _describe(item)
+    return f"Playing {said}." + (f" {note}." if note else "")
 
 
 async def lb_radio(ctx, artists: list[str], genre: str | None) -> tuple[list[dict], list[str]]:
@@ -641,15 +765,14 @@ async def lb_radio(ctx, artists: list[str], genre: str | None) -> tuple[list[dic
 
 
 async def on_spotify(ctx, song: dict) -> dict | None:
-    """One of LB Radio's songs on Spotify, by its title without the bracketed part (a remix, a live
-    take, a year) and its artist without the featured ones; None when Spotify's best is someone else's."""
+    """One of LB Radio's songs on Spotify: the same title (a remix, a live take or a year aside) by its artist
+    without the featured ones, in one search; None otherwise."""
     title = re.sub(r"\s*[(\[].*?[)\]]", "", song.get("title") or "")
     by = (song.get("creator") or "").split(" feat. ")[0]
     try:
-        item = await search(ctx, f"track:{title} artist:{by}", "track")
-    except (ValueError, NotReady):
+        return (await find_track(ctx, title, by, thorough=False))[0]
+    except NotReady:
         return None
-    return item if any(_norm(a["name"]) in _norm(song.get("creator") or "") for a in item.get("artists") or []) else None
 
 
 @ext.tool(tier="act", filler="One moment.", timeout=30)
@@ -695,23 +818,29 @@ async def mix(ctx, artists: list[str], genre: str | None = None) -> str:
 
 
 @ext.tool(tier="act", filler="One moment.", timeout=15)
-async def queue(ctx, what: str) -> str:
+async def queue(ctx, what: str, by: str | None = None) -> str:
     """Queue a song to play after the current one ("play Get Lucky next", "queue One More Time").
     Songs only; when nothing is playing it plays now.
 
     Args:
-        what: The song as said: "Get Lucky", "Get Lucky by Daft Punk".
+        what: The song's name alone: "Get Lucky".
+        by: The artist, when he named one: "Get Lucky by Daft Punk" is what="Get Lucky", by="Daft Punk".
     """
     await ready(ctx)
-    item = await search(ctx, what, "track")
+    item, note = in_library(ctx, what, "track"), None
+    if item is None:
+        item, note, near = await find(ctx, what, "track", by)
+        if item is None:
+            return (f"No song on Spotify is called {what!r}{f' by {by}' if by else ''}, so nothing was queued."
+                    + (f" Nearest: {'; '.join(_describe(i) for i in near)}." if near else ""))
     uri = item.get("uri") or ""
     if not uri.startswith("spotify:track:"):
         raise ValueError(f"{_describe(item)} is not a song; only songs can be queued")
     if not ((await call(ctx, "GET", "/status")) or {}).get("track"):
         await call(ctx, "POST", "/player/play", uri=uri)
-        return f"Nothing was playing, so playing {_describe(item)} now."
+        return f"Nothing was playing, so playing {_describe(item)} now." + (f" {note}." if note else "")
     await call(ctx, "POST", "/player/add_to_queue", uri=uri)
-    return f"Queued {_describe(item)}."
+    return f"Queued {_describe(item)}." + (f" {note}." if note else "")
 
 
 @ext.tool(tier="act", timeout=15)
@@ -734,7 +863,9 @@ async def party(ctx, what: str, lights: str | None = None, restore: str | None =
     if what.startswith("spotify:"):
         uri, desc = what, "the party"
     else:
-        item = await search(ctx, what, None)
+        item = in_library(ctx, what, None) or (await find(ctx, what, None))[0]
+        if item is None:
+            raise ValueError(f"nothing on Spotify is called {what!r}")
         uri, desc = item["uri"], _describe(item)
     if volume is not None:
         await call(ctx, "POST", "/player/volume", volume=max(0, min(100, volume)))

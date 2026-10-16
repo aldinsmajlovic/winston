@@ -29,6 +29,12 @@ cases:
   - say: Play Get Lucky by Daft Punk.
     expect: [spotify_play]
     forbid: [spotify_mix]
+  - say: Play One by U2.
+    expect: [spotify_play]
+    forbid: [spotify_mix]
+  - say: Play my drum emoji playlist.
+    expect: [spotify_play]
+    forbid: [spotify_mix]
   - say: Play the album Random Access Memories.
     expect: [spotify_play]
     forbid: [spotify_mix]

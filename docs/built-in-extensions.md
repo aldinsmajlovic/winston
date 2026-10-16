@@ -200,6 +200,20 @@ skipped for the next. Without a token he plays Spotify's radio from one artist t
 Not used: tags for moods ("chill" gave obscure free-archive songs, or drifted to unrelated tags in hard
 mode), and LB Radio's `stats` and `recs`, which need your listening history on ListenBrainz.
 
+**What plays is what you named.** Your library first: by its whole name, or by your own names for it
+under **Your names for them** on the card, one per line (`🥁 = drum and bass, drums`); an emoji is also
+known by its own name, so "the drum emoji" or "my drum playlist" plays 🥁. "My ..." never leaves your
+library: when nothing there has the name he says so and names your playlists. From all of Spotify a song
+plays only when its title is the name (numbers as words: "7 Seconds" is "Seven Seconds"), an artist only
+when it is that artist; an album or a playlist only when you said "the album" or "the playlist", never a
+stranger's playlist that happens to have the words. When a song and an artist share the name, your
+artist's song wins, then the artist if Spotify's songs for the name are the artist's own ("Daft Punk"),
+else the song ("Wonderwall" is Oasis's song, not a band called Wonderwall). A song with its artist ("One
+by U2") must be by that artist; when Spotify's song of that title is someone else's, it plays that one
+and says whose it is ("Big Bad John is by Jimmy Dean, not Johnny Horton"). Nothing that only carries the
+words plays ("drum and bass" once played a song called "Drum and Bass Father"): he gets the nearest names
+and asks, or plays a mix for a mood or a genre.
+
 "Stop" to the box while it plays pauses Spotify and ends the conversation ([Voice PE](voice-pe.md#ending-a-conversation-and-the-button)).
 Pause, resume and skip read the receiver first, so with nothing loaded he says so instead of "Playing."
 When Spotify refuses the app's searches (its limit; on 2026-10-16 after a few hundred searches in an hour,

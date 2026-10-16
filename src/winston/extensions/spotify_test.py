@@ -23,6 +23,7 @@ class Receiver:
         self.volume = 60
         self.playing = True
         self.refusing = 0                       # Spotify's search answers 429 with this Retry-After
+        self.answers: dict[str, dict] = {}      # Spotify's answer for one query, else `found`
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -46,6 +47,8 @@ class Receiver:
             self.calls[-1] = ("SEARCH", q["type"], {"q": q["q"]})
             if self.refusing:
                 return httpx.Response(429, headers={"retry-after": str(self.refusing)}, json={"error": {"status": 429}})
+            if q["q"] in self.answers:
+                return httpx.Response(200, json=self.answers[q["q"]])
             if q["q"].startswith("track:"):     # a mix's song: Spotify's best match is always by Daft Punk
                 title = q["q"].removeprefix("track:").split(" artist:")[0]
                 return httpx.Response(200, json={"tracks": {"items": [{"uri": f"spotify:track:{title}", "name": title,
@@ -86,9 +89,15 @@ class Receiver:
 
 def library_ha() -> FakeHA:
     """His library as Home Assistant's Spotify player browses it."""
-    lists = {"current_user_playlists": [("spotify://playlist", "spotify:playlist:run1", "Running 2026")],
-             "current_user_top_artists": [("spotify://artist", "spotify:artist:dp", "Daft Punk")],
-             "current_user_saved_tracks": [("spotify://track", "spotify:track:omt", "One More Time")]}
+    lists = {"current_user_playlists": [("spotify://playlist", "spotify:playlist:run1", "Running 2026"),
+                                        ("spotify://playlist", "spotify:playlist:djset", "DJ Someone - Setlist"),
+                                        ("spotify://playlist", "spotify:playlist:dj", "Dj"),
+                                        ("spotify://playlist", "spotify:playlist:drums", "\U0001f941"),
+                                        ("spotify://playlist", "spotify:playlist:plane", "\u2708\ufe0f")],
+             "current_user_top_artists": [("spotify://artist", "spotify:artist:dp", "Daft Punk"),
+                                          ("spotify://artist", "spotify:artist:rh", "Radiohead")],
+             "current_user_saved_tracks": [("spotify://track", "spotify:track:omt", "One More Time"),
+                                           ("spotify://track", "spotify:track:cppm", "Ca Plane Pour Moi")]}
 
     def browse(data, target):
         kids = [{"media_content_type": t, "media_content_id": i, "title": n}
@@ -97,8 +106,9 @@ def library_ha() -> FakeHA:
     return FakeHA(services={"media_player.browse_media": browse})
 
 
-def harness(rx: Receiver, keys: bool = True, library: bool = False) -> Harness:
-    return Harness(HERE, settings={"library": PLAYER} if library else {}, background=False,
+def harness(rx: Receiver, keys: bool = True, library: bool = False, names: list[str] | None = None) -> Harness:
+    return Harness(HERE, settings={**({"library": PLAYER} if library else {}), **({"names": names} if names else {})},
+                   background=False,
                    secrets=KEYS if keys else {"client_id": "", "client_secret": "", "listenbrainz_token": ""},
                    http=httpx.MockTransport(rx.handle), ha=library_ha() if library else None)
 
@@ -402,3 +412,76 @@ async def test_a_mix_starts_from_two_fresh_artists_and_plays_only_their_songs_fo
     assert [p for m, p, b in rx.calls if m == "LB"][-1] == "tag:(drum and bass)::nosim"
     assert said.startswith("Playing a mix from drum and bass, 2 songs"), said
     await h.close()
+
+
+def song(uri: str, name: str, *artists: str) -> dict:
+    return {"uri": f"spotify:track:{uri}", "name": name, "artists": [{"name": a} for a in artists]}
+
+
+def answer(tracks=(), artists=(), albums=(), playlists=()) -> dict:
+    return {"tracks": {"items": list(tracks)}, "artists": {"items": list(artists)},
+            "albums": {"items": list(albums)}, "playlists": {"items": list(playlists)}}
+
+
+async def test_only_a_name_that_is_the_name_plays():
+    """As recorded on 2026-10-16: an album, an artist or a stranger's playlist that only carries the words won."""
+    rx = Receiver()
+    rx.answers = {
+        "Creep": answer([song("creep", "Creep", "Radiohead"), song("c2", "Creep", "Someone")],
+                        albums=[{"uri": "spotify:album:cr", "name": "Creep", "artists": [{"name": "CR33PIA"}]}]),
+        "Wonderwall": answer([song("ww", "Wonderwall - Remastered", "Oasis"), song("w2", "Wonderwall", "A Cover")],
+                             artists=[{"uri": "spotify:artist:wwb", "name": "Wonderwall"}]),
+        "drum and bass": answer([song("dbf", "Drum and Bass Father", "Devilman")],
+                                albums=[{"uri": "spotify:album:dnb", "name": "Drum & Bass Arena", "artists": []}]),
+        "something jolly": answer([song("sj", "Jolly Song", "Someone")],
+                                  playlists=[{"uri": "spotify:playlist:sj", "name": "Something Jolly",
+                                              "owner": {"display_name": "a stranger"}}]),
+        "Seven Seconds": answer([song("7s", "7 Seconds (feat. Neneh Cherry)", "Youssou N'Dour"),
+                                 song("7c", "Seven Seconds", "Tribal Strength")]),
+    }
+    h = harness(rx, library=True)
+    await h.run("library")
+    assert await h.tool("play", what="Creep") == "Playing Creep by Radiohead.", rx.calls
+    assert await h.tool("play", what="Wonderwall") == "Playing Wonderwall - Remastered by Oasis."
+    for what in ("drum and bass", "something jolly"):
+        said = await h.tool("play", what=what)
+        assert said.startswith(f"Nothing on Spotify is called {what!r}, so nothing was played. Nearest:"), said
+    assert await h.tool("play", what="Seven Seconds") == "Playing 7 Seconds (feat. Neneh Cherry) by Youssou N'Dour."
+    assert played(rx) == ["spotify:track:creep", "spotify:track:ww", "spotify:track:7s"], played(rx)
+    await h.close()
+
+
+async def test_a_song_by_an_artist_is_by_that_artist_or_he_is_told_whose_it_is():
+    rx = Receiver()
+    rx.answers = {
+        "track:One artist:U2": answer([song("osd", "One Sweet Day", "Mariah Carey", "Boyz II Men")]),
+        "One U2": answer([song("one", "One", "U2"), song("met", "One", "Metallica")]),
+        "track:Big Bad John artist:Johnny Horton": answer([song("bbj", "Big Bad John", "Jimmy Dean")]),
+        "Big Bad John Johnny Horton": answer([song("bbj", "Big Bad John", "Jimmy Dean")]),
+        "Big Bad John": answer([song("bbj", "Big Bad John", "Jimmy Dean"), song("bbc", "Big Bad John", "A Cover")]),
+        "One by U2": answer([song("so", "Stressed Out", "Twenty One Pilots")]),
+    }
+    h = harness(rx)
+    assert await h.tool("play", what="One", by="U2") == "Playing One by U2."
+    said = await h.tool("play", what="Big Bad John", by="Johnny Horton")
+    assert said == "Playing Big Bad John by Jimmy Dean. Big Bad John is by Jimmy Dean, not Johnny Horton.", said
+    assert await h.tool("play", what="One by U2") == "Playing One by U2."         # said as one name
+    assert await h.tool("queue", what="One", by="U2") == "Queued One by U2."
+    await h.close()
+
+
+async def test_my_music_stays_in_his_library_and_an_emoji_is_said_by_its_name():
+    rx = Receiver()
+    h = harness(rx, library=True, names=["\U0001f941 = drum and bass, drum n bass"])
+    await h.run("library")
+    assert await h.tool("play", what="my DJ playlist") == "Playing your playlist Dj."
+    assert await h.tool("play", what="my drum playlist") == "Playing your playlist \U0001f941."
+    assert await h.tool("play", what="the drum emoji") == "Playing your playlist \U0001f941."
+    assert await h.tool("play", what="my drum and bass playlist") == "Playing your playlist \U0001f941."
+    assert await h.tool("play", what="the plane emoji") == "Playing your playlist \u2708\ufe0f."   # not the song
+    said = await h.tool("play", what="my liked songs")
+    assert said.startswith("He has no playlist called 'my liked songs' in his library, so nothing was played."), said
+    assert not any(c[0] == "SEARCH" for c in rx.calls), rx.calls
+    assert "\U0001f941 (drum with drumsticks)" in (await h.tool("my_music"))["playlist"]
+    await h.close()
+
