@@ -591,8 +591,8 @@ extension, its check and the facts, 6 of 6.
 
 - **Named `<id>_<name>`**, listed in a fixed order (extension id, then declaration), the same list
   in every channel, so the prompt cache holds. A stopped or crashed extension keeps its tools listed
-  and they answer that it is unavailable; switching one on or off changes the list from the next
-  conversation.
+  and they answer that it is unavailable; switching one on or off, or changing a tool's description
+  or arguments, starts a new conversation with the new list at the next turn (what was said carries over).
 - **Tiers** decide how a call is handled. They map to MCP's tool annotations, and actions have them
   too:
 

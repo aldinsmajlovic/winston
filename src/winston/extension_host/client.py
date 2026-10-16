@@ -4,6 +4,8 @@ one list (the prompt cache holds) and one running copy of each extension."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -41,14 +43,18 @@ async def fetch_tools(cfg: WinstonConfig) -> list[dict[str, Any]]:
 
 
 def signature(tools: list[dict[str, Any]], speaking: bool) -> str:
-    """What a conversation's extension tools are: their names, and whether follow_up is among them."""
-    return "|".join(sorted(t["name"] for t in tools)) + ("|follow_up" if speaking else "")
+    """What a conversation's extension tools are as the brain sees them: each one's name, description and
+    arguments, and whether follow_up is among them. Not the names alone: on 2026-10-16 a tool's new
+    docstring (genres go to a mix) never reached the box's conversation, which went on calling it the old way."""
+    seen = sorted((t["name"], t.get("description") or "", t.get("parameters") or {}) for t in tools)
+    return hashlib.sha256(json.dumps([seen, speaking], sort_keys=True).encode()).hexdigest()[:16]
 
 
 async def tools_changed(brain) -> bool:
     """Whether the extension tools on offer are no longer the ones this brain started with (an extension
-    switched on or off since). A conversation keeps its tools, so a channel starts a new one then; the
-    room's conversation lives in winstond, so what was said carries over. False when winstond is away."""
+    switched on or off, or a tool's description or arguments changed). A conversation keeps its tools, so a
+    channel starts a new one then; the room's conversation lives in winstond, so what was said carries over.
+    False when winstond is away."""
     if getattr(brain, "tools_signature", None) is None:
         return False
     try:

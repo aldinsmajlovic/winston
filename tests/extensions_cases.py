@@ -26,6 +26,19 @@ import httpx  # noqa: E402
 from fake_ha import FakeHA  # noqa: E402
 
 
+def signatures():
+    from winston.extension_host.client import signature
+    tool = {"name": "x_play", "description": "Play a song.", "parameters": {"properties": {"what": {"type": "string"}}}}
+    same = signature([dict(tool)], False)
+    expect("a conversation's tools: the same tools, the same signature",
+           signature([tool], False) == same and signature([{**tool, "tier": "act"}], False) == same)
+    changed = [signature([{**tool, "description": "Play a song or a genre."}], False),
+               signature([{**tool, "parameters": {"properties": {"what": {"type": "string"}, "genre": {}}}}], False),
+               signature([tool, {**tool, "name": "x_mix"}], False), signature([tool], True)]
+    expect("a new description, argument, tool or follow_up is a new signature",
+           len({same, *changed}) == 5, changed)
+
+
 def scheduling():
     from datetime import datetime, time as dtime
     from zoneinfo import ZoneInfo
@@ -92,7 +105,8 @@ def setup(ha_port: int, api_port: int, llm_port: int, remote_port: int):
 
 
 async def fake_llm(port: int):
-    """An OpenAI-style server that answers every question with {"yes": true}; records the requests."""
+    """An OpenAI-style server that answers every question with {"yes": true}, with llama.cpp's two slots;
+    records the requests."""
     from aiohttp import web
     seen = []
 
@@ -103,7 +117,8 @@ async def fake_llm(port: int):
                                   "choices": [{"index": 0, "finish_reason": "stop",
                                                "message": {"role": "assistant", "content": '{"yes": true}'}}]})
     app = web.Application()
-    app.add_routes([web.post("/v1/chat/completions", complete)])
+    app.add_routes([web.post("/v1/chat/completions", complete),
+                    web.get("/props", lambda _: web.json_response({"total_slots": 2}))])
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
@@ -214,6 +229,14 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         expect("the background model answers in the shape asked for", r["ok"] and r["result"] is True, r)
         expect("the model is asked with thinking off and a JSON schema", llm_seen and
                llm_seen[-1].get("response_format", {}).get("type") == "json_schema", llm_seen[-1:])
+        expect("a background call keeps to the server's last slot", llm_seen[-1].get("id_slot") == 1, llm_seen[-1:])
+        from winston.core.brain import Brain, build_llm, server_slot
+        slots = (await server_slot(app.state.cfg, True), await server_slot(app.state.cfg, False),
+                 Brain(app.state.cfg, "satellite").spoken, Brain(app.state.cfg, "satellite", spoken=False).spoken)
+        expect("a spoken conversation keeps to the first slot; a check on the box's brain is not spoken",
+               slots == (0, 1, True, False), slots)
+        body = build_llm(app.state.cfg, "satellite", slot=0)._settings.extra["extra_body"]
+        expect("the slot goes with every request of the conversation", body.get("id_slot") == 0, body)
         spends = [(await call("spend")).json()["result"] for _ in range(3)]
         expect("a daily quota runs out", spends == [True, True, False], spends)
         r = (await call("peek", tool="home")).json()
@@ -509,6 +532,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
 
 if __name__ == "__main__":
     scheduling()
+    signatures()
     try:
         asyncio.run(main())
     finally:

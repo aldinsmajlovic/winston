@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 from loguru import logger
 from mcp.client.session_group import StreamableHttpParameters
 from openai.types.chat.chat_completion_chunk import (ChatCompletionChunk, ChoiceDelta, ChoiceDeltaToolCall,
@@ -126,6 +127,29 @@ def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice") -> str:
 
 
 SPOKEN = ("voice", "satellite")      # channels whose replies are heard, not read
+
+_slots: dict[str, tuple[float, int]] = {}      # server: (when read, its slots)
+
+
+async def server_slot(cfg: WinstonConfig, spoken: bool) -> int | None:
+    """The llama.cpp slot a request keeps to, so none takes the slot that holds another's cached prompt: a
+    spoken conversation (the box, the browser's voice) the first, everything else (typed conversations, checks
+    and trials, background calls) the last. Unpinned, llama.cpp gives a request the slot whose prompt shares
+    the most with it: on 2026-10-16 a brain trial with the box's prompt took the box's slot, and his next
+    request waited 18 s while his 14k-token conversation was read again, so the box gave up. Servers without
+    slots (no /props) or with one: None, and nothing is sent. A failed read is not kept: the server may be
+    loading."""
+    base = cfg.llm.base_url.rstrip("/").removesuffix("/v1")
+    at, total = _slots.get(base, (0.0, 0))
+    if time.monotonic() - at > 300:
+        try:
+            async with httpx.AsyncClient(timeout=2) as c:
+                r = await c.get(f"{base}/props")
+            total = int(r.json().get("total_slots") or 0) if r.status_code == 200 else 0
+            _slots[base] = (time.monotonic(), total)
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+            total = 0
+    return None if total < 2 else (0 if spoken else total - 1)
 
 
 def thinking_for(cfg: WinstonConfig, channel: str) -> bool:
@@ -391,12 +415,12 @@ class WinstonLLM(OpenAILLMService):
         return params
 
 
-def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "") -> OpenAILLMService:
+def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot: int | None = None) -> OpenAILLMService:
     c = cfg.llm
     if c.provider != "openai_compatible":
         raise ValueError(f"unsupported llm provider {c.provider}")
     s = c.sampling
-    body = thinking_body(cfg, channel)
+    body = thinking_body(cfg, channel) | ({"id_slot": slot} if slot is not None else {})
     # Only where thinking is otherwise off: text channels already think every turn.
     home = home_request(cfg) if channel in SPOKEN and c.thinking.home and not thinking_for(cfg, channel) else None
     return WinstonLLM(
@@ -414,9 +438,13 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "") -> Op
 
 
 class Brain:
-    def __init__(self, cfg: WinstonConfig, channel: str = "voice"):
+    def __init__(self, cfg: WinstonConfig, channel: str = "voice", spoken: bool | None = None):
         self.cfg = cfg
         self.channel = channel
+        # Whether its replies are heard, for its server slot: a check replaying a spoken turn uses that
+        # channel's brain but is not heard (server_slot).
+        self.spoken = channel in SPOKEN if spoken is None else spoken
+        self.slot: int | None = None
         self.llm = build_llm(cfg, channel)
         self.tools: ToolsSchema = ToolsSchema(standard_tools=[])
         self._mcp: MCPClient | None = None
@@ -429,11 +457,14 @@ class Brain:
         self.tools_signature: str | None = None     # the extension tools it started with (extension_host.client)
 
     async def start(self):
+        self.slot = await server_slot(self.cfg, self.spoken)
         ha = self.cfg.providers.ha
-        if ha is not None:
+        if ha is None:
+            self.llm = build_llm(self.cfg, self.channel, slot=self.slot)
+        else:
             # Built again with the map of the house, which needs Home Assistant read first.
             snap = await directory.home(self.cfg)
-            self.llm = build_llm(self.cfg, self.channel, directory.house_map(self.cfg, snap))
+            self.llm = build_llm(self.cfg, self.channel, directory.house_map(self.cfg, snap), self.slot)
             self._areas = directory.device_areas(self.cfg, snap)
             token = os.environ.get(ha.token_env)
             if not token:

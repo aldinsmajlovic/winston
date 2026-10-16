@@ -70,6 +70,14 @@ until an answer follows it, so the model never answers it in place of yours. The
 mic with a lease it renews every 5 s during its turn; a browser session follows the room's mic and
 turns its microphone into silence while the box has it. Details in `core/rooms.py`.
 
+Each session keeps to a slot of the model server (llama.cpp with more than one, `brain.server_slot`):
+spoken sessions (the box, a browser's voice) the first, typed ones, checks, trials and background calls
+the last. Unpinned, llama.cpp gives a request the slot whose prompt shares the most with it, so a check
+replaying a box request once took the box's slot, and his next request waited 18 s while his
+conversation was read again. A session keeps the tools it started with; when an extension's tools
+change (one switched on or off, or a tool's description or arguments), its next turn starts a new
+session with them, and the room's conversation carries over.
+
 | Endpoint | What |
 | --- | --- |
 | `GET /api/rooms` | The boxes' rooms and any room a screen is in: who has the mic, screens, messages |

@@ -17,7 +17,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from winston.config.schema import WinstonConfig
 from winston.core.announce import note
-from winston.core.brain import Brain, Clock, ToolCallLogObserver
+from winston.core.brain import SPOKEN, Brain, Clock, ToolCallLogObserver
 from winston.core.reply import ReplyFilter
 from winston.core.rooms import RoomLink
 from winston.core.speak_up import Mentions
@@ -99,7 +99,7 @@ class TextSession:
 
     async def start(self):
         cfg = self.cfg
-        self.brain = Brain(cfg, channel=self.brain_channel); await self.brain.start()
+        self.brain = Brain(cfg, channel=self.brain_channel, spoken=self.channel in SPOKEN); await self.brain.start()
         self.brain.verifier.channel = self.channel          # its log says web or discord, not text
         for schema, handler in self._tools:
             self.brain.add_tool(schema, handler)

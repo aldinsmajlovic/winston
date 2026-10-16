@@ -294,7 +294,10 @@ def diary_pending():
 @app.command()
 def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | brain | clone | turns | all"),
           with_: Path = typer.Option(None, "--with", help="turns: a config file laid over the config, a candidate "
-                                                            "setup to score")):
+                                                            "setup to score"),
+          phrases: Path = typer.Option(None, "--phrases", help="turns: typed requests to score (YAML) instead of "
+                                                               "the marked turns"),
+          runs: int = typer.Option(1, "--runs", help="turns --phrases: runs per request")):
     """Run the checks: unit needs nothing, ui a built web UI (a throwaway winstond on a copy of data/),
     the milestones need the engines up."""
     tests = repo_root() / "tests"
@@ -313,7 +316,8 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
             "m2": [sys.executable, str(tests / "m2_components.py")],
             "brain": [sys.executable, str(tests / "brain_trials.py")],
             "clone": [sys.executable, str(tests / "clone_voice_headless.py")],
-            "turns": [sys.executable, str(tests / "turns_check.py"), *(["--with", str(with_)] if with_ else [])]}
+            "turns": [sys.executable, str(tests / "turns_check.py"), *(["--with", str(with_)] if with_ else []),
+                      *(["--phrases", str(phrases.resolve()), "--runs", str(runs)] if phrases else [])]}
     # brain and turns are comparisons and clone takes a minute and a half; they run on purpose
     names = [n for n in plan if n not in ("brain", "clone", "turns")] if which == "all" else [which]
     failed = []

@@ -27,7 +27,7 @@ from winston.config import resolve
 from winston.config.schema import WinstonConfig
 from winston.core import guard, memory
 from winston.core.common import log_event
-from winston.core.brain import api_key, thinking_body
+from winston.core.brain import api_key, server_slot, thinking_body
 from winston.extension_host.sources import read_json, state_dir, write_json
 
 
@@ -61,7 +61,6 @@ class Services:
     def __init__(self, host):
         self.host = host
         self._ha_services: tuple[float, dict[str, dict[str, Any]]] | None = None
-        self._slot: tuple[float, str, int | None] = (0.0, "", None)     # (when read, for which server, slot)
         self.talking: Callable[[], bool] = lambda: False                # set by winstond: a conversation runs
         self.llm_up: Callable[[], bool] = lambda: True                  # set by winstond: the brain's server is healthy
 
@@ -325,25 +324,10 @@ class Services:
     # the background model
 
     async def background_slot(self) -> int | None:
-        """The server slot background calls keep to: llama.cpp's last one when it has more than one, so
-        they never take the slot that holds a conversation's cached prompt. Measured with the 27B and an
-        extension asking one story after another: a spoken turn's median first audio went from 982 ms to
-        2147 ms unpinned, the first turn 8.4 s (its prompt evicted). Other servers have no slots (no
-        /props): None, and nothing is sent."""
-        at, url, slot = self._slot
-        base = self.cfg.llm.base_url.rstrip("/").removesuffix("/v1")
-        if url == base and time.monotonic() - at < 300:
-            return slot
-        slot = None
-        try:
-            async with httpx.AsyncClient(timeout=2) as c:
-                r = await c.get(f"{base}/props")
-                total = int(r.json().get("total_slots") or 0) if r.status_code == 200 else 0
-            slot = total - 1 if total >= 2 else None
-        except (httpx.HTTPError, ValueError, TypeError, AttributeError):
-            pass
-        self._slot = (time.monotonic(), base, slot)
-        return slot
+        """The server slot background calls keep to (brain.server_slot), never the one that holds the box's
+        cached prompt. Measured with the 27B and an extension asking one story after another: a spoken turn's
+        median first audio went from 982 ms to 2147 ms unpinned, the first turn 8.4 s (its prompt evicted)."""
+        return await server_slot(self.cfg, spoken=False)
 
     async def _ask(self, prompt: str, schema: dict | None, max_tokens: int) -> Any:
         """Waits for the brain's server to be up (it loads for seconds after winstond starts it).

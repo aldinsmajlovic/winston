@@ -83,7 +83,11 @@ Every turn is kept, so mistakes can be found, marked and used to test the next c
   (word error rate against what you said, else what was heard then), for him right (silent on a turn
   marked not addressed), the right thing (on a mark with expect or forbid), and the time to the text and
   the first token. Results go to `data/turns/checks/` with the last run shown beside. A change ships when
-  it beats the current score. `winston check brain` keeps doing the same for the brain on written
+  it beats the current score. With `--phrases FILE` it scores typed requests instead of marked turns, for
+  a kind of request rather than one mistake: each with `expect` and `forbid`, `before` lines asked first
+  in the same conversation, and `--runs N` at the live temperature, so a request that fails one time in
+  three shows as a rate (`tests/music_phrases.yaml`; your own phrasings belong in `data/`). Every run
+  waits while anyone is talking to him and keeps to the model server's last slot. `winston check brain` keeps doing the same for the brain on written
   requests.
 
 ## 2. Directory
