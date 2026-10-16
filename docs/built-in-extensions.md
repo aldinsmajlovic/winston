@@ -6,7 +6,7 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 
 | Extension | Speaks up | His tools | Reaches |
 | --- | --- | --- | --- |
-| **Agenda** (`agenda`) | "Coming up": 30 minutes before each event; "Today's events" in the briefing | `agenda_upcoming` | Home Assistant (read: the calendars you pick) |
+| **Agenda** (`agenda`) | "Coming up": 30 minutes before each event or task with a due time; "Today's events" in the briefing | `agenda_upcoming` | Home Assistant (read: the calendars and to-do lists you pick) |
 | **Ask Claude** (`claude`) | Nothing | `claude_ask` | Claude (api.anthropic.com), through the Claude Code CLI |
 | **Awareness** (`awareness`) | "Goodnight": after a busy day, when the evening goes quiet | None | winstond (reads the day's turns) |
 | **Hevy** (`hevy`) | "Time to train": no workout for 3 days, when you are home; firmer from day 5 | `hevy_get_training` | api.hevyapp.com |
@@ -22,18 +22,21 @@ Each has its tests beside it (`winston ext test hevy`, on made-up answers and th
 
 ## Agenda
 
-Your calendars, read through Home Assistant, so any calendar it has works (Google Calendar, CalDAV, a
-local one) and it handles your accounts and repeating events. Pick the calendars on the card; picking
-one lets Agenda read it, exposed to the brain or not. Every 10 minutes it keeps the events from the
-start of today to 36 hours ahead.
+Your calendars and to-do lists, read through Home Assistant, so any it has works (Google Calendar,
+Google Tasks, CalDAV, a local one) and it handles your accounts and repeating events. Pick them on the
+card; picking one lets Agenda read it, exposed to the brain or not. Every 10 minutes it keeps the
+events from the start of today to 36 hours ahead, and the open tasks with a due date: a task is read
+like an event at its due time, one due on a day only like an all-day event, and one overdue stays
+until you tick it off.
 
 - **"Coming up"**: each timed event, `before` (30 minutes) its start. It is held until then and
   checked again right before it is said, so a moved or cancelled event is never said, and the minutes
   are counted when it is said. It is something you asked for, so it comes through quiet hours and the
   daily limit; set it to the phone or silent on the card if you would rather not.
 - **"Today's events"**: the day's events still to come, and all-day ones (switch those off on the
-  card), in the morning briefing.
-- **`agenda_upcoming`**: today, today and tomorrow, or up to 31 days ("what's on this week?").
+  card), with the tasks due today or overdue, in the morning briefing.
+- **`agenda_upcoming`**: today, today and tomorrow, or up to 31 days ("what's on this week?"), tasks
+  named as tasks.
 
 For Google Calendar, add Home Assistant's own Google Calendar integration. It needs a Google Cloud
 project with:
@@ -48,6 +51,11 @@ project with:
 
 Its Remote Calendar with Google's private iCal address needs no Google Cloud project, but reads it
 only once a day, too seldom for "in 30 minutes".
+
+Google Tasks are not in the Calendar API, though Google Calendar shows them: add Home Assistant's
+Google Tasks integration too, with the Tasks API enabled in the same project and the same client.
+Google gives a task's day but not its time, so its tasks reach the briefing and `agenda_upcoming`, never
+"Coming up"; for a word at a set hour, a reminder is the tool.
 
 ## Ask Claude
 

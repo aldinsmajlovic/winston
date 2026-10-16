@@ -1,4 +1,4 @@
-"""Tests for Agenda: `winston ext test agenda`. Made-up events on the fake Home Assistant."""
+"""Tests for Agenda: `winston ext test agenda`. Made-up events and tasks on the fake Home Assistant."""
 from pathlib import Path
 
 from winston_sdk.testing import FakeClock, FakeHA, Harness
@@ -11,6 +11,14 @@ EVENTS = {"calendar.work": [
     {"start": "2026-10-12", "end": "2026-10-13", "summary": "Name day"},
     {"start": "2026-10-13T09:00:00+02:00", "end": "2026-10-13T10:00:00+02:00", "summary": "Standup"},
 ]}
+TASKS = {"todo.tasks": [
+    {"uid": "1", "summary": "Take the pill", "status": "needs_action", "due": "2026-10-12"},
+    {"uid": "2", "summary": "Return the parcel", "status": "needs_action", "due": "2026-10-10"},
+    {"uid": "3", "summary": "Pay the rent", "status": "needs_action", "due": "2026-10-12T11:00:00+02:00"},
+    {"uid": "4", "summary": "Book flights", "status": "needs_action", "due": "2026-10-15"},
+    {"uid": "5", "summary": "Someday, maybe", "status": "needs_action"},
+    {"uid": "6", "summary": "Water the plants", "status": "completed", "due": "2026-10-12"},
+]}
 
 
 def ha(events=EVENTS) -> FakeHA:
@@ -18,7 +26,12 @@ def ha(events=EVENTS) -> FakeHA:
         return {cal: {"events": [e for e in events.get(cal, [])
                                  if data["start_date_time"][:10] <= e["start"][:10] and e["start"] < data["end_date_time"]]}
                 for cal in target["entity_id"]}
-    return FakeHA(states={"calendar.work": "off"}, services={"calendar.get_events": get_events})
+
+    def get_items(data, target):
+        return {lst: {"items": [t for t in TASKS.get(lst, []) if t["status"] in data.get("status", [t["status"]])]}
+                for lst in target["entity_id"]}
+    return FakeHA(states={"calendar.work": "off", "todo.tasks": "5"},
+                  services={"calendar.get_events": get_events, "todo.get_items": get_items})
 
 
 def harness(at="2026-10-12T07:00:00", **settings) -> Harness:
@@ -96,4 +109,28 @@ async def test_nothing_picked():
     assert await h.check("soon") == [] and await h.check("today") == []
     assert "No calendar" in await h.tool("upcoming")
     assert await h.status() == "No calendar picked"
+    await h.close()
+
+
+async def test_tasks_with_a_due_date_are_read_like_events():
+    h = harness(lists=["todo.tasks"])
+    await h.run("read")
+    [n] = await h.check("today")
+    assert [e.get("event") or e.get("task") for e in n.facts["events"]] == \
+        ["Return the parcel", "Name day", "Take the pill", "Dentist", "Pay the rent", "Call with the bank"], n.facts
+    assert {"task": "Return the parcel", "when": "overdue since Saturday 10 October"} in n.facts["events"]
+    assert "Return the parcel, overdue since" in n.say and "Take the pill" in n.say, n.say
+    rent = next(x for x in await h.check("soon") if x.facts.get("task") == "Pay the rent")
+    assert rent.not_before.isoformat() == "2026-10-12T10:30:00+02:00" and "is due in" in rent.say, rent
+    week = await h.tool("upcoming", days=7)
+    assert {"task": "Book flights", "when": "Thursday 15 October"} in week, week
+    assert {"task": "Take the pill", "when": "today"} in week
+    assert not any("Someday" in str(r) or "plants" in str(r) for r in week), week   # no date; done
+    assert await h.status() == "1 calendar, 1 list; next: Dentist today 10:00"
+    await h.close()
+
+
+async def test_a_list_alone_is_enough():
+    h = harness(calendars=[], lists=["todo.tasks"])
+    assert [r["task"] for r in await h.tool("upcoming")] == ["Return the parcel", "Take the pill", "Pay the rent"]
     await h.close()
