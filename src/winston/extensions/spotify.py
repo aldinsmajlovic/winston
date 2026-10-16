@@ -83,6 +83,11 @@ class SpotifySettings(Settings):
                                           "an empty one in Spotify, Winston, say). A mix is then one list: what you ask "
                                           "for next replaces it, and previous works. Empty: Spotify's queue, where a "
                                           "mix's songs follow whatever you ask for next.")
+    not_now_hours: float = Field(24, ge=0, level="advanced", title="\"Not now\" lasts (hours)",
+                                 description="\"Not Elliott Smith\": how long an artist stays out of what plays, "
+                                             "unless the speakers have been quiet for the hours below first.")
+    quiet_resets_hours: float = Field(1, ge=0, level="advanced", title="Quiet ends \"not now\" after (hours)",
+                                      description="Speakers quiet this long end every \"not now\" (a new session).")
     mood_mixes: Literal["listenbrainz", "spotify_radio", "both_in_turn"] = Field(
         "listenbrainz", level="advanced", title="A mood plays as",
         description="listenbrainz: a list from two of your artists that fit and artists like them. spotify_radio: "
@@ -349,6 +354,64 @@ async def end_party(ctx) -> None:
             ctx.log.warning(f"party restore failed: {e}")
 
 
+PLAYED = "played.jsonl"      # what played, a line a song, in its folder: "what was the song before this?"
+
+
+def played(ctx, n: int = 10) -> list[dict]:
+    """The last n songs that played, newest last."""
+    try:
+        lines = (ctx.folder / PLAYED).read_text().splitlines()[-n:]
+    except OSError:
+        return []
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+def log_play(ctx, data: dict, skipped: str | None) -> None:
+    """A song that came on, unless it is the one logged last (a resume, a second metadata event)."""
+    last = played(ctx, 1)
+    if not data.get("uri") or (last and last[-1].get("uri") == data["uri"]):
+        return
+    entry = {"at": ctx.now().isoformat(timespec="seconds"), "uri": data["uri"], "song": data.get("name"),
+             "artists": data.get("artist_names") or []} | ({"skipped": skipped} if skipped else {})
+    path = ctx.folder / PLAYED
+    with path.open("a") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    if path.stat().st_size > 400_000:           # about 2,000 songs: keep the newest 1,000
+        path.write_text("\n".join(path.read_text().splitlines()[-1000:]) + "\n")
+
+
+def verdicts(ctx) -> dict:
+    """His verdicts: banned songs ({uri, song, artists}), banned artists, and artists out for now ({artist,
+    until}). "Not now" ends at its time, or once the speakers have been quiet for quiet_resets_hours (his rule:
+    24 hours, or an hour without music, whichever comes first)."""
+    t = ctx.store.setdefault("taste", {"songs": [], "artists": [], "for_now": []})
+    quiet, now, music = ctx.settings.quiet_resets_hours * 3600, time.time(), ctx.store.get("last_music") or 0
+    t["for_now"] = [a for a in t["for_now"] if a["until"] > now and (state.on or now - max(music, a["at"]) <= quiet)]
+    return t
+
+
+def unwanted(ctx, uri: str | None, artists: list[str]) -> str | None:
+    """Why this song should not play now: banned, or by an artist he banned or put out for now. None if it may."""
+    t = verdicts(ctx)
+    if uri and uri in {s["uri"] for s in t["songs"]}:
+        return "banned"
+    keys = {_key(a) for a in artists}
+    if keys & {_key(a) for a in t["artists"]}:
+        return "artist banned"
+    if keys & {_key(a["artist"]) for a in t["for_now"]}:
+        return "artist not now"
+    return None
+
+
+def lift(ctx, item: dict) -> None:
+    """He asked for it by name: his own request wins over an earlier "not now" or ban of it or its artist."""
+    t = verdicts(ctx)
+    names = {_key(a["name"]) for a in item.get("artists") or ([item] if item.get("name") else [])}
+    t["songs"] = [x for x in t["songs"] if x["uri"] != item.get("uri")]
+    t["artists"] = [a for a in t["artists"] if _key(a) not in names]
+    t["for_now"] = [a for a in t["for_now"] if _key(a["artist"]) not in names]
+
+
 def going(ctx, how: str | None) -> None:
     """What he hears in each message's stamp (ctx.ongoing): "playing Oh Dove by Men I Trust", "paused on ...",
     nothing once it stopped. In a new conversation "who is this?" got "It's me, sir. Winston." 2 of 2 times."""
@@ -361,12 +424,20 @@ async def handle_event(ctx, ev: dict) -> None:
     kind, data = ev.get("type"), ev.get("data") or {}
     if kind == "metadata":
         state.now = {"name": data.get("name"), "artists": data.get("artist_names") or [], "album": data.get("album_name")}
+        why = unwanted(ctx, data.get("uri"), data.get("artist_names") or [])
+        log_play(ctx, data, why)
+        if why:                                     # radio or a list brought one he does not want: the next one
+            ctx.log.info(f"skipped {data.get('name')} ({why})")
+            await call(ctx, "POST", "/player/next")
+            return
         if state.on:
             going(ctx, "playing")
+            ctx.store["last_music"] = time.time()
         track = (state.party or {}).get("track")
         if track and data.get("uri") and data["uri"] != track:     # the party's song is over: the next one plays
             await end_party(ctx)
     elif kind == "playing":
+        ctx.store["last_music"] = time.time()
         if state.deferred_stop and not state.deferred_stop.done():
             state.deferred_stop.cancel()
             state.deferred_stop = None
@@ -805,6 +876,7 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
             return (f"Nothing on Spotify is called {what!r}{f' by {by}' if by else ''}, so nothing was played."
                     + (f" Nearest: {'; '.join(_describe(i) for i in near)}." if near else "")
                     + " A mood or a genre is a mix.")
+    lift(ctx, item)
     await start(ctx)
     uri = item.get("uri") or item.get("id", "")
     station = _radio_uri(uri) if radio else None
@@ -897,6 +969,11 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
     the store. When ListenBrainz does not answer in 10 s, radio plays instead."""
     if not (artists or genre or like):
         raise ValueError("a mood needs three to six of his artists that fit it (my_music()), or artists he named")
+    t = verdicts(ctx)
+    out = {_key(a) for a in t["artists"]} | {_key(a["artist"]) for a in t["for_now"]}
+    if artists and not like and not genre and not [a for a in artists if _key(a) not in out]:
+        raise ValueError(f"all of {', '.join(artists)} are out for now (his verdict); pass others from my_music()")
+    artists = [a for a in artists if _key(a) not in out]
     recent = ctx.store.get("seeds") or []
     # never used first, then the longest ago: the same chill artists take turns; named ones first of all
     order = list(like) + ([] if genre else [a for a in sorted(random.sample(artists, len(artists)),
@@ -973,7 +1050,9 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
         found = dict(list(found.items())[-3000:])
     (ctx.folder / SONGS).write_text(json.dumps(found, ensure_ascii=False))
     songs = list({(_title(s["name"]), _key((s.get("artists") or [{"name": ""}])[0]["name"])): s
-                  for s in reversed([s for s in hits if s])}.values())[::-1]      # one song once, in LB's order
+                  for s in reversed([s for s in hits if s and not unwanted(ctx, s["uri"], [a["name"] for a in
+                                                                                    s.get("artists") or []])])
+                  }.values())[::-1]      # one song once, in LB's order, none he banned or put out for now
     if not songs:
         if (why := refusing(ctx)) is not None:          # it began refusing while the songs were looked up
             raise NotReady(why + " Radio from one of his artists still plays.")
@@ -1122,16 +1201,75 @@ async def volume(ctx, level: int | None = None, change: Literal["up", "down"] | 
     return f"Music volume {now.get('value')} of {now.get('max', 100)}."
 
 
+@ext.tool(tier="act", timeout=15)
+async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], artist: str | None = None) -> str:
+    """What he thinks of the music, kept: "I like this" saves the song playing to his Liked Songs (like);
+    "never play this again" bans the song, skipped whenever it comes on (never); "not Elliott Smith" or "not
+    him for now" keeps the artist out of what plays for a while (not_now); "never play Elliott Smith" bans the
+    artist (never, with the artist); "you can play X again" lifts it (allow). When it is unclear whether he
+    means the song or the artist ("this sucks"), ask which first.
+
+    Args:
+        verdict: like, never, not_now or allow.
+        artist: The artist he named; none when he means the song playing ("this", "this song").
+    """
+    t, now = verdicts(ctx), ((await call(ctx, "GET", "/status") or {}).get("track") or {})
+    song = f"{now.get('name')} by {', '.join(now.get('artist_names') or [])}" if now else None
+    if verdict == "allow":
+        lift(ctx, {"name": artist} if artist else {"uri": now.get("uri"), "artists": []})
+        return f"{artist or song or 'It'} may play again."
+    if artist is None and verdict != "not_now":
+        if not now:
+            return "Nothing is playing to judge; ask which song or artist he means."
+        if verdict == "like":
+            await call(ctx, "POST", "/library/liked", uris=[now["uri"]], liked=True)
+            return f"Saved {song} to his Liked Songs."
+        t["songs"] = (t["songs"] + [{"uri": now["uri"], "song": now.get("name"), "artists": now.get("artist_names")}])[-500:]
+        await call(ctx, "POST", "/player/next")
+        return f"{song} will not play again; skipped."
+    if verdict == "like":
+        return f"Liking an artist is not kept yet; {artist} plays when he asks for them by name."
+    who = artist or (now.get("artist_names") or [None])[0]
+    if who is None:
+        return "Nothing is playing; ask which artist he means."
+    if verdict == "never":
+        t["artists"] = [a for a in t["artists"] if _key(a) != _key(who)] + [who]
+    else:
+        hours = ctx.settings.not_now_hours
+        t["for_now"] = [a for a in t["for_now"] if _key(a["artist"]) != _key(who)] + [
+            {"artist": who, "at": time.time(), "until": time.time() + hours * 3600}]
+    if now and _key(who) in {_key(a) for a in now.get("artist_names") or []}:
+        await call(ctx, "POST", "/player/next")
+    return (f"No more {who}." if verdict == "never" else
+            f"No {who} for now ({ctx.settings.not_now_hours:g} hours, or until the music has been off a while).")
+
+
 @ext.tool(tier="read", outside=False)
 async def now_playing(ctx) -> dict:
-    """What Spotify is playing here now ("who is this?", "what's this song?"): the song, its artists and
-    album, and whether it is paused. Each message's stamp already says what plays (spotify: playing ...)."""
+    """What Spotify is playing here now ("who is this?", "what's this song?") and what played before it ("what
+    was the song before this?", "that song from earlier"): the song, its artists and album, whether it is
+    paused, the songs before it with their times, and who is out for now. Each message's stamp already says what
+    plays (spotify: playing ...)."""
     s = await call(ctx, "GET", "/status")
     t = (s or {}).get("track") or {}
+    before = [{"at": p["at"][11:16], "song": p.get("song"), "artists": p.get("artists")}
+              for p in played(ctx, 9) if p.get("uri") != t.get("uri") and not p.get("skipped")][-8:]
+    v = verdicts(ctx)
+    out = {"before": before, "out_for_now": [a["artist"] for a in v["for_now"]] + v["artists"]}
     if not t:
-        return {"playing": None, "note": "Nothing is playing on this speaker."}
+        return {"playing": None, "note": "Nothing is playing on this speaker.", **out}
     return {"song": t.get("name"), "artists": t.get("artist_names"), "album": t.get("album_name"),
-            "paused": s.get("paused"), "volume": s.get("volume"), "speaker": s.get("device_name")}
+            "paused": s.get("paused"), "volume": s.get("volume"), "speaker": s.get("device_name"), **out}
+
+
+@ext.hint_words
+async def words(ctx) -> list[str]:
+    """His artists' and playlists' names and his own words for them, for speech to text: "play some Daft Punk"
+    was heard as "Dunk", and 4 of his requests that went wrong would have been heard right with them."""
+    lib = ctx.store.get("library") or {}
+    out = [i["name"] for i in lib.get("artist", [])] + [w for i in lib.get("playlist", []) for w in i.get("aka") or []]
+    out += [w.strip() for line in ctx.settings.names or [] for w in line.partition("=")[2].split(",") if w.strip()]
+    return [w for w in dict.fromkeys(out) if _key(w) == _norm(w)][:200]         # no emoji: they are not said
 
 
 @ext.status

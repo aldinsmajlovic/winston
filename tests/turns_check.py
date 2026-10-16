@@ -24,7 +24,8 @@ one mistake: each `say` (after its `before` lines, in the same conversation) sco
 brain calls for it, by `expect` and `forbid`. One run is at temperature 0; with --runs above one, at
 the live temperature, so a request that goes wrong one time in three shows as a rate. The stubs answer
 "done", so judge a phrase by its calls and their arguments (kept in the results), not by the reply.
-Generic phrasings live in tests/ (music_phrases.yaml); your own, which are personal, in data/.
+Generic phrasings live in tests/ (music_phrases.yaml); your own, which are personal, in data/. A case's `at`
+("23:30") stamps its messages with that time, for a request that belongs to an hour.
 
 Every run waits while a conversation runs on any channel (winstond's talking), and keeps to the
 server's last slot (brain.server_slot): on 2026-10-16 an unpinned trial with the box's prompt took the
@@ -158,9 +159,23 @@ async def replay(cfg: WinstonConfig, hearing: Hearing, t: dict, store: TurnStore
     return row
 
 
-async def ask(cfg: WinstonConfig, channel: str, room: str | None, before: list[str], said: str) -> tuple[str, Turn]:
-    """`said` in a fresh conversation on `channel`'s brain, after `before`, every acting tool stubbed; the
-    reply and the turn record of `said` alone."""
+class _At(datetime):
+    """The clock a case's `at` sets ("23:30"): its messages are stamped with that time, today."""
+    hhmm = "12:00"
+
+    @classmethod
+    def now(cls, tz=None):
+        h, m = map(int, cls.hhmm.split(":"))
+        return datetime.now(tz).replace(hour=h, minute=m, second=0, microsecond=0)
+
+
+async def ask(cfg: WinstonConfig, channel: str, room: str | None, before: list[str], said: str,
+              at: str | None = None) -> tuple[str, Turn]:
+    """`said` in a fresh conversation on `channel`'s brain, after `before`, every acting tool stubbed, at the
+    time `at` when given (the brain's clock: "something I can sleep to" at 13:00 got "I'm not sure what you
+    mean" 6 of 10 times); the reply and the turn record of `said` alone."""
+    from winston.core import brain
+    brain.datetime, _At.hhmm = (_At, at) if at else (datetime, _At.hhmm)
     await quiet(cfg)
     observer = TurnObserver()
     s = TextSession(cfg, mentions=False, channel="check", observers=[observer], area=area(cfg, room) if room else None,
@@ -198,7 +213,7 @@ async def phrases(cfg: WinstonConfig, name: str, store: TurnStore) -> int:
     for case in spec.get("cases") or []:
         runs = []
         for _ in range(args.runs):
-            reply, turn = await ask(cfg, channel, room, case.get("before") or [], case["say"])
+            reply, turn = await ask(cfg, channel, room, case.get("before") or [], case["say"], case.get("at"))
             calls = [{"name": c["name"], "args": c.get("args")} for c in turn.tools]
             runs.append({"said": reply, "calls": calls, "first_token_ms": turn.first_token_ms, **score(case, calls)})
         right = sum(bool(r["right_thing"]) for r in runs)

@@ -14,7 +14,7 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model, memory (read) |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
 | **Sensors** (`sensors`) | Nothing | `sensors_get_readings` | Home Assistant (read: the sensors you pick) |
-| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
+| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_feedback`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, MusicBrainz (its genre list, once), GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
 | **Web search** (`web`) | Nothing | `web_search` | Gemini (generativelanguage.googleapis.com) |
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
@@ -211,6 +211,16 @@ and one song comes once. Songs already found on Spotify are kept in `songs.json`
 folder, so a song that comes back in a later mix costs no search (Spotify gives the app a small daily
 quota). When ListenBrainz does not answer within 10 s, or Spotify is refusing searches, a mood plays
 Spotify's radio from one of your artists instead, which needs no search.
+
+**What you think of it is kept** (`spotify_feedback`). "I like this" saves the song to your Liked Songs.
+"Never play this again" bans the song: it is skipped whenever it comes on, from radio, a mix or a list.
+"Not Elliott Smith" keeps him out of what plays for a while: 24 hours, or until the speakers have been
+quiet for an hour, whichever comes first (both on the card, Advanced); "never play Elliott Smith" bans him.
+A mix leaves out who is out, and asking for one by name lifts it ("play Elliott Smith"), as does "you can
+play him again". When it is not clear whether you mean the song or the artist ("this sucks"), he asks.
+What played is logged (`played.jsonl` in the extension's folder), so "what was the song before this?" and
+"that song from earlier" have an answer, and your artists' and playlists' names, with your own words for
+them, are hint words for speech to text ("play some Daft Punk" was once heard as "Dunk").
 
 **A mix is one list** when **Mixes go to** (Advanced) names a playlist of yours: make an empty one in
 Spotify once (Winston, say). Each mix is added to its end and played from its first new song, so

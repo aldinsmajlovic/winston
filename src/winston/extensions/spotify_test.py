@@ -87,11 +87,12 @@ class Receiver:
             return httpx.Response(200, json={"device_name": "Winston", "username": "someone", "paused": False,
                                              "stopped": False, "volume": self.volume,
                                              "track": {"name": "Get Lucky", "artist_names": ["Daft Punk"],
+                                                       "uri": "spotify:track:gl",
                                                        "album_name": "Random Access Memories"}
                                              if self.playing else None})
         if path == "/library/playlists" and self.playlists is not None:
             return httpx.Response(200, json={"items": self.playlists, "total": len(self.playlists)})
-        if path.startswith("/library/playlists/") and request.method == "POST":
+        if path.startswith("/library/") and request.method == "POST":
             return httpx.Response(200)
         if path.startswith("/player/"):
             return httpx.Response(200)
@@ -612,5 +613,52 @@ async def test_a_mix_is_one_list_in_his_playlist_and_old_mixes_are_trimmed_after
     await asyncio.sleep(0.05)                                       # trimmed after the music starts
     removed = [b["uri"] for m, p, b in rx.calls if p == "/library/playlists/remove_track"]
     assert removed == ["spotify:track:Get Lucky", "spotify:track:One More Time"], removed
+    await h.close()
+
+
+async def test_he_is_remembered_liked_banned_and_not_now():
+    rx = Receiver()
+    h = harness(rx, library=True)
+    await h.run("library")
+    module = h.ext.tools["play"].fn.__globals__
+    handle, ctx = module["handle_event"], h.rt.ctx
+    song = lambda uri, name, *artists: {"type": "metadata", "data": {"uri": uri, "name": name, "artist_names": list(artists)}}
+    nexts = lambda: [p for m, p, b in rx.calls if p == "/player/next"]
+
+    assert await h.tool("feedback", verdict="like") == "Saved Get Lucky by Daft Punk to his Liked Songs."
+    assert ("POST", "/library/liked", {"uris": ["spotify:track:gl"], "liked": True}) in rx.calls
+    assert await h.tool("feedback", verdict="never") == "Get Lucky by Daft Punk will not play again; skipped."
+    await handle(ctx, song("spotify:track:gl", "Get Lucky", "Daft Punk"))       # radio brings it back
+    assert len(nexts()) == 2, rx.calls                              # skipped when banned, and when it came back
+
+    said = await h.tool("feedback", verdict="not_now", artist="Radiohead")
+    assert said.startswith("No Radiohead for now (24 hours"), said
+    await handle(ctx, song("spotify:track:creep", "Creep", "Radiohead"))
+    assert len(nexts()) == 3
+    await h.tool("play", artists=["Radiohead", "Daft Punk"])
+    assert "Radiohead" not in [p for m, p, b in rx.calls if m == "LB"][-1], rx.calls
+    try:
+        await h.tool("play", mood="sad", artists=["Radiohead"])
+        raise AssertionError("a mood made only of who is out played")
+    except AssertionError:
+        raise
+    except Exception as e:                                          # noqa: BLE001
+        assert "out for now" in str(e), e
+
+    await handle(ctx, song("spotify:track:omt", "One More Time", "Daft Punk"))   # unbanned song: plays on
+    now = await h.tool("now_playing")
+    assert [b["song"] for b in now["before"]] == ["One More Time"] and "Radiohead" in now["out_for_now"], now
+
+    assert (await h.tool("play", what="Radiohead")).startswith("Playing Radiohead")   # asked by name: lifted
+    await handle(ctx, song("spotify:track:creep2", "Creep", "Radiohead"))
+    assert len(nexts()) == 3, rx.calls
+
+    await h.tool("feedback", verdict="not_now", artist="Air")
+    assert "Air" in (await h.tool("now_playing"))["out_for_now"]    # said with no music for hours: it holds
+    h.rt.store["last_music"] = time.time() - 2 * 3600               # then the speakers quiet for two hours
+    for a in h.rt.store["taste"]["for_now"]:
+        a["at"] -= 2 * 3600
+    assert "Air" not in (await h.tool("now_playing"))["out_for_now"]
+    assert "Radiohead" in await h.hint_words() and "daylist" not in await h.hint_words()
     await h.close()
 

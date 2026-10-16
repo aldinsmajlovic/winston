@@ -1,5 +1,5 @@
 # Music requests for `winston check turns --phrases tests/music_phrases.yaml --runs 10`: what the box's brain
-# calls for each. Generic on purpose; your own phrasings, which are personal, go in data/.
+# calls for each (`at`: the hour a request belongs to; at 13:00 sleep music got "I'm not sure what you mean"). Generic on purpose; your own phrasings, which are personal, go in data/.
 # expect: every entry is called ("a|b" for either); forbid: none is. Names are substrings of tool names, and
 # "tool(arg)" also needs that argument: spotify_play(what) plays a name, spotify_play(genre) a genre. The
 # expectations hold for both layouts the A/B of 2026-10-16 compared (play, mix and queue as three tools, or
@@ -20,6 +20,7 @@ cases:
     expect: ["spotify_mix|spotify_play(mood)|spotify_play(artists)"]
     forbid: ["spotify_play(what)"]
   - say: Something to fall asleep to.
+    at: "23:30"
     expect: ["spotify_mix|spotify_play(mood)|spotify_play(artists)"]
     forbid: ["spotify_play(what)", "volume"]
   - say: Play some music.
@@ -66,7 +67,22 @@ cases:
     forbid: ["spotify_play(what)"]
   - before: [Play something chill.]
     say: Save this song.
+    expect: ["spotify_feedback(verdict)"]
     forbid: [spotify_play, spotify_mix, spotify_queue, HassListAddItem]
+  # what he thinks of it, kept
+  - before: [Play something chill.]
+    say: I like this one.
+    expect: ["spotify_feedback(verdict)"]
+    forbid: ["spotify_feedback(artist)", HassListAddItem]
+  - before: [Play something chill.]
+    say: Never play this song again.
+    expect: ["spotify_feedback(verdict)"]
+    forbid: ["spotify_feedback(artist)"]
+  - say: No Elliott Smith for now.
+    expect: ["spotify_feedback(artist)"]
+  - before: [Play something chill.]
+    say: What was the song before this?
+    expect: [spotify_now_playing]
   # control
   - before: [Play Daft Punk.]
     say: Pause.
