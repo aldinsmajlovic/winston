@@ -262,7 +262,8 @@ at**; 0 leaves it as it was): it had been left at 96. **Pause when you leave** (
 pauses the music when Home Assistant's person under Speaking up leaves home.
 
 **A mix is one list** when **Mixes go to** (Advanced) names a playlist of yours: make an empty one in
-Spotify once (Winston, say). Each mix is added to its end and played from its first new song, so
+Spotify once (Winston, say). Saving its name reads your library again, so a playlist made a minute ago is
+found at once, not at the next hourly read. Each mix is added to its end and played from its first new song, so
 what you ask for next replaces it, previous goes back within it, and the oldest songs beyond the last 60
 are removed while the music plays. Without it a mix goes into Spotify's queue, which go-librespot cannot
 clear: its songs follow whatever you ask for next.

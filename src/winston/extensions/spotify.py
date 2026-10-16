@@ -213,9 +213,11 @@ async def receiver(ctx):
 @ext.on_settings
 async def settings_changed(ctx, event):
     """A new name or bitrate: the receiver starts again with them (its background task restarts it).
-    A new library player: his library is read again now."""
+    A new library player: his library is read again now; a new playlist for mixes too, as it is likely one he
+    has just made, which the hourly read would miss for up to an hour."""
     if event.old.library != ctx.settings.library:
         ctx.store["library"] = {}
+    if (event.old.library, event.old.mix_playlist) != (ctx.settings.library, ctx.settings.mix_playlist):
         await library(ctx)
     pid = ctx.store.get("pid")
     if pid and (event.old.name, event.old.bitrate, event.old.api_port) != \

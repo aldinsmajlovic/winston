@@ -817,3 +817,16 @@ async def test_an_album_named_with_its_artist_plays_when_no_song_has_the_name():
     said = await h.tool("play", what="Currents", by="Tame Impala", kind="track")    # a song was said: it says so
     assert said.endswith("No song of Tame Impala's is called Currents; this is the album."), said
     await h.close()
+
+
+async def test_a_playlist_made_after_the_hourly_read_takes_mixes_once_it_is_named():
+    rx = Receiver()
+    rx.playlists = [playlist("Running 2026", "run", 10, mine=True)]
+    h = harness(rx, library=True)
+    await h.run("library")
+    rx.playlists.append(playlist("Winston", "win", 0, mine=True))       # made in Spotify, then named on the card
+    assert await h.configure({"library": PLAYER, "mix_playlist": "Winston"}) == []
+    await h.tool("play", artists=["Daft Punk"])
+    plays = [b for m, p, b in rx.calls if p == "/player/play"]
+    assert plays[-1]["uri"] == "spotify:playlist:win", plays
+    await h.close()
