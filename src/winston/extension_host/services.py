@@ -218,12 +218,15 @@ class Services:
         return r.json()
 
     async def _response_only(self, c: httpx.AsyncClient, domain: str, service: str) -> bool:
+        def spec() -> dict | None:
+            return self._ha_services[1].get(domain, {}).get(service) if self._ha_services else None
         now = time.monotonic()
-        if self._ha_services is None or now - self._ha_services[0] > 600:
+        # read again after ten minutes, or when the service is missing (an integration added since)
+        if self._ha_services is None or now - self._ha_services[0] > 600 or spec() is None:
             listing = self._json(await c.get("/api/services"))
             self._ha_services = (now, {d["domain"]: d.get("services", {}) for d in listing})
-        spec = self._ha_services[1].get(domain, {}).get(service)
-        return bool(spec and isinstance(spec.get("response"), dict) and spec["response"].get("optional") is False)
+        found = spec()
+        return bool(found and isinstance(found.get("response"), dict) and found["response"].get("optional") is False)
 
     async def _service(self, ext_id: str, op: str, p: dict[str, Any], c: httpx.AsyncClient) -> Any:
         domain, service = p["domain"], p["service"]

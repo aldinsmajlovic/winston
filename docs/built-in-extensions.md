@@ -35,11 +35,19 @@ start of today to 36 hours ahead.
   card), in the morning briefing.
 - **`agenda_upcoming`**: today, today and tomorrow, or up to 31 days ("what's on this week?").
 
-For Google Calendar, add Home Assistant's own Google Calendar integration (it needs a Google Cloud
-project with the Calendar API, a published consent screen, or the sign-in lapses every 7 days, and a
-web application OAuth client whose redirect is `https://my.home-assistant.io/redirect/oauth`). Its
-Remote Calendar with Google's private iCal address needs no Google Cloud project, but reads it only
-once a day, too seldom for "in 30 minutes".
+For Google Calendar, add Home Assistant's own Google Calendar integration. It needs a Google Cloud
+project with:
+
+- the Calendar API enabled; without it the sign-in goes through and Home Assistant then stops with
+  `calendar_api_disabled`;
+- the app published on the Audience page, or the sign-in lapses every 7 days. Publishing asks for an
+  app name, a support email and a homepage and privacy policy link on the Branding page; for an app
+  only you sign in to, any page of yours will do. Google then warns it is unverified: Advanced, go to
+  it, continue;
+- a web application OAuth client whose redirect is `https://my.home-assistant.io/redirect/oauth`.
+
+Its Remote Calendar with Google's private iCal address needs no Google Cloud project, but reads it
+only once a day, too seldom for "in 30 minutes".
 
 ## Ask Claude
 

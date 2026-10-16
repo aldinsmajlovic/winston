@@ -188,6 +188,10 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         expect("reads an exposed entity", r["ok"] and r["result"]["state"] == "on", r)
         r = (await api.post("/api/extensions/probe/tools/state", json={"entity_id": "light.kok"})).json()
         expect("refused an entity neither exposed nor picked", not r["ok"] and "neither exposed" in r["error"], r)
+        fake.SERVICES = {d: s for d, s in FakeHA.SERVICES.items() if d != "weather"}     # its integration not set up
+        r = (await api.post("/api/extensions/probe/tools/query", json={"entity_id": "weather.forecast_home"})).json()
+        expect("a service Home Assistant does not have is refused", not r["ok"] and "change things" in r["error"], r)
+        del fake.SERVICES                                   # set up now: the cached listing is read again at once
         r = (await api.post("/api/extensions/probe/tools/query", json={"entity_id": "weather.forecast_home"})).json()
         expect("a response-only service on an exposed domain", r["ok"] and "weather.forecast_home" in r["result"], r)
         r = (await api.post("/api/extensions/probe/tools/switch_off", json={"entity_id": "light.taklampa"})).json()
