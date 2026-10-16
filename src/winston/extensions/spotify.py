@@ -5,7 +5,7 @@
 # description = "Spotify on your speakers: a Spotify Connect speaker for the app, and play, pause and skip by voice."
 # icon = "music"
 # api = 1
-# permissions = { network = ["127.0.0.1", "api.spotify.com", "accounts.spotify.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "api.listenbrainz.org", "musicbrainz.org"], home_assistant = "act", speakers = true }
+# permissions = { network = ["127.0.0.1", "api.spotify.com", "accounts.spotify.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "api.listenbrainz.org", "musicbrainz.org"], home_assistant = "act", speakers = true, presence = true }
 # ///
 """Spotify on the speakers (the satellite box and whatever is plugged into its jack).
 
@@ -88,6 +88,16 @@ class SpotifySettings(Settings):
                                              "unless the speakers have been quiet for the hours below first.")
     quiet_resets_hours: float = Field(1, ge=0, level="advanced", title="Quiet ends \"not now\" after (hours)",
                                       description="Speakers quiet this long end every \"not now\" (a new session).")
+    sleep_fade_minutes: float = Field(30, ge=1, le=120, level="advanced", title="Sleep fade (minutes)",
+                                      description="A sleep timer fades the music out over this long, then pauses it "
+                                                  "without a word; a longer timer plays as it was first.")
+    first_volume: int = Field(60, ge=0, le=100, level="advanced", title="First music of the day at",
+                              description="The volume the first music plays at after the speakers have been quiet "
+                                          "for the hours below (0: as it was left).")
+    first_after_hours: float = Field(6, ge=0, level="advanced", title="Quiet before \"first music\" (hours)")
+    pause_on_leave: bool = Field(False, title="Pause when you leave",
+                                 description="The music pauses when you leave home (Home Assistant's person, under "
+                                             "Speaking up).")
     mood_mixes: Literal["listenbrainz", "spotify_radio", "both_in_turn"] = Field(
         "listenbrainz", level="advanced", title="A mood plays as",
         description="listenbrainz: a list from two of your artists that fit and artists like them. spotify_radio: "
@@ -819,10 +829,13 @@ def _radio_uri(uri: str) -> str | None:
 
 
 async def start(ctx) -> None:
-    """Before other music: back from muted, and a party's lights stop with its music."""
-    vol = await call(ctx, "GET", "/player/volume")
-    if (vol or {}).get("value", 60) == 0:
-        await call(ctx, "POST", "/player/volume", volume=60)
+    """Before other music: back from muted, the first music of the day at first_volume (it was left at 96, so a
+    07:00 mix would have started near full), and a party's lights stop with its music."""
+    vol = (await call(ctx, "GET", "/player/volume") or {}).get("value", 60)
+    s = ctx.settings
+    first = s.first_volume and time.time() - (ctx.store.get("last_music") or 0) > s.first_after_hours * 3600
+    if first or vol == 0:
+        await call(ctx, "POST", "/player/volume", volume=s.first_volume or 60)
     state.pending = None
     await end_party(ctx)
 
@@ -1242,6 +1255,62 @@ async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], a
         await call(ctx, "POST", "/player/next")
     return (f"No more {who}." if verdict == "never" else
             f"No {who} for now ({ctx.settings.not_now_hours:g} hours, or until the music has been off a while).")
+
+
+@ext.tool(tier="act", timeout=15)
+async def sleep(ctx, minutes: float | None = None) -> str:
+    """A sleep timer: the music fades out and pauses, and nothing is said then ("stop the music in 30
+    minutes", "turn it off in an hour", "a sleep timer"). For music to fall asleep to ("something to sleep
+    to"), play it and set this. Say good night when setting it: nothing more is said when it stops. Without
+    minutes it is the fade alone; 0 cancels it.
+
+    Args:
+        minutes: Until the music stops, as he said; none for the usual fade.
+    """
+    if minutes == 0:
+        if (old := ctx.store.pop("sleep", None)) is not None:
+            await call(ctx, "POST", "/player/volume", volume=old["volume"])
+        return "The sleep timer is off; the music plays on."
+    fade = ctx.settings.sleep_fade_minutes * 60
+    total = max(fade, (minutes or 0) * 60)
+    vol = (await call(ctx, "GET", "/player/volume") or {}).get("value", 60)
+    old = ctx.store.get("sleep") or {}
+    ctx.store["sleep"] = {"end": time.time() + total, "fade": fade, "volume": old.get("volume", vol)}
+    return (f"The music fades out over the last {fade / 60:g} minutes and stops in {total / 60:g} minutes; nothing "
+            "will be said then. Say good night now.")
+
+
+async def fade_step(ctx, now: float) -> None:
+    """One step of the sleep timer's fade (the store says when it ends and the volume before it, so a restart
+    carries on): the volume falls with the time left, then the music pauses and the volume goes back for the next
+    time, without a word (Aldin: "say good night before, no talking after")."""
+    if (sl := ctx.store.get("sleep")) is None:
+        return
+    left = sl["end"] - now
+    if left <= 0:
+        ctx.store.pop("sleep", None)
+        await call(ctx, "POST", "/player/pause")
+        await call(ctx, "POST", "/player/volume", volume=sl["volume"])
+        ctx.log.info("sleep timer: the music faded out and paused")
+    elif left < sl["fade"]:
+        await call(ctx, "POST", "/player/volume", volume=max(1, round(sl["volume"] * left / sl["fade"])))
+
+
+@ext.background
+async def fader(ctx):
+    while True:
+        await asyncio.sleep(15)
+        try:
+            await fade_step(ctx, time.time())
+        except NotReady as e:
+            ctx.log.warning(f"sleep timer: {e}"[:200])
+
+
+@ext.on_leave
+async def left_home(ctx):
+    """He left: the music pauses, when pause_on_leave says so."""
+    if ctx.settings.pause_on_leave and await loaded(ctx) is not None:
+        await call(ctx, "POST", "/player/pause")
 
 
 @ext.tool(tier="read", outside=False)

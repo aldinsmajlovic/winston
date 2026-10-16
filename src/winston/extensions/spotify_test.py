@@ -662,3 +662,43 @@ async def test_he_is_remembered_liked_banned_and_not_now():
     assert "Radiohead" in await h.hint_words() and "daylist" not in await h.hint_words()
     await h.close()
 
+
+async def test_a_sleep_timer_fades_out_in_silence_and_the_first_music_of_the_day_starts_at_its_volume():
+    rx = Receiver()
+    h = harness(rx)
+    module = h.ext.tools["play"].fn.__globals__
+    fade_step = module["fade_step"]
+    vols = lambda: [b["volume"] for m, p, b in rx.calls if p == "/player/volume" and m == "POST"]
+    said = await h.tool("sleep", minutes=30)
+    assert said.startswith("The music fades out over the last 30 minutes and stops in 30 minutes;"), said
+    end = h.rt.store["sleep"]["end"]
+    await fade_step(h.rt.ctx, end - 900)                          # half the fade left
+    assert vols()[-1] == 30, vols()
+    await fade_step(h.rt.ctx, end + 1)                            # over: paused, and the volume back
+    assert ("POST", "/player/pause", None) in rx.calls and vols()[-1] == 60 and "sleep" not in h.rt.store, rx.calls
+    await h.tool("sleep", minutes=60)                             # an hour: plays as it was for the first half
+    n = len(vols())
+    await fade_step(h.rt.ctx, h.rt.store["sleep"]["end"] - 3000)
+    assert len(vols()) == n, vols()
+    assert await h.tool("sleep", minutes=0) == "The sleep timer is off; the music plays on."
+    assert "sleep" not in h.rt.store
+
+    rx.volume = 96                                                # left loud the night before
+    h.rt.store["last_music"] = time.time() - 7 * 3600
+    await h.tool("play", what="daft punk")
+    assert vols()[-1] == 60, vols()
+    h.rt.store["last_music"] = time.time()                        # music a minute ago: as it was
+    n = len(vols())
+    await h.tool("play", what="daft punk")
+    assert len(vols()) == n, vols()
+    await h.close()
+
+
+async def test_leaving_home_pauses_only_when_he_asked_for_it():
+    for on, paused in ((False, False), (True, True)):
+        rx = Receiver()
+        h = harness(rx, pause_on_leave=on)
+        await h.run("left_home")
+        assert (("POST", "/player/pause", None) in rx.calls) == paused, (on, rx.calls)
+        await h.close()
+

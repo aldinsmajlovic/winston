@@ -14,7 +14,7 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model, memory (read) |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
 | **Sensors** (`sensors`) | Nothing | `sensors_get_readings` | Home Assistant (read: the sensors you pick) |
-| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_feedback`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, MusicBrainz (its genre list, once), GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), the speakers |
+| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_feedback`, `spotify_sleep`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, MusicBrainz (its genre list, once), GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), presence (pause when you leave), the speakers |
 | **Web search** (`web`) | Nothing | `web_search` | Gemini (generativelanguage.googleapis.com) |
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
@@ -221,6 +221,14 @@ play him again". When it is not clear whether you mean the song or the artist ("
 What played is logged (`played.jsonl` in the extension's folder), so "what was the song before this?" and
 "that song from earlier" have an answer, and your artists' and playlists' names, with your own words for
 them, are hint words for speech to text ("play some Daft Punk" was once heard as "Dunk").
+
+**Bedtime and morning.** "Stop the music in 30 minutes", "turn it off in an hour" or "something to sleep
+to" sets a sleep timer (`spotify_sleep`): he says good night then, the music fades out over the last 30
+minutes (**Sleep fade**, Advanced) and pauses, nothing is said, and the volume goes back for the next time.
+The timer is kept in the extension's store, so a restart in the middle carries on. The first music of the
+day, after six hours without any (**Quiet before "first music"**), starts at 60 (**First music of the day
+at**; 0 leaves it as it was): it had been left at 96. **Pause when you leave** (off until you switch it on)
+pauses the music when Home Assistant's person under Speaking up leaves home.
 
 **A mix is one list** when **Mixes go to** (Advanced) names a playlist of yours: make an empty one in
 Spotify once (Winston, say). Each mix is added to its end and played from its first new song, so

@@ -21,7 +21,7 @@ cases:
     forbid: ["spotify_play(what)"]
   - say: Something to fall asleep to.
     at: "23:30"
-    expect: ["spotify_mix|spotify_play(mood)|spotify_play(artists)"]
+    expect: ["spotify_mix|spotify_play(mood)|spotify_play(artists)", spotify_sleep]
     forbid: ["spotify_play(what)", "volume"]
   - say: Play some music.
     expect: ["spotify_mix|spotify_play"]
@@ -92,4 +92,9 @@ cases:
     expect: [spotify_volume]
     forbid: [HassSetVolume]
   - say: Stop the music in 30 minutes.
-    expect: [later_add]
+    expect: [spotify_sleep]
+    forbid: [later_add]
+  - say: Turn the music off in an hour.
+    at: "23:30"
+    expect: ["spotify_sleep(minutes)"]
+    forbid: [later_add, spotify_pause]
