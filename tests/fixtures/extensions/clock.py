@@ -49,6 +49,11 @@ async def left(ctx):
     bump(ctx, "left")
 
 
+@ext.on_speakers_stop
+async def silenced(ctx):
+    bump(ctx, "silenced")
+
+
 @ext.on_event("winston_test")
 async def happened(ctx, event):
     ctx.store["event"] = event.data

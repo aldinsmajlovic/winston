@@ -317,6 +317,7 @@ the card.
 | `@ext.hook` | `json`, `headers` |
 | `@ext.job`, run by a timer from `ctx.later`, a hook or `winston ext run` | `time`, `data` |
 | `@ext.on_settings` | `old` (the settings before the save) |
+| `@ext.on_speakers_stop` | `time`: he said "stop" to a box while your `ctx.speakers` stream played; the box is silent already, so stop at your source (Spotify pauses) |
 | `@ext.validate` | `settings` (the ones being saved; `ctx.settings` still holds the saved ones) |
 | `@entity.on_change` | `value`, and `entry` for a `per` entity |
 | `@entity.on_press` | `entry` for a `per` entity |
@@ -423,7 +424,7 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.devices()` | `Device(id, name, manufacturer, model, model_id, sw_version, hw_version, area, service)` for every device Home Assistant knows (needs `devices`); `service` is true for what it lists as a service rather than hardware (an add-on, Home Assistant itself, a cloud account) |
 | `ctx.llm.ask(prompt, schema=None, max_tokens=500)` | Text, or an instance of the Pydantic model `schema`. The background model is the local brain unless you pick a cloud model; an extension never chooses, so nothing leaves the house unless a setting says so. It waits while a conversation runs (see [How it runs](#how-it-runs)) |
 | `ctx.ext(id).call(tool, **args)` | Another extension's or MCP server's read tool, at the tier you gave it on its card (needs `extensions`, or `id` picked in an `Extensions(tool=...)` setting) |
-| `ctx.speakers.play(url, title=None)`, `.stop()` | Plays a stream (anything ffmpeg reads, served on 127.0.0.1 or a declared host) on the box of the room last talked in, else on every box, and returns how many play; a new stream replaces what plays, and `stop()` ends only its own. The box turns it down while it listens and while he talks (needs `speakers`) |
+| `ctx.speakers.play(url, title=None)`, `.stop()` | Plays a stream (anything ffmpeg reads, served on 127.0.0.1 or a declared host) on the box of the room last talked in, else on every box, and returns how many play; a new stream replaces what plays, and `stop()` ends only its own. The box turns it down while it listens and while he talks, and stops it when he says "stop" (`@ext.on_speakers_stop`) (needs `speakers`) |
 | `ctx.later(when, job, data=None)` | Runs one of its jobs once at a computed `datetime` or after a `timedelta`, kept across restarts; returns a timer with `cancel()`. `ctx.timers()` lists them |
 | `ctx.nudge(kind, nudge)`, `ctx.withdraw(kind, about)` | Pushes a nudge of a pushed kind, or takes one back |
 | `ctx.nudges(kind=None)` | Its nudges now and those ended in the last 7 days, each with `kind`, `about`, `level`, `facts`, `links`, `state` (waiting, held, said, dismissed, ended), `said_at`, `held_until` |

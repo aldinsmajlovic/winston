@@ -511,6 +511,19 @@ _search_cache: dict[tuple, tuple[dict, float]] = {}
 _SEARCH_TTL = 300
 
 
+def refusing(ctx) -> str | None:
+    """Why Spotify's search will not answer, while it refuses this app (a 429's Retry-After, kept in the store
+    so a restart does not ask again): on 2026-10-16 a few hundred searches in an hour used up the app's daily
+    quota and it said 429 for 22 hours, and the brain asked again four times in four seconds."""
+    until = ctx.store.get("search_refused_until") or 0
+    if until <= time.time():
+        return None
+    at = time.strftime("%H:%M" if time.localtime(until).tm_yday == time.localtime().tm_yday else "%A %H:%M",
+                       time.localtime(until))
+    return (f"Spotify is refusing this app's searches until about {at} (its limit for the app); asking again will "
+            "not help. Songs, artists and playlists in his library still play by name.")
+
+
 async def search(ctx, what: str, kind: str | None) -> dict:
     """What to play: in his library by its exact name, else Spotify's best match (the thing named
     exactly, else the top track), else in his library by part of its name."""
@@ -526,9 +539,14 @@ async def search(ctx, what: str, kind: str | None) -> dict:
             return item
         raise NotReady(f"{what!r} is not in his Spotify library; to search all of Spotify, add a Spotify app's "
                        "client ID and secret on the Spotify card")
+    if (why := refusing(ctx)) is not None:
+        raise NotReady(why)
     types = [kind] if kind else ["artist", "album", "playlist", "track"]
     r = await ctx.http.get("https://api.spotify.com/v1/search", params={"q": what, "type": ",".join(types), "limit": 5},
                            headers={"Authorization": f"Bearer {token}"}, timeout=8)
+    if r.status_code == 429:
+        ctx.store["search_refused_until"] = time.time() + int(r.headers.get("retry-after") or 60)
+        raise NotReady(refusing(ctx))
     if r.status_code != 200:
         raise NotReady(f"Spotify's search said {r.status_code}")
     found = r.json()
@@ -651,6 +669,8 @@ async def mix(ctx, artists: list[str], genre: str | None = None) -> str:
     if not ctx.settings.listenbrainz_token or await app_token(ctx) is None:
         raise NotReady("a mix needs a ListenBrainz token and the Spotify app's client ID and secret on the "
                        "Spotify card; play radio from an artist instead")
+    if (why := refusing(ctx)) is not None:
+        raise NotReady(why + " Radio from one of his artists still plays.")
     recent = ctx.store.get("seeds") or []
     # never used first, then the longest ago: the same chill artists take turns
     order = sorted(random.sample(artists, len(artists)), key=lambda a: recent.index(a) if a in recent else -1)
@@ -661,6 +681,8 @@ async def mix(ctx, artists: list[str], genre: str | None = None) -> str:
     found = await asyncio.gather(*(on_spotify(ctx, s) for s in radio[:25]))
     songs = list({s["uri"]: s for s in found if s}.values())
     if not songs:
+        if (why := refusing(ctx)) is not None:          # it began refusing while the songs were looked up
+            raise NotReady(why + " Radio from one of his artists still plays.")
         raise ValueError(f"no mix from {', '.join(artists + [genre] if genre else artists)}: none of LB Radio's "
                          "songs were found on Spotify")
     await start(ctx)
@@ -723,9 +745,29 @@ async def party(ctx, what: str, lights: str | None = None, restore: str | None =
     return f"Starting {desc}."
 
 
+@ext.on_speakers_stop
+async def stopped(ctx):
+    """He said "stop" to the box while it played: the box is silent already; Spotify pauses, so "resume"
+    carries on from here, and a party ends with its music."""
+    state.pending = None
+    await end_party(ctx)
+    await call(ctx, "POST", "/player/pause")
+
+
+async def loaded(ctx) -> dict | None:
+    """The receiver's state when a song is loaded, else None. go-librespot answers a pause, a resume or a skip
+    with nothing loaded as if it worked, so after a restart "resume the music" said "Playing." into silence."""
+    st = await call(ctx, "GET", "/status") or {}
+    return st if st.get("track") else None
+
+
 @ext.tool(tier="act")
 async def pause(ctx) -> str:
     """Pause the music."""
+    if (st := await loaded(ctx)) is None:
+        return "Nothing is playing."
+    if st.get("paused"):
+        return "Already paused."
     await call(ctx, "POST", "/player/pause")
     return "Paused."
 
@@ -733,6 +775,10 @@ async def pause(ctx) -> str:
 @ext.tool(tier="act")
 async def resume(ctx) -> str:
     """Carry on playing the music after a pause."""
+    if (st := await loaded(ctx)) is None:
+        return "Nothing is loaded to carry on with; something has to be asked for first."
+    if not st.get("paused"):
+        return "Already playing."
     await call(ctx, "POST", "/player/resume")
     return "Playing."
 
@@ -740,6 +786,8 @@ async def resume(ctx) -> str:
 @ext.tool(tier="act")
 async def next_track(ctx) -> str:
     """Skip to the next song."""
+    if await loaded(ctx) is None:
+        return "Nothing is playing to skip."
     await call(ctx, "POST", "/player/next")
     return "Next song."
 
@@ -747,6 +795,8 @@ async def next_track(ctx) -> str:
 @ext.tool(tier="act")
 async def previous_track(ctx) -> str:
     """Go back to the previous song (or the start of this one)."""
+    if await loaded(ctx) is None:
+        return "Nothing is playing."
     await call(ctx, "POST", "/player/prev")
     return "Previous song."
 

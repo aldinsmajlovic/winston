@@ -278,6 +278,9 @@ class Extension:
     def on_settings(self, fn: Callable) -> Callable:
         return self._job(fn, {"kind": "on_settings"})
 
+    def on_speakers_stop(self, fn: Callable) -> Callable:
+        return self._job(fn, {"kind": "on_speakers_stop"})
+
     def hook(self, name: str, timeout: float = 30) -> Callable[[Callable], Callable]:
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,39}", name):
             raise ValueError(f"hook name {name!r}: lowercase letters, digits, - and _")

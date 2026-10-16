@@ -22,6 +22,7 @@ class Receiver:
         self.pairing: dict | None = None
         self.volume = 60
         self.playing = True
+        self.refusing = 0                       # Spotify's search answers 429 with this Retry-After
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -43,6 +44,8 @@ class Receiver:
             assert request.headers["authorization"] == "Bearer app"
             q = dict(parse_qsl(request.url.query.decode()))
             self.calls[-1] = ("SEARCH", q["type"], {"q": q["q"]})
+            if self.refusing:
+                return httpx.Response(429, headers={"retry-after": str(self.refusing)}, json={"error": {"status": 429}})
             if q["q"].startswith("track:"):     # a mix's song: Spotify's best match is always by Daft Punk
                 title = q["q"].removeprefix("track:").split(" artist:")[0]
                 return httpx.Response(200, json={"tracks": {"items": [{"uri": f"spotify:track:{title}", "name": title,
@@ -153,6 +156,53 @@ async def test_without_the_app_keys_only_his_library_and_he_is_told_why():
     except Exception as e:                                          # noqa: BLE001
         assert "not in his Spotify library" in str(e) and "client ID and secret" in str(e), e
     assert played(rx) == ["spotify:artist:dp"] and not any(c[0] in ("SEARCH", "APP TOKEN") for c in rx.calls)
+    await h.close()
+
+
+async def test_controls_say_what_is_so_when_nothing_plays():
+    rx = Receiver()
+    rx.playing = False
+    h = harness(rx)
+    said = [await h.tool(t) for t in ("pause", "resume", "next_track", "previous_track")]
+    assert said == ["Nothing is playing.", "Nothing is loaded to carry on with; something has to be asked for first.",
+                    "Nothing is playing to skip.", "Nothing is playing."], said
+    assert not [p for m, p, b in rx.calls if m == "POST" and p.startswith("/player/")], rx.calls
+    rx.playing = True
+    assert await h.tool("resume") == "Already playing."
+    await h.close()
+
+
+async def test_a_stop_on_the_box_pauses_spotify():
+    rx = Receiver()
+    h = harness(rx)
+    await h.tool("play", what="daft punk")
+    await h.run("stopped")
+    assert ("POST", "/player/pause", None) in rx.calls, rx.calls
+    await h.close()
+
+
+async def test_a_refusing_search_is_said_plainly_and_not_asked_again_until_it_lifts():
+    rx = Receiver()
+    rx.refusing = 80056
+    h = harness(rx, library=True)
+    await h.run("library")
+    for what in ("Push the Feeling On", "Push the Feeling On", "something else"):
+        try:
+            await h.tool("play", what=what)
+            raise AssertionError("played while Spotify refuses")
+        except AssertionError:
+            raise
+        except Exception as e:                                      # noqa: BLE001
+            assert "refusing this app's searches until about" in str(e) and "will not help" in str(e), e
+    assert [c[0] for c in rx.calls].count("SEARCH") == 1, rx.calls
+    assert await h.tool("play", what="One more time") == "Playing One More Time."    # his library still plays
+    try:
+        await h.tool("mix", artists=["Air"])
+        raise AssertionError("mixed while Spotify refuses")
+    except AssertionError:
+        raise
+    except Exception as e:                                          # noqa: BLE001
+        assert "Radio from one of his artists still plays" in str(e) and not any(c[0] == "LB" for c in rx.calls), e
     await h.close()
 
 

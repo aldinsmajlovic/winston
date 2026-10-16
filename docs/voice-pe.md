@@ -97,7 +97,10 @@ back, so the music picks up again and the next song still reaches the box.
 
 - **"Stop", "that's all", "never mind"** (or "be quiet", "not you", "nothing") in that listening
   window end the conversation without a reply, and the box goes back to waiting for the wake word.
-  "No" and "thank you" on their own are answers and get one.
+  "No" and "thank you" on their own are answers and get one. While an extension plays on the box
+  (Spotify), "stop", "stop it", "quiet", "be quiet" or "shut up" also stop the music at once, and the
+  extension is told so it pauses at its source (`@ext.on_speakers_stop`), so "resume" carries on;
+  "that's all", "never mind" and "not you" leave it playing.
 - **"Stop" or a press of the button while he talks** stops him, and the box does not listen again
   afterwards (the stock firmware's stop word).
 - **Hold to talk** (Winston's firmware): hold the button; after a second the box plays its long

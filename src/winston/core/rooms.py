@@ -347,18 +347,21 @@ class RoomLink:
             return True
 
 
+async def start_over(context: LLMContext) -> bool:
+    """A new conversation: in a room the room's, so the box and the screens there start again too; a session
+    without one drops its own. Either way the newest request stays, so the model has something to answer.
+    False when the room's conversation could not be reached."""
+    if (link := _LINKS.get(context)) is not None:
+        return await link.start_over(context)
+    context.set_messages(this_turn(list(context.get_messages())))
+    return True
+
+
 def make_start_over_tool():
-    """start_over: "let's start over", "new conversation". A session in a room ends the room's conversation,
-    so the box and the screens there start again too; a session without one drops its own. Either way the
-    request that asked stays, so the model has something to answer."""
-    async def start_over(params: FunctionCallParams):
-        context = params.context
-        link = _LINKS.get(context)
-        if link is not None:
-            if not await link.start_over(context):
-                return await params.result_callback({"error": "the room's conversation could not be reached"})
-        else:
-            context.set_messages(this_turn(list(context.get_messages())))
+    """start_over: "let's start over", "new conversation" (start_over above)."""
+    async def start_over_tool(params: FunctionCallParams):
+        if not await start_over(params.context):
+            return await params.result_callback({"error": "the room's conversation could not be reached"})
         await params.result_callback({"started_over": True})
 
     schema = FunctionSchema(
@@ -368,7 +371,7 @@ def make_start_over_tool():
                     "to forget this conversation. Remembered facts stay; to forget one of those, use forget. "
                     "Then say briefly that you have.",
         properties={}, required=[])
-    return schema, start_over
+    return schema, start_over_tool
 
 
 class _Hook(FrameProcessor):
@@ -406,12 +409,27 @@ _LEAD = {"okay", "ok", "yeah", "yes", "no", "oh", "alright", "please", "hey", "j
 _TAIL = ("thank you", "thanks", "please", "sir", "now")
 
 
+# The dismissals that, while the speakers play, stop what plays: "that's all" or "not you" leave the music on.
+_STOPS = {plain_words(p) for p in ("stop", "stop it", "stop that", "be quiet", "quiet", "shut up")}
+
+
 def dismissal(text: str, name: str = "") -> bool:
     """Whether what was heard ends the conversation instead of asking something: its last sentence is a
     dismissal on its own ("Stop.", "No, that's all, thanks.", "Yeah we're taking it. Stop."). On the box,
     "Stop" in the listening window after a reply got "Understood, sir." and another listening window, so
     a party in the room kept him going. "No" and "thank you" alone are answers, not dismissals; after a
     dismissal they are skipped (the STT writes "That's all. Thanks.")."""
+    return _dismissed_by(text, name) in _DISMISSALS
+
+
+def stops_playing(text: str, name: str = "") -> bool:
+    """Whether a dismissal also stops what the speakers play ("Stop.", "Quiet."): "Okay Winston, stop." with
+    music on ended the conversation and left the music playing, twice (2026-10-01, 10-02)."""
+    return _dismissed_by(text, name) in _STOPS
+
+
+def _dismissed_by(text: str, name: str) -> str | None:
+    """The last sentence of what was heard, without the words around a dismissal; None when it is empty."""
     name = plain_words(name)
     for sentence in reversed(re.split(r"(?<=[.!?])\s+", text.strip())):
         words = plain_words(sentence).split()
@@ -425,8 +443,8 @@ def dismissal(text: str, name: str = "") -> bool:
                 if t and (phrase == t or phrase.endswith(" " + t)):
                     phrase, changed = phrase[: -len(t)].rstrip(), True
         if phrase:
-            return phrase in _DISMISSALS
-    return False
+            return phrase
+    return None
 
 
 class MicGate:

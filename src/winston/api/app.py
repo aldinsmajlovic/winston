@@ -98,6 +98,11 @@ class ChatMessage(BaseModel):
                                                                "shared with the room's box. None: the household's.")
 
 
+class SpeakersStopped(BaseModel):
+    ext: str = Field(max_length=64, description="The extension whose stream was playing")
+    room: str | None = Field(None, max_length=60, description="Where he stopped it")
+
+
 class StartOver(BaseModel):
     room: str | None = Field(None, max_length=60, description="The room the page is set to: its conversation ends "
                                                                "for its box and screens too. None: the household's.")
@@ -707,6 +712,13 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         await web.start_over((m.room or "").strip() or None)
         feed.publish(LiveEvent(channel="web", type="tool", call=uuid.uuid4().hex[:12], name="start_over",
                                status="ok", label=tool_label("start_over", None, "ok")))
+        return Ok()
+
+    @app.post("/api/speakers/stopped", response_model=Ok,
+              summary="He stopped what an extension plays on the speakers (\"stop\" to a box): its on_speakers_stop runs")
+    async def speakers_stopped(m: SpeakersStopped):
+        n = extensions.scheduler.speakers_stopped(m.ext)
+        logger.info(f"speakers: stopped by voice{f' in {m.room}' if m.room else ''}; {m.ext} told ({n} handler(s))")
         return Ok()
 
     @app.get("/api/rooms", response_model=list[RoomState],

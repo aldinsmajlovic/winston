@@ -201,6 +201,17 @@ class Scheduler:
         d = self.host.described.get(ext_id, {})
         return d.get("jobs", []) + kind_jobs(d)
 
+    def speakers_stopped(self, ext_id: str) -> int:
+        """He stopped what ext_id plays on the speakers ("stop" to a box while it played): its
+        @ext.on_speakers_stop jobs run, so it stops at the source too, and "resume" can carry on. How many ran."""
+        proc = self.host.procs.get(ext_id)
+        if proc is None or proc.state != "running":
+            return 0
+        jobs = [j["name"] for j in self.jobs(ext_id) if j["trigger"]["kind"] == "on_speakers_stop"]
+        for job in jobs:
+            self._fire(ext_id, job, {"time": self.now().isoformat()})
+        return len(jobs)
+
     def _fire(self, ext_id: str, job: str, data: dict[str, Any]) -> None:
         key = (ext_id, job)
         if key in self._in_flight:

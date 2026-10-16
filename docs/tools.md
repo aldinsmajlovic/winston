@@ -22,7 +22,13 @@ back to metric and a 24-hour clock.
 
 One request gets at most eight rounds of tool calls; the ninth is asked without tools, so he answers
 with what he has. On 2026-09-29 the 27B once called `GetLiveContext` and `GetDateTime` about 80 times in
-a row for one request.
+a row for one request. A call that failed is not made again with the same arguments in the same request:
+it answers with the same error and that it would fail again (on 2026-10-16 the 27B asked Spotify four
+times in four seconds against the same refusal). An action under way when you talk over his reply
+finishes; a read is cut short. Only words are spoken: a copied clock stamp or a tool call written out as
+text never reaches the voice (it once said "zero seven forty-one, tool call, function equals
+spotify_play" aloud). A conversation that outgrows the model's context starts afresh from your newest
+request, with a line saying so, instead of falling silent.
 
 Keys are pasted into the settings page that uses them (an extension's on its card, the Home Assistant
 token on its page, a hosted brain's or voice's API key on Brain or Voice, the Discord bot token under

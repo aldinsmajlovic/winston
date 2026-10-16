@@ -1,6 +1,7 @@
 """Reply filter cases: the reply on its way to the TTS, driven frame by frame as the LLM would push it.
-Sentences are let through as they finish, a stray </think> is never said, and the TTS speaks a sentence
-as soon as the filter passes it on. No hardware needed.
+Sentences are let through as they finish, a stray </think> is never said, nor a copied clock stamp or a
+tool call written as text, and the TTS speaks a sentence as soon as the filter passes it on. No hardware
+needed.
 
     uv run python tests/reply_cases.py
 """
@@ -109,6 +110,22 @@ async def cases():
                                                        ["About 10.6 million. ", "Shall I go on?"])
     r = Rig()
     got["no full stop: spoken at the end"] = ((await r.tokens("Very", " good", " Sir"))[-1], ["Very good Sir"])
+
+    # Only words: the box said "[zero seven forty-one] <tool_call> <function=spotify_play> ..." (2026-10-16).
+    r = Rig()
+    await r.reply("[07:41]", " <tool", "_call>\n<function=spotify_play>\n<parameter=what>\nPush the Feeling On\n",
+                  "</parameter>\n</function>\n</tool_call>")
+    got["a copied stamp and a tool call written as text are not said"] = (r.said(), "")
+    r = Rig()
+    await r.reply("One moment, sir.\n<tool_call>\n<function=spotify_play>", "\n</function>\n</tool_call>\nPlaying.")
+    got["the words before a tool call are, nothing after it"] = (r.said(), "One moment, sir.\n")
+    r = Rig()
+    await r.reply("[07:41, room: Main Room] The ", "lamp is off. [sigh] Long day?")
+    got["a stamp anywhere is dropped, the voice's tags stay"] = (r.said(), "The lamp is off. [sigh] Long day?")
+    r = Rig()
+    await r.reply("Shall I?\n<function=x>", "")
+    await r.reply("Very good.")
+    got["the next response is said again"] = (r.said(), "Shall I?\nVery good.")
     return got
 
 

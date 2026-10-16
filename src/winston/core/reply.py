@@ -2,6 +2,11 @@
 model sometimes writes a stray </think>, and now and then answers, closes a think block it never opened
 and answers again ("Oslo, Sir. </think> Oslo, Sir."): the tag is never said, and the answer once.
 
+Only words are said. On 2026-10-16 the box said "[zero seven forty-one] <tool_call> <function=spotify_play>
+..." aloud: the model copied the clock's stamp from his message, then wrote a tool call as text, which
+llama.cpp did not take as a call behind the stamp. A stamp is dropped wherever it is, and a response is cut
+where a tool call written as text begins (the voice's own tags, "[sigh]", stay).
+
     Pipeline([..., brain.llm, ReplyFilter(), tts, ...])
 
 A sentence goes on once more text follows it that is not a </think>, so ReplySentences, the TTS's
@@ -21,6 +26,8 @@ from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 _SENTENCE_END = re.compile(r"[.!?][\"')\]]*\s+|\n+")
 _THINK_TAG = re.compile(r"</?think>")
 _CLOSE_THINK = "</think>"
+_CALL = re.compile(r"<tool_call>|<function=")                  # a tool call written as text (Qwen's form)
+_STAMP = re.compile(r"\[\d{1,2}:\d\d(, room: [^\]]*)?\]\s*")     # the clock's stamp (brain.Clock), copied
 
 
 def _words(text: str) -> str:
@@ -38,13 +45,19 @@ class ReplyFilter(FrameProcessor):
         # waits for the first sentence after it: said once, not twice.
         self._last: str | None = None
         self._before_tag: str | None = None
+        self._cut = False                          # a tool call was written as text: the rest is not said
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
         if isinstance(frame, (LLMFullResponseStartFrame, InterruptionFrame)):
-            self._buf, self._last, self._before_tag = "", None, None
+            self._buf, self._last, self._before_tag, self._cut = "", None, None, False
         elif isinstance(frame, LLMTextFrame) and direction == FrameDirection.DOWNSTREAM:
+            if self._cut:
+                return
             self._buf += frame.text
+            if m := _CALL.search(self._buf):
+                logger.warning(f"reply: a tool call written as text, not said: {self._buf[m.start():][:80]!r}")
+                self._buf, self._cut = self._buf[:m.start()], True
             while _CLOSE_THINK in self._buf:
                 before, self._buf = self._buf.split(_CLOSE_THINK, 1)
                 self._before_tag = (self._before_tag or "") + (self._last or "") + _THINK_TAG.sub("", before)
@@ -53,7 +66,7 @@ class ReplyFilter(FrameProcessor):
             return
         elif isinstance(frame, LLMFullResponseEndFrame):
             last = _THINK_TAG.sub("", self._buf)
-            self._buf = ""
+            self._buf, self._cut = "", False
             await self._after_tag(last)
             await self._settle_last()
             if last.strip():
@@ -98,7 +111,8 @@ class ReplyFilter(FrameProcessor):
             await self._say(before)
 
     async def _say(self, text: str):
-        await self.push_frame(LLMTextFrame(text=text))
+        if text := _STAMP.sub("", text):
+            await self.push_frame(LLMTextFrame(text=text))
 
 
 class ReplySentences(SimpleTextAggregator):

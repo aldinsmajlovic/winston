@@ -15,7 +15,7 @@ from pipecat.processors.frame_processor import FrameDirection
 
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.brain import _STAMP, Clock
-from winston.core.rooms import (MicGate, RoomLink, Rooms, area, dismissal, local_sync, make_start_over_tool,
+from winston.core.rooms import (MicGate, RoomLink, Rooms, area, dismissal, local_sync, make_start_over_tool, stops_playing,
                                 scoped_by_name, wake_phrases)
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}})
@@ -221,6 +221,10 @@ def dismissals():
             "Thanks. Please.", "Turn it off. Thanks."]
     check("dismissals end the conversation", [t for t in ends if not dismissal(t, "Winston")], [])
     check("answers and requests do not", [t for t in asks if dismissal(t, "Winston")], [])
+    stops = ["Stop.", "Okay Winston, stop.", "Stop it, please.", "Be quiet now.", "Shut up.", "Stop. Thank you, Winston."]
+    leave = ["That's all, Winston.", "Never mind.", "I wasn't talking to you.", "Nothing.", "Stop the music.", "No."]
+    check("while something plays, a stop stops it", [t for t in stops if not stops_playing(t, "Winston")], [])
+    check("other dismissals leave it playing", [t for t in leave if stops_playing(t, "Winston")], [])
 
 
 t0 = time.perf_counter()

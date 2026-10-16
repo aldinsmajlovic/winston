@@ -436,6 +436,9 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         expect("arriving home runs on_arrive", await until(lambda: has("arrived", 1), 10))
         await fake.fire("winston_test", {"a": 1})
         expect("an event runs its job with its data", await until(lambda: has("event", {"a": 1}), 10))
+        r = await api.post("/api/speakers/stopped", json={"ext": "clock", "room": "test room"})
+        expect("\"stop\" to a box while its stream played runs its on_speakers_stop",
+               r.status_code == 200 and await until(lambda: has("silenced", 1), 10), r.text)
         got = (await stored()).json()["result"]
         expect("nothing ran more than it should", got.get("hourly") in (1, 2) and got.get("left") == 1
                and got.get("arrived") == 1, got)

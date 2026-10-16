@@ -112,6 +112,90 @@ async def shortcut():
     parent.get_chat_completions = real
     check("a home request thinks before its call, not after the result", thought, [True, False])
 
+    # A call that failed is not made again with the same arguments in the same request (2026-10-16: four
+    # spotify_play calls against the same refusal, then the call written out as text and said aloud).
+    from types import SimpleNamespace
+    ran, results = [], []
+
+    async def play(params):
+        ran.append(params.arguments["what"])
+        await params.result_callback({"error": "Spotify is refusing searches until about 00:10."})
+    llm.register_function("x_play", play, timeout_secs=12)
+    handler = llm._functions["x_play"].handler
+
+    async def call(what: str):
+        async def got(result, **_):
+            results.append(result)
+        await handler(SimpleNamespace(arguments={"what": what}, result_callback=got))
+    real, parent.get_chat_completions = parent.get_chat_completions, record
+    request = [{"role": "user", "content": "[07:40] put on push the feeling on"}]
+    await llm.get_chat_completions(LLMContext(request))
+    await call("Push the Feeling On")
+    await call("Push the Feeling On")
+    await call("Push the Feeling On by Nightcrawlers")
+    check("a failed call is not made again with the same arguments", ran,
+          ["Push the Feeling On", "Push the Feeling On by Nightcrawlers"])
+    check("and answers that it would fail again", "would fail again" in results[1]["error"], True)
+    await llm.get_chat_completions(LLMContext(request + [{"role": "assistant", "content": "Spotify is refusing."},
+                                                         {"role": "user", "content": "[07:42] try again"}]))
+    await call("Push the Feeling On")
+    parent.get_chat_completions = real
+    check("the next request may try it again", ran[-1], "Push the Feeling On")
+    check("its options stay", llm._functions["x_play"].timeout_secs, 12)
+
+    # An action under way finishes when he talks over the reply; a read is cut short (2026-10-02: a pause
+    # cancelled that way left the music on while he heard "The music is paused").
+    from winston.core import guard
+    done = []
+
+    async def slow(params):
+        await asyncio.sleep(0.05)
+        done.append(params.arguments["n"])
+        await params.result_callback({"ok": True})
+    for name, tier in (("x_pause", guard.ACT), ("x_look", guard.READ)):
+        guard.set_tier(name, tier)
+        llm.register_function(name, slow)
+
+    async def talked_over(name: str, n: int):
+        async def got(result, **_):
+            pass
+        task = asyncio.create_task(llm._functions[name].handler(SimpleNamespace(arguments={"n": n}, result_callback=got)))
+        await asyncio.sleep(0.01)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    await talked_over("x_pause", 1)
+    await talked_over("x_look", 2)
+    await asyncio.sleep(0.1)
+    check("an action talked over finishes, a read does not", done, [1])
+
+    # Past the model's context it starts afresh from the newest request and says so (2026-10-15: silence
+    # after 16,384 tokens until it was reset by hand).
+    import httpx
+    from openai import BadRequestError
+    asked = []
+
+    async def full_then_fine(self, context):
+        asked.append(len(context.get_messages()))
+        if len(asked) == 1:
+            raise BadRequestError("Error code: 400 - request (16467 tokens) exceeds the available context size",
+                                  response=httpx.Response(400, request=httpx.Request("POST", "http://llm.invalid")),
+                                  body=None)
+
+        async def nothing():
+            return
+            yield
+        return nothing()
+    real, parent.get_chat_completions = parent.get_chat_completions, full_then_fine
+    said.clear()
+    long_talk = LLMContext([{"role": "user", "content": "[21:50] tell me a story"},
+                            {"role": "assistant", "content": "Once upon a time..."},
+                            {"role": "user", "content": "[21:57] what happened?"}])
+    await llm.get_chat_completions(long_talk)
+    parent.get_chat_completions = real
+    check("a full context starts afresh from the newest request", (asked, long_talk.get_messages()),
+          ([3, 1], [{"role": "user", "content": "[21:57] what happened?"}]))
+    check("and says so first", said[-1:], ["That conversation had grown too long, so I've started a fresh one."])
+
 asyncio.run(shortcut())
 
 finish_checks("home: home requests, first lines, quiet after and shortcuts ok")

@@ -200,6 +200,11 @@ skipped for the next. Without a token he plays Spotify's radio from one artist t
 Not used: tags for moods ("chill" gave obscure free-archive songs, or drifted to unrelated tags in hard
 mode), and LB Radio's `stats` and `recs`, which need your listening history on ListenBrainz.
 
+"Stop" to the box while it plays pauses Spotify and ends the conversation ([Voice PE](voice-pe.md#ending-a-conversation-and-the-button)).
+Pause, resume and skip read the receiver first, so with nothing loaded he says so instead of "Playing."
+When Spotify refuses the app's searches (its limit; on 2026-10-16 after a few hundred searches in an hour,
+for 22 hours) he says until when, does not ask again until then, and your library still plays by name.
+
 Spotify gives such receivers its 320 kbps stream; the box gets it as 48 kHz 16-bit stereo FLAC
 ([Voice PE](voice-pe.md#music)). Pause, play and skip in the app or by voice, and the box follows: a
 pause stops it at once, and Spotify goes back by what the box had not played yet, so nothing is lost.

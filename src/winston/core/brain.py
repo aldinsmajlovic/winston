@@ -7,6 +7,8 @@ tool-call loop itself, streaming. Local tools sit next to the MCP ones.
     ... pipeline uses brain.llm ...
     await brain.close()
 """
+import asyncio
+import functools
 import json
 import os
 import re
@@ -20,6 +22,7 @@ from pathlib import Path
 import httpx
 from loguru import logger
 from mcp.client.session_group import StreamableHttpParameters
+from openai import BadRequestError
 from openai.types.chat.chat_completion_chunk import (ChatCompletionChunk, ChoiceDelta, ChoiceDeltaToolCall,
                                                      ChoiceDeltaToolCallFunction)
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
@@ -40,7 +43,7 @@ from winston.core import directory, guard, region
 from winston.core.common import Once, entity_names, key, log_event, rewrap, words_pattern
 from winston.core.diary import Diary
 from winston.core.memory import make_memory_tools, prompt_block
-from winston.core.rooms import make_start_over_tool, plain_words, scoped_by_name
+from winston.core.rooms import make_start_over_tool, plain_words, scoped_by_name, start_over
 from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.diary import make_diary_tool
 from winston.core.tools.messaging import make_send_message_tool
@@ -182,6 +185,8 @@ def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
 _HOME_VERBS = re.compile(r"\b(?:turn(?!\s+(?:up|down)\b)|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler)\b")
 # Said by code while he thinks about a home request, so the wait is not silence. One after the other.
 HOME_LINES = ("One moment.", "Let me see to that.", "Certainly, one moment.", "Let me look at that.")
+# Said when a conversation has outgrown the model's context and starts afresh from the newest request.
+AFRESH_LINE = "That conversation had grown too long, so I've started a fresh one."
 # The reply cap whenever he thinks, since the thinking counts against it: on the box "Can you turn on the lights
 # in uh the living room?" spent all of max_tokens (512) thinking and said nothing after the line, and on the
 # Talk page (2026-10-12) three typed questions did the same and got no reply at all.
@@ -312,6 +317,17 @@ def last_said(messages: list) -> str | None:
     return None
 
 
+def newest_said(messages: list) -> int:
+    """Where the newest thing the user said is in a request's messages (the house's notes aside), so the
+    rounds of one request can be told from the next request's; -1 when there is none."""
+    for i in range(len(messages) - 1, -1, -1):
+        m = messages[i]
+        if isinstance(m, dict) and m.get("role") == "user" and isinstance(m.get("content"), str) \
+                and not guard.is_note(m["content"]):
+            return i
+    return -1
+
+
 class WinstonLLM(OpenAILLMService):
     """The OpenAI-compatible LLM, with thinking switched on per request for a spoken home request
     (llm.thinking.home). Measured 2026-09-26 on the 27B with actions stubbed: thinking off called a
@@ -328,7 +344,14 @@ class WinstonLLM(OpenAILLMService):
     "Done, sir. The mood is set." from the first time's call in the conversation and ran nothing. After
     MAX_TOOL_ROUNDS rounds of tool calls for one request, the next is asked without its tools, so it
     answers in words: on 2026-09-29 the 27B called GetLiveContext and GetDateTime about 80 times in one
-    turn and every turn after it waited."""
+    turn and every turn after it waited. A call that failed is not made again with the same arguments in
+    the same request: it answers with the same error and says it would fail again (on 2026-10-16 the 27B
+    called spotify_play("Push the Feeling On") four times in four seconds against Spotify's same refusal,
+    then wrote the call out as text). An action under way when he talks over the reply finishes: Pipecat
+    cancels the call, and on 2026-10-02 a spotify_pause cut short that way left the music on while he
+    heard "The music is paused"; reads are still cut short. A conversation that has outgrown the model's
+    context starts afresh from the newest request, with AFRESH_LINE said first: on 2026-10-15 every request
+    after the box's conversation passed 16,384 tokens got silence until it was reset by hand."""
 
     def __init__(self, *args, home: re.Pattern | None = None, control: str = "none", effort: str = "",
                  own: list[Own] | None = None, assistant: str = "", **kwargs):
@@ -340,6 +363,8 @@ class WinstonLLM(OpenAILLMService):
         self._line_for: str | None = None       # the user message a line was already said for
         self._lines = 0
         self._no_tools = False                  # this request has called enough: words now
+        self._failed: dict[tuple[str, str], str] = {}   # (tool, arguments) that failed in this request: error
+        self._failed_in = -1                    # which request: newest_said of its messages
 
     def bind(self, tools: list[str]):
         """The brain's tools are known: find each shortcut's tool. An HA script (script.x) is the MCP tool
@@ -360,8 +385,44 @@ class WinstonLLM(OpenAILLMService):
             if own.tool is None:
                 logger.warning(f"shortcut {own.entity_id}: no tool for it; is it exposed?")
 
+    def register_function(self, function_name, handler, **kwargs):
+        """Every tool, with _no_repeat around it, once."""
+        if function_name is not None and not getattr(handler, "_no_repeat", False):
+            handler = self._no_repeat(function_name, handler)
+        super().register_function(function_name, handler, **kwargs)
+
+    def _no_repeat(self, name: str, handler):
+        @functools.wraps(handler)                       # Pipecat's options ride on the handler's attributes
+        async def no_repeat(params):
+            key = (name, json.dumps(params.arguments, sort_keys=True, default=str))
+            if (error := self._failed.get(key)) is not None:
+                logger.warning(f"{name}: failed a moment ago with the same arguments; not called again")
+                await params.result_callback({"error": f"{error} This call already failed with these arguments in "
+                                                       "this request and would fail again: say so instead."})
+                return
+            done = params.result_callback
+
+            async def noted(result, *args, **kwargs):
+                if not guard.result_ok(result):
+                    self._failed[key] = str((result.get("error") or result) if isinstance(result, dict) else result)[:300]
+                await done(result, *args, **kwargs)
+            params.result_callback = noted
+            if guard.tool_tier(name) == guard.READ:
+                await handler(params)
+                return
+            action = asyncio.ensure_future(handler(params))
+            try:
+                await asyncio.shield(action)
+            except asyncio.CancelledError:
+                logger.info(f"{name}: talked over while it ran; the action finishes")
+                raise
+        no_repeat._no_repeat = True
+        return no_repeat
+
     async def get_chat_completions(self, context: LLMContext):
         messages = context.get_messages()
+        if (newest := newest_said(messages)) != self._failed_in:
+            self._failed, self._failed_in = {}, newest
         rounds = tool_rounds(messages)
         self._no_tools = rounds >= MAX_TOOL_ROUNDS
         if self._no_tools:
@@ -389,6 +450,12 @@ class WinstonLLM(OpenAILLMService):
                 line = HOME_LINES[(self._lines - 1) % len(HOME_LINES)]
             await self.push_frame(TTSSpeakFrame(line, append_to_context=False))
         try:
+            return await super().get_chat_completions(context)
+        except BadRequestError as e:
+            if "exceed" not in str(e) or not await start_over(context):
+                raise
+            logger.warning(f"the conversation outgrew the model's context; a new one from the newest request ({e})")
+            await self.push_frame(TTSSpeakFrame(AFRESH_LINE, append_to_context=False))
             return await super().get_chat_completions(context)
         finally:
             self._think = self._no_tools = False

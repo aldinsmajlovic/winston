@@ -78,7 +78,7 @@ from winston.core.live import FeedPoster, LiveEvent, LiveObserver
 from winston.core import directory, guard
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.brain import persona
-from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync
+from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync, stops_playing
 from winston.core.speak_up import WORDING_SECS
 from winston.core.turns import Turn, TurnLog, TurnObserver, make_mark_tool
 from winston.extension_host.client import signature
@@ -409,6 +409,20 @@ class Satellite:
             self.audio.stop_media(self._media["id"])
             logger.info(f"{self.room}: stopped {self._media.get('title') or 'the stream'} for {ev['ext']}")
             self._media = None
+
+    def _stop_playing(self):
+        """"Stop." while an extension's stream plays on the box: silent at once, and the extension is told
+        (@ext.on_speakers_stop), so it stops at the source too (Spotify pauses) and "resume" carries on."""
+        ext = self._media["ext"]
+        self.media({"action": "stop", "ext": ext})
+
+        async def tell():
+            try:
+                async with httpx.AsyncClient(base_url=self.cfg.control.url, timeout=5) as h:
+                    (await h.post("/api/speakers/stopped", json={"ext": ext, "room": self.room})).raise_for_status()
+            except httpx.HTTPError as e:
+                logger.warning(f"{self.room}: {ext} could not be told its stream was stopped: {e}")
+        asyncio.create_task(tell())
 
     async def speak(self, ev: dict, chime: bool = True):
         """An announcement (said as given) or a nudge (worded by the brain, its plain line otherwise) on the
@@ -807,6 +821,8 @@ class Satellite:
                     self.feed.put(LiveEvent(channel="satellite", type="user", text=heard, room=self.room))
                 if heard and dismissal(heard, self.cfg.assistant.name):
                     logger.info(f"{self.room}: dismissed, the conversation ends")
+                    if self._media and stops_playing(heard, self.cfg.assistant.name):
+                        self._stop_playing()
                     heard = ""
                     if turn:
                         turn.outcome = "dismissed"
