@@ -193,11 +193,11 @@ Spotify on the speakers: the box in the room you are in, and whatever is plugged
 shows up in the Spotify app. By voice: "play Daft Punk", "play my running playlist", "play Get Lucky
 next", "something chill", "some jazz", "pause", "next song", "louder", "who is this?". It needs Spotify
 Premium. Anything to hear goes through one tool, `spotify_play`, with what you said in its fields (a
-name, its artist, a genre, a mood, artists you named as the kind you want, "next"), and the code decides
-how to play it, so the brain cannot pick the wrong tool. A song asked for next goes into Spotify's queue,
-after the one playing; with nothing playing it plays now. While something plays, every message he gets
-says so in its stamp ("spotify: playing Oh Dove by Men I Trust"), so "who is this?" or "not this one" knows
-the song, and a request to play is music only, never a light scene.
+name, its artist, a genre, a mood, artists you named as the kind you want, "next", something new, the
+newest record), and the code decides how to play it, so the brain cannot pick the wrong tool. A song
+asked for next goes into Spotify's queue, after the one playing; with nothing playing it plays now. While
+something plays, every message he gets says so in its stamp ("spotify: playing Oh Dove by Men I Trust"), so
+"who is this?" or "not this one" knows the song, and a request to play is music only, never a light scene.
 
 1. Switch it on. The card shows a code: open spotify.com/pair and enter it, once.
 2. Under **Your library from**, pick Home Assistant's Spotify player. Your saved albums, top and
@@ -230,6 +230,19 @@ folder, so a song that comes back in a later mix costs no search (Spotify gives 
 quota). When ListenBrainz does not answer within 10 s, or Spotify is refusing searches, a mood plays
 Spotify's radio from one of your artists instead, which needs no search.
 
+**Something new.** "Play something new" or "something I've never heard" (`fresh`) is a mix of artists like
+yours that you have not played: ListenBrainz's list without your library's artists and any that played
+here, left out before a song is looked up, so no search is spent on them. A plain mood keeps some of your
+own artists in it (your pick: "some new ones"). It needs ListenBrainz: when that does not answer, or
+Spotify is refusing searches, he says so instead of playing radio of artists you know.
+
+**What plays reaches ListenBrainz** when **Send what plays to ListenBrainz** is on (off until you switch it
+on; your listens there are public). A song the speakers play for half its length or four minutes goes to
+your profile once; one that could not be sent is kept (the newest 500) and goes with the next. go-librespot
+tells Spotify nothing about what it plays (its event sender is a stub), so the box's music is missing from
+Spotify's history and recommendations, and from ListenBrainz's import of Spotify; connecting Spotify on
+ListenBrainz adds what you play elsewhere without counting the box twice.
+
 **What you think of it is kept** (`spotify_feedback`). "I like this" saves the song to your Liked Songs.
 "Never play this again" bans the song: it is skipped whenever it comes on, from radio, a mix or a list.
 "Not Elliott Smith" keeps him out of what plays for a while: 24 hours, or until the speakers have been
@@ -260,7 +273,8 @@ own radio from one of your artists that fit, shaped by your listening, with no s
 extension's store (`mood_log`, with the time, the mood and the seeds). A genre always uses ListenBrainz,
 whose radio follows a tag. Without a ListenBrainz token he plays Spotify's radio from one artist that fits.
 Not used: tags for moods ("chill" gave obscure free-archive songs, or drifted to unrelated tags in hard
-mode), and LB Radio's `stats` and `recs`, which need your listening history on ListenBrainz.
+mode), and LB Radio's `stats` and `recs`, which need your listening history on ListenBrainz (sent from here
+now; worth trying once a few weeks of it are in).
 
 **What plays is what you named.** Your library first: by its whole name, or by your own names for it
 under **Your names for them** on the card, one per line (`🥁 = drum and bass, drums`); an emoji is also
@@ -272,7 +286,10 @@ stranger's playlist that happens to have the words. When a song and an artist sh
 artist's song wins, then the artist if Spotify's songs for the name are the artist's own ("Daft Punk"),
 else the song ("Wonderwall" is Oasis's song, not a band called Wonderwall). A song with its artist ("One
 by U2") must be by that artist; when Spotify's song of that title is someone else's, it plays that one
-and says whose it is ("Big Bad John is by Jimmy Dean, not Johnny Horton"). Nothing that only carries the
+and says whose it is ("Big Bad John is by Jimmy Dean, not Johnny Horton"). When no song has the name, an
+album of that artist's does ("Currents by Tame Impala"). "The new Tame Impala album" plays the artist's
+newest album, and "Fred again..'s latest" the newest album or single (`latest`), from Spotify's list of
+the artist's records, said with its release date. Nothing that only carries the
 words plays ("drum and bass" once played a song called "Drum and Bass Father"): he gets the nearest names
 and asks, or plays a mix for a mood or a genre.
 

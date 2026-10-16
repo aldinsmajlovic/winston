@@ -95,6 +95,10 @@ class SpotifySettings(Settings):
                               description="The volume the first music plays at after the speakers have been quiet "
                                           "for the hours below (0: as it was left).")
     first_after_hours: float = Field(6, ge=0, level="advanced", title="Quiet before \"first music\" (hours)")
+    listens: bool = Field(False, title="Send what plays to ListenBrainz",
+                          description="Each song the speakers play for half its length or four minutes goes to your "
+                                      "ListenBrainz profile (public; the token above), so its statistics and "
+                                      "recommendations include it. Spotify itself never hears what this receiver plays.")
     pause_on_leave: bool = Field(False, title="Pause when you leave",
                                  description="The music pauses when you leave home (Home Assistant's person, under "
                                              "Speaking up).")
@@ -128,6 +132,7 @@ class State:
         self.pending: dict | None = None    # a party armed by party(), to fire when the music starts
         self.party: dict | None = None      # the running party's lights, to stop and restore when it ends
         self.deferred_stop: asyncio.Task | None = None
+        self.listen: dict | None = None     # the song being heard, for ListenBrainz: when, how long, its timer
 
 
 state = State()
@@ -390,6 +395,56 @@ def log_play(ctx, data: dict, skipped: str | None) -> None:
         path.write_text("\n".join(path.read_text().splitlines()[-1000:]) + "\n")
 
 
+LISTEN_SECS = 240       # ListenBrainz's rule: a song counts once heard for half its length or four minutes
+LISTENS = "https://api.listenbrainz.org/1/submit-listens"
+
+
+def heard(ctx, playing: bool) -> None:
+    """The song's listening clock, running only while a box plays it. Once it counts it goes to ListenBrainz,
+    once (`listens`): go-librespot tells Spotify nothing (its event sender is a stub), so the box's music never
+    reached his Spotify history, nor ListenBrainz through it."""
+    listen = state.listen
+    if listen is None or listen.get("sent") or not (ctx.settings.listens and ctx.settings.listenbrainz_token):
+        return
+    now = time.monotonic()
+    if listen.get("since") is not None:
+        listen["heard"] += now - listen["since"]
+    listen["since"] = now if playing else None
+    if listen.get("timer"):
+        listen["timer"].cancel()
+    listen["timer"] = asyncio.create_task(_counts(ctx, listen)) if playing else None
+
+
+async def _counts(ctx, listen: dict) -> None:
+    need = min(LISTEN_SECS, listen["ms"] / 2000) if listen.get("ms") else LISTEN_SECS
+    await asyncio.sleep(max(0.0, need - listen["heard"]))
+    listen["sent"], listen["timer"] = True, None
+    await submit_listen(ctx, listen)
+
+
+async def submit_listen(ctx, listen: dict) -> None:
+    """A listen to ListenBrainz, with any that could not go before (kept in the store, the newest 500). One it
+    refuses as malformed is dropped, so it never holds up the rest."""
+    url = f"https://open.spotify.com/track/{listen['uri'].rpartition(':')[2]}"
+    info = {"artist_names": listen["artists"], "spotify_id": url, "origin_url": url, "music_service": "spotify.com",
+            "media_player": "go-librespot", "submission_client": "Winston"} | (
+        {"duration_ms": listen["ms"]} if listen.get("ms") else {})
+    batch = (ctx.store.get("lb_unsent") or []) + [{"listened_at": int(listen["at"]), "track_metadata": {
+        "artist_name": ", ".join(listen["artists"]), "track_name": listen["name"],
+        **({"release_name": listen["album"]} if listen.get("album") else {}), "additional_info": info}}]
+    try:
+        r = await ctx.http.post(LISTENS, headers={"Authorization": f"Token {ctx.settings.listenbrainz_token}"},
+                                json={"listen_type": "single" if len(batch) == 1 else "import", "payload": batch},
+                                timeout=10)
+        keep = r.status_code == 429 or r.status_code >= 500
+        if r.status_code != 200:
+            ctx.log.warning(f"ListenBrainz took no listen: {r.status_code} {r.text[:150]}")
+    except Exception as e:                                  # noqa: BLE001  (kept, sent with the next)
+        ctx.log.warning(f"ListenBrainz not reached: {type(e).__name__}")
+        keep = True
+    ctx.store["lb_unsent"] = batch[-500:] if keep else []
+
+
 def verdicts(ctx) -> dict:
     """His verdicts: banned songs ({uri, song, artists}), banned artists, and artists out for now ({artist,
     until}). "Not now" ends at its time, or once the speakers have been quiet for quiet_resets_hours (his rule:
@@ -440,6 +495,12 @@ async def handle_event(ctx, ev: dict) -> None:
             ctx.log.info(f"skipped {data.get('name')} ({why})")
             await call(ctx, "POST", "/player/next")
             return
+        if data.get("uri") and data["uri"] != (state.listen or {}).get("uri"):
+            heard(ctx, False)
+            state.listen = {"uri": data["uri"], "name": data.get("name"), "artists": data.get("artist_names") or [],
+                            "album": data.get("album_name"), "ms": data.get("duration"),
+                            "at": ctx.now().timestamp(), "heard": 0.0}
+            heard(ctx, state.on)
         if state.on:
             going(ctx, "playing")
             ctx.store["last_music"] = time.time()
@@ -456,6 +517,7 @@ async def handle_event(ctx, ev: dict) -> None:
             title = f"{state.now.get('name')} by {', '.join(state.now.get('artists', []))}" if state.now else "Spotify"
             state.on = True                 # before the box connects, so the relay waits for it
             state.on = await ctx.speakers.play(f"http://127.0.0.1:{ctx.settings.stream_port}/stream.wav", title) > 0
+        heard(ctx, state.on)
         if state.pending is not None:       # a party is armed: fire its lights only if a box took the sound,
             pending, state.pending = state.pending, None    # so it never strobes in silence (no box, or no stream)
             if state.on:
@@ -464,6 +526,7 @@ async def handle_event(ctx, ev: dict) -> None:
             else:
                 ctx.log.warning("party: no box took the stream; not starting the lights")
     elif kind in ("paused", "stopped", "inactive") and state.on:
+        heard(ctx, False)
         if kind == "paused":
             state.on = False
             going(ctx, "paused on")
@@ -783,6 +846,11 @@ async def find(ctx, what: str, kind: str | None, by: str | None = None) -> tuple
                        "client ID and secret on the Spotify card")
     if by and kind in (None, "track"):
         song, note = await find_track(ctx, what, by)
+        if song is None:            # "Currents by Tame Impala" is an album, though the brain said a track 8 of 10
+            album = next((a for a in _items(await _search(ctx, f"album:{what} artist:{by}", ["album"]), "album")
+                          if _key(a["name"]) == _key(what) and _by(a, by)), None)
+            if album is not None:
+                return album, (f"No song of {by}'s is called {what}; this is the album" if kind else None), []
         return song, note, []
     found = await _search(ctx, what, [kind] if kind else ["artist", "album", "playlist", "track"])
     want = _key(what)
@@ -844,7 +912,7 @@ async def start(ctx) -> None:
 async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "album", "playlist"] | None = None,
                by: str | None = None, genre: str | None = None, mood: str | None = None,
                artists: list[str] | None = None, like: list[str] | None = None, next: bool = False,
-               radio: bool = False) -> str:
+               radio: bool = False, fresh: bool = False, latest: bool = False) -> str:
     """Play music on the speakers, whatever the user asks for: something by name (a song, an artist, an album, a
     playlist; their own first), a genre, a mood or a vibe. Fill in only what they said; it works out how to play
     it. A request to play is music only: never lights or a scene unless they ask for those too. When they only
@@ -853,27 +921,33 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
     names, to ask the user about.
 
     Args:
-        what: A name, as said: "Daft Punk", "Get Lucky", "my running playlist", "drum emoji". Never a genre or
-            a mood.
+        what: A name, as said: "Daft Punk", "Get Lucky", "my running playlist", "drum emoji". Never a genre, a
+            mood or a description of a kind of music.
         kind: Only when the user said which: a track, an artist, an album or a playlist.
         by: The artist, when the user named one with a song: "Get Lucky by Daft Punk" is what="Get Lucky",
             by="Daft Punk".
         genre: A genre or an era the user named, as MusicBrainz tags it, in lower case: "jazz", "drum and bass",
             "80s", "liquid funk".
-        mood: A mood, a vibe or an activity, in the user's words: "chill", "something to fall asleep to", "poker
-            night". With it, pass artists. Something new to the user ("something I don't know") is a mood too: a
-            mix brings artists like theirs.
+        mood: A mood, a vibe, an activity, or a kind of music described rather than named, in the user's words:
+            "chill", "something to fall asleep to", "poker night", "the songs everyone played in 2012". With it,
+            pass artists.
         artists: For a mood: three to six of the user's artists that fit it, from spotify_my_music, as listed there.
         like: Artists the user named as the kind of thing they want: "something like Frank Ocean" is like=["Frank Ocean"].
         next: Play it after the current song instead of now (a song).
         radio: After a name, keep going with music like it (Spotify's radio from it).
+        fresh: Music new to the user ("something new", "something I don't know", "surprise me"): artists like
+            theirs that they have not played. With it, pass artists (or a genre).
+        latest: The newest release of the artist in what, instead of the artist: "the new Tame Impala album" is
+            what="Tame Impala", kind="album", latest=true; "Fred again..'s latest" is latest=true.
     """
     await ready(ctx)
     if what and not (by or kind or genre or mood or artists or like) and in_library(ctx, what, None) is None \
             and _key(what) in await genres(ctx):
         what, genre = None, what.lower()        # a genre said as a name: Queen's album Jazz is not "some jazz"
-    if genre or mood or artists or like:
-        return await _mix(ctx, artists or [], genre, like or [], mood)
+    if latest and what:
+        return await _newest(ctx, what, kind)
+    if genre or mood or artists or like or fresh:
+        return await _mix(ctx, artists or [], genre, like or [], mood, fresh)
     if not what:
         return "Nothing to play was named: ask the user what they would like, and suggest a mix that fits."
     if next:
@@ -901,6 +975,37 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
     else:
         said = _describe(item)
     return f"Playing {said}." + (f" {note}." if note else "")
+
+
+async def _newest(ctx, artist: str, kind: str | None) -> str:
+    """The artist's newest album (kind album) or newest album or single, from Spotify's list of their records."""
+    item = in_library(ctx, artist, "artist") or (await find(ctx, artist, "artist"))[0]
+    if item is None or not (item.get("uri") or "").startswith("spotify:artist:"):
+        return f"Spotify has no artist called {artist!r}, so nothing was played."
+    if (token := await app_token(ctx)) is None:
+        raise NotReady("the newest record needs a Spotify app's client ID and secret on the Spotify card")
+    records = []
+    for group in ["album"] if kind == "album" else ["album", "single"]:
+        r = await ctx.http.get(f"https://api.spotify.com/v1/artists/{item['uri'].rpartition(':')[2]}/albums",
+                               params={"include_groups": group, "limit": 5},
+                               headers={"Authorization": f"Bearer {token}"}, timeout=8)
+        if r.status_code != 200:
+            raise NotReady(f"Spotify's list of {item['name']}'s records said {r.status_code}")
+        records += r.json().get("items") or []
+    if not records:
+        return f"Spotify lists no {kind or 'record'} by {item['name']}, so nothing was played."
+    new = max(records, key=lambda a: a.get("release_date") or "")      # "2025", "2025-03" and "2025-03-07" all sort
+    lift(ctx, item)
+    await start(ctx)
+    await call(ctx, "POST", "/player/play", uri=new["uri"])
+    return f"Playing {new.get('album_type') or 'album'} {new['name']} by {item['name']}, released {new.get('release_date')}."
+
+
+def known_artists(ctx) -> set[str]:
+    """The artists the user knows: their library's and every one that played here."""
+    lib = ctx.store.get("library") or {}
+    return ({_key(a["name"]) for a in lib.get("artist", [])}
+            | {_key(a) for p in played(ctx, 1000) for a in p.get("artists") or []})
 
 
 async def lb_radio(ctx, artists: list[str], genre: str | None) -> tuple[list[dict], list[str]]:
@@ -972,14 +1077,16 @@ async def _radio(ctx, artist: str, mood: str | None, blind: bool, search: bool =
     return f"Playing radio from {item['name']}{f', for {mood}' if mood else ''}."
 
 
-async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood: str | None) -> str:
+async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood: str | None,
+               fresh: bool = False) -> str:
     """A fresh mix: from two of his artists that fit (not the ones used last time) and artists like them, with the
     artists he named as a reference always among the seeds; a genre from its tag alone, with those named artists
     only: the brain gave drum and bass Aphex Twin, Fatboy Slim, Avicii and Calvin Harris in 6 of 6 trials, and
     the mix came out mostly pop. Different every time. A mood plays as the `mood_mixes` setting says: ListenBrainz's
     list, Spotify's radio from one of the artists (Aldin: "Elliott Smith radio ... worked good"; ListenBrainz's
     artists like Fatboy Slim and Avicii were pop he called "basic"), or both in turn for a blind test, logged in
-    the store. When ListenBrainz does not answer in 10 s, radio plays instead."""
+    the store. When ListenBrainz does not answer in 10 s, radio plays instead. Fresh, it is ListenBrainz's list
+    without the artists the user knows (Aldin's pick for a plain mood: "some new ones"; for "something new", new)."""
     if not (artists or genre or like):
         raise ValueError("a mood needs three to six of the user's artists that fit it (spotify_my_music), or artists they named")
     t = verdicts(ctx)
@@ -992,7 +1099,7 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
     order = list(like) + ([] if genre else [a for a in sorted(random.sample(artists, len(artists)),
                                                               key=lambda a: recent.index(a) if a in recent else -1)
                                             if a not in like])
-    recipe, blind = "listenbrainz" if genre else ctx.settings.mood_mixes, False
+    recipe, blind = "listenbrainz" if genre or fresh else ctx.settings.mood_mixes, False
     if recipe == "both_in_turn":
         log = ctx.store.get("mood_log") or [{}]
         recipe, blind = ("spotify_radio" if log[-1].get("recipe") == "listenbrainz" else "listenbrainz"), True
@@ -1001,9 +1108,10 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
         said = await _radio(ctx, order[0], mood, blind)
         seeds = order[:1]
     if said is None:
-        said, seeds, recipe = await _lb_mix(ctx, order, genre, mood, blind)
+        said, seeds, recipe = await _lb_mix(ctx, order, genre, mood, blind, fresh)
     if not genre:
         ctx.store["seeds"] = ([a for a in recent if a not in seeds] + seeds)[-8:]
+    if not (genre or fresh):
         ctx.store["mood_log"] = ((ctx.store.get("mood_log") or []) + [
             {"at": ctx.now().isoformat(timespec="minutes"), "mood": mood, "recipe": recipe, "seeds": seeds}])[-50:]
     return said
@@ -1037,7 +1145,7 @@ async def trim(ctx, target: str, added: list[str]) -> None:
 
 
 async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
-                  blind: bool) -> tuple[str, list[str], str]:
+                  blind: bool, fresh: bool = False) -> tuple[str, list[str], str]:
     """ListenBrainz's list from two of `order` and artists like them (or the genre's), each song found on Spotify;
     the first plays, the rest are queued. Radio from the first artist when ListenBrainz does not answer or Spotify
     refuses searches. What was said, the seeds, and which played (for the blind test's log)."""
@@ -1045,6 +1153,8 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
         raise NotReady("a mix needs a ListenBrainz token and the Spotify app's client ID and secret on the "
                        "Spotify card; play radio from an artist instead")
     if (why := refusing(ctx)) is not None:            # a list's songs need searches; his artists' radio does not
+        if fresh:
+            raise NotReady(why + " Music new to the user needs them; radio from one of their artists still plays.")
         if not genre and order and (said := await _radio(ctx, order[0], mood, blind, search=False)) is not None:
             return said, order[:1], "spotify_radio"
         raise NotReady(why + " Radio from one of the user's artists still plays.")
@@ -1052,11 +1162,17 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
         radio, seeds = await lb_radio(ctx, order, genre)
     except Exception as e:                  # slow, down or refusing: radio instead
         ctx.log.warning(f"ListenBrainz: {type(e).__name__}: {e}"[:200])
-        if order and (said := await _radio(ctx, order[0], mood, blind)) is not None:
+        if order and not fresh and (said := await _radio(ctx, order[0], mood, blind)) is not None:
             return said, order[:1], "spotify_radio"
         raise NotReady(f"ListenBrainz did not answer ({type(e).__name__}); play radio from an artist instead") from e
     if not radio:
         raise ValueError(f"ListenBrainz knows none of {', '.join(order)} by those names")
+    if fresh:               # before any search: the app's are few
+        known = known_artists(ctx)
+        radio = [s for s in radio if _key(_CREDIT.split(s.get("creator") or "")[0]) not in known]
+        if not radio:
+            raise ValueError(f"every artist ListenBrainz found near {', '.join(order[:2] or [genre or ''])} is one "
+                             "the user knows; pass other artists or a genre")
     found = _found(ctx)
     hits = await asyncio.gather(*(on_spotify(ctx, s, found) for s in radio[:25]))
     if len(found) > 3000:
@@ -1080,11 +1196,13 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
         await call(ctx, "POST", "/player/play", uri=songs[0]["uri"])
         for s in songs[1:]:
             await call(ctx, "POST", "/player/add_to_queue", uri=s["uri"])
-    source = [f"{' and '.join(seeds)} and artists like them"] if seeds else []
+    source = [f"artists like {' and '.join(seeds)}, new to the user" if fresh else
+              f"{' and '.join(seeds)} and artists like them"] if seeds else []
     source += [genre] if genre else []
     if blind:
         return f"Playing a {f'{mood} ' if mood else ''}mix from {' and '.join(source)}.", seeds, "listenbrainz"
-    return (f"Playing a {f'{mood} ' if mood else ''}mix from {' and '.join(source)}, {len(songs)} songs, "
+    return (f"Playing a {f'{mood} ' if mood else ''}mix from {' and '.join(source)}, {len(songs)} "
+            f"song{'' if len(songs) == 1 else 's'}, "
             f"starting with {_describe(songs[0])}."), seeds, "listenbrainz"
 
 

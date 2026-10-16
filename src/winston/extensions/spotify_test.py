@@ -26,6 +26,9 @@ class Receiver:
         self.answers: dict[str, dict] = {}      # Spotify's answer for one query, else `found`
         self.lb_slow = False                    # ListenBrainz does not answer
         self.playlists: list[dict] | None = None    # the receiver's /library/playlists (go-librespot 0.10.3 on)
+        self.lb_songs: list[tuple[str, str]] | None = None     # LB Radio's songs, (creator, title), else its usual
+        self.lb_status = 200                    # ListenBrainz's answer to a listen
+        self.records: dict[str, list[dict]] = {}    # Spotify's list of an artist's records, by group
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -46,6 +49,9 @@ class Receiver:
         if request.url.host == "api.spotify.com":
             assert request.headers["authorization"] == "Bearer app"
             q = dict(parse_qsl(request.url.query.decode()))
+            if path.startswith("/v1/artists/"):
+                self.calls[-1] = ("RECORDS", path, {"group": q["include_groups"]})
+                return httpx.Response(200, json={"items": self.records.get(q["include_groups"], [])})
             self.calls[-1] = ("SEARCH", q["type"], {"q": q["q"]})
             if self.refusing:
                 return httpx.Response(429, headers={"retry-after": str(self.refusing)}, json={"error": {"status": 429}})
@@ -63,13 +69,17 @@ class Receiver:
             if self.lb_slow:
                 raise httpx.ReadTimeout("no answer", request=request)
             assert request.headers["authorization"] == "Token lb-token"
+            if path == "/1/submit-listens":
+                self.calls[-1] = ("LISTENS", path, body)
+                return httpx.Response(self.lb_status, json={"status": "ok"})
             prompt = dict(parse_qsl(request.url.query.decode()))["prompt"]
             self.calls[-1] = ("LB", prompt, None)
             if "artist:(Nobody)" in prompt:
                 return httpx.Response(400, json={"code": 400, "error": "LB Radio generation failed: Artist Nobody "
                                                                        "could not be looked up. Please use exact spelling."})
-            songs = [("Daft Punk feat. Pharrell Williams", "Get Lucky (radio edit)"), ("Daft Punk", "One More Time"),
-                     ("Daft Punk", "One More Time [2001]"), ("Someone Else", "Not on Spotify")]
+            songs = self.lb_songs or [("Daft Punk feat. Pharrell Williams", "Get Lucky (radio edit)"),
+                                      ("Daft Punk", "One More Time"), ("Daft Punk", "One More Time [2001]"),
+                                      ("Someone Else", "Not on Spotify")]
             return httpx.Response(200, json={"payload": {"jspf": {"playlist": {"track": [
                 {"creator": c, "title": t} for c, t in songs]}}}})
         if path == "/auth/code":
@@ -702,3 +712,108 @@ async def test_leaving_home_pauses_only_when_he_asked_for_it():
         assert (("POST", "/player/pause", None) in rx.calls) == paused, (on, rx.calls)
         await h.close()
 
+
+
+async def test_a_song_heard_long_enough_goes_to_listenbrainz_once_and_one_not_sent_waits_for_the_next():
+    rx = Receiver()
+    h = harness(rx, listens=True)
+    module = h.ext.tools["play"].fn.__globals__
+    handle, ctx = module["handle_event"], h.rt.ctx
+    await h.status()
+    listens = lambda: [b for m, p, b in rx.calls if m == "LISTENS"]
+    song = lambda uri, name, ms: {"type": "metadata", "data": {"uri": uri, "name": name, "artist_names": ["Daft Punk"],
+                                                               "album_name": "Discovery", "duration": ms}}
+    await handle(ctx, song("spotify:track:omt", "One More Time", 200))      # counts after half: 0.1 s
+    await handle(ctx, {"type": "playing", "data": {}})
+    await asyncio.sleep(0.15)
+    sent = listens()
+    assert len(sent) == 1 and sent[0]["listen_type"] == "single", sent
+    meta = sent[0]["payload"][0]["track_metadata"]
+    assert meta["track_name"] == "One More Time" and meta["release_name"] == "Discovery", meta
+    assert meta["additional_info"]["spotify_id"] == "https://open.spotify.com/track/omt", meta
+    await handle(ctx, {"type": "playing", "data": {"resume": True}})
+    await asyncio.sleep(0.15)
+    assert len(listens()) == 1, listens()                           # once a song
+
+    await handle(ctx, song("spotify:track:da", "Digital Love", 400))        # paused before it counts: not sent
+    await asyncio.sleep(0.1)
+    await handle(ctx, {"type": "paused", "data": {}})
+    await asyncio.sleep(0.2)
+    assert len(listens()) == 1, listens()
+    rx.lb_status = 503                                              # resumed, it counts, ListenBrainz is down
+    await handle(ctx, {"type": "playing", "data": {"resume": True}})
+    await asyncio.sleep(0.15)
+    assert len(listens()) == 2 and h.rt.store["lb_unsent"][0]["track_metadata"]["track_name"] == "Digital Love"
+    rx.lb_status = 200                                              # the next one takes it along
+    await handle(ctx, song("spotify:track:hbfs", "Harder, Better, Faster, Stronger", 200))
+    await asyncio.sleep(0.15)
+    last = listens()[-1]
+    assert last["listen_type"] == "import" and [p["track_metadata"]["track_name"] for p in last["payload"]] == [
+        "Digital Love", "Harder, Better, Faster, Stronger"], last
+    assert h.rt.store["lb_unsent"] == []
+    await h.close()
+
+    rx = Receiver()                                                 # not asked for: nothing is sent
+    h = harness(rx)
+    module = h.ext.tools["play"].fn.__globals__
+    await h.status()
+    await module["handle_event"](h.rt.ctx, song("spotify:track:omt", "One More Time", 200))
+    await module["handle_event"](h.rt.ctx, {"type": "playing", "data": {}})
+    await asyncio.sleep(0.15)
+    assert not [c for c in rx.calls if c[0] == "LISTENS"], rx.calls
+    await h.close()
+
+
+async def test_something_new_is_artists_like_theirs_that_they_have_not_played():
+    rx = Receiver()
+    rx.lb_songs = [("Daft Punk", "One More Time"), ("Justice", "D.A.N.C.E."), ("Air", "La femme d'argent"),
+                   ("Radiohead feat. Someone", "Creep")]
+    rx.answers["track:D.A.N.C.E. artist:Justice"] = answer(tracks=[song("dance", "D.A.N.C.E.", "Justice")])
+    h = harness(rx, library=True, mood_mixes="both_in_turn")
+    await h.run("library")                                          # Daft Punk and Radiohead are theirs
+    (h.rt.ctx.folder / "played.jsonl").write_text(json.dumps({"at": "2026-10-16T20:00:00", "uri": "spotify:track:x",
+                                                              "song": "Sexy Boy", "artists": ["Air"]}) + "\n")
+    said = await h.tool("play", fresh=True, artists=["Daft Punk", "Radiohead"])
+    assert played(rx) == ["spotify:track:dance"], rx.calls
+    assert [b["q"] for m, t, b in rx.calls if m == "SEARCH"] == ["track:D.A.N.C.E. artist:Justice"], rx.calls
+    assert "Daft Punk" in said and "Radiohead" in said and "new to the user, 1 song," in said, said
+    assert not h.rt.store.get("mood_log"), h.rt.store                # not part of the blind test
+    rx.lb_songs = [("Daft Punk", "One More Time")]
+    try:
+        await h.tool("play", fresh=True, artists=["Daft Punk"])
+        raise AssertionError("played music the user knows as new")
+    except AssertionError:
+        raise
+    except Exception as e:                                          # noqa: BLE001
+        assert "one the user knows" in str(e), e
+    await h.close()
+
+
+async def test_the_newest_record_of_an_artist_plays_and_says_when_it_came_out():
+    rx = Receiver()
+    rx.found = {"artists": {"items": [{"uri": "spotify:artist:ti", "name": "Tame Impala"}]}}
+    rx.records = {"album": [{"uri": "spotify:album:cur", "name": "Currents", "album_type": "album", "release_date": "2015-07-17"},
+                            {"uri": "spotify:album:dead", "name": "Deadbeat", "album_type": "album", "release_date": "2025-10-17"}],
+                  "single": [{"uri": "spotify:album:eos", "name": "End of Summer", "album_type": "single", "release_date": "2025-07"}]}
+    h = harness(rx)
+    said = await h.tool("play", what="Tame Impala", kind="album", latest=True)
+    assert said == "Playing album Deadbeat by Tame Impala, released 2025-10-17.", said
+    assert played(rx) == ["spotify:album:dead"] and [b["group"] for m, p, b in rx.calls if m == "RECORDS"] == ["album"]
+    rx.records["single"][0]["release_date"] = "2025-11"             # a single since: the latest is the single
+    said = await h.tool("play", what="Tame Impala", latest=True)
+    assert played(rx)[-1] == "spotify:album:eos" and said.startswith("Playing single End of Summer"), said
+    rx.found = {"artists": {"items": []}}
+    assert (await h.tool("play", what="Nobody At All", latest=True)).startswith("Spotify has no artist called")
+    await h.close()
+
+
+async def test_an_album_named_with_its_artist_plays_when_no_song_has_the_name():
+    rx = Receiver()
+    rx.answers["album:Currents artist:Tame Impala"] = answer(albums=[
+        {"uri": "spotify:album:cur", "name": "Currents", "artists": [{"name": "Tame Impala"}]}])
+    h = harness(rx)
+    said = await h.tool("play", what="Currents", by="Tame Impala")
+    assert said == "Playing the album Currents by Tame Impala." and played(rx) == ["spotify:album:cur"], said
+    said = await h.tool("play", what="Currents", by="Tame Impala", kind="track")    # a song was said: it says so
+    assert said.endswith("No song of Tame Impala's is called Currents; this is the album."), said
+    await h.close()

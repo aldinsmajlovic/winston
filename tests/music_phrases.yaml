@@ -98,3 +98,19 @@ cases:
     at: "23:30"
     expect: ["spotify_sleep(minutes)"]
     forbid: [later_add, spotify_pause]
+  # music new to the user, and the newest record (step 9)
+  - say: Play something new.
+    expect: ["spotify_play(fresh)"]
+    forbid: ["spotify_play(what)"]
+  - say: Put on something I've never heard before.
+    expect: ["spotify_play(fresh)"]
+    forbid: ["spotify_play(what)"]
+  - say: Play something chill.
+    forbid: ["spotify_play(fresh)", "spotify_play(what)"]
+  - say: Play the new Tame Impala album.
+    expect: ["spotify_play(latest)"]
+  - say: Play Fred again's latest song.
+    expect: ["spotify_play(latest)"]
+  - say: Play Currents by Tame Impala.
+    expect: ["spotify_play(what)"]
+    forbid: ["spotify_play(latest)"]
