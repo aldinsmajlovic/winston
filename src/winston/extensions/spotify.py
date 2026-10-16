@@ -892,8 +892,7 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
         said = await _radio(ctx, order[0], mood, blind)
         seeds = order[:1]
     if said is None:
-        recipe = "listenbrainz"
-        said, seeds = await _lb_mix(ctx, order, genre, mood, blind)
+        said, seeds, recipe = await _lb_mix(ctx, order, genre, mood, blind)
     if not genre:
         ctx.store["seeds"] = ([a for a in recent if a not in seeds] + seeds)[-8:]
         ctx.store["mood_log"] = ((ctx.store.get("mood_log") or []) + [
@@ -901,22 +900,24 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
     return said
 
 
-async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None, blind: bool) -> tuple[str, list[str]]:
+async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
+                  blind: bool) -> tuple[str, list[str], str]:
     """ListenBrainz's list from two of `order` and artists like them (or the genre's), each song found on Spotify;
-    the first plays, the rest are queued. Radio from the first artist when ListenBrainz does not answer."""
+    the first plays, the rest are queued. Radio from the first artist when ListenBrainz does not answer or Spotify
+    refuses searches. What was said, the seeds, and which played (for the blind test's log)."""
     if not ctx.settings.listenbrainz_token or await app_token(ctx) is None:
         raise NotReady("a mix needs a ListenBrainz token and the Spotify app's client ID and secret on the "
                        "Spotify card; play radio from an artist instead")
     if (why := refusing(ctx)) is not None:            # a list's songs need searches; his artists' radio does not
         if not genre and order and (said := await _radio(ctx, order[0], mood, blind, search=False)) is not None:
-            return said, order[:1]
+            return said, order[:1], "spotify_radio"
         raise NotReady(why + " Radio from one of his artists still plays.")
     try:
         radio, seeds = await lb_radio(ctx, order, genre)
     except Exception as e:                  # slow, down or refusing: radio instead
         ctx.log.warning(f"ListenBrainz: {type(e).__name__}: {e}"[:200])
         if order and (said := await _radio(ctx, order[0], mood, blind)) is not None:
-            return said, order[:1]
+            return said, order[:1], "spotify_radio"
         raise NotReady(f"ListenBrainz did not answer ({type(e).__name__}); play radio from an artist instead") from e
     if not radio:
         raise ValueError(f"ListenBrainz knows none of {', '.join(order)} by those names")
@@ -939,9 +940,9 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None, bl
     source = [f"{' and '.join(seeds)} and artists like them"] if seeds else []
     source += [genre] if genre else []
     if blind:
-        return f"Playing a {f'{mood} ' if mood else ''}mix from {' and '.join(source)}.", seeds
+        return f"Playing a {f'{mood} ' if mood else ''}mix from {' and '.join(source)}.", seeds, "listenbrainz"
     return (f"Playing a {f'{mood} ' if mood else ''}mix from {' and '.join(source)}, {len(songs)} songs, "
-            f"starting with {_describe(songs[0])}."), seeds
+            f"starting with {_describe(songs[0])}."), seeds, "listenbrainz"
 
 
 async def _queue(ctx, what: str, by: str | None) -> str:

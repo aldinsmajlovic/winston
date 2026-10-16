@@ -560,6 +560,7 @@ async def test_a_slow_listenbrainz_plays_radio_and_what_was_found_or_unknown_is_
     except Exception:                                               # noqa: BLE001
         pass
     assert await h.tool("play", mood="chill", artists=["Daft Punk"]) == "Playing radio from Daft Punk, for chill."
+    assert [e["recipe"] for e in h.rt.store["mood_log"]][-2:] == ["spotify_radio", "spotify_radio"]   # what played
     await h.close()
 
 
