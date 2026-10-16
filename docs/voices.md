@@ -29,6 +29,12 @@ sends each sentence whole) and ignores the other three.
 Preparing a clip the server has not used yet takes a moment on the GPU. It runs off the event loop,
 so audio already being sent keeps flowing meanwhile.
 
+A voice clones the clip's sound along with the speaker, so cut a clip from the best copy of a
+recording. On archive.org a LibriVox book has the reader's 128 kbps MP3 beside a 64 kbps copy; the
+copy has nothing above about 11 kHz and adds its own artifacts. In a blind listen with Breeze TTS 2,
+the same seconds cut from the 128 kbps file sounded clearly better. Cleaning a hissy clip with a
+noise reduction pass sounded worse, not better.
+
 ## Other engines
 
 Each is a preset on the Voice page, a small engine on the same shared server in its own venv, on
