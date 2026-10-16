@@ -72,7 +72,11 @@ The symptom of a blocked 8702: the log shows the wake word, what was heard and w
 Say the wake word, then the request. After every reply the box listens again without the wake word
 for `channels.satellite.follow_up_secs` (6 s; at least 8 s after a question), so a conversation
 carries on without "Okay Winston" each time. If nothing is said the box goes back to waiting for the
-wake word. 0 keeps the box listening only after a question. The replies are served from port 8702 on every interface; the box
+wake word. 0 keeps the box listening only after a question. While music plays on the box it listens on
+only after a question: of 124 listening windows after a reply during music, 16 heard talk not meant for
+him (guests, Swedish) and 5 changed the music. A request starts with a quarter of a second of voice, so
+the wake word's own tail is not taken for it (it once ended 8 of 95 wakes during music with nothing
+heard). The replies are served from port 8702 on every interface; the box
 must be able to reach this machine there.
 
 ### When he speaks first

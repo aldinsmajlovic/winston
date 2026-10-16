@@ -88,6 +88,7 @@ OUT_RATE = 48000                 # what the box's media player is set up for
 VAD_FRAME = 512                  # Silero's window at 16 kHz
 GUESS_SECS = 0.3                 # a pause this long starts transcribing, in case it is the end
 START_TIMEOUT_SECS = 8.0         # no speech after the wake word: give up (also the least after a question)
+MIN_SPEECH_SECS = 0.25          # voice it takes to be a request; less (the wake word's tail) waits on for one
 FOLLOW_WAIT_SECS = 20.0          # a follow-up run must start this soon after the reply has played
 MAX_REQUEST_SECS = 60.0          # a stuck request (the TV): 20 s cut him off mid-thought three times
 # The words end a sentence: what the speech engine punctuates as said to the end. Not an ellipsis.
@@ -559,8 +560,11 @@ class Satellite:
         whether it sounds finished (_finished). end_silence_secs of quiet then ends a finished one, or
         chat_silence_secs when he answers a reply that only talked; an unfinished one ("Can you tell me
         what to have in my living room because") gets unfinished_silence_secs. Speech after the pause
-        throws both away. Returns the audio and that transcription."""
+        throws both away. A request starts with MIN_SPEECH_SECS of voice: a single voiced frame (the wake word's
+        own tail, in the first 32 ms) once switched it to the pause rule, so the pause before he spoke ended it
+        with nothing said, 8 of 95 wakes during music. Returns the audio and that transcription."""
         buf, voiced = np.zeros(0, np.int16), []
+        min_voiced = MIN_SPEECH_SECS * MIC_RATE / VAD_FRAME
         sat = self.cfg.channels.satellite
         end = int((sat.chat_silence_secs if run.follow_up and self._chatting else sat.end_silence_secs)
                   * MIC_RATE / VAD_FRAME)
@@ -572,7 +576,8 @@ class Satellite:
         try:
             while True:
                 # The box streams silence too, so the limit is checked on every chunk, not only when none comes.
-                timeout = (run.start_timeout if not any(voiced) else MAX_REQUEST_SECS) - (time.perf_counter() - t0)
+                started = sum(voiced) >= min_voiced
+                timeout = (run.start_timeout if not started else MAX_REQUEST_SECS) - (time.perf_counter() - t0)
                 if timeout <= 0:
                     break
                 try:
@@ -587,7 +592,7 @@ class Satellite:
                     voiced.append(self._vad.voice_confidence(buf[i:i + VAD_FRAME].tobytes()) >= 0.5)
                     if voiced[-1] and guess:            # more speech: the guess was not the whole request
                         guess.cancel(); guess = finished = None
-                if any(voiced):
+                if sum(voiced) >= min_voiced:
                     quiet = len(voiced) - 1 - max(i for i, v in enumerate(voiced) if v)
                     if quiet >= guess_at and guess is None:
                         pcm = buf[:len(voiced) * VAD_FRAME].copy()
@@ -602,7 +607,7 @@ class Satellite:
             if guess:
                 guess.cancel()
             raise
-        if sum(voiced) * VAD_FRAME / MIC_RATE < 0.25:
+        if sum(voiced) < min_voiced:
             if guess:
                 guess.cancel()
             return None
@@ -864,7 +869,13 @@ class Satellite:
                 wait = max(START_TIMEOUT_SECS, self.cfg.channels.satellite.follow_up_secs) if question \
                     else self.cfg.channels.satellite.follow_up_secs
                 ended = conv.brain.llm.ended            # a scene that speaks for itself (quiet_after)
-                follow_up = bool(said.strip()) and wait > 0 and not self.button_only and not ended
+                # While music plays on the box the room is rarely quiet: of 124 listening windows after a reply
+                # during music, 16 heard talk not meant for him (guests, Swedish) and 5 changed the music. With
+                # music on, he listens on only after a question.
+                music = self._media is not None and not question
+                if music and said.strip():
+                    logger.info(f"{self.room}: music is playing, no listening on after a reply that asked nothing")
+                follow_up = bool(said.strip()) and wait > 0 and not self.button_only and not ended and not music
                 if follow_up:
                     self._follow_secs = wait
                     self._follow_until = time.monotonic() + run.playing_for() + FOLLOW_WAIT_SECS

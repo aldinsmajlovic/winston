@@ -164,6 +164,32 @@ async def pauses():
           await pause_ends("I was thinking about that.", follow_up=True, chatting=True), chat)
     check("answering a reply that acted: the short pause", await pause_ends("Even warmer.", follow_up=True), end)
 
+    # The wake word's own tail (one voiced frame) does not start the request: the pause before he speaks is not
+    # its end (8 of 95 wakes during music ended with nothing heard).
+    s = box()
+    s._chatting, s._vad = False, SimpleNamespace(voice_confidence=lambda b: float(any(b)))
+    s._sounds_finished = lambda pcm: True
+
+    async def words(pcm):
+        return SimpleNamespace(text="Turn off the lights.")
+    s._transcribe = words
+    run = sat.Run()
+    frame = np.zeros(sat.VAD_FRAME, np.int16)
+
+    async def blip_then_speak():
+        run.mic.put_nowait(np.full(sat.VAD_FRAME, 1000, np.int16))         # the blip
+        for _ in range(47):                                                 # 1.5 s before he speaks
+            run.mic.put_nowait(frame)
+            await asyncio.sleep(0.005)
+        run.mic.put_nowait(np.full(int(sat.MIC_RATE), 1000, np.int16))     # the request, 1 s
+        for _ in range(200):
+            run.mic.put_nowait(frame)
+            await asyncio.sleep(0.01)
+    feeding = asyncio.create_task(blip_then_speak())
+    got = await s._listen(run)
+    feeding.cancel()
+    check("a blip after the wake word waits for the request", got is not None and len(got[0]) > sat.MIC_RATE, True)
+
 
 asyncio.run(main())
 asyncio.run(pauses())

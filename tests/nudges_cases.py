@@ -220,6 +220,13 @@ async def rules():
     w.now = at("2026-09-30T05:30")
     expect("not before speak_up.briefing_from (06:00)", await n.mentions("good morning") == [])
     w.now = at("2026-09-30T06:40")
+    from winston.extension_host.sources import state_dir
+    host.cfg.extensions = {"gym": ExtensionConfig(enabled=True)}
+    going = state_dir("gym") / "ongoing.txt"
+    going.parent.mkdir(parents=True, exist_ok=True)
+    going.write_text("playing Oh Dove by Men I Trust")          # music on: the briefing would talk over it
+    expect("while something is going on the briefing waits", await n.mentions("play something energetic") == [])
+    going.unlink()
     got = await n.mentions("good morning")
     expect("the first conversation after it gets the briefing", [i["say"] for i in got] == ["Your digest."]
            and got[0]["part"] == "briefing", got)

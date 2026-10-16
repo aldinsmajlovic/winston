@@ -28,6 +28,7 @@ from winston_sdk.when import parse_when
 
 from winston.config import data_dir, resolve
 from winston.core.announce import in_quiet_hours
+from winston.extension_host import texts
 from winston.extension_host.sources import read_json, write_json
 
 KEEP_SECS = 7 * 86400           # ended nudges stay listed this long (`ctx.nudges()`)
@@ -490,13 +491,15 @@ class Nudges:
     async def mentions(self, text: str = "") -> list[dict[str, Any]]:
         """What to mention in the conversation going on now: nudges delivered at the next talk, and
         the briefing at the first conversation after `briefing_from` or when asked what's new. Each is
-        handed out once."""
+        handed out once. While something is going on (an extension's ctx.ongoing: music playing) the
+        briefing waits for a conversation without it, unless asked: on 2026-10-11 "play something energetic"
+        got the day's briefing, 49 s of it over the music."""
         async with self._lock:
             now = self.now()
             start = dtime.fromisoformat(self.host.cfg.speak_up.briefing_from)
             today = now.date().isoformat()
             asked = WHATS_NEW.search(text or "") is not None
-            morning = now.time() >= start and self.state.get("briefed") != today
+            morning = now.time() >= start and self.state.get("briefed") != today and not texts.ongoing(self.host.cfg)
             out = []
             for rec in list(self.records.values()):
                 if rec["state"] == "ended":
