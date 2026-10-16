@@ -121,12 +121,14 @@ def wer(heard: str, ref: str) -> float:
 
 def matches(expect: str, called: list) -> bool:
     """Whether any alternative ("a|b") was called. `called` holds names, or calls ({name, args}), where
-    "tool(arg)" also needs that argument given: spotify_play(genre) is a genre, spotify_play(what) a name."""
+    "tool(arg)" also needs that argument given: spotify_play(genre) is a genre, spotify_play(what) a name; a
+    flag passed as false is not given (spotify_play(fresh))."""
     for alt in expect.split("|"):
         name, _, arg = alt.partition("(")
         for c in called:
             cname, args = (c, {}) if isinstance(c, str) else (c["name"], c.get("args") or {})
-            if name in cname and (not arg or args.get(arg.rstrip(")")) not in (None, "", [], {})):
+            v = args.get(arg.rstrip(")"))
+            if name in cname and (not arg or (v is not False and v not in (None, "", [], {}))):
                 return True
     return False
 

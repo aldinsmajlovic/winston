@@ -1,4 +1,4 @@
 # People
 
-Others in his life, who they are and how they relate to him.
+Others in the user's life, who they are and how they relate to the user.
 

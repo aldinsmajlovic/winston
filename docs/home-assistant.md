@@ -22,14 +22,25 @@ flowchart LR
   else exposed in Home Assistant is un-exposed on the next save and shows as drift until then.
 - The tools depend on what is exposed: an exposed light brings "Set brightness and colour", a to-do list
   brings the to-do tools. A channel reads the tool list when it starts, which is why saving the list
-  marks the brain channels for a restart.
+  marks the brain channels for a restart. Its satellite tools (an announcement, timers) act through one of
+  Home Assistant's own voice satellites, and it offers them without one: in a home with none they are left
+  out, since "announce that dinner is ready" went to the broadcast 5 times in 5 and he said "Announced"
+  for nothing.
 - An exposed script becomes a tool of its own, described by the script's description, so a scene with
-  several steps (lamps one after another, music) is one call. Say in the description when to run it and
-  give it the phrases as aliases: an alias in what was said also makes a spoken request think first.
+  several steps (lamps one after another, music) is one call. Say in the description when to run it, and
+  when not, and give it the phrases as aliases: an alias in what was said also makes a spoken request
+  think first. Keep moods, genres and example requests out of a scene's description and aliases: they pull
+  in requests to play that mood. "Play something romantic" ran a light scene whose description named
+  romance 7 times in 10, and "play some rock and roll" a light show with the alias "rock and roll" 4 times
+  in 5; saying in the description that "play something romantic" is music made it worse (9 in 10). With
+  "Lights only, no music ... Only when one of its names is said" and no mood or genre among the aliases,
+  both played music 10 times in 10 and 5 in 5. A phrase that should set the whole scene, song and all,
+  belongs to a shortcut instead (below).
   `say_first` on the entry is what he says right away when a spoken request names it, in place of "One
   moment." ("Movie night it is."), and `quiet_after` makes him say nothing once it has worked and keeps
   the box from listening on, so a scene with music is not talked over or answered; a failure is still
-  reported. `shortcut` runs a script straight away, without the model, when what was said is only one of
+  reported. Quiet holds only when its name is all that was said: a request that named a quiet scene and
+  asked for music too ran the scene and stopped there, 5 times in 5, the music never asked for. `shortcut` runs a script straight away, without the model, when what was said is only one of
   its names ("Okay Winston, movie night"), so it does the same every time, twice in a row too; fillers
   before it ("uh, can you") and a place or "for me" after it ("movie night in the living room") still
   count as only the name. Add what the speech recognition makes of the phrase as an alias ("moving

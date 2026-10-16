@@ -241,6 +241,20 @@ def tool_label(name: str) -> str:
     return words[:1].upper() + words[1:].lower()
 
 
+# Its tools that act only through one of its own voice satellites: an announcement, a timer that rings on one.
+# It offers them with none: on 2026-10-16 "announce that dinner is ready" went to HassBroadcast 5 of 5 times
+# and was "Announced, sir." in a home with no satellite to say it.
+SATELLITE_TOOLS = {"HassBroadcast", *(n for n, label in TOOL_LABELS.items() if label == "Set and manage timers")}
+
+
+def unusable(names: list[str], snap: "Snapshot | None") -> set[str]:
+    """The tools that cannot act in this home: the satellite ones when it has no satellite. None left out when
+    Home Assistant could not be read."""
+    if snap is None or any(eid.startswith("assist_satellite.") for eid in snap.states):
+        return set()
+    return {n for n in names if n.split("__", 1)[-1] in SATELLITE_TOOLS}
+
+
 class HATool(BaseModel):
     label: str              # plain words; tools that do one job share a label and a row
     names: list[str]        # the MCP tool names, "domain__Name"

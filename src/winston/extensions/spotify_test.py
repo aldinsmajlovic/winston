@@ -178,7 +178,7 @@ async def test_without_the_app_keys_only_his_library_and_he_is_told_why():
         await h.tool("play", what="Get Lucky")
         raise AssertionError("searched without the app's keys")
     except Exception as e:                                          # noqa: BLE001
-        assert "not in his Spotify library" in str(e) and "client ID and secret" in str(e), e
+        assert "not in the user's Spotify library" in str(e) and "client ID and secret" in str(e), e
     assert played(rx) == ["spotify:artist:dp"] and not any(c[0] in ("SEARCH", "APP TOKEN") for c in rx.calls)
     await h.close()
 
@@ -226,7 +226,7 @@ async def test_a_refusing_search_is_said_plainly_and_not_asked_again_until_it_li
     except AssertionError:
         raise
     except Exception as e:                                          # noqa: BLE001
-        assert "Radio from one of his artists still plays" in str(e) and not any(c[0] == "LB" for c in rx.calls), e
+        assert "Radio from one of the user's artists still plays" in str(e) and not any(c[0] == "LB" for c in rx.calls), e
     await h.close()
 
 
@@ -500,7 +500,7 @@ async def test_my_music_stays_in_his_library_and_an_emoji_is_said_by_its_name():
     assert await h.tool("play", what="my drum and bass playlist") == "Playing your playlist \U0001f941."
     assert await h.tool("play", what="the plane emoji") == "Playing your playlist \u2708\ufe0f."   # not the song
     said = await h.tool("play", what="my liked songs")
-    assert said.startswith("He has no playlist called 'my liked songs' in his library, so nothing was played."), said
+    assert said.startswith("The user has no playlist called 'my liked songs' in their library, so nothing was played."), said
     assert not any(c[0] == "SEARCH" for c in rx.calls), rx.calls
     assert "\U0001f941 (drum with drumsticks)" in (await h.tool("my_music"))["playlist"]
     await h.close()
@@ -524,8 +524,8 @@ async def test_a_genre_said_as_a_name_is_a_genre_and_named_artists_always_seed()
     except AssertionError:
         raise
     except Exception as e:                                          # noqa: BLE001
-        assert "three to six of his artists" in str(e), e
-    assert await h.tool("play") == "Nothing to play was named: ask him what he would like, and suggest a mix that fits."
+        assert "three to six of the user's artists" in str(e), e
+    assert await h.tool("play") == "Nothing to play was named: ask the user what they would like, and suggest a mix that fits."
     await h.close()
 
 
@@ -625,7 +625,7 @@ async def test_he_is_remembered_liked_banned_and_not_now():
     song = lambda uri, name, *artists: {"type": "metadata", "data": {"uri": uri, "name": name, "artist_names": list(artists)}}
     nexts = lambda: [p for m, p, b in rx.calls if p == "/player/next"]
 
-    assert await h.tool("feedback", verdict="like") == "Saved Get Lucky by Daft Punk to his Liked Songs."
+    assert await h.tool("feedback", verdict="like") == "Saved Get Lucky by Daft Punk to the user's Liked Songs."
     assert ("POST", "/library/liked", {"uris": ["spotify:track:gl"], "liked": True}) in rx.calls
     assert await h.tool("feedback", verdict="never") == "Get Lucky by Daft Punk will not play again; skipped."
     await handle(ctx, song("spotify:track:gl", "Get Lucky", "Daft Punk"))       # radio brings it back

@@ -9,6 +9,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 
 from winston.config.schema import WinstonConfig
 from winston.core.brain import acted, build_llm, home_request, name_forms, only_name, own_answers
+from winston.providers.home_assistant import Snapshot, unusable
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}, "providers": {"home_assistant": {
     "url": "http://ha.invalid:8123", "expose": {
@@ -109,8 +110,11 @@ async def shortcut():
            {"role": "tool", "tool_call_id": "c1", "content": '{"success": true}'}]
     await llm.get_chat_completions(LLMContext(lamp))
     await llm.get_chat_completions(LLMContext(lamp + off))
-    parent.get_chat_completions = real
     check("a home request thinks before its call, not after the result", thought, [True, False])
+    llm.ended, more = False, [{"role": "user", "content": "[21:00] lights out and play some jazz"}, *ran[1:]]
+    await llm.get_chat_completions(LLMContext(more))
+    check("a quiet name in a longer request goes on to the rest", (llm.ended, len(thought)), (False, 3))
+    parent.get_chat_completions = real
 
     # A call that failed is not made again with the same arguments in the same request (2026-10-16: four
     # spotify_play calls against the same refusal, then the call written out as text and said aloud).
@@ -197,5 +201,12 @@ async def shortcut():
     check("and says so first", said[-1:], ["That conversation had grown too long, so I've started a fresh one."])
 
 asyncio.run(shortcut())
+
+# Home Assistant offers its satellite tools in a home with no satellite; there they would say "done" for nothing.
+offered = ["intent__HassTurnOn", "assist_satellite__HassBroadcast", "intent__HassCancelAllTimers", "llm__GetDateTime"]
+check("no satellite: its tools are left out", unusable(offered, Snapshot(states={"light.shelf": {}})),
+      {"assist_satellite__HassBroadcast", "intent__HassCancelAllTimers"})
+check("a satellite: all kept", unusable(offered, Snapshot(states={"assist_satellite.kitchen": {}})), set())
+check("Home Assistant unread: all kept", unusable(offered, None), set())
 
 finish_checks("home: home requests, first lines, quiet after and shortcuts ok")

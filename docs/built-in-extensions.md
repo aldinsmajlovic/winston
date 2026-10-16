@@ -154,7 +154,9 @@ background model's answer about it is a yes or a no.
 do I have?", "cancel the one about Mum". Each time a reminder is due is a nudge of a kind you asked
 for, so it comes at its time through quiet hours and the daily limit, can be put off ("remind me in ten
 minutes"), and survives a restart. A repeating one (daily, weekdays, weekly) keeps its time on the
-clock across daylight saving and moves on once said. The same reminder asked for twice is set once.
+clock across daylight saving and moves on once said. The same reminder asked for twice is set once. A
+timer is a reminder too ("set a timer for ten minutes", "cancel the timer"): Home Assistant's own timers
+ring on its voice satellites, so in a home without one its timer tools are left out.
 **Entity**: the next reminder, as a timestamp.
 
 ## Sensors

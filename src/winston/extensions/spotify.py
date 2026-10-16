@@ -682,9 +682,9 @@ def _his(ctx, item: dict) -> bool:
 
 @ext.tool(tier="read")
 async def my_music(ctx) -> dict:
-    """His Spotify library: playlists, top artists, saved albums and liked songs. Call this when he
-    asks what he has, wants to browse his library, or asks for a mood or a vibe ("something chill", "play
-    something energetic") so you can pick his artists that fit, for play(mood=..., artists=[...])."""
+    """The user's Spotify library: playlists, top artists, saved albums and liked songs. Call this when the user
+    asks what they have, wants to browse their library, or asks for a mood or a vibe ("something chill", "play
+    something energetic") so you can pick their artists that fit, for spotify_play(mood=..., artists=[...])."""
     lib = ctx.store.get("library") or {}
     named = lambda n: n if _key(n) == _norm(n) else f"{n} ({_key(n)})"     # an emoji said by its name
     return {k: [named(item["name"]) for item in items] for k, items in lib.items()}
@@ -723,7 +723,7 @@ def refusing(ctx) -> str | None:
     at = time.strftime("%H:%M" if time.localtime(until).tm_yday == time.localtime().tm_yday else "%A %H:%M",
                        time.localtime(until))
     return (f"Spotify is refusing this app's searches until about {at} (its limit for the app); asking again will "
-            "not help. Songs, artists and playlists in his library still play by name.")
+            "not help. Songs, artists and playlists in the user's library still play by name.")
 
 
 async def _search(ctx, q: str, types: list[str]) -> dict:
@@ -779,7 +779,7 @@ async def find(ctx, what: str, kind: str | None, by: str | None = None) -> tuple
     if await app_token(ctx) is None:
         if (own := in_library(ctx, what, kind, partly=True)) is not None:      # his library is all there is
             return own, None, []
-        raise NotReady(f"{what!r} is not in his Spotify library; to search all of Spotify, add a Spotify app's "
+        raise NotReady(f"{what!r} is not in the user's Spotify library; to search all of Spotify, add a Spotify app's "
                        "client ID and secret on the Spotify card")
     if by and kind in (None, "track"):
         song, note = await find_track(ctx, what, by)
@@ -845,26 +845,26 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
                by: str | None = None, genre: str | None = None, mood: str | None = None,
                artists: list[str] | None = None, like: list[str] | None = None, next: bool = False,
                radio: bool = False) -> str:
-    """Play music on the speakers, whatever he asks for: something by name (a song, an artist, an album, a
-    playlist; his own first), a genre, a mood or a vibe. Fill in only what he said; it works out how to play
-    it. A request to play is music only: never lights or a scene unless he asks for those too. When he only
-    says to change the music or play something else, without what: pause, ask what he would like, and suggest
-    a mix that fits. Saving or liking a song is not possible yet: say so. A name plays only when something is
-    called that; otherwise it answers with the nearest names, to ask him about.
+    """Play music on the speakers, whatever the user asks for: something by name (a song, an artist, an album, a
+    playlist; their own first), a genre, a mood or a vibe. Fill in only what they said; it works out how to play
+    it. A request to play is music only: never lights or a scene unless they ask for those too. When they only
+    say to change the music or play something else, without what: pause, ask what they would like, and suggest
+    a mix that fits. A name plays only when something is called that; otherwise it answers with the nearest
+    names, to ask the user about.
 
     Args:
         what: A name, as said: "Daft Punk", "Get Lucky", "my running playlist", "drum emoji". Never a genre or
             a mood.
-        kind: Only when he said which: a track, an artist, an album or a playlist.
-        by: The artist, when he named one with a song: "Get Lucky by Daft Punk" is what="Get Lucky",
+        kind: Only when the user said which: a track, an artist, an album or a playlist.
+        by: The artist, when the user named one with a song: "Get Lucky by Daft Punk" is what="Get Lucky",
             by="Daft Punk".
-        genre: A genre or an era he named, as MusicBrainz tags it, in lower case: "jazz", "drum and bass",
+        genre: A genre or an era the user named, as MusicBrainz tags it, in lower case: "jazz", "drum and bass",
             "80s", "liquid funk".
-        mood: A mood, a vibe or an activity, in his words: "chill", "something to fall asleep to", "poker night".
-            With it, pass artists. Something new to him ("something I don't know") is a mood too: a mix
-            brings artists like his.
-        artists: For a mood: three to six of his artists that fit it, from my_music(), as listed there.
-        like: Artists he named as the kind of thing he wants: "something like Frank Ocean" is like=["Frank Ocean"].
+        mood: A mood, a vibe or an activity, in the user's words: "chill", "something to fall asleep to", "poker
+            night". With it, pass artists. Something new to the user ("something I don't know") is a mood too: a
+            mix brings artists like theirs.
+        artists: For a mood: three to six of the user's artists that fit it, from spotify_my_music, as listed there.
+        like: Artists the user named as the kind of thing they want: "something like Frank Ocean" is like=["Frank Ocean"].
         next: Play it after the current song instead of now (a song).
         radio: After a name, keep going with music like it (Spotify's radio from it).
     """
@@ -875,14 +875,14 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
     if genre or mood or artists or like:
         return await _mix(ctx, artists or [], genre, like or [], mood)
     if not what:
-        return "Nothing to play was named: ask him what he would like, and suggest a mix that fits."
+        return "Nothing to play was named: ask the user what they would like, and suggest a mix that fits."
     if next:
         return await _queue(ctx, what, by)
     item, note = in_library(ctx, what, kind), None
     if item is None and _MINE.search(what):
         names = [i["name"] for i in (ctx.store.get("library") or {}).get(kind or "playlist", [])]
-        return (f"He has no {kind or 'playlist'} called {what!r} in his library, so nothing was played. "
-                f"His {kind or 'playlist'}s: {', '.join(names[:20]) or 'none'}.")
+        return (f"The user has no {kind or 'playlist'} called {what!r} in their library, so nothing was played. "
+                f"Their {kind or 'playlist'}s: {', '.join(names[:20]) or 'none'}.")
     if item is None:
         item, note, near = await find(ctx, what, kind, by)
         if item is None:
@@ -981,11 +981,11 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
     artists like Fatboy Slim and Avicii were pop he called "basic"), or both in turn for a blind test, logged in
     the store. When ListenBrainz does not answer in 10 s, radio plays instead."""
     if not (artists or genre or like):
-        raise ValueError("a mood needs three to six of his artists that fit it (my_music()), or artists he named")
+        raise ValueError("a mood needs three to six of the user's artists that fit it (spotify_my_music), or artists they named")
     t = verdicts(ctx)
     out = {_key(a) for a in t["artists"]} | {_key(a["artist"]) for a in t["for_now"]}
     if artists and not like and not genre and not [a for a in artists if _key(a) not in out]:
-        raise ValueError(f"all of {', '.join(artists)} are out for now (his verdict); pass others from my_music()")
+        raise ValueError(f"all of {', '.join(artists)} are out for now (the user's verdict); pass others from spotify_my_music")
     artists = [a for a in artists if _key(a) not in out]
     recent = ctx.store.get("seeds") or []
     # never used first, then the longest ago: the same chill artists take turns; named ones first of all
@@ -1047,7 +1047,7 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
     if (why := refusing(ctx)) is not None:            # a list's songs need searches; his artists' radio does not
         if not genre and order and (said := await _radio(ctx, order[0], mood, blind, search=False)) is not None:
             return said, order[:1], "spotify_radio"
-        raise NotReady(why + " Radio from one of his artists still plays.")
+        raise NotReady(why + " Radio from one of the user's artists still plays.")
     try:
         radio, seeds = await lb_radio(ctx, order, genre)
     except Exception as e:                  # slow, down or refusing: radio instead
@@ -1068,7 +1068,7 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
                   }.values())[::-1]      # one song once, in LB's order, none he banned or put out for now
     if not songs:
         if (why := refusing(ctx)) is not None:          # it began refusing while the songs were looked up
-            raise NotReady(why + " Radio from one of his artists still plays.")
+            raise NotReady(why + " Radio from one of the user's artists still plays.")
         raise ValueError(f"no mix from {', '.join(order + [genre] if genre else order)}: none of LB Radio's "
                          "songs were found on Spotify")
     await start(ctx)
@@ -1201,7 +1201,7 @@ async def volume(ctx, level: int | None = None, change: Literal["up", "down"] | 
 
     Args:
         level: 0 to 100.
-        change: "up" or "down" a step (about 5 dB), when he gave no number.
+        change: "up" or "down" a step (about 5 dB), when no number was given.
     """
     if change and level is None:
         # go-librespot plays at the volume squared, so 10 down from 87 was 2 dB and not heard; a quarter of the
@@ -1216,15 +1216,16 @@ async def volume(ctx, level: int | None = None, change: Literal["up", "down"] | 
 
 @ext.tool(tier="act", timeout=15)
 async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], artist: str | None = None) -> str:
-    """What he thinks of the music, kept: "I like this" saves the song playing to his Liked Songs (like);
-    "never play this again" bans the song, skipped whenever it comes on (never); "not Elliott Smith" or "not
-    him for now" keeps the artist out of what plays for a while (not_now); "never play Elliott Smith" bans the
-    artist (never, with the artist); "you can play X again" lifts it (allow). When it is unclear whether he
-    means the song or the artist ("this sucks"), ask which first.
+    """What the user thinks of the music, kept: "I like this" or "save this song" saves the song playing to their
+    Liked Songs (like); "never play this again" bans the song, skipped whenever it comes on (never); "not Elliott
+    Smith" or "not him for now" keeps the artist out of what plays for a while (not_now); "never play Elliott
+    Smith" bans the artist (never, with the artist); "you can play X again" lifts it (allow). When it is unclear
+    whether the user means the song or the artist ("this sucks"), ask which first. With "something else" after
+    it ("not Elliott Smith, something else"), then also play a mix of other artists that fit (spotify_play).
 
     Args:
         verdict: like, never, not_now or allow.
-        artist: The artist he named; none when he means the song playing ("this", "this song").
+        artist: The artist the user named; none when they mean the song playing ("this", "this song").
     """
     t, now = verdicts(ctx), ((await call(ctx, "GET", "/status") or {}).get("track") or {})
     song = f"{now.get('name')} by {', '.join(now.get('artist_names') or [])}" if now else None
@@ -1233,18 +1234,18 @@ async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], a
         return f"{artist or song or 'It'} may play again."
     if artist is None and verdict != "not_now":
         if not now:
-            return "Nothing is playing to judge; ask which song or artist he means."
+            return "Nothing is playing to judge; ask which song or artist the user means."
         if verdict == "like":
             await call(ctx, "POST", "/library/liked", uris=[now["uri"]], liked=True)
-            return f"Saved {song} to his Liked Songs."
+            return f"Saved {song} to the user's Liked Songs."
         t["songs"] = (t["songs"] + [{"uri": now["uri"], "song": now.get("name"), "artists": now.get("artist_names")}])[-500:]
         await call(ctx, "POST", "/player/next")
         return f"{song} will not play again; skipped."
     if verdict == "like":
-        return f"Liking an artist is not kept yet; {artist} plays when he asks for them by name."
+        return f"Liking an artist is not kept yet; {artist} plays when the user asks for them by name."
     who = artist or (now.get("artist_names") or [None])[0]
     if who is None:
-        return "Nothing is playing; ask which artist he means."
+        return "Nothing is playing; ask which artist the user means."
     if verdict == "never":
         t["artists"] = [a for a in t["artists"] if _key(a) != _key(who)] + [who]
     else:
@@ -1265,7 +1266,7 @@ async def sleep(ctx, minutes: float | None = None) -> str:
     minutes it is the fade alone; 0 cancels it.
 
     Args:
-        minutes: Until the music stops, as he said; none for the usual fade.
+        minutes: Until the music stops, as the user said; none for the usual fade.
     """
     if minutes == 0:
         if (old := ctx.store.pop("sleep", None)) is not None:

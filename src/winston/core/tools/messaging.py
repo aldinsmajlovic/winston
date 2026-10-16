@@ -60,9 +60,9 @@ def make_send_message_tool(cfg: WinstonConfig):
 
     schema = FunctionSchema(
         name="send_message",
-        description="Send a Discord message to one of the user's contacts, or to the user themself (\"me\"). Write "
-                    "the full message text yourself; it is sent exactly as written, from "
-                    f"{cfg.assistant.name}.",
+        description="Send a Discord message to one of the user's contacts, or to the user themself (\"me\"): "
+                    "\"tell my friend a fun fact\", \"send me that\". Write the full message text yourself; it is "
+                    f"sent exactly as written, from {cfg.assistant.name}. Then confirm briefly.",
         properties={"to": {"type": "string", "enum": names, "description": "Who gets it."},
                     "text": {"type": "string", "description": "The message, as it should arrive."}},
         required=["to", "text"])

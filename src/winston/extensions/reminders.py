@@ -73,7 +73,8 @@ def _matching(ctx, which: str) -> list[str]:
 
 @ext.tool(tier="act", outside=False)
 async def add(ctx, what: str, at: When, repeat: Repeat | None = None) -> str:
-    """Set a reminder for the user. He says it back at that time, wherever the user is.
+    """Set a reminder for the user, or a timer ("a timer for ten minutes" is a reminder in ten minutes): you
+    say it at that time, wherever they are.
 
     Args:
         what: What to remind them of, in a few words: "call Mum", "take the bins out".
@@ -118,7 +119,7 @@ async def upcoming(ctx) -> list[dict] | str:
 
 @ext.tool(tier="act", outside=False)
 async def cancel(ctx, which: str, all_times: bool = True) -> str:
-    """Cancel one of the user's reminders.
+    """Cancel one of the user's reminders or timers.
 
     Args:
         which: Its id from upcoming, or words from it ("the dentist").

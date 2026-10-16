@@ -59,7 +59,8 @@ def today() -> str:
     with each message (Clock)."""
     now = datetime.now()
     return (f"# Today\n\nThis conversation started on {now.strftime('%A')} {now.day} {now.strftime('%B %Y')}. "
-            f"Each message from the user starts with the time it was said, like [06:22]: that is the time now. "
+            f"Each message from the user starts with the time it was said, like [06:22]: that is the time now, so "
+            f"asked the time, answer from it. "
             f"When it also names a room, like [06:22, room: Kitchen], the user is in that room: a request that names "
             f"no place (\"turn off the lights\", \"is it warm in here?\") means that room, so pass it as the area. "
             f"When the user names a device (\"the window lamps\") or another room, target that name or room and "
@@ -344,7 +345,7 @@ class WinstonLLM(OpenAILLMService):
     answer after its tool results (2026-10-11). Once per user message it says one of
     HOME_LINES first (or the named entity's own say_first), pushed straight to the TTS: queued at the
     pipeline's start it would wait behind the thinking it is meant to cover. For an entity with
-    quiet_after, once one of the turn's actions has worked there is no reply at all and `ended` is set,
+    quiet_after named alone, once one of the turn's actions has worked there is no reply at all and `ended` is set,
     so the box does not listen on (his closing words about the song spoiled the scene it set). A
     shortcut script said on its own is called without the model: said a second time, the model answered
     "Done, sir. The mood is set." from the first time's call in the conversation and ran nothing. After
@@ -438,7 +439,9 @@ class WinstonLLM(OpenAILLMService):
         # thinking there cost 0.5 s a home turn and changed no outcome in the trials of 2026-10-11.
         self._think = bool(said and self._home and self._home.search(key(said)) and not rounds)
         own = next((o for o in self._own if said and o.pattern.search(key(said))), None)
-        if own and own.quiet and acted(messages):
+        # Quiet only when its name is all that was said: a request that named a quiet scene and asked for music
+        # too ran the scene and ended there, 5 times in 5 (2026-10-16), the music never asked for.
+        if own and own.quiet and acted(messages) and own.names & name_forms(only_name(said, self._assistant)):
             self.ended, self._think = True, False
             return _nothing()
         if said and not acted(messages) and (short := next(
@@ -547,6 +550,10 @@ class Brain:
             t0 = time.perf_counter()
             await self._mcp.start()
             self.tools = await self._mcp.register_tools(self.llm)
+            from winston.providers.home_assistant import unusable
+            if drop := unusable([t.name for t in self.tools.standard_tools], snap):
+                self.tools.standard_tools[:] = [t for t in self.tools.standard_tools if t.name not in drop]
+                logger.info(f"Home Assistant tools left out, as it has no satellite to act through: {sorted(drop)}")
             if checked := self.verifier.wrap(self.llm, [t.name for t in self.tools.standard_tools]):
                 logger.info(f"state check after {checked}, up to {self.verifier.wait_secs:g} s")
             self._scope_by_name()

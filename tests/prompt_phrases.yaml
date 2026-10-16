@@ -1,0 +1,53 @@
+# Requests whose answer depends on the system prompt's own rules, for `winston check turns --phrases
+# tests/prompt_phrases.yaml --runs 5`: a rule that contradicts another or names a tool that is not there shows
+# here as a wrong call. Generic on purpose; your own phrasings, which are personal, go in data/.
+# expect: every entry is called ("a|b" for either); forbid: none is (see music_phrases.yaml).
+channel: satellite
+room: main room
+cases:
+  # the time is in each message's stamp: no tool for it
+  - say: What time is it?
+    forbid: [GetDateTime]
+  - say: Is it late?
+    at: "23:40"
+    forbid: [GetDateTime]
+  # a room's lights: its area, or its group by name
+  - say: Turn off the lights.
+    expect: ["HassTurnOff|HassLightSet"]
+  - say: Turn off the lights in the living room.
+    expect: ["HassTurnOff|HassLightSet"]
+  - say: Make it a bit warmer in here, the lights I mean.
+    expect: [HassLightSet]
+  # saving a song works (it once said it could not)
+  - before: [Play Get Lucky by Daft Punk.]
+    say: Save this song.
+    expect: [spotify_feedback]
+  - before: [Play Get Lucky by Daft Punk.]
+    say: Add this to my liked songs.
+    expect: [spotify_feedback]
+  # play means music: no scene, no lights
+  - say: Play something romantic.
+    at: "13:00"
+    expect: [spotify_play]
+    forbid: ["script__", HassLightSet, HassTurnOn]
+  - say: Play something romantic.
+    at: "21:30"
+    expect: [spotify_play]
+    forbid: ["script__", HassLightSet, HassTurnOn]
+  # a timer is a reminder here; the home's own timers belong to its satellites
+  - say: Set a timer for ten minutes.
+    expect: ["reminders_add|later_add"]
+  - before: [Set a timer for ten minutes.]
+    say: Cancel the timer.
+    expect: ["reminders_cancel|reminders_upcoming|later_cancel|later_waiting"]
+    forbid: [HassCancelAllTimers]
+  - say: Announce that dinner is ready.
+    forbid: [HassBroadcast]
+  # tools whose descriptions changed wording
+  - say: Remind me to call my mum at six.
+    expect: [reminders_add]
+  - say: Remember that I take my coffee black.
+    expect: [remember]
+  - say: Put on something chill.
+    expect: ["spotify_play(mood)|spotify_play(artists)|spotify_play(genre)"]
+    forbid: ["spotify_play(what)"]

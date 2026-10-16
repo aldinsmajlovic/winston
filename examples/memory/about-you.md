@@ -1,4 +1,4 @@
 # About you
 
-The user himself: his likes, dislikes, habits and ways of doing things.
+The user: their likes, dislikes, habits and ways of doing things.
 

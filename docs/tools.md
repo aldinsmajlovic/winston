@@ -103,6 +103,12 @@ from the page or an editor: the remember tool never can, which is why rules for 
 facts about you in memory. The previous version is kept as `persona.md.bak`. His name is not taken
 from this file: the prompt opens with `assistant.name` (see [Identity](identity.md#his-name)).
 
+A rule about one tool belongs in that tool's description, which comes and goes with the tool, not in the
+persona. On 2026-10-16 the persona still told him to call `send_message` in a home without Discord, and
+asked to tell a friend a fun fact he said he had told them 3 times in 5, after a Home Assistant broadcast
+that reached no one. `tests/prompt_phrases.yaml` (`winston check turns --phrases`) has the requests whose answer
+depends on the prompt's own rules, so a rule that contradicts another shows as a wrong call.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/memory-dark.png">
   <img src="images/memory-light.png" alt="The Memory page with four topics, a plan with its Until date, and one expired fact folded at the bottom" width="720">

@@ -90,17 +90,17 @@ class SpeechWatch(BaseObserver):
 
 FOLLOW_UP = FunctionSchema(
     name="follow_up",
-    description="Answer a nudge he got when you spoke up (its note gives the nudge id). action: \"later\" puts it "
-                "off (\"remind me after work\", \"snooze ten minutes\"): pass when in his words with the day he "
-                "said (\"tomorrow after work\", \"in ten minutes\", \"Monday\", \"when I'm home\"), and reason: "
-                "why, in his words. Only when memory says when that is (he finishes work at 17:00) put the clock "
+    description="Answer a nudge the user got when you spoke up (its note gives the nudge id). action: \"later\" puts it "
+                "off (\"remind me after work\", \"snooze ten minutes\"): pass when in the user's words with the day "
+                "they said (\"tomorrow after work\", \"in ten minutes\", \"Monday\", \"when I'm home\"), and reason: "
+                "why, in their words. Only when memory says when that is (they finish work at 17:00) put the clock "
                 "time instead (\"tomorrow 17:00\"); never guess one. \"dismiss\": \"I know\", \"done\", "
                 "\"thanks\". \"mute\": stop that kind of nudge, until when or for good. \"why\": which extension "
-                "and why. Or an action the note names. Tell him the time it answers with.",
+                "and why. Or an action the note names. Tell the user the time it answers with.",
     properties={"nudge": {"type": "string", "description": "The nudge id from its note."},
                 "action": {"type": "string", "description": "later, dismiss, mute, why, or an action the note names."},
-                "when": {"type": "string", "description": "For later and mute: the time as he said it."},
-                "reason": {"type": "string", "description": "For later: why, in his words (\"training tomorrow\")."}},
+                "when": {"type": "string", "description": "For later and mute: the time as the user said it."},
+                "reason": {"type": "string", "description": "For later: why, in the user's words (\"training tomorrow\")."}},
     required=["nudge", "action"])
 
 

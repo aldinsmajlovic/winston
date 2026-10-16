@@ -188,7 +188,7 @@ expect("forget without an exact match lists the facts", isinstance(r, dict) and 
 expect("forget in an unknown topic is refused", "error" in memory.forget_said(cfg, "passwords", "x"))
 
 # Topics: the description line after the title, round trip, into the tool schema.
-expect("example descriptions are read", memory.description(cfg, "about-you").startswith("The user himself"))
+expect("example descriptions are read", memory.description(cfg, "about-you").startswith("The user: their likes"))
 expect("a new topic gets a description line", memory.description(cfg, "home-life") == "Facts about home life." and
        (scratch / "memory" / "home-life.md").read_text().startswith("# Home life\n\nFacts about home life.\n"))
 stem = memory.rename_topic(cfg, "home-life", "Garden", "Plants, the balcony and what grows there.")
@@ -208,7 +208,7 @@ schemas = {s.name: s for s, _ in tools}
 topic = schemas["remember"].properties["topic"]
 expect("remember and forget are offered", set(schemas) == {"remember", "forget"})
 expect("the topic enum is read now", "garden" in topic["enum"] and "quoted" in topic["enum"], topic["enum"])
-expect("the topic descriptions are in the schema", "\n- about-you: The user himself" in topic["description"] and
+expect("the topic descriptions are in the schema", "\n- about-you: The user: their likes" in topic["description"] and
        "\n- garden: Plants and the balcony.\n" in topic["description"], topic["description"])
 expect("remember no longer names topics", "projects" not in schemas["remember"].description and
        "people in their life" not in schemas["remember"].description)
