@@ -466,8 +466,14 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
 
         coin_before = host.procs["coin"].started_at
         coin_file = DATA / "extensions" / "coin.py"
+        from winston.extension_host.sources import state_dir
+        going = state_dir("coin") / "ongoing.txt"
+        going.write_text("playing something")                       # ctx.ongoing: music plays
         coin_file.write_text(coin_file.read_text() + '\n\n@ext.tool(tier="read", outside=False)\n'
                              'async def again(ctx) -> str:\n    """Flip twice."""\n    return "twice"\n')
+        await asyncio.sleep(5)
+        expect("a saved change waits while something is going on", host.procs["coin"].started_at == coin_before)
+        going.unlink()
 
         async def reloaded():
             new_process = host.procs["coin"].started_at != coin_before and host.procs["coin"].state == "running"

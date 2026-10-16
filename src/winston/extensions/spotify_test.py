@@ -25,6 +25,7 @@ class Receiver:
         self.refusing = 0                       # Spotify's search answers 429 with this Retry-After
         self.answers: dict[str, dict] = {}      # Spotify's answer for one query, else `found`
         self.lb_slow = False                    # ListenBrainz does not answer
+        self.playlists: list[dict] | None = None    # the receiver's /library/playlists (go-librespot 0.10.3 on)
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -88,6 +89,10 @@ class Receiver:
                                              "track": {"name": "Get Lucky", "artist_names": ["Daft Punk"],
                                                        "album_name": "Random Access Memories"}
                                              if self.playing else None})
+        if path == "/library/playlists" and self.playlists is not None:
+            return httpx.Response(200, json={"items": self.playlists, "total": len(self.playlists)})
+        if path.startswith("/library/playlists/") and request.method == "POST":
+            return httpx.Response(200)
         if path.startswith("/player/"):
             return httpx.Response(200)
         return httpx.Response(404)
@@ -567,4 +572,45 @@ async def test_a_slow_listenbrainz_plays_radio_and_what_was_found_or_unknown_is_
 def test_and_is_ampersand():
     module = Harness(HERE).ext.tools["play"].fn.__globals__
     assert module["_key"]("Demo & Cease") == module["_key"]("Demo and Cease"), module["_key"]("Demo & Cease")
+
+
+def playlist(name: str, uri: str, length: int = 10, cover: str = "", mine: bool = False) -> dict:
+    return {"name": name, "uri": f"spotify:playlist:{uri}", "length": length, "image_url": cover, "can_edit": mine,
+            "owner_username": "someone" if mine else "spotify", "description": "", "folder": [], "collaborative": False}
+
+
+async def test_his_playlists_come_from_the_receiver_spotifys_own_by_what_they_are():
+    rx = Receiver()
+    rx.playlists = [playlist("Discover Weekly", "dw", 30, "https://pickasso.spotifycdn.com/x/dw/cover/en"),
+                    playlist("barbecue farmers market friday morning", "day", 50,
+                             "https://daylist.spotifycdn.com/playlist-covers-mix/en/morning_default.jpg"),
+                    playlist("DJ", "dj", 0), playlist("Winston", "win", 0, mine=True)]
+    h = harness(rx, library=True)
+    await h.run("library")
+    assert await h.tool("play", what="my daylist") == "Playing your playlist barbecue farmers market friday morning."
+    assert await h.tool("play", what="my Discover Weekly") == "Playing your playlist Discover Weekly."
+    assert await h.tool("play", what="my liked songs") == "Playing your playlist Liked Songs."
+    assert played(rx) == ["spotify:playlist:day", "spotify:playlist:dw", "spotify:collection:tracks"], played(rx)
+    names = (await h.tool("my_music"))["playlist"]
+    assert "DJ" not in names and "Running 2026" not in names, names     # empty ones out; the receiver's list wins
+    await h.close()
+
+
+async def test_a_mix_is_one_list_in_his_playlist_and_old_mixes_are_trimmed_after():
+    rx = Receiver()
+    rx.playlists = [playlist("Winston", "win", 0, mine=True)]
+    h = harness(rx, library=True, mix_playlist="Winston")
+    await h.run("library")
+    h.ext.tools["play"].fn.__globals__["MIX_KEEP"] = 2
+    await h.tool("play", artists=["Daft Punk"])
+    adds = [b for m, p, b in rx.calls if p == "/library/playlists/add_tracks"]
+    assert adds == [{"playlist_uri": "spotify:playlist:win", "uris": ["spotify:track:Get Lucky", "spotify:track:One More Time"]}], adds
+    plays = [b for m, p, b in rx.calls if p == "/player/play"]
+    assert plays[-1] == {"uri": "spotify:playlist:win", "skip_to_uri": "spotify:track:Get Lucky"}, plays
+    assert not any(p == "/player/add_to_queue" for m, p, b in rx.calls), rx.calls     # nothing left in the queue
+    await h.tool("play", artists=["Radiohead"])
+    await asyncio.sleep(0.05)                                       # trimmed after the music starts
+    removed = [b["uri"] for m, p, b in rx.calls if p == "/library/playlists/remove_track"]
+    assert removed == ["spotify:track:Get Lucky", "spotify:track:One More Time"], removed
+    await h.close()
 

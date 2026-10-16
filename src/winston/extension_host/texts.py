@@ -37,6 +37,14 @@ def clear_ongoing(ext_id: str) -> None:
     (state_dir(ext_id) / ONGOING).unlink(missing_ok=True)
 
 
+def busy(ext_id: str) -> bool:
+    """Whether the extension says something is going on now (its music plays)."""
+    try:
+        return bool((state_dir(ext_id) / ONGOING).read_text().strip())
+    except OSError:
+        return False
+
+
 def ongoing(cfg: WinstonConfig) -> list[tuple[str, str]]:
     """(extension id, what is going on now) for each extension switched on that says so, read each message.
     No brackets or line breaks: it goes inside the message's stamp."""

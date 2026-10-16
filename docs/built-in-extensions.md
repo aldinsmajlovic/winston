@@ -170,7 +170,7 @@ them, exposed to the brain or not.
 ## Spotify
 
 Spotify on the speakers: the box in the room you are in, and whatever is plugged into its jack. It runs
-[go-librespot](https://github.com/devgianlu/go-librespot) 0.10.2, an open Spotify Connect receiver
+[go-librespot](https://github.com/devgianlu/go-librespot) 0.10.4, an open Spotify Connect receiver
 (downloaded once from GitHub and checked against the release's checksum), so a speaker named Winston
 shows up in the Spotify app. By voice: "play Daft Punk", "play my running playlist", "play Get Lucky
 next", "something chill", "some jazz", "pause", "next song", "louder", "who is this?". It needs Spotify
@@ -182,9 +182,11 @@ says so in its stamp ("spotify: playing Oh Dove by Men I Trust"), so "who is thi
 the song, and a request to play is music only, never a light scene.
 
 1. Switch it on. The card shows a code: open spotify.com/pair and enter it, once.
-2. Under **Your library from**, pick Home Assistant's Spotify player. Your playlists, saved albums, top
-   and followed artists, and liked and top songs are read from it hourly, and he plays them by name
-   without a search.
+2. Under **Your library from**, pick Home Assistant's Spotify player. Your saved albums, top and
+   followed artists, and liked and top songs are read from it hourly, and he plays them by name without
+   a search. Your playlists come from the receiver itself, Spotify's own among them: Discover Weekly,
+   your daylist (also by that word, whatever Spotify named it today) and a Blend (by that word too), plus
+   Liked Songs; an empty one that is not yours (the DJ's) is left out.
 3. For everything else, make an app at developer.spotify.com (Web API; Spotify wants a redirect URI,
    `http://127.0.0.1:8700/callback` will do, it is never used) and put its client ID and secret on the
    card, or in `data/.env` as `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`. Without them he plays
@@ -209,6 +211,12 @@ and one song comes once. Songs already found on Spotify are kept in `songs.json`
 folder, so a song that comes back in a later mix costs no search (Spotify gives the app a small daily
 quota). When ListenBrainz does not answer within 10 s, or Spotify is refusing searches, a mood plays
 Spotify's radio from one of your artists instead, which needs no search.
+
+**A mix is one list** when **Mixes go to** (Advanced) names a playlist of yours: make an empty one in
+Spotify once (Winston, say). Each mix is added to its end and played from its first new song, so
+what you ask for next replaces it, previous goes back within it, and the oldest songs beyond the last 60
+are removed while the music plays. Without it a mix goes into Spotify's queue, which go-librespot cannot
+clear: its songs follow whatever you ask for next.
 
 **A mood plays as** (Advanced on the card): `listenbrainz`, the list above; `spotify_radio`, Spotify's
 own radio from one of your artists that fit, shaped by your listening, with no searches at all; or

@@ -182,12 +182,23 @@ class Host:
         return changed
 
     async def _watch_files(self, every: float = 2.0) -> None:
-        """A personal extension reloads when its file is saved (or a new one appears)."""
+        """An extension reloads when its file is saved (or a new one appears), except one that says something is
+        going on (ctx.ongoing): that waits until it is over, so a saved change does not cut the music. On
+        2026-10-16 every save of spotify.py restarted the receiver; music playing then would have stopped."""
+        waiting: set[str] = set()
         while True:
             await asyncio.sleep(every)
             try:
                 found = discover(self.cfg)
                 now = {i: s.stamp for i, s in found.items() if "~" not in i}
+                busy = {i for i in now if i in self.sources and now[i] != self.sources[i].stamp and texts.busy(i)}
+                if busy:
+                    if busy != waiting:
+                        logger.info(f"extensions changed on disk: {', '.join(sorted(busy))} reloads once nothing is "
+                                    f"going on there")
+                    waiting = busy
+                    continue
+                waiting = set()
                 if now != {i: s.stamp for i, s in self.sources.items()}:
                     async with self._lock:
                         changed = await self.reload()

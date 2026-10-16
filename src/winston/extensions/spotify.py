@@ -50,9 +50,9 @@ from winston_sdk import Entity, Extension, Field, Secret, Settings
 
 ext = Extension()
 
-VERSION = "0.10.2"
+VERSION = "0.10.4"
 ARCHIVE = f"https://github.com/devgianlu/go-librespot/releases/download/v{VERSION}/go-librespot_linux_x86_64.tar.gz"
-SHA256 = "9d2b8b2c85606f5c8e75f9f48910d711cab7406f3582091126b3f3063ee0282e"   # GitHub's digest, 2026-09-30
+SHA256 = "fedd2efd64188800ea5cf8b49ecacfb88bb7379f3d56146c3241f5a3e3b92a3b"   # GitHub's digest, 2026-10-16
 RATE, CHANNELS = 44100, 2
 BPS = RATE * CHANNELS * 2           # s16le
 LEAD = 1.5                          # seconds the relay reads ahead of playback: the box's buffer
@@ -78,6 +78,11 @@ class SpotifySettings(Settings):
                              description="What you call your playlists, albums or artists, one per line: the "
                                          "name, =, then your words for it (🥁 = drum and bass, drums). An emoji "
                                          "is already known by its own name (\"drum emoji\").")
+    mix_playlist: str = Field("", level="advanced", title="Mixes go to",
+                              description="A playlist of yours, by name, that mixes are added to and played from (make "
+                                          "an empty one in Spotify, Winston, say). A mix is then one list: what you ask "
+                                          "for next replaces it, and previous works. Empty: Spotify's queue, where a "
+                                          "mix's songs follow whatever you ask for next.")
     mood_mixes: Literal["listenbrainz", "spotify_radio", "both_in_turn"] = Field(
         "listenbrainz", level="advanced", title="A mood plays as",
         description="listenbrainz: a list from two of your artists that fit and artists like them. spotify_radio: "
@@ -495,14 +500,20 @@ LIBRARY = {"playlist": ["current_user_playlists"], "album": ["current_user_saved
            "track": ["current_user_top_tracks", "current_user_saved_tracks"]}
 
 
+# Spotify's own playlists by what they are, from their covers: his daylist is renamed every few hours.
+_KNOWN = {"daylist.spotifycdn.com": "daylist", "blend-playlist-covers.spotifycdn.com": "blend"}
+LIKED = {"type": "playlist", "name": "Liked Songs", "uri": "spotify:collection:tracks"}
+
+
 @ext.every("1h")
 async def library(ctx):
-    """His Spotify library by name, from Home Assistant's Spotify player, for playing without a search."""
-    player = ctx.settings.library
-    if not player:
-        return
+    """His Spotify library by name, for playing without a search: his playlists from the receiver (Spotify's own
+    among them: Discover Weekly, his daylist by that word, a Blend; Home Assistant's list had none of them) and
+    Liked Songs; his artists, albums and songs from Home Assistant's Spotify player. An empty playlist that is not
+    his (the DJ's) is left out; his own may be empty (the one mixes go to)."""
     found: dict[str, list[dict]] = {}
-    for kind, ids in LIBRARY.items():
+    player = ctx.settings.library
+    for kind, ids in LIBRARY.items() if player else ():
         for cid in ids:
             answer = await ctx.ha.query("media_player", "browse_media", target={"entity_id": player},
                                         data={"media_content_type": f"spotify://{cid}", "media_content_id": cid})
@@ -511,6 +522,14 @@ async def library(ctx):
                 uri = child.get("media_content_id") or ""
                 if uri.startswith("spotify:") and child.get("title"):
                     found.setdefault(kind, []).append({"type": kind, "name": child["title"], "uri": uri})
+    try:
+        listed = (await call(ctx, "GET", "/library/playlists?limit=500") or {}).get("items") or []
+    except NotReady:
+        listed = []
+    if listed:
+        found["playlist"] = [{"type": "playlist", "name": i["name"], "uri": i["uri"], "editable": bool(i.get("can_edit")),
+                              "aka": [w for host, w in _KNOWN.items() if host in (i.get("image_url") or "")]}
+                             for i in listed if i.get("uri") and (i.get("length") or i.get("can_edit"))] + [LIKED]
     ctx.store["library"] = found
 
 
@@ -519,11 +538,11 @@ _NOT_NAME = {"my", "the", "playlist", "album", "song", "songs", "emoji"}
 
 
 def _names(ctx, item: dict) -> list[str]:
-    """What he may call item: its name, and his own words for it (the `names` setting)."""
-    out = [_key(item["name"])]
+    """What he may call item: its name, what it is (his daylist), and his own words for it (the `names` setting)."""
+    out = [_key(item["name"])] + [_key(w) for w in item.get("aka") or []]
     for line in ctx.settings.names or []:
         name, _, words = line.partition("=")
-        if words and _key(name) == out[0]:
+        if words and _key(name) == _key(item["name"]):
             out += [_key(w) for w in words.split(",") if _key(w)]
     return out
 
@@ -900,6 +919,33 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
     return said
 
 
+def mix_list(ctx) -> str | None:
+    """The playlist of his that mixes go to (`mix_playlist`), when it is in his library and his to edit. A mix put
+    in Spotify's queue stays there: go-librespot cannot clear it, so its songs followed whatever was asked for
+    next (and "Get Lucky next" waited behind 14 of them). Played as a playlist, a mix is one context: the next
+    thing asked for replaces it."""
+    want = _key(ctx.settings.mix_playlist or "")
+    if not want:
+        return None
+    lists = (ctx.store.get("library") or {}).get("playlist", [])
+    return next((i["uri"] for i in lists if i.get("editable") and _key(i["name"]) == want), None)
+
+
+MIX_KEEP = 60       # songs kept in the mix playlist: the newest mixes, so "previous" goes back into the last one
+
+
+async def trim(ctx, target: str, added: list[str]) -> None:
+    """After a mix is added and playing: its record grows, and the oldest songs beyond MIX_KEEP are removed, one
+    call each, while the music plays (removing first would hold up the music by a call per song)."""
+    kept = (ctx.store.get("mix_list") or {}).get(target, []) + added
+    old, ctx.store.setdefault("mix_list", {})[target] = kept[:-MIX_KEEP], kept[-MIX_KEEP:]
+    for uri in old:
+        try:
+            await call(ctx, "POST", "/library/playlists/remove_track", playlist_uri=target, uri=uri)
+        except NotReady as e:
+            ctx.log.warning(f"the mix playlist kept an old song: {e}"[:200])
+
+
 async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
                   blind: bool) -> tuple[str, list[str], str]:
     """ListenBrainz's list from two of `order` and artists like them (or the genre's), each song found on Spotify;
@@ -934,9 +980,14 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
         raise ValueError(f"no mix from {', '.join(order + [genre] if genre else order)}: none of LB Radio's "
                          "songs were found on Spotify")
     await start(ctx)
-    await call(ctx, "POST", "/player/play", uri=songs[0]["uri"])
-    for s in songs[1:]:
-        await call(ctx, "POST", "/player/add_to_queue", uri=s["uri"])
+    if (target := mix_list(ctx)) is not None:
+        await call(ctx, "POST", "/library/playlists/add_tracks", playlist_uri=target, uris=[s["uri"] for s in songs][:50])
+        await call(ctx, "POST", "/player/play", uri=target, skip_to_uri=songs[0]["uri"])
+        asyncio.create_task(trim(ctx, target, [s["uri"] for s in songs][:50]))
+    else:
+        await call(ctx, "POST", "/player/play", uri=songs[0]["uri"])
+        for s in songs[1:]:
+            await call(ctx, "POST", "/player/add_to_queue", uri=s["uri"])
     source = [f"{' and '.join(seeds)} and artists like them"] if seeds else []
     source += [genre] if genre else []
     if blind:
