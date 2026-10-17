@@ -430,6 +430,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/speakers/volume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A box's own volume, as its dial or a command left it (the box reports each change) */
+        post: operations["speaker_volume_api_speakers_volume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/speakers/stopped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** He stopped what an extension plays on the speakers ("stop" to a box): its on_speakers_stop runs */
+        post: operations["speakers_stopped_api_speakers_stopped_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rooms": {
         parameters: {
             query?: never;
@@ -1235,9 +1269,12 @@ export interface components {
              *       "http_port": 8702,
              *       "end_silence_secs": 0.8,
              *       "unfinished_silence_secs": 2.5,
+             *       "chat_silence_secs": 1.5,
              *       "follow_up_secs": 6,
              *       "barge_in_secs": 0.3,
              *       "barge_in_volume": 0.6,
+             *       "barge_in_gain_db": 30,
+             *       "barge_in_grace_secs": 3,
              *       "session_idle_mins": 10
              *     }
              */
@@ -2855,6 +2892,12 @@ export interface components {
              */
             unfinished_silence_secs?: number;
             /**
+             * Pause in a conversation (s)
+             * @description Silence that ends a finished-sounding sentence when you answer him after a reply that did nothing in the house, so you can stop to think between sentences.
+             * @default 1.5
+             */
+            chat_silence_secs?: number;
+            /**
              * Listen after a reply (s)
              * @description After every reply the box listens this long for more, without the wake word (at least 8 s after a question). 0: only after a question.
              * @default 6
@@ -2872,6 +2915,18 @@ export interface components {
              * @default 0.6
              */
             barge_in_volume?: number;
+            /**
+             * Gain on the quiet microphone (dB)
+             * @description A box with a second microphone channel (the Voice PE's carries little of his voice) is listened to there for talking over him, this much louder: you read -55 to -65 dBFS on it.
+             * @default 30
+             */
+            barge_in_gain_db?: number;
+            /**
+             * No interrupting at first (s)
+             * @description The start of a reply that talking over does not stop: the box's echo cancelling lets his voice through while it settles.
+             * @default 3
+             */
+            barge_in_grace_secs?: number;
             /**
              * Conversation resets after (min)
              * @description Idle minutes before a room's conversation starts fresh: its box and the browser sessions set to that room share one.
@@ -3046,6 +3101,32 @@ export interface components {
             day_parts?: {
                 [key: string]: string;
             };
+        };
+        /** SpeakerVolume */
+        SpeakerVolume: {
+            /**
+             * Room
+             * @description The box's room
+             */
+            room?: string | null;
+            /**
+             * Volume
+             * @description Its media player's volume, as its dial sets it
+             */
+            volume: number;
+        };
+        /** SpeakersStopped */
+        SpeakersStopped: {
+            /**
+             * Ext
+             * @description The extension whose stream was playing
+             */
+            ext: string;
+            /**
+             * Room
+             * @description Where he stopped it
+             */
+            room?: string | null;
         };
         /** StartOver */
         StartOver: {
@@ -3628,8 +3709,11 @@ export interface components {
              *         "token_env": "DISCORD_BOT_TOKEN"
              *       },
              *       "satellite": {
+             *         "barge_in_gain_db": 30,
+             *         "barge_in_grace_secs": 3,
              *         "barge_in_secs": 0.3,
              *         "barge_in_volume": 0.6,
+             *         "chat_silence_secs": 1.5,
              *         "devices": {},
              *         "enabled": false,
              *         "end_silence_secs": 0.8,
@@ -4448,6 +4532,72 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["StartOver"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    speaker_volume_api_speakers_volume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpeakerVolume"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    speakers_stopped_api_speakers_stopped_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpeakersStopped"];
             };
         };
         responses: {

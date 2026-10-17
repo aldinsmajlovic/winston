@@ -171,6 +171,13 @@ class VoiceAssistant final : public Component {
 
   void request_start(bool continuous, bool silence_detection);
   void request_stop();
+  // Winston: the wake word over a reply (voice-pe-winston.yaml). After a stop that ended a reply, listen_on keeps
+  // the microphone going into a new run once the reply has stopped playing, instead of going idle.
+  bool stopped_reply() const { return this->stopped_reply_; }
+  void listen_on() {
+    this->stopped_reply_ = false;
+    this->continue_conversation_ = true;
+  }
 
   void on_event(const api::VoiceAssistantEventResponse &msg);
   void on_audio(const api::VoiceAssistantAudio &msg);
@@ -333,6 +340,7 @@ class VoiceAssistant final : public Component {
   bool silence_detection_;
 
   bool continue_conversation_{false};
+  bool stopped_reply_{false};  // Winston: the last stop ended a reply (listen_on)
 
   State state_{State::IDLE};
   State desired_state_{State::IDLE};

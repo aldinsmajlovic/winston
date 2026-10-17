@@ -27,6 +27,20 @@ micro_wake_word:
   models:
     - model: ../../assets/wake/okay_winston.json
       id: okay_winston
+  # The wake word over a reply. ESPHome runs this after the stock handler, which has just stopped the reply (the
+  # voice assistant was running), so the question after the name used to be lost. Now, unless it was "Stop", the
+  # box listens on once the reply has stopped and tells Winston, who hands what was said after the name to that
+  # run (satellite.py, _woken_over_reply). The microphone kept streaming to him through the reply, so no words go
+  # missing in between.
+  on_wake_word_detected:
+    - if:
+        condition:
+          lambda: 'return wake_word != "Stop" && id(va).stopped_reply();'
+        then:
+          - lambda: id(va).listen_on();
+          - event.trigger:
+              id: wake_word_over_reply
+              event_type: wake_word
 
 # No Wi-Fi modem sleep while connected: asleep, the box woke for packets only every ~307 ms (DTIM 3), so
 # it heard tts_start_streaming up to ~300 ms late (mean ~140 ms) and every reply started that much later.
@@ -79,6 +93,11 @@ binary_sensor:
       - script.execute: control_leds
 
 event:
+  - platform: template
+    id: wake_word_over_reply
+    name: Wake word over reply
+    event_types:
+      - wake_word
   - id: !extend button_press_event
     on_event:
       - if:

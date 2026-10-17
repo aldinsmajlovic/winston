@@ -435,6 +435,15 @@ class SatelliteChannel(Model):
                                                "speaking across the room does not stop him, higher if his own "
                                                "voice does.",
                                    json_schema_extra=ui("advanced"))
+    barge_in_gain_db: float = Field(30.0, ge=0.0, le=60.0, title="Gain on the quiet microphone (dB)",
+                                    description="A box with a second microphone channel (the Voice PE's carries "
+                                                "little of his voice) is listened to there for talking over him, "
+                                                "this much louder: you read -55 to -65 dBFS on it.",
+                                    json_schema_extra=ui("advanced"))
+    barge_in_grace_secs: float = Field(3.0, ge=0.0, le=10.0, title="No interrupting at first (s)",
+                                       description="The start of a reply that talking over does not stop: the "
+                                                   "box's echo cancelling lets his voice through while it settles.",
+                                       json_schema_extra=ui("advanced"))
     session_idle_mins: int = Field(10, ge=1, title="Conversation resets after (min)",
                                    description="Idle minutes before a room's conversation starts fresh: its box "
                                                "and the browser sessions set to that room share one.",

@@ -129,9 +129,15 @@ winstond whenever it changes, the dial's turns too, and sets it when an extensio
   reach `barge_in_volume` (0.6, Pipecat's default): lower it if talking from across the room does not
   stop him, raise it if his own voice does. Each reply logs how much speech the box heard over it and
   how loud (`2.4 s heard over the reply, speech 0.00 s at most, volume 0.31 at most`), the numbers to
-  set them by. On the first real box (2026-10-13) his own voice stopped him a second into a reply and
-  once crashed the box, so it is off there (`barge_in_secs: 0`) until Winston listens on the quieter
-  microphone channel; details in [the plan](plan.md#m3-next-steps-added-2026-09-25-in-this-order).
+  set them by. On the first real box (2026-10-13) his own voice stopped him a second into a reply, so
+  it is off there (`barge_in_secs: 0`). Winston now listens on the quieter second channel instead,
+  `barge_in_gain_db` (30) louder and not in the first `barge_in_grace_secs` (3 s) of a reply, but at
+  higher volume his echo there is as loud as you are (2026-10-15), so it stays off; details in
+  [the plan](plan.md#m3-next-steps-added-2026-09-25-in-this-order).
+- **The wake word over a reply** (Winston's firmware) stops him, as on stock firmware, and what you
+  say after the name is the next request: "Okay Winston, what time is it?" while he talks. "Stop"
+  only stops him. A reply the box stops while it is still streaming in has its connection reset
+  (`Run.cut`), since the queued audio once crashed the box about 14 s later.
 - **The mute switch** on the side cuts the microphones altogether. Two red LEDs by the microphones
   mean it is on; a red ring slowly twinkling means Winston is not connected.
 
@@ -222,7 +228,9 @@ taken from ESPHome 2026.9.1 and changed only where it says `Winston:`. It keeps 
 (GPLv3 for the C++, MIT for the Python), in `components/LICENSE`, not the repo's Apache 2.0. The stock component stops the
 microphone when the request ends (STT_VAD_END) and streams nothing while it waits for the reply and
 plays it. The copy leaves the microphone on and keeps streaming its echo-cancelled audio to Winston in
-those two states, and stops it when the run goes idle. Winston listens to it while the reply plays
+those two states, and stops it when the run goes idle. It also adds `stopped_reply()` and
+`listen_on()`, which `on_wake_word_detected` in `voice-pe-winston.yaml` uses to listen on after the
+wake word has stopped a reply, and tells Winston with the `Wake word over reply` event. Winston listens to it while the reply plays
 with the browser path's voice detection (Silero, at Pipecat's thresholds, the volume floor set by
 `barge_in_volume`). On `barge_in_secs` of speech
 he tells the box to listen on after the reply, stops its playback (a media player stop, the same as

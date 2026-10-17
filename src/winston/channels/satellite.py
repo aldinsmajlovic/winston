@@ -125,7 +125,9 @@ class Run:
     """One request on one box, from the wake word to the end of the reply."""
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     mic: asyncio.Queue = field(default_factory=asyncio.Queue)          # 16 kHz int16 chunks, None at the end
+    mic2: asyncio.Queue | None = None   # the second channel's, chunk for chunk, while the reply is watched (_watch)
     out: asyncio.Queue = field(default_factory=asyncio.Queue)          # WAV body chunks, None at the end
+    conn: asyncio.Transport | None = None                              # the reply's stream to the box (cut)
     started: float = field(default_factory=time.perf_counter)
     first_audio: asyncio.Event = field(default_factory=asyncio.Event)
     tts_started: asyncio.Event = field(default_factory=asyncio.Event)  # the first sentence went to the voice
@@ -137,6 +139,18 @@ class Run:
     start: str = "wake"                                     # wake, follow_up, button or hold, for the turn record
     start_timeout: float = START_TIMEOUT_SECS               # no speech this long after the start: give up
     interrupted: bool = False                               # talked over while the reply played (Satellite._watch)
+
+    def cut(self):
+        """Drop the reply's stream to the box at once, with a reset: unsent audio and all. A box that stopped
+        playing reads no more, so audio still owed to it stays queued, and Linux keeps probing the full window
+        at growing intervals; about 14 s later a probe crashed the box, on 13 and 15 October (lwIP's tcpip
+        thread, select_check_waiters on a TCP receive: the stopped reader's socket). A plain close keeps
+        sending in the background; SO_LINGER 0 makes it a reset."""
+        t, self.conn = self.conn, None
+        if t is not None and not t.is_closing():
+            if (sock := t.get_extra_info("socket")) is not None:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            t.abort()
 
     def playing_for(self) -> float:
         """Seconds of the reply the box has yet to play, if it plays from its first audio in real time."""
@@ -279,8 +293,10 @@ class Satellite:
         self.button_only = False            # no wake word on the box: a press starts a request, no follow-ups
         self._wake_words: list[str] = []    # what a double press switches back on
         self._button: int | None = None     # key of the box's button event entity
+        self._woken: int | None = None      # and of its wake word over a reply (Winston's firmware)
         self._center: int | None = None     # key of the button itself (Winston's firmware), for hold to talk
         self._switching: asyncio.Task | None = None
+        self._interrupting: asyncio.Task | None = None
         self._listener: asyncio.Task | None = None          # announcements and nudges while connected
         self._media_key: int | None = None                  # the box's media player (not the one replies use)
         self._media: dict | None = None                     # what plays on it now: {"id", "ext", "title"}
@@ -337,9 +353,11 @@ class Satellite:
             self._media_key = next((e.key for e in ents if isinstance(e, MediaPlayerInfo)), None)
             self._button = next((e.key for e in ents if isinstance(e, EventInfo) and "double_press" in e.event_types),
                                 None)
+            self._woken = next((e.key for e in ents if isinstance(e, EventInfo)
+                                and e.object_id == "wake_word_over_reply"), None)
             self._center = next((e.key for e in ents if isinstance(e, BinarySensorInfo)
                                  and e.object_id == "center_button"), None)
-            if any(k is not None for k in (self._button, self._center, self._media_key)):
+            if any(k is not None for k in (self._button, self._center, self._woken, self._media_key)):
                 self.client.subscribe_states(self._on_state)
             if want := self.dev.wake_sensitivity:
                 sel = next((e for e in ents if isinstance(e, SelectInfo) and e.object_id == "wake_word_sensitivity"),
@@ -360,6 +378,8 @@ class Satellite:
         double = isinstance(state, Event) and state.key == self._button and state.event_type == "double_press"
         if double and (self._switching is None or self._switching.done()):
             self._switching = asyncio.create_task(self.switch_listening())
+        if isinstance(state, Event) and state.key == self._woken:
+            self._woken_over_reply()
         let_go = isinstance(state, BinarySensorState) and state.key == self._center and not state.state
         if let_go and self.run and self.run.hold:
             asyncio.get_running_loop().call_later(RELEASE_TAIL_SECS, self.run.mic.put_nowait, None)
@@ -556,12 +576,16 @@ class Satellite:
 
     async def _handle_audio(self, data: bytes, data2: bytes | None):
         if self.run:
+            if self.run.mic2 is not None and data2:
+                self.run.mic2.put_nowait(np.frombuffer(data2, dtype="<i2"))
             self.run.mic.put_nowait(np.frombuffer(data, dtype="<i2"))
 
     async def _handle_stop(self, abort: bool):
         logger.info(f"{self.room}: the box {'aborted' if abort else 'ended'} the request"
                     f"{'' if self.task and not self.task.done() else ' (no run)'}")
         if abort:
+            if self.run:
+                self.run.cut()              # the box stopped playing (its stop word, the wake word): Run.cut
             if self.task:
                 self.task.cancel()
             if self._watching:
@@ -771,7 +795,13 @@ class Satellite:
         after the request; the stock firmware stops it and nothing comes. Speech for barge_in_secs, by the
         browser path's rule (Silero at Pipecat's thresholds), stops him: the box is told to listen on and to
         stop playing, the reply and the brain behind it are cut, and what was said, from PREROLL_SECS before
-        it was certain, goes to the box's next run (_handle_start). A new start or an abort cancels it."""
+        it was certain, goes to the box's next run (_handle_start). A new start or an abort cancels it.
+
+        The rule listens on the box's second channel when it has one, barge_in_gain_db louder. On the Voice
+        PE the first carries his voice at -10 to -20 dBFS, where Silero reads 0.7 to 0.9 and stopped him; the
+        second has it at -55 to -90 dBFS, and you at -55 to -65 (docs/voice-pe.md). Speech that begins in the
+        first barge_in_grace_secs is not counted: the echo cancelling lets him through while it settles,
+        once at -45 dBFS for 3 s. What is carried to the next run is still the first channel's."""
         try:
             await self._watch_for_speech(run, conv)
         except Exception:                                                   # noqa: BLE001
@@ -780,26 +810,32 @@ class Satellite:
     async def _watch_for_speech(self, run: Run, conv: Conversation):
         while not run.mic.empty():              # said while he thought, not over his voice
             run.mic.get_nowait()
+        run.mic2 = asyncio.Queue()              # no await since the drain: both queues start at the same chunk
         # Built off the loop: loading the model takes 40 ms, and this starts with the first audio of the reply.
         sat = self.cfg.channels.satellite
+        gain = 10 ** (sat.barge_in_gain_db / 20)
         vad = await asyncio.to_thread(SileroVADAnalyzer, params=VADParams(start_secs=sat.barge_in_secs,
                                                                           min_volume=sat.barge_in_volume))
         vad.set_sample_rate(MIC_RATE)
         before = np.zeros(0, np.int16)
         heard = speech = longest = 0.0          # for tuning barge_in_secs: the longest speech over his voice
         loudest = 0.0                           # and barge_in_volume: Pipecat's smoothed volume, its last value
+        state = VADState.QUIET
         try:
             while True:
                 chunk = await run.mic.get()
                 if chunk is None:
                     return
                 before = np.concatenate([before, chunk])[-int(PREROLL_SECS * MIC_RATE):]
-                state = await vad.analyze_audio(chunk.tobytes())
+                quiet = None if run.mic2.empty() else run.mic2.get_nowait()
+                if quiet is not None:
+                    quiet = np.clip(quiet * gain, -32768, 32767).astype(np.int16)
+                was, state = state, await vad.analyze_audio((chunk if quiet is None else quiet).tobytes())
                 heard += len(chunk) / MIC_RATE
                 speech = speech + len(chunk) / MIC_RATE if state != VADState.QUIET else 0.0
                 longest = max(longest, speech)
                 loudest = max(loudest, vad._prev_volume)
-                if state == VADState.SPEAKING:
+                if state == VADState.SPEAKING and was != VADState.SPEAKING and heard > sat.barge_in_grace_secs:
                     break
         finally:
             await vad.cleanup()
@@ -810,13 +846,39 @@ class Satellite:
         run.interrupted, self._carry = True, [before]
         self._follow_secs, self._follow_until = START_TIMEOUT_SECS, time.monotonic() + FOLLOW_WAIT_SECS
         # In this order: listen on after the reply; the run's own end never sent, since it would reach the box
-        # in the next run; then the reply stopped, which ends it on the box and starts that run.
+        # in the next run; the reply's stream dropped (Run.cut); then the reply stopped, which ends it on the box
+        # and starts that run.
         self._event(Ev.VOICE_ASSISTANT_INTENT_END, {"conversation_id": self.room, "continue_conversation": "1"})
+        run.cut()
         if self.task and not self.task.done():
             self.task.cancel()
         if self._media_key is not None:
             self.client.media_player_command(self._media_key, command=MediaPlayerCommand.STOP, announcement=True)
         await conv._worker.queue_frame(InterruptionWorkerFrame(), FrameDirection.UPSTREAM)
+
+    def _woken_over_reply(self):
+        """The wake word over his reply. Winston's firmware stops the reply as the stock one does, then listens on
+        into a new run instead of going idle, and says so with this event (voice-pe-winston.yaml). What is said
+        after the name goes to that run (_handle_start), as when talked over (_watch). Here, not in a task: the
+        box's start of that run can come right behind the event."""
+        run, conv = self.run, self.conversation
+        if run is None:
+            return
+        if self._watching:
+            self._watching.cancel()
+        before = np.zeros(0, np.int16)
+        while not run.mic.empty():              # his reply's echo and the name; the last PREROLL_SECS kept
+            if (chunk := run.mic.get_nowait()) is not None:
+                before = np.concatenate([before, chunk])[-int(PREROLL_SECS * MIC_RATE):]
+        logger.info(f"{self.room}: wake word over the reply, {run.playing_for():.1f} s of it left unplayed")
+        run.interrupted, self._carry = True, [before]
+        self._follow_secs, self._follow_until = START_TIMEOUT_SECS, time.monotonic() + FOLLOW_WAIT_SECS
+        run.cut()
+        if self.task and not self.task.done():
+            self.task.cancel()
+        if conv is not None:
+            self._interrupting = asyncio.create_task(conv._worker.queue_frame(InterruptionWorkerFrame(),
+                                                                              FrameDirection.UPSTREAM))
 
     async def _serve(self, run: Run):
         url = f"{self.audio.base_url(self.dev.host)}/reply/{run.id}.flac"
@@ -1006,6 +1068,7 @@ class AudioServer:
         if run is None:
             raise web.HTTPNotFound()
         logger.info(f"reply {run.id} fetched by {request.remote} (wav)")
+        run.conn = request.transport
         resp = web.StreamResponse(headers={"Content-Type": "audio/wav", "Cache-Control": "no-store"})
         await resp.prepare(request)
         await resp.write(wav_header(OUT_RATE))
@@ -1035,6 +1098,7 @@ class AudioServer:
             finally:
                 stdin.close()
 
+        run.conn = request.transport
         return await self._flac(request, ["-f", "s16le", "-ar", str(OUT_RATE), "-ac", "1", "-i", "pipe:0"], feed)
 
     async def start(self):

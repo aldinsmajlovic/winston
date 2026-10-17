@@ -18,9 +18,10 @@ gets a reply without a follow-up); a hold to talk (no silence detection) with a 
 when the button is let go and is heard whole; a reconnect finds it still button only, and a second
 double press switches the wake word back on. Every turn is kept in a turn record in a temporary folder,
 with its audio, how it started (wake word, follow-up, button, hold) and how it ended.
-Barge-in, as with Winston's firmware (the mic streams on through the reply): "What time is it?" said
-over a long reply stops it within about half a second (a media STOP), the box is told to listen on and
-not that the reply is over, and the next run hears the question whole and answers it."""
+Barge-in, as with Winston's firmware (the mic streams on through the reply, its second channel 30 dB
+quieter): "What time is it?" said 4 s into a long reply stops it within about half a second (a media
+STOP), the box is told to listen on and not that the reply is over, and the next run hears the question
+whole and answers it."""
 import asyncio
 import json
 import sys
@@ -38,6 +39,11 @@ from aioesphomeapi.core import MESSAGE_TYPE_TO_PROTO
 
 sys.path.insert(0, str(Path(__file__).parent))
 from conversations import ACT_STUBS, stub  # noqa: E402
+
+
+def second_channel(piece: np.ndarray) -> bytes:
+    """The Voice PE's second microphone channel: the same voice, 30 dB quieter (barge_in_gain_db)."""
+    return (piece * 10 ** (-30 / 20)).astype(np.int16).tobytes()
 from m2_headless_roundtrip import synth_user_audio  # noqa: E402
 from winston.channels import satellite as sat  # noqa: E402
 from winston.config import load  # noqa: E402
@@ -207,7 +213,7 @@ class FakeVoicePE:
                 t_end = time.perf_counter()
                 if hold:
                     self.send(pb.BinarySensorStateResponse(key=CENTER_KEY, state=False))
-            self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=piece.tobytes()))
+            self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=second_channel(piece)))
             i += chunk
             await asyncio.sleep(chunk / 16000)
             if i > len(pcm) + 16000 * 25:
@@ -253,7 +259,7 @@ class FakeVoicePE:
                 if paused:
                     held.append(piece)
                 else:
-                    self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=piece.tobytes()))
+                    self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=second_channel(piece)))
                 await asyncio.sleep(chunk / 16000)
 
         async def play(url: str, first: asyncio.Event):
@@ -296,7 +302,7 @@ class FakeVoicePE:
                                                audio_settings=pb.VoiceAssistantAudioSettings()))
             await asyncio.wait_for(self.response.wait(), 10)
             for piece in held:
-                self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=piece.tobytes()))
+                self.send(pb.VoiceAssistantAudio(data=piece.tobytes(), data2=second_channel(piece)))
             paused = False
             heard = await self.wait_event(Ev.VOICE_ASSISTANT_STT_END, since2)
             if await self.wait_event(Ev.VOICE_ASSISTANT_INTENT_PROGRESS, since2):
@@ -314,6 +320,8 @@ async def main() -> int:
     room = f"test room {uuid.uuid4().hex[:6]}"          # its own conversation, not a leftover of the last run
     cfg.channels.satellite.devices = {room: SatelliteDevice(host="127.0.0.1", port=PORT, wake_word="hey_jarvis")}
     cfg.channels.satellite.http_port, cfg.channels.satellite.public_host = HTTP_PORT, "127.0.0.1"
+    for f in ("barge_in_secs", "barge_in_volume", "barge_in_gain_db", "barge_in_grace_secs"):   # even if off here
+        setattr(cfg.channels.satellite, f, type(cfg.channels.satellite).model_fields[f].default)
     turns_dir = Path(tempfile.mkdtemp(prefix="winston-turns-"))      # never the real data/turns
     cfg.logging.turns.enabled, cfg.logging.turns.dir = True, str(turns_dir)
     cfg.logging.latency = str(turns_dir / "latency.jsonl")             # never the real data/logs
@@ -410,13 +418,13 @@ async def main() -> int:
     print(f"  > Thanks, I know. (no wake word)\n    heard {r['heard']!r}\n    said  {r['said']!r}")
     ok &= bool(r["heard"]) and bool(r["said"])
 
-    # Barge-in: talked over 1.5 s into a long reply. Stopped within about half a second, the box told to listen
-    # on and never that the reply is over, and the question carried whole into the next run.
+    # Barge-in: talked over 4 s into a long reply (after barge_in_grace_secs). Stopped within about half a second,
+    # the box told to listen on and never that the reply is over, and the question carried whole into the next run.
     satellite._follow_until = 0.0
     r = await box.talk_over(synth_user_audio("Tell me a bedtime story about a lighthouse, in four sentences.", USER)[0],
-                            synth_user_audio("What time is it?", USER)[0], after=1.5)
+                            synth_user_audio("What time is it?", USER)[0], after=4.0)
     order = [e.name.removeprefix("VOICE_ASSISTANT_") for e, _ in r["first_run"]]
-    print(f"\n> (a long reply, talked over after 1.5 s: What time is it?)\n  stopped {r['stop_ms']} ms after the "
+    print(f"\n> (a long reply, talked over after 4 s: What time is it?)\n  stopped {r['stop_ms']} ms after the "
           f"voice began, listen on {r['listen_on']}\n  {' '.join(order)}\n  then heard {r.get('heard')!r}\n"
           f"  said  {r.get('said')!r}")
     ok &= r["stop_ms"] is not None and r["stop_ms"] < 700 and r["listen_on"]

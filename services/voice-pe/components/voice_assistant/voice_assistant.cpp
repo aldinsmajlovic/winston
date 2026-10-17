@@ -313,6 +313,7 @@ void VoiceAssistant::loop() {
   }
   switch (this->state_) {
     case State::IDLE: {
+      this->stopped_reply_ = false;  // Winston: a stop that ended in idle is no longer one listen_on can follow
       // Winston: the microphone stays on through the response (barge-in), so whatever path ends the run here,
       // stop it first.
       if (this->mic_source_->is_running() || (this->mic_source2_ && this->mic_source2_->is_running())) {
@@ -713,6 +714,7 @@ void VoiceAssistant::request_start(bool continuous, bool silence_detection) {
 }
 
 void VoiceAssistant::request_stop() {
+  this->stopped_reply_ = this->state_ == State::STREAMING_RESPONSE;  // Winston: see listen_on
   this->continuous_ = false;
   this->continue_conversation_ = false;
 
