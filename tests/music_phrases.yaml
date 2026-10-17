@@ -114,3 +114,23 @@ cases:
   - say: Play Currents by Tame Impala.
     expect: ["spotify_play(what)"]
     forbid: ["spotify_play(latest)"]
+  # controls: shuffle, repeat, seek, a song to a playlist, the queue (2026-10-17)
+  - {before: [Play Daft Punk.], say: Shuffle., expect: [spotify_shuffle], forbid: [spotify_play(what)]}
+  - {before: [Play my running playlist.], say: Shuffle this playlist., expect: [spotify_shuffle]}
+  - {say: Shuffle my liked songs., expect: [spotify_play(what), spotify_shuffle]}
+  - {before: [Play Daft Punk.], say: Put this song on repeat., expect: [spotify_repeat], forbid: [spotify_play]}
+  - {before: [Play Daft Punk.], say: Stop repeating., expect: [spotify_repeat]}
+  - {before: [Play Daft Punk.], say: Skip ahead thirty seconds., expect: [spotify_seek], forbid: [spotify_next_track]}
+  - {before: [Play Daft Punk.], say: Go back ten seconds., expect: [spotify_seek], forbid: [spotify_previous_track]}
+  - {before: [Play Daft Punk.], say: Play that again., expect: [spotify_seek|spotify_previous_track], forbid: [spotify_play]}
+  - {before: [Play Daft Punk.], say: Start this song from the beginning., expect: [spotify_seek|spotify_previous_track]}
+  - {before: [Play Daft Punk.], say: Add this song to my running playlist., expect: [spotify_feedback(playlist)], forbid: [spotify_play]}
+  - {before: [Play Daft Punk.], say: Put this in my drum emoji playlist., expect: [spotify_feedback(playlist)], forbid: [spotify_play]}
+  - {before: [Play Daft Punk.], say: Save this song., expect: [spotify_feedback], forbid: [spotify_feedback(playlist)]}
+  - {before: [Play Daft Punk.], say: 'What''s next?', expect: [spotify_now_playing]}
+  - {before: [Play Daft Punk.], say: Clear the queue., forbid: [spotify_play, spotify_next_track]}
+  - {before: [Play Daft Punk.], say: Skip., expect: [spotify_next_track], forbid: [spotify_seek]}
+  - {before: [Play Daft Punk.], say: Go back to the last song., expect: [spotify_previous_track], forbid: [spotify_seek]}
+  - {before: [Play Daft Punk.], say: Add Get Lucky to the queue., expect: [spotify_play(next)]}
+  - {before: [Play Daft Punk.], say: Stop playing., expect: [spotify_pause]}
+  - {before: [Play Daft Punk.], say: Keep playing., expect: [spotify_resume]}

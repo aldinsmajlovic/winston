@@ -185,6 +185,7 @@ def config(ctx) -> dict:
             "audio_output_pipe": str(fifo(ctx)), "audio_output_pipe_format": "s16le",
             "audio_output_pipe_wait_for_reader": True, "bitrate": s.bitrate, "zeroconf_enabled": False,
             "credentials": {"type": "device_auth"}, "volume_steps": 100, "initial_volume": 60,
+            "metadata": {"enabled": True},          # the next song in /status: "what's next?"
             "server": {"enabled": True, "address": "127.0.0.1", "port": s.api_port}}
 
 
@@ -898,9 +899,16 @@ def _radio_uri(uri: str) -> str | None:
     return f"spotify:station:{m.group(1)}:{m.group(2)}" if m else None
 
 
-async def start(ctx) -> None:
+async def start(ctx, mix: bool = False) -> None:
     """Before other music: back from muted, the first music of the day at first_volume (it was left at 96, so a
-    07:00 mix would have started near full), and a party's lights stop with its music."""
+    07:00 mix would have started near full), and a party's lights stop with its music. A song on repeat ends with
+    the next thing asked for, and a mix plays in its own order: shuffle left on in the receiver would bring the
+    mix playlist's older mixes in among it."""
+    st = await call(ctx, "GET", "/status") or {}
+    if st.get("repeat_track"):
+        await call(ctx, "POST", "/player/repeat_track", repeat_track=False)
+    if mix and st.get("shuffle_context"):
+        await call(ctx, "POST", "/player/shuffle_context", shuffle_context=False)
     vol = (await call(ctx, "GET", "/player/volume") or {}).get("value", 60)
     s = ctx.settings
     first = s.first_volume and time.time() - (ctx.store.get("last_music") or 0) > s.first_after_hours * 3600
@@ -935,7 +943,8 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
             pass artists.
         artists: For a mood: three to six of the user's artists that fit it, from spotify_my_music, as listed there.
         like: Artists the user named as the kind of thing they want: "something like Frank Ocean" is like=["Frank Ocean"].
-        next: Play it after the current song instead of now (a song).
+        next: Play it after the current song instead of now (a song): "add X to the queue". A song queued
+            cannot be taken out again here; "clear the queue" is not possible, say so.
         radio: After a name, keep going with music like it (Spotify's radio from it).
         fresh: Music new to the user ("something new", "something I don't know", "surprise me"): artists like
             theirs that they have not played. With it, pass artists (or a genre).
@@ -1189,7 +1198,7 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
             raise NotReady(why + " Radio from one of the user's artists still plays.")
         raise ValueError(f"no mix from {', '.join(order + [genre] if genre else order)}: none of LB Radio's "
                          "songs were found on Spotify")
-    await start(ctx)
+    await start(ctx, mix=True)
     if (target := mix_list(ctx)) is not None:
         await call(ctx, "POST", "/library/playlists/add_tracks", playlist_uri=target, uris=[s["uri"] for s in songs][:50])
         await call(ctx, "POST", "/player/play", uri=target, skip_to_uri=songs[0]["uri"])
@@ -1299,7 +1308,7 @@ async def resume(ctx) -> str:
 
 @ext.tool(tier="act")
 async def next_track(ctx) -> str:
-    """Skip to the next song."""
+    """Skip to the next song. Not for "clear the queue": a song queued cannot be taken out again here, say so."""
     if await loaded(ctx) is None:
         return "Nothing is playing to skip."
     await call(ctx, "POST", "/player/next")
@@ -1313,6 +1322,52 @@ async def previous_track(ctx) -> str:
         return "Nothing is playing."
     await call(ctx, "POST", "/player/prev")
     return "Previous song."
+
+
+@ext.tool(tier="act")
+async def shuffle(ctx, on: bool = True) -> str:
+    """Shuffle what is playing (a playlist, an album, a mix), or stop shuffling ("shuffle", "shuffle off").
+
+    Args:
+        on: false to play in order again.
+    """
+    if await loaded(ctx) is None:
+        return "Nothing is playing to shuffle; ask what to play (spotify_play), then shuffle it."
+    await call(ctx, "POST", "/player/shuffle_context", shuffle_context=on)
+    return "Shuffling." if on else "Playing in order."
+
+
+@ext.tool(tier="act")
+async def repeat(ctx, what: Literal["song", "all", "off"]) -> str:
+    """Repeat the song playing ("put this on repeat", "loop this song"), everything that is playing (the playlist
+    or album), or stop repeating.
+
+    Args:
+        what: song, all, or off.
+    """
+    if await loaded(ctx) is None:
+        return "Nothing is playing to repeat."
+    await call(ctx, "POST", "/player/repeat_track", repeat_track=what == "song")
+    await call(ctx, "POST", "/player/repeat_context", repeat_context=what == "all")
+    return {"song": "Repeating this song.", "all": "Repeating all of it.", "off": "Not repeating."}[what]
+
+
+@ext.tool(tier="act")
+async def seek(ctx, seconds: float, relative: bool = True) -> str:
+    """Move within the song playing: forward or back by seconds ("skip ahead 30 seconds", "back ten seconds"), or
+    to a point in it ("from the top", "play that again": 0, not relative; "go to two minutes": 120). Not for the
+    next or the previous song.
+
+    Args:
+        seconds: How far: positive ahead, negative back; or where in the song, when not relative.
+        relative: false for a point in the song.
+    """
+    if await loaded(ctx) is None:
+        return "Nothing is playing."
+    await call(ctx, "POST", "/player/seek", position=round(seconds * 1000), relative=relative)
+    if not relative:
+        return "From the top." if seconds <= 0 else f"At {int(seconds) // 60}:{int(seconds) % 60:02d}."
+    return f"{'Ahead' if seconds > 0 else 'Back'} {abs(seconds):g} seconds."
 
 
 @ext.tool(tier="act")
@@ -1334,8 +1389,29 @@ async def volume(ctx, level: int | None = None, change: Literal["up", "down"] | 
     return f"Music volume {now.get('value')} of {now.get('max', 100)}."
 
 
+async def add_to(ctx, playlist: str, uri: str, song: str) -> str:
+    """The song added to one of the user's playlists, found as `spotify_play` finds one of theirs by name."""
+    item = in_library(ctx, playlist, "playlist", partly=True)
+    if item is not None and item["uri"] == LIKED["uri"]:
+        return await feedback_like(ctx, uri, song)
+    if item is None:
+        names = [i["name"] for i in (ctx.store.get("library") or {}).get("playlist", []) if i.get("editable")]
+        return (f"The user has no playlist called {playlist!r} to add to, so nothing was added. Theirs: "
+                f"{', '.join(names[:20]) or 'none'}.")
+    if not item.get("editable"):
+        return f"{item['name']} is not the user's to change (Spotify's own or someone else's), so nothing was added."
+    await call(ctx, "POST", "/library/playlists/add_tracks", playlist_uri=item["uri"], uris=[uri])
+    return f"Added {song} to {item['name']}."
+
+
+async def feedback_like(ctx, uri: str, song: str) -> str:
+    await call(ctx, "POST", "/library/liked", uris=[uri], liked=True)
+    return f"Saved {song} to the user's Liked Songs."
+
+
 @ext.tool(tier="act", timeout=15)
-async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], artist: str | None = None) -> str:
+async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], artist: str | None = None,
+                   playlist: str | None = None) -> str:
     """What the user thinks of the music, kept: "I like this" or "save this song" saves the song playing to their
     Liked Songs (like); "never play this again" bans the song, skipped whenever it comes on (never); "not Elliott
     Smith" or "not him for now" keeps the artist out of what plays for a while (not_now); "never play Elliott
@@ -1346,6 +1422,8 @@ async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], a
     Args:
         verdict: like, never, not_now or allow.
         artist: The artist the user named; none when they mean the song playing ("this", "this song").
+        playlist: With like: one of the user's playlists to add the song playing to, instead of Liked Songs ("add
+            this to my running playlist", "put this in the drum emoji").
     """
     t, now = verdicts(ctx), ((await call(ctx, "GET", "/status") or {}).get("track") or {})
     song = f"{now.get('name')} by {', '.join(now.get('artist_names') or [])}" if now else None
@@ -1355,9 +1433,10 @@ async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], a
     if artist is None and verdict != "not_now":
         if not now:
             return "Nothing is playing to judge; ask which song or artist the user means."
+        if verdict == "like" and playlist:
+            return await add_to(ctx, playlist, now["uri"], song)
         if verdict == "like":
-            await call(ctx, "POST", "/library/liked", uris=[now["uri"]], liked=True)
-            return f"Saved {song} to the user's Liked Songs."
+            return await feedback_like(ctx, now["uri"], song)
         t["songs"] = (t["songs"] + [{"uri": now["uri"], "song": now.get("name"), "artists": now.get("artist_names")}])[-500:]
         await call(ctx, "POST", "/player/next")
         return f"{song} will not play again; skipped."
@@ -1436,9 +1515,10 @@ async def left_home(ctx):
 
 @ext.tool(tier="read", outside=False)
 async def now_playing(ctx) -> dict:
-    """What Spotify is playing here now ("who is this?", "what's this song?") and what played before it ("what
-    was the song before this?", "that song from earlier"): the song, its artists and album, whether it is
-    paused, the songs before it with their times, and who is out for now. Each message's stamp already says what
+    """What Spotify is playing here now ("who is this?", "what's this song?"), what plays next ("what's next?") and
+    what played before it ("what was the song before this?", "that song from earlier"): the song, its artists and
+    album, whether it is paused, shuffled or on repeat, the next song when known, the songs before it with their
+    times, and who is out for now. Each message's stamp already says what
     plays (spotify: playing ...)."""
     s = await call(ctx, "GET", "/status")
     t = (s or {}).get("track") or {}
@@ -1448,8 +1528,12 @@ async def now_playing(ctx) -> dict:
     out = {"before": before, "out_for_now": [a["artist"] for a in v["for_now"]] + v["artists"]}
     if not t:
         return {"playing": None, "note": "Nothing is playing on this speaker.", **out}
+    nxt = s.get("next_track") or {}
     return {"song": t.get("name"), "artists": t.get("artist_names"), "album": t.get("album_name"),
-            "paused": s.get("paused"), "volume": s.get("volume"), "speaker": s.get("device_name"), **out}
+            "paused": s.get("paused"), "shuffled": s.get("shuffle_context"),
+            "repeating": "song" if s.get("repeat_track") else "all" if s.get("repeat_context") else None,
+            "next": f"{nxt.get('name')} by {', '.join(nxt.get('artist_names') or [])}" if nxt else None,
+            "volume": s.get("volume"), "speaker": s.get("device_name"), **out}
 
 
 @ext.hint_words

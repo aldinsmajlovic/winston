@@ -29,6 +29,8 @@ class Receiver:
         self.lb_songs: list[tuple[str, str]] | None = None     # LB Radio's songs, (creator, title), else its usual
         self.lb_status = 200                    # ListenBrainz's answer to a listen
         self.records: dict[str, list[dict]] = {}    # Spotify's list of an artist's records, by group
+        self.next_track: dict | None = None     # the receiver's next song (metadata.enabled)
+        self.modes: dict = {}                   # repeat_track, repeat_context, shuffle_context in its status
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -95,7 +97,8 @@ class Receiver:
             return httpx.Response(200, json={"value": self.volume, "max": 100})
         if path == "/status":
             return httpx.Response(200, json={"device_name": "Winston", "username": "someone", "paused": False,
-                                             "stopped": False, "volume": self.volume,
+                                             "stopped": False, "volume": self.volume, "next_track": self.next_track,
+                                             **self.modes,
                                              "track": {"name": "Get Lucky", "artist_names": ["Daft Punk"],
                                                        "uri": "spotify:track:gl",
                                                        "album_name": "Random Access Memories"}
@@ -829,4 +832,46 @@ async def test_a_playlist_made_after_the_hourly_read_takes_mixes_once_it_is_name
     await h.tool("play", artists=["Daft Punk"])
     plays = [b for m, p, b in rx.calls if p == "/player/play"]
     assert plays[-1]["uri"] == "spotify:playlist:win", plays
+    await h.close()
+
+
+async def test_shuffle_repeat_seek_a_song_to_a_playlist_and_what_is_next():
+    rx = Receiver()
+    rx.playlists = [playlist("Running 2026", "run", 10, mine=True), playlist("Discover Weekly", "dw", 30)]
+    rx.next_track = {"name": "Digital Love", "artist_names": ["Daft Punk"], "uri": "spotify:track:dl"}
+    h = harness(rx, library=True)
+    await h.run("library")
+    posts = lambda path: [b for m, p, b in rx.calls if p == path]
+    assert await h.tool("shuffle") == "Shuffling." and posts("/player/shuffle_context") == [{"shuffle_context": True}]
+    assert await h.tool("repeat", what="song") == "Repeating this song."
+    assert posts("/player/repeat_track")[-1] == {"repeat_track": True}
+    assert posts("/player/repeat_context")[-1] == {"repeat_context": False}
+    assert await h.tool("seek", seconds=30) == "Ahead 30 seconds."
+    assert posts("/player/seek")[-1] == {"position": 30000, "relative": True}
+    assert await h.tool("seek", seconds=0, relative=False) == "From the top."      # "play that again"
+    said = await h.tool("feedback", verdict="like", playlist="my running playlist")
+    assert said == "Added Get Lucky by Daft Punk to Running 2026.", said
+    assert posts("/library/playlists/add_tracks")[-1] == {"playlist_uri": "spotify:playlist:run",
+                                                          "uris": ["spotify:track:gl"]}
+    assert "not the user's to change" in await h.tool("feedback", verdict="like", playlist="discover weekly")
+    assert (await h.tool("feedback", verdict="like", playlist="gym")).startswith("The user has no playlist called 'gym'")
+    assert (await h.tool("feedback", verdict="like", playlist="liked songs")).endswith("to the user's Liked Songs.")
+    assert (await h.tool("now_playing"))["next"] == "Digital Love by Daft Punk"
+    rx.playing = False
+    assert (await h.tool("shuffle")).startswith("Nothing is playing to shuffle")
+    await h.close()
+
+
+async def test_a_new_request_ends_a_song_on_repeat_and_a_mix_plays_in_its_own_order():
+    rx = Receiver()
+    rx.playlists = [playlist("Winston", "win", 0, mine=True)]
+    rx.modes = {"repeat_track": True, "shuffle_context": True}
+    h = harness(rx, library=True, mix_playlist="Winston")
+    await h.run("library")
+    posts = lambda path: [b for m, p, b in rx.calls if p == path]
+    await h.tool("play", what="Daft Punk")
+    assert posts("/player/repeat_track") == [{"repeat_track": False}], rx.calls
+    assert posts("/player/shuffle_context") == [], rx.calls          # a playlist asked for keeps their shuffle
+    await h.tool("play", artists=["Daft Punk"])
+    assert posts("/player/shuffle_context") == [{"shuffle_context": False}], rx.calls
     await h.close()

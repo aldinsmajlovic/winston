@@ -14,7 +14,7 @@ you switch them on, on the Extensions page or with `winston ext enable ID`.
 | **News** (`news`) | "Breaking news", "Crisis alerts", "Daily digest" | `news_get_news` | Any website (the feeds you pick), the background model, memory (read) |
 | **Reminders** (`reminders`) | "Reminders", when you asked | `reminders_add`, `reminders_upcoming`, `reminders_cancel` | Nothing outside itself |
 | **Sensors** (`sensors`) | Nothing | `sensors_get_readings` | Home Assistant (read: the sensors you pick) |
-| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_feedback`, `spotify_sleep`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, MusicBrainz (its genre list, once), GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), presence (pause when you leave), the speakers |
+| **Spotify** (`spotify`) | Nothing | `spotify_play`, `spotify_feedback`, `spotify_sleep`, `spotify_party`, `spotify_pause`, `spotify_resume`, `spotify_next_track`, `spotify_previous_track`, `spotify_shuffle`, `spotify_repeat`, `spotify_seek`, `spotify_volume`, `spotify_now_playing` | Spotify, ListenBrainz, MusicBrainz (its genre list, once), GitHub (once, for the receiver), Home Assistant (act: your library, and party light scripts), presence (pause when you leave), the speakers |
 | **Web search** (`web`) | Nothing | `web_search` | Gemini (generativelanguage.googleapis.com) |
 
 Each has its tests beside it (`winston ext test hevy`, on made-up answers and the fake clock), run by
@@ -296,6 +296,14 @@ and asks, or plays a mix for a mood or a genre.
 
 "Stop" to the box while it plays pauses Spotify and ends the conversation ([Voice PE](voice-pe.md#ending-a-conversation-and-the-button)).
 Pause, resume and skip read the receiver first, so with nothing loaded he says so instead of "Playing."
+"Shuffle", "put this song on repeat" (or all of it, or off), "skip ahead 30 seconds", "back ten seconds" and
+"play that again" (from the top) work on what plays; "add this to my running playlist" adds the song playing
+to a playlist of yours (`spotify_feedback` with a playlist), and "what's next?" names the next song, which
+the receiver knows with its track cache on (`metadata.enabled`). Without these he had improvised: "shuffle"
+played something new and "skip ahead 30 seconds" skipped the song, 5 times in 5. A queued song cannot be
+taken out again (go-librespot has no call for it), and he says so to "clear the queue". Repeat and shuffle
+stay as set, as in Spotify's apps, with two exceptions: whatever you ask for next ends a song on repeat, and
+a mix plays in its own order (shuffle left on would bring in the older mixes in its playlist).
 When Spotify refuses the app's searches (its limit; on 2026-10-16 after a few hundred searches in an hour,
 for 22 hours) he says until when, does not ask again until then, and your library still plays by name.
 
