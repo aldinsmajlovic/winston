@@ -201,6 +201,12 @@ class FakeServices:
             case "speakers.play":
                 h.speakers.append(("play", p["url"], p.get("title")))
                 return {"speakers": h.speaker_count}
+            case "speakers.volume":
+                if h.speaker_volume is not None:
+                    level = p.get("level")
+                    h.speaker_volume = round(min(1.0, max(0.0, level if level is not None
+                                                          else h.speaker_volume + (p.get("change") or 0))), 2)
+                return {"volume": h.speaker_volume}
             case "speakers.stop":
                 h.speakers.append(("stop", None, None))
                 return None
@@ -235,6 +241,7 @@ class Harness:
         self.pokes: list[str] = []
         self.speakers: list[tuple[str, str | None, str | None]] = []    # ("play", url, title) or ("stop", ...)
         self.speaker_count = 1                                          # connected speakers, as winstond answers
+        self.speaker_volume: float | None = 0.5                         # its own volume (None: unknown)
         self.quota_used: dict[tuple[str, str], int] = {}
         self.log: list[tuple[str, str]] = []
         self._folder = tempfile.mkdtemp(prefix=f"winston-{self.ext.manifest.id}-")

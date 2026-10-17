@@ -97,6 +97,10 @@ music. The stock firmware has no pause on that player, so a pause stops the stre
 satellite channel cuts the stream; winstond keeps what is playing and hands it to the channel when it is
 back, so the music picks up again and the next song still reaches the box.
 
+The box has one volume, what its dial sets, for its voice and everything it plays. The channel reports it to
+winstond whenever it changes, the dial's turns too, and sets it when an extension asks
+(`ctx.speakers.volume`): Spotify turns the box up a step when asked for louder with its own level at full.
+
 ### Ending a conversation, and the button
 
 - **"Stop", "that's all", "never mind"** (or "be quiet", "not you", "nothing") in that listening

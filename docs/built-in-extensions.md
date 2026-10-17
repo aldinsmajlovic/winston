@@ -304,6 +304,10 @@ played something new and "skip ahead 30 seconds" skipped the song, 5 times in 5.
 taken out again (go-librespot has no call for it), and he says so to "clear the queue". Repeat and shuffle
 stay as set, as in Spotify's apps, with two exceptions: whatever you ask for next ends a song on repeat, and
 a mix plays in its own order (shuffle left on would bring in the older mixes in its playlist).
+"Louder" raises Spotify's own level, which is the music's alone; once that is at full, the box itself goes up
+a step (two clicks of its dial), which makes Winston's voice louder too, and "turn it down" lowers the music
+again, never the voice. On 2026-10-11 "turn the volume up a little" with Spotify at 100 got "It's already at
+full volume" while the box's dial was below its top.
 When Spotify refuses the app's searches (its limit; on 2026-10-16 after a few hundred searches in an hour,
 for 22 hours) he says until when, does not ask again until then, and your library still plays by name.
 

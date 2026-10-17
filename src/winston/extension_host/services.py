@@ -137,12 +137,16 @@ class Services:
                 raise BadCall(f"no entity {p['key']!r} declared")
             self.host.set_entity(ext_id, p["key"], p.get("entry"), p.get("value"), p.get("attributes") or {})
             return None
-        if op in ("speakers.play", "speakers.stop"):
+        if op in ("speakers.play", "speakers.stop", "speakers.volume"):
             if self.host.speakers is None:
                 raise Failed("this winstond has no speakers to play on")
             if op == "speakers.stop":
                 self.host.speakers.stop(ext_id)
                 return None
+            if op == "speakers.volume":
+                level = p.get("level")
+                return {"volume": self.host.speakers.volume(None if level is None else float(level),
+                                                            float(p.get("change") or 0))}
             url = httpx.URL(str(p["url"]))
             local = url.host in ("127.0.0.1", "localhost", "::1")
             if url.scheme not in ("http", "https") or not (local or url.host in perms.network or "*" in perms.network):

@@ -56,8 +56,8 @@ import httpx
 import numpy as np
 import soxr
 from aioesphomeapi import (APIClient, BinarySensorInfo, BinarySensorState, Event, EventInfo, MediaPlayerCommand,
-                            MediaPlayerInfo, ReconnectLogic, SelectInfo, VoiceAssistantAudioSettings,
-                            VoiceAssistantCommandFlag)
+                            MediaPlayerEntityState, MediaPlayerInfo, ReconnectLogic, SelectInfo,
+                            VoiceAssistantAudioSettings, VoiceAssistantCommandFlag)
 from aioesphomeapi import VoiceAssistantEventType as Ev
 from aiohttp import web
 from loguru import logger
@@ -284,6 +284,7 @@ class Satellite:
         self._listener: asyncio.Task | None = None          # announcements and nudges while connected
         self._media_key: int | None = None                  # the box's media player (not the one replies use)
         self._media: dict | None = None                     # what plays on it now: {"id", "ext", "title"}
+        self._volume: float | None = None                   # its volume, as the box last reported it
         self._watching: asyncio.Task | None = None          # the playing reply's barge-in watch (_watch)
         self._carry: list[np.ndarray] | None = None         # what was said over the reply, for the next run
 
@@ -338,7 +339,7 @@ class Satellite:
                                 None)
             self._center = next((e.key for e in ents if isinstance(e, BinarySensorInfo)
                                  and e.object_id == "center_button"), None)
-            if self._button is not None or self._center is not None:
+            if any(k is not None for k in (self._button, self._center, self._media_key)):
                 self.client.subscribe_states(self._on_state)
             if want := self.dev.wake_sensitivity:
                 sel = next((e for e in ents if isinstance(e, SelectInfo) and e.object_id == "wake_word_sensitivity"),
@@ -362,6 +363,21 @@ class Satellite:
         let_go = isinstance(state, BinarySensorState) and state.key == self._center and not state.state
         if let_go and self.run and self.run.hold:
             asyncio.get_running_loop().call_later(RELEASE_TAIL_SECS, self.run.mic.put_nowait, None)
+        volume = isinstance(state, MediaPlayerEntityState) and state.key == self._media_key
+        if volume and state.volume != self._volume:
+            self._volume = state.volume
+            logger.info(f"{self.room}: the box's volume is {state.volume:.2f}")
+            asyncio.create_task(self._report_volume(state.volume))
+
+    async def _report_volume(self, volume: float):
+        """The box's volume to winstond, whenever it changes (the dial, or a command): an extension that turns
+        the music up past its own full raises the box (ctx.speakers.volume)."""
+        try:
+            async with httpx.AsyncClient(base_url=self.cfg.control.url, timeout=5) as h:
+                (await h.post("/api/speakers/volume", json={"room": self.room, "volume": round(volume, 3)})
+                 ).raise_for_status()
+        except httpx.HTTPError as e:
+            logger.warning(f"{self.room}: its volume could not be reported: {e}")
 
     async def switch_listening(self):
         """A double press: the wake word off (button only) or back on, and a line on the box to say which."""
@@ -392,8 +408,8 @@ class Satellite:
                 logger.warning(f"{self.room}: could not deliver {ev.get('type', 'announcement')}: {e}")
 
     def media(self, ev: dict):
-        """A stream from an extension on the box's media player, or its end. A new stream replaces what
-        plays; an extension stops only its own."""
+        """A stream from an extension on the box's media player, its end, or the box's volume. A new stream
+        replaces what plays; an extension stops only its own."""
         if self._media_key is None:
             logger.warning(f"{self.room}: the box has no media player; {ev.get('title') or 'the stream'} not played")
             return
@@ -405,6 +421,9 @@ class Satellite:
             url = f"{self.audio.base_url(self.dev.host)}/media/{ev['id']}.flac"
             self.client.media_player_command(self._media_key, media_url=url, announcement=False)
             logger.info(f"{self.room}: playing {ev.get('title') or ev['url']} for {ev['ext']}")
+        elif ev["action"] == "volume":
+            self.client.media_player_command(self._media_key, volume=float(ev["level"]))
+            logger.info(f"{self.room}: volume {ev['level']:.2f}")
         elif ev["action"] == "stop" and self._media and self._media["ext"] == ev.get("ext"):
             self.client.media_player_command(self._media_key, command=MediaPlayerCommand.STOP)
             self.audio.stop_media(self._media["id"])

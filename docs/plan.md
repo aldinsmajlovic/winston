@@ -398,8 +398,13 @@ had no answer. New: `spotify_shuffle`, `spotify_repeat` (song, all, off), `spoti
 from the top), a playlist on `spotify_feedback` (like into one of his, editable only), the next song in
 `spotify_now_playing` (go-librespot's track cache, `metadata.enabled`); a new request ends a song on repeat and
 a mix turns shuffle off; "clear the queue" is said to be impossible. 37 Spotify tests. The brain, 5 runs: the
-control set 93 of 95 ("clear the queue" skipped the song 2 of 5, then 0 of 10 with the note on next_track). Not
-built: the box's own volume, so "turn it up" at Spotify's 100 still says it is at full (it did on 10-11).
+control set 93 of 95 ("clear the queue" skipped the song 2 of 5, then 0 of 10 with the note on next_track). The box's own
+volume followed the same night (his yes): the satellite channel reports it to winstond on every change, the
+dial's too (`POST /api/speakers/volume`), extensions read and set it with `ctx.speakers.volume` (new in the
+standard), and `spotify_volume` "up" with Spotify at 100 raises the box a step (0.1), saying the voice is louder
+too; down stays the music's own. 38 Spotify tests; `tests/extensions_cases.py` checks a report, a raise and the
+command the box is sent. The box reported 0.95 after the restart. **Box check:** with Spotify at 100, "louder"
+turns the box up and the dial's ring shows it.
 
 ---
 

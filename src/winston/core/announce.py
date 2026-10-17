@@ -170,7 +170,7 @@ class Hub:
         took = [q for q in targets if self._send("satellite", q, ev)]
         if ev.get("action") == "play":
             self._media = (ev, {boxes[q] for q in took}) if took else None
-        elif self._media and self._media[0].get("ext") == ev.get("ext"):
+        elif ev.get("action") == "stop" and self._media and self._media[0].get("ext") == ev.get("ext"):
             self._media = None
         return len(took)
 

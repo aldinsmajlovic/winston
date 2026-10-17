@@ -218,6 +218,12 @@ class _Speakers:
     async def stop(self) -> None:
         await self._ctx._call("speakers.stop")
 
+    async def volume(self, level: float | None = None, change: float = 0.0) -> float | None:
+        """The speaker's own volume, 0 to 1: what its dial sets, for the voice and everything it plays. Set to
+        `level`, moved by `change` (0.1 up, -0.1 down), or only read; returns it after, None when no speaker
+        reports one."""
+        return (await self._ctx._call("speakers.volume", level=level, change=change))["volume"]
+
 
 class _LLM:
     def __init__(self, ctx: Ctx):

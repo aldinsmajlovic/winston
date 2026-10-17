@@ -1372,21 +1372,44 @@ async def seek(ctx, seconds: float, relative: bool = True) -> str:
 
 @ext.tool(tier="act")
 async def volume(ctx, level: int | None = None, change: Literal["up", "down"] | None = None) -> str:
-    """Set the music's volume (the speakers' own stays where it is): a level from 0 to 100, or up or down a step.
+    """Set the music's volume: a level from 0 to 100, or up or down a step. Up past Spotify's full, it turns
+    the speaker itself up (what its dial sets: the voice too).
 
     Args:
         level: 0 to 100.
         change: "up" or "down" a step (about 5 dB), when no number was given.
     """
+    now = (await call(ctx, "GET", "/player/volume")).get("value", 0)
+    if change == "up" and level is None and now >= 100:
+        return await speaker_up(ctx)
     if change and level is None:
         # go-librespot plays at the volume squared, so 10 down from 87 was 2 dB and not heard; a quarter of the
         # volume is about 5 dB at any level.
-        now = (await call(ctx, "GET", "/player/volume")).get("value", 0)
         level = round(now * 0.75) if change == "down" else max(10, round(now / 0.75))
     if level is not None:
         await call(ctx, "POST", "/player/volume", volume=max(0, min(100, level)))
-    now = await call(ctx, "GET", "/player/volume")
-    return f"Music volume {now.get('value')} of {now.get('max', 100)}."
+    now = (await call(ctx, "GET", "/player/volume")).get("value", 0)
+    said = f"Music volume {now} of 100."
+    if now >= 100 and (box := await ctx.speakers.volume()) is not None and box < 1:
+        said += f" The speaker itself is at {round(box * 100)} of 100; turned up again, it goes up."
+    return said
+
+
+SPEAKER_STEP = 0.1      # of the speaker's own volume: two clicks of the box's dial
+
+
+async def speaker_up(ctx) -> str:
+    """Louder with Spotify at full: the speaker itself, a step. On 2026-10-11 "turn the volume up a little"
+    with Spotify at 100 got "It's already at full volume" while the box's dial sat below its top."""
+    box = await ctx.speakers.volume()
+    if box is None:
+        return ("The music is at full (100), and the speaker's own volume is not known here: its dial "
+                "turns it up.")
+    if box >= 1:
+        return "Already as loud as it goes: the music and the speaker itself are both at full."
+    box = await ctx.speakers.volume(change=SPEAKER_STEP)
+    return (f"The music was at full, so the speaker itself is up to {round(box * 100)} of 100; your voice is "
+            "louder too.")
 
 
 async def add_to(ctx, playlist: str, uri: str, song: str) -> str:

@@ -59,6 +59,10 @@ async def media_back():
     again = hub.subscribe("satellite", "main room")
     expect("a box back after a restart gets the stream again", again.qsize() == 1 and again.get_nowait() == play)
     expect("a box in another room does not", hub.subscribe("satellite", "kitchen").qsize() == 0)
+    hub.publish_media({"type": "media", "action": "volume", "level": 0.6}, "main room")
+    back = hub.subscribe("satellite", "main room")
+    expect("a volume change keeps the stream for a box back after a restart", back.qsize() == 1
+           and back.get_nowait() == play)
     hub.publish_media({"type": "media", "action": "stop", "ext": "news"}, "main room")
     expect("another extension's stop leaves it", hub.subscribe("satellite", "main room").qsize() == 1)
     hub.publish_media({"type": "media", "action": "stop", "ext": "spotify"}, "main room")

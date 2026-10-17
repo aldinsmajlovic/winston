@@ -271,7 +271,7 @@ async def test_pause_skip_volume_and_what_is_playing():
     assert await h.tool("pause") == "Paused."
     assert await h.tool("next_track") == "Next song."
     assert await h.tool("volume", change="up") == "Music volume 80 of 100."
-    assert await h.tool("volume", level=150) == "Music volume 100 of 100."
+    assert (await h.tool("volume", level=150)).startswith("Music volume 100 of 100. The speaker itself is at 50")
     assert await h.tool("volume", change="down") == "Music volume 75 of 100."
     now = await h.tool("now_playing")
     assert now["song"] == "Get Lucky" and now["artists"] == ["Daft Punk"], now
@@ -874,4 +874,24 @@ async def test_a_new_request_ends_a_song_on_repeat_and_a_mix_plays_in_its_own_or
     assert posts("/player/shuffle_context") == [], rx.calls          # a playlist asked for keeps their shuffle
     await h.tool("play", artists=["Daft Punk"])
     assert posts("/player/shuffle_context") == [{"shuffle_context": False}], rx.calls
+    await h.close()
+
+
+async def test_louder_past_spotifys_full_turns_the_speaker_itself_up():
+    rx = Receiver()
+    rx.volume = 100
+    h = harness(rx)
+    h.speaker_volume = 0.6
+    said = await h.tool("volume", change="up")
+    assert said.startswith("The music was at full, so the speaker itself is up to 70 of 100"), said
+    assert h.speaker_volume == 0.7 and rx.volume == 100
+    said = await h.tool("volume", level=100)                       # "to 100": the speaker below its top is said
+    assert said == "Music volume 100 of 100. The speaker itself is at 70 of 100; turned up again, it goes up.", said
+    h.speaker_volume = 1.0
+    assert (await h.tool("volume", change="up")).startswith("Already as loud as it goes")
+    h.speaker_volume = None                                         # no box has reported its volume
+    assert "its dial turns it up" in await h.tool("volume", change="up")
+    rx.volume = 60
+    assert await h.tool("volume", change="up") == "Music volume 80 of 100." and h.speaker_volume is None
+    assert await h.tool("volume", change="down") == "Music volume 60 of 100."   # down is the music's own
     await h.close()

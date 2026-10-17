@@ -4,7 +4,7 @@
 # name = "Clock"
 # description = "One job per kind of trigger, for the scheduler's tests."
 # api = 1
-# permissions = { presence = true, home_assistant = "read" }
+# permissions = { presence = true, home_assistant = "read", speakers = true }
 # ///
 from datetime import timedelta
 
@@ -63,6 +63,12 @@ async def happened(ctx, event):
 async def store(ctx) -> dict:
     """Everything it has stored."""
     return dict(ctx.store)
+
+
+@ext.tool(tier="act", outside=False)
+async def louder(ctx) -> float | None:
+    """The speaker itself a step up."""
+    return await ctx.speakers.volume(change=0.1)
 
 
 @ext.tool(tier="act", outside=False)

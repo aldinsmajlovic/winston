@@ -443,6 +443,23 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         r = await api.post("/api/speakers/stopped", json={"ext": "clock", "room": "test room"})
         expect("\"stop\" to a box while its stream played runs its on_speakers_stop",
                r.status_code == 200 and await until(lambda: has("silenced", 1), 10), r.text)
+        r = (await api.post("/api/extensions/clock/tools/louder", json={})).json()
+        expect("with no box's volume reported, the speaker volume is not known", r["ok"] and r["result"] is None, r)
+        from winston.core.common import sse
+        told = []
+
+        async def box():
+            async for ev in sse(f"http://127.0.0.1:{api_port}/api/events", {"channel": "satellite", "room": "test room"}):
+                if ev and ev.get("action") == "volume":
+                    told.append(ev)
+                    return
+        listening = asyncio.create_task(box())
+        await asyncio.sleep(1)
+        await api.post("/api/speakers/volume", json={"room": "test room", "volume": 0.5})
+        r = (await api.post("/api/extensions/clock/tools/louder", json={})).json()
+        expect("an extension turns the box itself up from the volume it reported", r["ok"] and r["result"] == 0.6, r)
+        await asyncio.wait_for(listening, 5)
+        expect("and the box is sent the new volume", told and told[0]["level"] == 0.6, told)
         got = (await stored()).json()["result"]
         expect("nothing ran more than it should", got.get("hourly") in (1, 2) and got.get("left") == 1
                and got.get("arrived") == 1, got)

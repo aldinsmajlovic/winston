@@ -34,6 +34,7 @@ from winston.config.restarts import BRAIN_CHANNELS, control_sections, restarts_f
 from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
+from winston.core.common import key
 from winston.core.brain import api_key
 from winston.core import memory, persona, region, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
@@ -96,6 +97,11 @@ class ChatMessage(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     room: str | None = Field(None, max_length=60, description="The room the page is set to; its conversation is "
                                                                "shared with the room's box. None: the household's.")
+
+
+class SpeakerVolume(BaseModel):
+    room: str | None = Field(None, max_length=60, description="The box's room")
+    volume: float = Field(ge=0, le=1, description="Its media player's volume, as its dial sets it")
 
 
 class SpeakersStopped(BaseModel):
@@ -516,7 +522,22 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         def stop(self, ext_id: str) -> None:
             hub.publish_media({"type": "media", "action": "stop", "ext": ext_id})
             logger.info(f"speakers: {ext_id} stops")
+
+        def volume(self, level: float | None, change: float) -> float | None:
+            """The volume of the box in the room you are in (the only box, else none), as it last reported it,
+            set or moved; None while no box has reported one."""
+            room = rooms.recent()
+            only = next(iter(box_volume.values())) if len(box_volume) == 1 else None
+            now = box_volume.get(key(room)) if room else only
+            if now is None:
+                return None
+            want = round(min(1.0, max(0.0, level if level is not None else now + change)), 2)
+            if want != now:
+                hub.publish_media({"type": "media", "action": "volume", "level": want}, room)
+                logger.info(f"speakers: volume {now:.2f} to {want:.2f}{f' in {room}' if room else ''}")
+            return want
     extensions.speakers = Speakers()
+    box_volume: dict[str, float] = {}           # room -> its box's volume, as each box last reported it
 
     nudges = Nudges(extensions, deliver=deliver_nudge, busy=feed.talking, home=home_now,
                     feed=lambda ev: feed.publish(LiveEvent(**ev)))
@@ -712,6 +733,12 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         await web.start_over((m.room or "").strip() or None)
         feed.publish(LiveEvent(channel="web", type="tool", call=uuid.uuid4().hex[:12], name="start_over",
                                status="ok", label=tool_label("start_over", None, "ok")))
+        return Ok()
+
+    @app.post("/api/speakers/volume", response_model=Ok,
+              summary="A box's own volume, as its dial or a command left it (the box reports each change)")
+    async def speaker_volume(m: SpeakerVolume):
+        box_volume[key(m.room or "")] = m.volume
         return Ok()
 
     @app.post("/api/speakers/stopped", response_model=Ok,
