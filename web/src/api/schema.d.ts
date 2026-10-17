@@ -1198,7 +1198,7 @@ export interface components {
             title?: string;
             /**
              * Icon
-             * @description Its extension's icon (lucide)
+             * @description Its extension's icon: a lucide name, or simple-icons:<slug> for a maker's logo
              */
             icon?: string | null;
             /**
@@ -3440,7 +3440,7 @@ export interface components {
             label?: string;
             /**
              * Icon
-             * @description Its extension's icon (lucide), for an extension's tool
+             * @description Its extension's icon (a lucide name, or simple-icons:<slug>), for an extension's tool
              */
             icon?: string | null;
         };

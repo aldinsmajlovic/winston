@@ -166,7 +166,7 @@ class TurnTool(BaseModel):
     ok: bool | None = None
     result: str | None = None
     label: str = Field("", description="How the live feed words it: \"Turned on Kitchen lights\"")
-    icon: str | None = Field(None, description="Its extension's icon (lucide), for an extension's tool")
+    icon: str | None = Field(None, description="Its extension's icon (a lucide name, or simple-icons:<slug>), for an extension's tool")
 
 
 class TurnRecord(BaseModel):

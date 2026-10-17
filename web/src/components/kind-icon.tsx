@@ -138,17 +138,20 @@ const states: Record<string, { Icon: LucideIcon; className: string }> = {
   missing: { Icon: CircleAlert, className: 'text-warning' },
 }
 
+/** A maker's logo from its Simple Icons path, in the text colour. */
+export function Logo({ title, path, className }: { title: string; path: string; className?: string }) {
+  return (
+    <svg role="img" viewBox="0 0 24 24" aria-label={title} className={cn('size-4 shrink-0 fill-current', className)}>
+      <path d={path} />
+    </svg>
+  )
+}
+
 /** The logo or kind icon for a key: a brand, an engine kind, an HA domain or an env state. */
 export function KindIcon({ name, className }: { name?: string | null; className?: string }) {
   if (!name) return null
   const brand = brands[name]
-  if (brand) {
-    return (
-      <svg role="img" viewBox="0 0 24 24" aria-label={brand.title} className={cn('size-4 shrink-0 fill-current', className)}>
-        <path d={brand.path} />
-      </svg>
-    )
-  }
+  if (brand) return <Logo title={brand.title} path={brand.path} className={className} />
   const state = states[name]
   if (state) return <state.Icon aria-label={name} className={cn('size-4 shrink-0', state.className, className)} />
   const Icon = kinds[name] ?? Circle

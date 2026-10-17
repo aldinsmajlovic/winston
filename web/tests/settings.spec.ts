@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Runs against the throwaway winstond `pnpm smoke` starts: WINSTON_DATA is its copy of data/, with the
 // engines and channels switched off and one external engine, `smoke`, that nothing runs.
 const data = process.env.WINSTON_DATA ?? ''
-const pages = ['/system', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/extensions']
+const pages = ['/system', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/extensions', '/extensions/speaking-up', '/extensions/plants']
 
 test.describe.configure({ mode: 'serial' })
 
@@ -51,7 +51,7 @@ test('every settings page loads, with nothing to save until something is changed
     await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0)
     // A form filling in its defaults is not a change: the plants card (off, so its config has no entry)
     // shows Below at its default of 30, and redrawing the forms (Advanced off and on) must not save it.
-    if (path === '/extensions') {
+    if (path === '/extensions/plants') {
       await expect(page.getByLabel('Below')).toHaveValue('30', { timeout: 30_000 })
       await page.getByRole('switch', { name: 'Advanced' }).click()
       await advanced(page)
@@ -162,8 +162,9 @@ test('an MCP server added by URL keeps its token in data/.env alone, and its car
   await expect(page.getByRole('alertdialog').getByText('Keys: SMOKE_HTTP_MCP_TOKEN')).toBeVisible()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('alertdialog')).toHaveCount(0)
-  await page.reload()
   await open(page, '/extensions')
+  await page.getByRole('link', { name: 'smoke_http' }).click()
+  await expect(page).toHaveURL(/\/extensions\/smoke_http$/)
   const field = page.locator('#smoke_http-token')
   await expect(field.locator('..').getByLabel('Set', { exact: true })).toBeVisible()
   await expect(field).toHaveValue('')

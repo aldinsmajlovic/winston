@@ -120,13 +120,15 @@ class Host:
 
     # finding and describing
 
-    async def refresh(self) -> set[str]:
-        """Finds extensions again and describes what changed; returns the ids whose code changed."""
+    async def refresh(self, hold: set[str] = frozenset()) -> set[str]:
+        """Finds extensions again and describes what changed; returns the ids whose code changed. One held
+        keeps its old source, so it still differs from the disk and reloads once let go."""
         async with self._refresh_lock:
-            return await self._refresh()
+            return await self._refresh(hold)
 
-    async def _refresh(self) -> set[str]:
+    async def _refresh(self, hold: set[str]) -> set[str]:
         found = discover(self.cfg)
+        found.update({i: self.sources[i] for i in hold if i in found and i in self.sources})
         changed = {i for i, s in found.items() if i not in self.sources or self.sources[i].stamp != s.stamp}
         gone = set(self.sources) - set(found)
         self.sources = {s.id: s for s in found.values() if "~" not in s.id or s.id not in found}
@@ -151,7 +153,7 @@ class Host:
         for i in changed:
             if i in self.sources and self.sources[i].origin == "mcp":
                 self.described[i] = {"manifest": {"id": i, "name": i, "description": "An MCP server, tools only.",
-                                                  "icon": "plug", "api": None, "permissions": {}},
+                                                  "icon": "simple-icons:modelcontextprotocol", "api": None, "permissions": {}},
                                      "tools": [], "kinds": [], "entities": [], "jobs": [], "actions": [],
                                      "settings": {"schema": {"type": "object", "properties": {}}, "secrets": {}},
                                      "has": {}}
@@ -164,15 +166,16 @@ class Host:
                 self._start(ext_id)
         self._watcher = asyncio.create_task(self._watch_files(), name="extension files")
 
-    async def reload(self) -> set[str]:
-        """Finds extensions again; one whose code changed is described again and restarted. It counts
-        as restarting from the moment its change is seen, so nothing calls the old code's process for
-        a tool only the new code has."""
+    async def reload(self, hold: set[str] = frozenset()) -> set[str]:
+        """Finds extensions again; one whose code changed is described again and restarted, but not one
+        in `hold`. It counts as restarting from the moment its change is seen, so nothing calls the old
+        code's process for a tool only the new code has."""
         for ext_id, src in discover(self.cfg).items():
             proc = self.procs.get(ext_id)
-            if proc and proc.state == "running" and ext_id in self.sources and self.sources[ext_id].stamp != src.stamp:
+            if (ext_id not in hold and proc and proc.state == "running" and ext_id in self.sources
+                    and self.sources[ext_id].stamp != src.stamp):
                 proc.state, proc.detail = "restarting", "its code changed"
-        changed = await self.refresh()
+        changed = await self.refresh(hold)
         for ext_id in changed:
             proc = self.procs.get(ext_id)
             if proc and proc.state != "stopped":
@@ -183,8 +186,9 @@ class Host:
 
     async def _watch_files(self, every: float = 2.0) -> None:
         """An extension reloads when its file is saved (or a new one appears), except one that says something is
-        going on (ctx.ongoing): that waits until it is over, so a saved change does not cut the music. On
-        2026-10-16 every save of spotify.py restarted the receiver; music playing then would have stopped."""
+        going on (ctx.ongoing): that one waits until it is over, so a saved change does not cut the music, and
+        the rest reload meanwhile. On 2026-10-16 every save of spotify.py restarted the receiver; music playing
+        then would have stopped. On 2026-10-17 a paused song held back every other extension's change too."""
         waiting: set[str] = set()
         while True:
             await asyncio.sleep(every)
@@ -192,16 +196,14 @@ class Host:
                 found = discover(self.cfg)
                 now = {i: s.stamp for i, s in found.items() if "~" not in i}
                 busy = {i for i in now if i in self.sources and now[i] != self.sources[i].stamp and texts.busy(i)}
-                if busy:
-                    if busy != waiting:
-                        logger.info(f"extensions changed on disk: {', '.join(sorted(busy))} reloads once nothing is "
-                                    f"going on there")
-                    waiting = busy
-                    continue
-                waiting = set()
-                if now != {i: s.stamp for i, s in self.sources.items()}:
+                if busy and busy != waiting:
+                    logger.info(f"extensions changed on disk: {', '.join(sorted(busy))} reloads once nothing is "
+                                f"going on there")
+                waiting = busy
+                if ({i: s for i, s in now.items() if i not in busy}
+                        != {i: s.stamp for i, s in self.sources.items() if i not in busy}):
                     async with self._lock:
-                        changed = await self.reload()
+                        changed = await self.reload(busy)
                     if changed:
                         logger.info(f"extensions changed on disk: {', '.join(sorted(changed))}")
             except Exception as e:                                      # noqa: BLE001  (keep watching)

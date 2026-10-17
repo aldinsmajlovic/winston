@@ -4,7 +4,7 @@
 # id = "claude"
 # name = "Ask Claude"
 # description = "Hard questions go to Claude in the cloud: reasoning, explanations, writing, planning. Only the question leaves the house."
-# icon = "message-circle-question"
+# icon = "simple-icons:claude"
 # api = 1
 # permissions = { network = ["api.anthropic.com"] }
 # ///

@@ -131,8 +131,8 @@ DISPLAY XDG_CURRENT_DESKTOP` for. `service remove` takes it out. The LaunchAgent
 (Windows) come with those systems.
 
 In Winston, on the Extensions page: + adds an MCP server. Give the computer's name as the id
-(`desk`), the address (`http://<computer>:8711/mcp`) and paste the token into its key field. The card
-then lists the four tools; switch on the ones the brain gets and confirm their tiers (the server
+(`desk`), the address (`http://<computer>:8711/mcp`) and paste the token into its key field. After
+Save, its tile opens its card, which lists the four tools; switch on the ones the brain gets and confirm their tiers (the server
 suggests act for `open` and read for the rest, and a server that is not built in is never trusted on
 its own word). The page writes:
 

@@ -82,7 +82,8 @@ transport), connecting through winstond to the voice channel.
   dropdown that still takes a typed value. Enums carry `labels`; bounded numbers are sliders; a time
   of day (`widget: time`) is the browser's time field.
 - Each setting lives on one page. Brain owns the model, Voice owns speaking and hearing.
-- Makers' logos (Simple Icons) mark engines and services, drawn in the text colour like any icon.
+- Makers' logos (Simple Icons) mark engines, services and extensions of a maker's service (Claude,
+  Hevy, Spotify, Gemini for web search, MCP for an MCP server), drawn in the text colour like any icon.
   Home Assistant entities get a lucide icon for their domain.
 - Icons for actions and state. A status is an icon plus a colour, never a sentence: `StatusTip`, its
   words in the tooltip.
@@ -135,12 +136,20 @@ transport), connecting through winstond to the voice channel.
   cannot give (another engine in the draft, a restart pending) is disabled with the reason in its
   tooltip.
 - A channel's card title carries its state icon from `/api/status`, the detail in the tooltip.
-- The Extensions page is one card per extension, drawn from `/api/extensions`: state icon, a shield
-  with a tooltip on anything not built in, Log and Restart icons and the switch in the title; what it
+- The Extensions page is a store, like Home Assistant's apps, so it does not grow into one long page:
+  a search, then a tile per extension from `/api/extensions` in a grid, under "On" and "Off" with their
+  counts, each by name. A tile has the extension's icon and name, then at the right a dot while it
+  has unsaved edits, a shield on anything not built in and its state icon while it runs, and two
+  muted lines of its description; the whole tile is a link to its page. "Nothing matches." when the
+  search finds none. The page has no fields of its own, so no Advanced toggle: a bell in the header
+  opens Speaking up (`/extensions/speaking-up`, the settings all nudges share), + adds an MCP server.
+- An extension's page (`/extensions/:id`, a back arrow in the header) holds its card: state icon, a
+  shield with a tooltip on anything not built in, Log and Restart icons and the switch in the title; what it
   may reach as outline badges, a problem or its last stop as an icon line, its settings as a
   `SectionForm` at `extensions.<id>.settings` (its schema is grafted into the config schema), and its
   tools as a table with a tier select and two switches. An extension's own icon is a lucide name,
-  loaded by `DynamicIcon`.
+  loaded by `DynamicIcon`, or a logo as `simple-icons:<slug>`, loaded on first use with the logos'
+  map in its own chunk (`lib/logos.ts`), so the main bundle does not carry Simple Icons.
 - A dot in the sidebar marks each page with unsaved edits. A saved change that waits for a restart is
   the changed icon beside Save, its tooltip naming each process and its cost, plus a Restart text
   button while one of them runs; what only the next `winston up` applies has the icon and no button.

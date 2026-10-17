@@ -8,7 +8,7 @@ import BrainPage from '@/pages/brain'
 import ChannelsPage from '@/pages/channels'
 import DashboardPage from '@/pages/dashboard'
 import EnginePage from '@/pages/engine'
-import ExtensionsPage from '@/pages/extensions'
+import ExtensionsPage, { ExtensionPage, SpeakingUpPage } from '@/pages/extensions'
 import HomeAssistantPage from '@/pages/home-assistant'
 import MemoryPage from '@/pages/memory'
 import TurnsPage from '@/pages/turns'
@@ -50,6 +50,8 @@ export default function App() {
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/home-assistant" element={<HomeAssistantPage />} />
         <Route path="/extensions" element={<ExtensionsPage />} />
+        <Route path="/extensions/speaking-up" element={<SpeakingUpPage />} />
+        <Route path="/extensions/:id" element={<ExtensionPage />} />
         <Route path="/engines" element={<Navigate to="/system" replace />} />
         <Route path="/system" element={<SystemPage />} />
         <Route path="/system/engines/:name" element={<EnginePage />} />

@@ -492,8 +492,15 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         going.write_text("playing something")                       # ctx.ongoing: music plays
         coin_file.write_text(coin_file.read_text() + '\n\n@ext.tool(tier="read", outside=False)\n'
                              'async def again(ctx) -> str:\n    """Flip twice."""\n    return "twice"\n')
+        friend_before = host.procs["friend"].started_at
+        friend_file = DATA / "extensions" / "friend.py"
+        friend_file.write_text(friend_file.read_text() + "\n# saved again\n")
         await asyncio.sleep(5)
         expect("a saved change waits while something is going on", host.procs["coin"].started_at == coin_before)
+
+        async def friend_reloaded():
+            return host.procs["friend"].started_at != friend_before and host.procs["friend"].state == "running"
+        expect("and another extension's saved change does not wait for it", await until(friend_reloaded, 30))
         going.unlink()
 
         async def reloaded():

@@ -3,7 +3,7 @@
 # id = "web"
 # name = "Web search"
 # description = "Current facts from the web: Gemini searches Google and answers in a sentence or two. Only the question leaves the house."
-# icon = "search"
+# icon = "simple-icons:googlegemini"
 # api = 1
 # permissions = { network = ["generativelanguage.googleapis.com"] }
 # ///

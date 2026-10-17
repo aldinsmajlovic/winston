@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { BellOff, CircleAlert, MemoryStick, MessageSquareText, Plus, RotateCw, ScrollText, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, Bell, BellOff, CircleAlert, MemoryStick, MessageSquareText, Plus, RotateCw, ScrollText, ShieldAlert } from 'lucide-react'
+import { Link, Navigate, useNavigate, useParams } from 'react-router'
 import { $api, type ExtensionView } from '@/api/client'
+import { useConfig } from '@/api/config'
 import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
-import { PageSkeleton } from '@/components/page'
+import { Page, PageSkeleton } from '@/components/page'
+import { SearchField } from '@/components/search-field'
+import { SaveControls } from '@/components/save-controls'
 import { SecretField } from '@/components/secret-field'
 import { SectionForm } from '@/components/section-form'
 import { StateIcon } from '@/components/state-icon'
@@ -23,7 +27,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { setSecret } from '@/hooks/use-secrets'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { capitalize } from '@/lib/format'
-import { getIn, section, setIn } from '@/lib/schema'
+import { deepEqual, getIn, section, setIn, type JsonSchema } from '@/lib/schema'
 
 const SPEAK_UP = ['speak_up']
 const EXTENSIONS = ['extensions']
@@ -492,50 +496,170 @@ function AddMcp({ page, taken, open, onOpenChange }: { page: SettingsState; take
   )
 }
 
-export default function ExtensionsPage() {
-  const s = useSettings([SPEAK_UP, EXTENSIONS])
+/** The extensions winstond found. A newly found one brings its settings into the config schema: read it again. */
+function useExtensions(schema: JsonSchema | undefined) {
   const client = useQueryClient()
   const list = $api.useQuery('get', '/api/extensions', undefined, { refetchInterval: 3000 })
-  const [adding, setAdding] = useState(false)
   const ids = useMemo(() => (list.data ?? []).map((e) => e.id).join(','), [list.data])
-  // A newly found extension brings its settings into the config schema: read it again.
   useEffect(() => {
-    if (!s.page || !ids) return
-    const known = Object.keys(section(s.page.schema, EXTENSIONS).properties ?? {})
+    if (!schema || !ids) return
+    const known = Object.keys(section(schema, EXTENSIONS).properties ?? {})
     if (ids.split(',').some((id) => !known.includes(id))) void client.invalidateQueries({ queryKey: schemaKey })
-  }, [ids, s.page, client])
+  }, [ids, schema, client])
+  return list
+}
+
+/** One extension in the grid: icon, name, state and two lines of what it does. The whole tile opens
+ * its page, where its permissions show before it can be switched on. */
+function Tile({ e, page, changed }: Props & { changed: boolean }) {
+  return (
+    <Card className="relative transition-colors hover:bg-muted/50 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-ring">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ExtensionIcon name={e.icon} />
+          <Link to={`/extensions/${e.id}`} className="min-w-0 truncate outline-none after:absolute after:inset-0">
+            {e.name}
+          </Link>
+          <span className="relative ml-auto flex shrink-0 items-center gap-1.5">
+            {changed && <span role="img" aria-label="Unsaved changes" className="size-2 rounded-full bg-primary" />}
+            {e.origin !== 'built-in' && <StatusTip icon={ShieldAlert} className="text-muted-foreground" label={`${ORIGIN[e.origin] ?? e.origin}, not built in`} />}
+            {getIn(page.value, [...EXTENSIONS, e.id, 'enabled']) === true && e.enabled && (
+              <StateIcon state={STATE[e.state as keyof typeof STATE] ?? 'stopped'} detail={e.problem || e.detail || e.state} />
+            )}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      {e.description && (
+        <CardContent>
+          <p className="line-clamp-2 text-muted-foreground">{e.description}</p>
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
+function Group({ title, count, children }: { title: string; count: number; children: ReactNode }) {
+  if (!count) return null
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-sm font-medium">
+        {title} <span className="text-muted-foreground">{count}</span>
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
+    </section>
+  )
+}
+
+/** The Extensions page: every extension as a tile, on ones first, with a search; each opens its own
+ * page, and the bell opens Speaking up. It has no fields of its own, so no Advanced toggle. */
+export default function ExtensionsPage() {
+  const navigate = useNavigate()
+  const s = useSettings([EXTENSIONS])
+  const list = useExtensions(s.page?.schema)
+  const saved = useConfig().data
+  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
   if (s.loading || !list.data) return <PageSkeleton title="Extensions" />
   const { page } = s
   const drafted = Object.keys((page.value.extensions ?? {}) as Record<string, unknown>).filter((id) => !list.data.some((e) => e.id === id))
+  const q = search.trim().toLowerCase()
+  const hit = (...words: (string | null | undefined)[]) => !q || words.some((w) => w?.toLowerCase().includes(q))
+  const shown = list.data.filter((e) => hit(e.name, e.id, e.description)).sort((a, b) => a.name.localeCompare(b.name))
+  const newOnes = drafted.filter((id) => hit(id))
+  const isOn = (e: ExtensionView) => getIn(page.value, [...EXTENSIONS, e.id, 'enabled']) === true
+  const changed = (e: ExtensionView) => !deepEqual(getIn(saved, [...EXTENSIONS, e.id]) ?? null, getIn(page.value, [...EXTENSIONS, e.id]) ?? null)
+  const on = shown.filter(isOn)
+  const off = shown.filter((e) => !isOn(e))
+  return (
+    <Page
+      title="Extensions"
+      actions={
+        <>
+          <IconButton label="Speaking up" onClick={() => navigate('/extensions/speaking-up')}>
+            <Bell />
+          </IconButton>
+          <IconButton label="Add an MCP server" onClick={() => setAdding(true)}>
+            <Plus />
+          </IconButton>
+          <SaveControls dirty={page.dirty} saving={page.saving} onSave={page.save} onReset={page.reset} />
+        </>
+      }
+    >
+      <SearchField value={search} onChange={setSearch} placeholder="Search extensions" />
+      {list.data.length === 0 && drafted.length === 0 ? (
+        <p className="text-sm text-muted-foreground">None yet. `winston ext new NAME` makes one in data/extensions/.</p>
+      ) : (
+        !shown.length && !newOnes.length && <p className="text-sm text-muted-foreground">Nothing matches.</p>
+      )}
+      <Group title="On" count={on.length + newOnes.length}>
+        {newOnes.map((id) => (
+          <Card key={id}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ExtensionIcon name="simple-icons:modelcontextprotocol" />
+                <span className="min-w-0 truncate">{id}</span>
+                <span role="img" aria-label="Unsaved changes" className="ml-auto size-2 shrink-0 rounded-full bg-primary" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-muted-foreground">Starts once saved</p>
+            </CardContent>
+          </Card>
+        ))}
+        {on.map((e) => (
+          <Tile key={e.id} e={e} page={page} changed={changed(e)} />
+        ))}
+      </Group>
+      <Group title="Off" count={off.length}>
+        {off.map((e) => (
+          <Tile key={e.id} e={e} page={page} changed={changed(e)} />
+        ))}
+      </Group>
+      <AddMcp page={page} taken={[...list.data.map((e) => e.id), ...drafted]} open={adding} onOpenChange={setAdding} />
+    </Page>
+  )
+}
+
+/** How he speaks up for every extension: who you are, your phone, how often, when the briefing starts. */
+export function SpeakingUpPage() {
+  const navigate = useNavigate()
+  const s = useSettings([SPEAK_UP])
+  if (s.loading) return <PageSkeleton title="Speaking up" />
   return (
     <SettingsPage
-      title="Extensions"
-      page={page}
+      title="Speaking up"
+      page={s.page}
       actions={
-        <IconButton label="Add an MCP server" onClick={() => setAdding(true)}>
-          <Plus />
+        <IconButton label="Extensions" size="icon" onClick={() => navigate('/extensions')}>
+          <ArrowLeft />
         </IconButton>
       }
     >
-      <SectionForm page={page} path={SPEAK_UP} title="Speaking up" />
-      {list.data.length === 0 && drafted.length === 0 && (
-        <p className="text-sm text-muted-foreground">None yet. `winston ext new NAME` makes one in data/extensions/.</p>
-      )}
-      {list.data.map((e) => (
-        <ExtensionCard key={e.id} e={e} page={page} />
-      ))}
-      {drafted.map((id) => (
-        <Card key={id}>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ExtensionIcon name="plug" />
-              {id}
-              <span className="text-sm font-normal text-muted-foreground">Starts once saved</span>
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      ))}
-      <AddMcp page={page} taken={[...list.data.map((e) => e.id), ...drafted]} open={adding} onOpenChange={setAdding} />
+      <SectionForm page={s.page} path={SPEAK_UP} />
+    </SettingsPage>
+  )
+}
+
+/** One extension's page: its card, with what it may reach, its switch, settings, tools and speaking up. */
+export function ExtensionPage() {
+  const { id = '' } = useParams()
+  const navigate = useNavigate()
+  const s = useSettings([EXTENSIONS])
+  const list = useExtensions(s.page?.schema)
+  if (s.loading || !list.data) return <PageSkeleton title="Extensions" />
+  const e = list.data.find((x) => x.id === id)
+  if (!e) return <Navigate to="/extensions" replace />
+  return (
+    <SettingsPage
+      title={e.name}
+      page={s.page}
+      actions={
+        <IconButton label="Extensions" size="icon" onClick={() => navigate('/extensions')}>
+          <ArrowLeft />
+        </IconButton>
+      }
+    >
+      <ExtensionCard e={e} page={s.page} />
     </SettingsPage>
   )
 }

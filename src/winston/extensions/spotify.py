@@ -3,7 +3,7 @@
 # id = "spotify"
 # name = "Spotify"
 # description = "Spotify on your speakers: a Spotify Connect speaker for the app, and play, pause and skip by voice."
-# icon = "music"
+# icon = "simple-icons:spotify"
 # api = 1
 # permissions = { network = ["127.0.0.1", "api.spotify.com", "accounts.spotify.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com", "api.listenbrainz.org", "musicbrainz.org"], home_assistant = "act", speakers = true, presence = true }
 # ///

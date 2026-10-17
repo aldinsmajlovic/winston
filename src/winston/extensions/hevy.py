@@ -3,7 +3,7 @@
 # id = "hevy"
 # name = "Hevy"
 # description = "Your workouts from Hevy, and a word when you have not trained for a while."
-# icon = "dumbbell"
+# icon = "simple-icons:hevy"
 # api = 1
 # permissions = { network = ["api.hevyapp.com"] }
 # ///

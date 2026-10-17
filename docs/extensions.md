@@ -8,6 +8,7 @@ Spotify and Web search ([built-in extensions](built-in-extensions.md)). Added wi
 `devices` permission, and picking another extension's tool in settings. Added on 2026-10-11: the
 `tools` permission (calling the brain's own tools, for Later) and the diary through `memory`. Added on
 2026-10-12, when web search and Ask Claude moved from the core onto the standard: `filler_after` on a tool.
+Added on 2026-10-17: a maker's logo as an extension's `icon`.
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs
@@ -16,7 +17,7 @@ no secrets but the ones its own settings name. A personal one is a single file i
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/extensions-dark.png">
-  <img src="images/extensions-light.png" alt="The Extensions page: Speaking up, and the Agenda card with what it may reach, its settings, its tool and its kind of speaking up" width="720">
+  <img src="images/extensions-light.png" alt="The Extensions page: a search, then the extensions as tiles, five on and six off, each with its icon, state and what it does" width="720">
 </picture>
 
 ## The smallest one
@@ -199,7 +200,7 @@ package. The same keys in both.
 | Key | |
 | --- | --- |
 | `id` | Lowercase letters, digits and underscores; unique; the prefix of its tools and entities |
-| `name`, `description`, `icon` | For the card; `icon` is a lucide icon name, as in the rest of the web UI |
+| `name`, `description`, `icon` | For the card; `icon` is a lucide icon name, as in the rest of the web UI, or for an extension of a maker's service its logo from [Simple Icons](https://simpleicons.org) as `simple-icons:<slug>` (`simple-icons:spotify`); a name it does not know gives the puzzle piece |
 | `api` | The major version of the SDK it is written for; winstond runs it with that SDK |
 | `permissions` | What it may reach outside its own process (below) |
 
@@ -412,7 +413,7 @@ Everything else reaches winstond, Home Assistant or the network, and is awaited.
 | `ctx.now()`, `ctx.today()` | The core's clock: an aware `datetime` in the home's time zone (a `ZoneInfo`, so arithmetic across daylight saving holds), and its `date`. Tests move it |
 | `ctx.store` | A dict of JSON values in its state folder, saved (nested changes too) after every handler |
 | `ctx.folder` | That folder, `data/state/extensions/<id>/`, for SQLite or files |
-| `ctx.ongoing(text)` | What is going on now that he should know with every message ("playing Oh Dove by Men I Trust"), up to 160 characters, or `None` once it is over. It goes in front of each thing said to him while it lasts (`[09:30; spotify: playing ...]`), read fresh each message, so it costs no prompt cache; it is cleared when the extension's process starts or stops, and while it is set a saved change to the extension's code waits to reload until it is over (so it does not cut the music). `@ext.context` is for what holds for a whole conversation |
+| `ctx.ongoing(text)` | What is going on now that he should know with every message ("playing Oh Dove by Men I Trust"), up to 160 characters, or `None` once it is over. It goes in front of each thing said to him while it lasts (`[09:30; spotify: playing ...]`), read fresh each message, so it costs no prompt cache; it is cleared when the extension's process starts or stops, and while it is set a saved change to the extension's code waits to reload until it is over (so it does not cut the music); other extensions reload meanwhile. `@ext.context` is for what holds for a whole conversation |
 | `ctx.log.info(msg)`, `.warning`, `.error` | Its log, shown on the card and by `winston ext logs` |
 | `ctx.http` | An `httpx.AsyncClient` for the declared hosts, 10 s timeout. It does not raise on 4xx or 5xx (check `status_code` or call `raise_for_status()`); an undeclared host raises `NotPermitted`. Each request is logged by method, host, path, status and time; never the query string, headers or body |
 | `ctx.ha.state(id)`, `.states(domain)`, `.history(id, since)` | `State(entity_id, state, attributes, last_changed)`, a list of them, or `None` |
@@ -825,14 +826,20 @@ editing one's code restarts it on a running Winston.
 
 ## The Extensions page
 
-In the settings sidebar after Home Assistant, under the Speaking up card: you (the person entity that says
-whether you are home), your phone (Home Assistant's notify service for it), spoken nudges a day and
-when the briefing starts; the parts of the day and "after work" are under Advanced. A card per extension: its icon, name and state, a shield on anything not built in,
-Log, Restart and its switch in the title; then what it may reach (read before switching it on), a
+In the settings sidebar after Home Assistant. A search, then every extension as a tile, the ones on
+first and then the ones off, by name: its icon, name, state, a shield on anything not built in, a dot
+while it has unsaved edits, and two lines of its description. The bell in the header opens Speaking
+up (`/extensions/speaking-up`), the settings every extension's nudges share: you (the person entity
+that says whether you are home), your phone (Home Assistant's notify service for it), spoken nudges a
+day and when the briefing starts; the parts of the day and "after work" are under Advanced. The + in the header adds an MCP server: an id, a command or a URL, the variables it
+gets, and for a URL its token; it shows as a tile marked "Starts once saved" until Save.
+
+A tile opens the extension's own page (`/extensions/ID`), with its card: its icon, name and state, a
+shield on anything not built in, Log, Restart and its switch in the title; then what it may reach (read before switching it on), a
 problem or why it stopped lately, its status line, its settings (key fields included), its tools with
 their tier, whether the brain gets each and whether other apps may use it, its entities' values, and
-its memory and prompt cost. The + in the header adds an MCP server: an id, a command or a URL, the
-variables it gets, and for a URL its token. Its kinds of speaking up are a table: when and where each is said (your choice
+its memory and prompt cost. It is switched on there and not on its tile, so what it may reach is
+always in view first. Its kinds of speaking up are a table: when and where each is said (your choice
 over the extension's; a kind that delivers per level shows By level), whether it may speak at all,
 and a Muted button that switches a muted kind back on; below it, its nudges now, each with where it
 stands (waiting for the next conversation, put off until when and the reason you gave, held in quiet
