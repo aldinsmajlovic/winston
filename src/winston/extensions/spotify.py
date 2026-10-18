@@ -32,6 +32,7 @@ the shared client of every librespot)."""
 from __future__ import annotations
 
 import asyncio
+import difflib
 import fcntl
 import hashlib
 import json
@@ -642,6 +643,12 @@ def _by(item: dict, artist: str) -> bool:
     return any(want in f" {_key(a['name'])} " or f" {_key(a['name'])} " in want for a in item.get("artists") or [])
 
 
+def _heard(item: dict, artist: str) -> bool:
+    """Whether item is by `artist` as speech-to-text may write it, a letter or so off ("Fugazis" is Fugazi)."""
+    return any(difflib.SequenceMatcher(None, _key(a["name"]), _key(artist)).ratio() >= 0.85
+               for a in item.get("artists") or [])
+
+
 LIBRARY = {"playlist": ["current_user_playlists"], "album": ["current_user_saved_albums"],
            "artist": ["current_user_top_artists", "current_user_followed_artists"],
            "track": ["current_user_top_tracks", "current_user_saved_tracks"]}
@@ -815,23 +822,30 @@ def _items(found: dict, kind: str) -> list[dict]:
     return [{"type": kind, **i} for i in (found.get(f"{kind}s") or {}).get("items") or [] if i]
 
 
-async def find_track(ctx, title: str, by: str, thorough: bool = True) -> tuple[dict | None, str | None]:
-    """The song called `title` by `by`, and a line when it is someone else's. Spotify's field search is not
-    to be trusted alone ("track:One artist:U2" answered One Sweet Day by Mariah Carey), so a song counts only
-    with that title and that artist. Thorough, it asks twice more, and when Spotify's first song of that title
-    is by someone else, plays that one and says whose it is ("Big Bad John" is Jimmy Dean's, not Johnny
-    Horton's; Aldin's pick). (None, None) when nothing has that title."""
+async def find_track(ctx, title: str, by: str, thorough: bool = True) -> tuple[dict | None, str | None, list[dict]]:
+    """The song called `title` by `by`, a line when it is not quite that, and the artist's songs found when
+    nothing fits. Spotify's field search is not to be trusted alone ("track:One artist:U2" answered One Sweet
+    Day by Mariah Carey), so a song counts only with that title and that artist. Thorough (a name he said), it
+    asks twice more and allows what speech-to-text and memory get wrong: the artist a letter off ("Fugazis"),
+    then the artist's song with every word said ("I'm Tired by Fugazi" is I'm So Tired, not Labrinth's I'm
+    Tired); else, when Spotify's first song of that title is by someone else, plays that one and says whose it
+    is ("Big Bad John" is Jimmy Dean's, not Johnny Horton's; Aldin's pick)."""
     want = _title(title)
-    other = None
+    found: dict[str, list[dict]] = {}
     for q in [f"track:{title} artist:{by}"] + ([f"{title} {by}", title] if thorough else []):
-        named = [t for t in _items(await _search(ctx, q, ["track"]), "track") if _title(t["name"]) == want]
-        if (song := next((t for t in named if _by(t, by)), None)) is not None:
-            return song, None
-        if q == title and named:
-            other = named[0]
-    if other is not None:
-        return other, f"{other['name']} is by {', '.join(a['name'] for a in other.get('artists') or [])}, not {by}"
-    return None, None
+        found[q] = _items(await _search(ctx, q, ["track"]), "track")
+        if (song := next((t for t in found[q] if _title(t["name"]) == want and _by(t, by)), None)) is not None:
+            return song, None, []
+    if not thorough:
+        return None, None, []
+    theirs = list({t["uri"]: t for ts in found.values() for t in ts if _by(t, by) or _heard(t, by)}.values())
+    if (song := next((t for t in theirs if _title(t["name"]) == want), None)) is not None:
+        return song, None, []
+    if (song := next((t for t in theirs if set(want.split()) <= set(_title(t["name"]).split())), None)) is not None:
+        return song, f"Nothing of {by}'s is called {title}; {song['name']} is the nearest", []
+    if (other := next((t for t in found[title] if _title(t["name"]) == want), None)) is not None:
+        return other, f"{other['name']} is by {', '.join(a['name'] for a in other.get('artists') or [])}, not {by}", []
+    return None, None, theirs[:3]
 
 
 async def find(ctx, what: str, kind: str | None, by: str | None = None) -> tuple[dict | None, str | None, list[dict]]:
@@ -848,13 +862,13 @@ async def find(ctx, what: str, kind: str | None, by: str | None = None) -> tuple
         raise NotReady(f"{what!r} is not in the user's Spotify library; to search all of Spotify, add a Spotify app's "
                        "client ID and secret on the Spotify card")
     if by and kind in (None, "track"):
-        song, note = await find_track(ctx, what, by)
-        if song is None:            # "Currents by Tame Impala" is an album, though the brain said a track 8 of 10
+        song, note, near = await find_track(ctx, what, by)
+        if song is None or note:    # "Currents by Tame Impala" is an album, though the brain said a track 8 of 10
             album = next((a for a in _items(await _search(ctx, f"album:{what} artist:{by}", ["album"]), "album")
                           if _key(a["name"]) == _key(what) and _by(a, by)), None)
             if album is not None:
                 return album, (f"No song of {by}'s is called {what}; this is the album" if kind else None), []
-        return song, note, []
+        return song, note, near
     found = await _search(ctx, what, [kind] if kind else ["artist", "album", "playlist", "track"])
     want = _key(what)
     tracks, artists = _items(found, "track"), _items(found, "artist")
@@ -875,9 +889,9 @@ async def find(ctx, what: str, kind: str | None, by: str | None = None) -> tuple
             return song or artist, None, []
         if " by " in what:              # "One by U2", said as one name
             title, _, artist_name = what.rpartition(" by ")
-            song, note = await find_track(ctx, title, artist_name)
-            if song is not None:
-                return song, note, []
+            song, note, theirs = await find_track(ctx, title, artist_name)
+            if song is not None or theirs:
+                return song, note, theirs
     near = [i for t in ("track", "artist", "album") for i in _items(found, t)[:1]]
     return None, None, near
 

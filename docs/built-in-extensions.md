@@ -287,9 +287,12 @@ when it is that artist; an album or a playlist only when you said "the album" or
 stranger's playlist that happens to have the words. When a song and an artist share the name, your
 artist's song wins, then the artist if Spotify's songs for the name are the artist's own ("Daft Punk"),
 else the song ("Wonderwall" is Oasis's song, not a band called Wonderwall). A song with its artist ("One
-by U2") must be by that artist; when Spotify's song of that title is someone else's, it plays that one
-and says whose it is ("Big Bad John is by Jimmy Dean, not Johnny Horton"). When no song has the name, an
-album of that artist's does ("Currents by Tame Impala"). "The new Tame Impala album" plays the artist's
+by U2") must be by that artist, allowing what speech-to-text and memory get wrong: the artist a letter
+off ("Fugazis"), then the artist's song with every word said ("I'm Tired by Fugazi" plays I'm So Tired,
+and he says its real title). An album of that artist's with the name comes first when no song is exactly
+it ("Currents by Tame Impala"). Only then, when Spotify's song of that title is someone else's, it plays
+that one and says whose it is ("Big Bad John is by Jimmy Dean, not Johnny Horton"). When nothing fits, he
+names the artist's songs Spotify found and asks. "The new Tame Impala album" plays the artist's
 newest album, and "Fred again..'s latest" the newest album or single (`latest`), from Spotify's list of
 the artist's records, said with its release date. Nothing that only carries the
 words plays ("drum and bass" once played a song called "Drum and Bass Father"): he gets the nearest names

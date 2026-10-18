@@ -408,6 +408,7 @@ standard), and `spotify_volume` "up" with Spotify at 100 raises the box a step (
 too; down stays the music's own. 38 Spotify tests; `tests/extensions_cases.py` checks a report, a raise and the
 command the box is sent. The box reported 0.95 after the restart. **Box check:** with Spotify at 100, "louder"
 turns the box up and the dial's ring shows it.
+- **2026-10-18: a song named a little off.** At 23:35 "I'm Tired by Fugazi" played Labrinth's I'm Tired twice, and "Tied by Fugazi" (heard wrong) named nothing to ask about; only "I'm So Tired" played. `find_track` matched titles exactly, fell back to a stranger's song of that exact title, and gave no nearest songs with an artist named; "Fugazis" (speech-to-text) was no Fugazi. Now, with an artist named: the artist a letter off counts, then the artist's song with every word said (with a line giving its real title), an album of theirs with the name, and only then a stranger's song of that title; with nothing, the artist's songs found are the nearest. The evening's three requests are a Spotify test, which fails on the old code. **Box check owed** after the extension restarts (it was playing): "play I'm Tired by Fugazi".
 
 ---
 

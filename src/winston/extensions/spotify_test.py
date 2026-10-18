@@ -502,6 +502,31 @@ async def test_a_song_by_an_artist_is_by_that_artist_or_he_is_told_whose_it_is()
     assert await h.tool("play", what="One", by="U2", next=True) == "Queued One by U2."
     await h.close()
 
+async def test_a_song_said_a_little_off_is_the_artists_own_or_he_is_asked_with_their_songs():
+    """As heard on 2026-10-18: "I'm Tired by Fugazi" played Labrinth's I'm Tired, not Fugazi's I'm So Tired;
+    "Fugazis" was no Fugazi, and "Tied by Fugazi" named nothing to ask about."""
+    rx = Receiver()
+    tired, room = song("ist", "I'm So Tired", "Fugazi"), song("wr", "Waiting Room", "Fugazi")
+    rx.answers = {
+        "track:I'm Tired artist:Fugazi": answer([tired]),
+        "I'm Tired Fugazi": answer([tired, room]),
+        "I'm Tired": answer([song("lab", "I\u2019m Tired (with Zendaya) - Bonus Track", "Labrinth", "Zendaya")]),
+        "track:I'm So Tired artist:Fugazis": answer([]),
+        "I'm So Tired Fugazis": answer([tired]),
+        "track:Tied artist:Fugazi": answer([]),
+        "Tied Fugazi": answer([tired, room]),
+        "Tied": answer([song("ty", "Tied Up", "Someone")]),
+    }
+    h = harness(rx)
+    said = await h.tool("play", what="I'm Tired", by="Fugazi")
+    assert said == "Playing I'm So Tired by Fugazi. Nothing of Fugazi's is called I'm Tired; I'm So Tired is the nearest.", said
+    assert await h.tool("play", what="I'm So Tired", by="Fugazis") == "Playing I'm So Tired by Fugazi."
+    said = await h.tool("play", what="Tied", by="Fugazi")
+    assert said.startswith("Nothing on Spotify is called 'Tied' by Fugazi, so nothing was played. "
+                           "Nearest: I'm So Tired by Fugazi; Waiting Room by Fugazi."), said
+    assert played(rx) == ["spotify:track:ist", "spotify:track:ist"], rx.calls
+    await h.close()
+
 
 async def test_my_music_stays_in_his_library_and_an_emoji_is_said_by_its_name():
     rx = Receiver()
