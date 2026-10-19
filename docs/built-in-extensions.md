@@ -66,7 +66,8 @@ marked as information.
 
 - **Signs in** with the card's key when one is set: a token from `claude setup-token` (`sk-ant-oat...`)
   draws on a Claude Pro or Max plan's monthly Agent SDK credit (opt in once in your Claude account),
-  an API key (`sk-ant-api...`) is billed per question. With no key, this machine's Claude Code login
+  an API key (`sk-ant-api...`) is billed per question against the account's API credit, which a Max
+  plan now includes. With no key, this machine's Claude Code login
   (`~/.claude/.credentials.json`). The status line says which, and what was spent today.
 - **Budget**: `max_usd_per_day` (3 USD), from the cost the SDK reports, and `max_usd_per_question`
   (0.5 USD, Advanced).
