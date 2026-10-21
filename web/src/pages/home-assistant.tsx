@@ -1,154 +1,131 @@
 import { useMemo, useState } from 'react'
-import { CircleAlert, Plus } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
 import { errorText, type ExposedEntity, type HomeAssistantConfig } from '@/api/client'
 import { useConfig } from '@/api/config'
+import { ActionList } from '@/components/action-list'
 import { Combobox } from '@/components/combobox'
-import { HAConnectionStatus } from '@/components/ha-connection'
+import { HACheck, HAConnectionStatus } from '@/components/ha-connection'
 import { HAEntityTables } from '@/components/ha-entities'
 import { HAEntityPicker } from '@/components/ha-entity-picker'
-import { InfoTip } from '@/components/info-tip'
 import { ItemDialog } from '@/components/item-dialog'
+import { KindIcon } from '@/components/kind-icon'
 import { PageSkeleton } from '@/components/page'
+import { SchemaForm } from '@/components/schema-form'
 import { SearchField } from '@/components/search-field'
 import { SectionForm } from '@/components/section-form'
+import { StatusLine } from '@/components/status-line'
 import { SettingsPage } from '@/components/templates/settings-page'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useConfirm } from '@/hooks/use-confirm'
 import {
   groupByArea,
+  haActionItems,
+  haNames,
+  heardName,
+  kindName,
   matches,
+  otherNames,
+  planParts,
+  useApplyNow,
   useHomeAssistant,
   type EntityRow,
   type HAEntity,
   type HAExposure,
-  type HATool,
-  type RowStatus,
 } from '@/hooks/use-home-assistant'
 import { useOptions } from '@/hooks/use-options'
+import { useSecretsDraft } from '@/hooks/use-secrets'
 import { useSettings } from '@/hooks/use-settings'
-import { deepEqual, prune, section } from '@/lib/schema'
+import { joinNames } from '@/lib/format'
+import { allBut, deepEqual, prune, section } from '@/lib/schema'
 
 const HA = ['providers', 'home_assistant']
-const OMIT = ['expose', 'enabled', 'verify']
 const VERIFY = [...HA, 'verify']
+// What other cards on the page edit, left out of the Connection card.
+const LISTS = ['expose', 'expose_domains', 'verify']
 
 type Editing = { id: string; original?: string; value: ExposedEntity }
 
-const TOOLS_HELP =
-  "What Home Assistant's MCP server lets him do. It follows what is exposed: a light brings brightness and colour, a to-do list its own tools. The voice channel reads them when it starts."
-
-/** A listed entity as Home Assistant has it: applied, waiting for a save or for Home Assistant, or unknown. */
-function rowStatus(id: string, entry: ExposedEntity, saved: ExposedEntity | undefined, exposure: HAExposure | undefined, ha?: HAEntity): RowStatus {
-  if (!saved || !deepEqual({ name: saved.name ?? null, aliases: saved.aliases ?? [] }, { name: entry.name ?? null, aliases: entry.aliases ?? [] })) {
-    return { kind: 'pending', why: ['Save to apply it to Home Assistant'] }
-  }
-  if (!exposure) return { kind: 'unknown', why: 'Home Assistant has not answered yet' }
-  if (!exposure.ok) return { kind: 'unknown', why: exposure.detail || 'Home Assistant is not reachable' }
-  const e = exposure.entities?.find((x) => x.entity_id === id) ?? ha
-  if (!e) return { kind: 'unknown', why: 'Not in the last answer from Home Assistant' }
-  if (!e.in_ha) return { kind: 'missing' }
-  if (e.applied === true) return { kind: 'applied' }
-  if (e.applied == null) return { kind: 'unknown', why: 'Checking needs an admin token' }
-  const why: string[] = []
-  if (e.exposed === false) why.push('Not exposed to Assist')
-  if (e.missing_aliases?.length) why.push(`Missing aliases: ${e.missing_aliases.join(', ')}`)
-  why.push('Sync, or Apply beside Connection')
-  return { kind: 'pending', why }
-}
-
-function ToolsCard({ tools }: { tools: { data?: HATool[]; error: unknown; isLoading: boolean } }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-1.5">
-          What he can do
-          <InfoTip text={TOOLS_HELP} />
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <Table aria-label="What he can do">
-          <TableHeader>
-            <TableRow>
-              <TableHead>Tool</TableHead>
-              <TableHead>From</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {tools.error ? (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={2}>
-                  <span className="flex items-center gap-2 whitespace-normal">
-                    <CircleAlert className="size-4 shrink-0 text-warning" />
-                    {errorText(tools.error)}
-                  </span>
-                </TableCell>
-              </TableRow>
-            ) : tools.data && tools.data.length === 0 ? (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={2} className="text-muted-foreground">
-                  None yet.
-                </TableCell>
-              </TableRow>
-            ) : null}
-            {(tools.data ?? []).map((t) => (
-              <TableRow key={t.names.join(' ')} title={t.names.join(', ')}>
-                <TableCell>{t.label}</TableCell>
-                <TableCell className="text-muted-foreground">{t.source}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  )
+/** What is not right yet with a listed entity, in words; null when Home Assistant has it as listed, or
+ * when that cannot be known (the Connection card says why). */
+function rowBadge(entry: ExposedEntity, saved: ExposedEntity | undefined, exposure: HAExposure | undefined, e?: HAEntity): string | null {
+  const names = (x: ExposedEntity) => ({ name: x.name ?? null, aliases: x.aliases ?? [] })
+  if (!saved || !deepEqual(names(saved), names(entry))) return 'Waiting for Save'
+  if (!exposure?.ok || !e) return null
+  if (!e.in_ha) return 'Not in Home Assistant'
+  if (e.applied !== false) return null
+  return e.exposed === false ? 'Not exposed yet' : 'Names not added yet'
 }
 
 export default function HomeAssistantPage() {
-  const s = useSettings([HA])
+  const s = useSettings()
   const ask = useConfirm()
+  const client = useQueryClient()
   const config = useConfig()
+  const secrets = useSecretsDraft()
+  const apply = useApplyNow()
   const entities = useOptions('ha_entities')
   const [editing, setEditing] = useState<Editing | null>(null)
   // The picker gets a new key each time it opens, so it starts with nothing ticked.
   const [picker, setPicker] = useState({ open: false, key: 0 })
+  const [sharing, setSharing] = useState(false)
   const [search, setSearch] = useState('')
   const saved: HomeAssistantConfig | null = config.data?.providers?.home_assistant ?? null
-  const savedOn = !!saved && saved.enabled !== false && !!saved.url
+  // Set up once an address is saved; until then the page is the Connect card.
+  const setUp = !!saved?.url
+  const savedOn = setUp && saved.enabled !== false
   const { exposure, registry, tools } = useHomeAssistant(savedOn)
-  const entitySchema = useMemo(
-    () => (s.page ? prune(section(s.page.schema, [...HA, 'expose', 'item']), s.page.schema, { advanced: true }) : null),
-    [s.page],
-  )
+  // Say first, Stay quiet and Run at its name are for scripts and scenes (Run at its name: scripts only).
+  const editId = editing?.id ?? ''
+  const entitySchema = useMemo(() => {
+    if (!s.page) return null
+    const runs = editId.startsWith('script.') || editId.startsWith('scene.')
+    const omit = [...(runs ? [] : ['say_first', 'quiet_after']), ...(editId.startsWith('script.') ? [] : ['shortcut'])]
+    return prune(section(s.page.schema, [...HA, 'expose', 'item']), s.page.schema, { omit })
+  }, [s.page, editId])
   if (s.loading || !entitySchema) return <PageSkeleton title="Home Assistant" />
   const { page } = s
-  const exposeHelp = section(page.schema, [...HA, 'expose']).description
-  const domainsHelp = section(page.schema, [...HA, 'expose_domains']).description
   const ha: HomeAssistantConfig | null = page.value.providers?.home_assistant ?? null
   const setHa = (next: HomeAssistantConfig | null) => page.update((c) => ({ ...c, providers: { ...c.providers, home_assistant: next } }))
-  // Off keeps the URL, token and entities (enabled: false); a schema without the field unsets the block.
-  const hasEnabled = 'enabled' in (section(page.schema, HA).properties ?? {})
   const on = ha !== null && ha.enabled !== false
-  const toggle = (next: boolean) => {
-    if (!hasEnabled) setHa(next ? { url: '' } : null)
-    else if (ha) setHa({ ...ha, enabled: next })
-    else if (next) setHa({ url: '', enabled: true })
+  const token = secrets.pending[ha?.token_env || 'HA_TOKEN']
+  const intro = 'Connect Home Assistant and choose what he sees and controls there; saving also sets what its own assistant, Assist, exposes.'
+
+  if (!setUp) {
+    return (
+      <SettingsPage title="Home Assistant" intro={intro} page={page}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <KindIcon name="homeassistant" />
+              Connect Home Assistant
+            </CardTitle>
+            <CardDescription>Home Assistant gives him your devices, rooms and sensors, and lets your automations make him speak.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <SectionForm page={page} path={HA} omit={allBut(page.schema, HA, ['url', 'token_env'])} />
+            <HACheck url={ha?.url} token={token} />
+            <p className="text-sm text-muted-foreground">
+              After you save, choose which devices he can use. Nothing changes in Home Assistant until you do.
+            </p>
+          </CardContent>
+        </Card>
+      </SettingsPage>
+    )
   }
 
   // Home Assistant's side of each entity: the registry has every one, the exposure the listed ones.
   const known = new Map<string, HAEntity>()
   for (const e of exposure.data?.entities ?? []) known.set(e.entity_id, e)
-  for (const g of registry.data?.groups ?? []) for (const e of g.entities) known.set(e.entity_id, e)
+  for (const g of registry.data?.groups ?? []) for (const e of g.entities) if (!known.has(e.entity_id)) known.set(e.entity_id, e)
   const exposureData = savedOn ? exposure.data : undefined
   const rows: EntityRow[] = Object.entries(ha?.expose ?? {}).map(([id, entry]) => {
     const info = known.get(id)
-    const status: RowStatus = savedOn
-      ? rowStatus(id, entry, saved?.expose?.[id], exposureData, info)
-      : { kind: 'pending', why: ['Save to apply it to Home Assistant'] }
-    return { id, entry, ha: info, status }
+    const badge = savedOn ? rowBadge(entry, saved.expose?.[id], exposureData, info) : 'Waiting for Save'
+    return { id, entry, ha: info, badge }
   })
   const areasKnown = registry.data?.areas_known ?? exposure.data?.registry ?? false
   const groups = groupByArea(
@@ -157,22 +134,51 @@ export default function HomeAssistantPage() {
   )
   const listed = new Set(Object.keys(ha?.expose ?? {}))
   const domains = ha?.expose_domains ?? []
-  const domainCounts = exposure.data?.domains ?? {}
+  const domainCounts = exposureData?.domains ?? {}
   const pickable = entities.choices.filter((c) => !listed.has(c.value) || c.value === editing?.original)
+
+  // Exceptions only: what Home Assistant exposes beyond the list, what an apply would still do while the
+  // list itself is saved, and listed ids Home Assistant does not have.
+  const drift = exposureData?.ok ? (exposureData.drift ?? []).filter((e) => !listed.has(e.entity_id)) : []
+  const one = drift.length === 1
+  const lists = (h: HomeAssistantConfig | null) => ({ expose: h?.expose ?? {}, domains: h?.expose_domains ?? null })
+  const plan =
+    exposureData?.ok && exposureData.registry && !exposureData.in_sync && deepEqual(lists(ha), lists(saved)) ? exposureData.pending : null
+  // Only what the list asks for: un-exposing the drift alone is the line above's.
+  const driftIds = new Set(drift.map((e) => e.entity_id))
+  const pending =
+    plan &&
+    (!!plan.expose?.length ||
+      Object.keys(plan.aliases_add ?? {}).length > 0 ||
+      Object.keys(plan.aliases_remove ?? {}).length > 0 ||
+      (plan.unexpose ?? []).some((id) => !driftIds.has(id)))
+      ? planParts(plan)
+      : []
+  const applyNow = async () => {
+    if (!plan) return
+    const choice = await ask({
+      title: 'Apply the list in Home Assistant now?',
+      lines: [`Home Assistant ${joinNames(planParts(plan, haNames(client)))}.`],
+      choices: [{ label: 'Apply now', value: 'yes', destructive: (plan.unexpose?.length ?? 0) > 0 }],
+    })
+    if (choice === 'yes') apply.mutate({})
+  }
+  const missing = rows.filter((r) => r.badge === 'Not in Home Assistant').map(heardName)
 
   const setExpose = (expose: Record<string, ExposedEntity>) => ha && setHa({ ...ha, expose })
   const commit = () => {
     if (!editing || !ha) return
     const expose = { ...ha.expose }
     if (editing.original && editing.original !== editing.id) delete expose[editing.original]
-    expose[editing.id.trim()] = editing.value
+    // rjsf's Add leaves a blank row until it is typed in; the config refuses it at Save.
+    expose[editing.id.trim()] = { ...editing.value, aliases: (editing.value.aliases ?? []).filter((a) => typeof a === 'string' && a.trim() !== '') }
     setExpose(expose)
     setEditing(null)
   }
   const remove = async (row: EntityRow) => {
     const choice = await ask({
-      title: `Remove ${row.entry.name || row.ha?.friendly_name || row.id}?`,
-      lines: ['Save un-exposes it and removes the aliases the list gave it in Home Assistant'],
+      title: `Remove ${heardName(row)}?`,
+      lines: ['When you save, Home Assistant stops exposing it and drops the names this list gave it.'],
       choices: [{ label: 'Remove', value: 'yes', destructive: true }],
     })
     if (!choice || !ha) return
@@ -200,40 +206,42 @@ export default function HomeAssistantPage() {
       const blank = !e.original && !e.value.name && !e.value.aliases?.length
       return { ...e, id, value: blank ? fromHa(known.get(id)) : e.value }
     })
-  const draftUrl = ha && saved && ha.url !== saved.url ? ha.url : undefined
+  const editingRow = editing?.original ? rows.find((r) => r.id === editing.original) : undefined
+  // Home Assistant's own names for the entity in the dialog: its name and aliases, less the ones this list
+  // gives it (saved or not), which the list edits.
+  const theirHa = editing ? known.get(editing.id) : undefined
+  const savedEntry = editing?.original ? saved.expose?.[editing.original] : undefined
+  const theirs =
+    editing && theirHa
+      ? otherNames({
+          id: editing.id,
+          entry: { ...editing.value, aliases: [...(editing.value.aliases ?? []), savedEntry?.name ?? '', ...(savedEntry?.aliases ?? [])] },
+          ha: { ...theirHa, aliases: [theirHa.friendly_name ?? '', ...theirHa.aliases] },
+          badge: null,
+        }).ha
+      : []
+
+  // The API declares no error for it, so the query types it never; a 502 says why Home Assistant did not answer.
+  const toolsError: unknown = tools.error
+  const actions = haActionItems(tools.data ?? [])
 
   return (
-    <SettingsPage
-      title="Home Assistant"
-      page={page}
-      actions={
-        <div className="flex items-center gap-2">
-          <Switch id="ha-enabled" checked={on} onCheckedChange={toggle} />
-          <Label htmlFor="ha-enabled" className="max-sm:sr-only">
-            Enabled
-          </Label>
-        </div>
-      }
-    >
-      {ha && on ? (
+    <SettingsPage title="Home Assistant" intro={intro} page={page}>
+      <SectionForm page={page} path={HA} omit={LISTS} title="Connection">
+        {on ? (
+          ha.url !== saved.url || token ? (
+            <HACheck url={ha.url} token={token} />
+          ) : savedOn ? (
+            <HAConnectionStatus exposure={exposure} />
+          ) : null
+        ) : null}
+      </SectionForm>
+      {on ? (
         <>
-          <SectionForm
-            page={page}
-            path={HA}
-            omit={OMIT}
-            title="Connection"
-            status={
-              savedOn || draftUrl !== undefined ? (
-                <HAConnectionStatus exposure={exposure} draftUrl={savedOn ? draftUrl : ha.url} dirty={page.dirty} />
-              ) : null
-            }
-          />
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-1.5">
-                What he sees
-                <InfoTip text={exposeHelp} />
-              </CardTitle>
+              <CardTitle>Devices he can use</CardTitle>
+              <CardDescription>He sees and controls only these, by the names he answers to.</CardDescription>
               <CardAction>
                 <Button variant="outline" size="sm" onClick={() => setPicker((p) => ({ open: true, key: p.key + 1 }))}>
                   <Plus />
@@ -242,34 +250,64 @@ export default function HomeAssistantPage() {
               </CardAction>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
+              {drift.length ? (
+                <StatusLine tone="warning" action={{ label: `Add ${one ? 'it' : 'them'} to the list`, onClick: () => addPicked(drift) }}>
+                  {`Home Assistant exposes ${one ? 'one thing' : `${drift.length} things`} to Assist that ${one ? 'is' : 'are'} not on this list. Saving a change to the list stops exposing ${one ? 'it' : 'them'}.`}
+                </StatusLine>
+              ) : null}
+              {pending.length ? (
+                <StatusLine tone="warning" action={{ label: 'Apply now', onClick: () => void applyNow() }}>
+                  Home Assistant does not match this list yet. Applying it {joinNames(pending)}.
+                </StatusLine>
+              ) : null}
+              {missing.length ? (
+                <StatusLine tone="warning">
+                  {`${missing.length === 1 ? 'One device on the list is' : `${missing.length} devices on the list are`} not in Home Assistant: ${joinNames(missing)}.`}
+                </StatusLine>
+              ) : null}
               {rows.length ? (
-                <SearchField value={search} onChange={setSearch} placeholder="Search names, aliases or rooms" />
+                <SearchField value={search} onChange={setSearch} placeholder="Search names or rooms" />
               ) : null}
-              <HAEntityTables
-                groups={groups}
-                empty={rows.length ? 'Nothing matches.' : 'None yet.'}
-                onEdit={(r) => setEditing({ id: r.id, original: r.id, value: { ...r.entry } })}
-                onRemove={(r) => void remove(r)}
-              />
-              {domains.length ? (
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <span>Also everything in: {domains.join(', ')}</span>
-                  <InfoTip
-                    text={[
-                      domainsHelp,
-                      ...domains.map((d) => (domainCounts[d] ? `${d}: ${domainCounts[d].length} in Home Assistant` : null)),
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  />
-                </div>
-              ) : null}
+              {!rows.length ? (
+                <p className="text-sm text-muted-foreground">No devices yet. Add the ones he may see and control from Home Assistant.</p>
+              ) : groups.length ? (
+                <HAEntityTables
+                  groups={groups}
+                  onEdit={(r) => setEditing({ id: r.id, original: r.id, value: { ...r.entry } })}
+                  onRemove={(r) => void remove(r)}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">Nothing matches.</p>
+              )}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+                <span className="min-w-0 flex-1 text-muted-foreground">
+                  {domains.length
+                    ? `Also shared by kind, every one of them: ${domains.map((d) => (domainCounts[d] ? `${kindName(d)} (${domainCounts[d].length})` : kindName(d))).join(', ')}`
+                    : 'Nothing is shared by kind.'}
+                </span>
+                <Button variant="outline" size="sm" onClick={() => setSharing(true)}>
+                  Change
+                </Button>
+              </div>
             </CardContent>
           </Card>
-          {savedOn ? <ToolsCard tools={tools} /> : null}
-          {'verify' in (section(page.schema, HA).properties ?? {}) ? (
-            <SectionForm page={page} path={VERIFY} title="After an action" />
-          ) : null}
+          <Card>
+            <CardHeader>
+              <CardTitle>What he can do there</CardTitle>
+              <CardDescription>Home Assistant's own actions, which follow what you share above.</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {!savedOn ? null : toolsError ? (
+                <StatusLine tone="warning">{errorText(toolsError)}</StatusLine>
+              ) : tools.data?.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Home Assistant offers no actions yet.</p>
+              ) : actions.length ? (
+                <ActionList items={actions} details readOnly />
+              ) : null}
+              <p className="text-sm text-muted-foreground">These run on their own. To keep him away from a device, leave it off the list above.</p>
+              <SectionForm page={page} path={VERIFY} />
+            </CardContent>
+          </Card>
           <HAEntityPicker
             key={picker.key}
             open={picker.open}
@@ -282,10 +320,22 @@ export default function HomeAssistantPage() {
               setEditing({ id: '', value: { aliases: [] } })
             }}
           />
+          <Dialog open={sharing} onOpenChange={setSharing}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Shared by kind</DialogTitle>
+              </DialogHeader>
+              {/* The Connection card leaves it to this dialog, whose one field it is. */}
+              <SectionForm page={page} path={HA} omit={allBut(page.schema, HA, ['expose_domains'])} />
+              <DialogFooter>
+                <Button onClick={() => setSharing(false)}>Done</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <ItemDialog
             open={editing !== null}
             onOpenChange={(open) => !open && setEditing(null)}
-            title={editing?.original ? (rows.find((r) => r.id === editing.original)?.entry.name ?? known.get(editing.original)?.friendly_name ?? editing.original) : 'New entity'}
+            title={editingRow ? heardName(editingRow) : editing?.original ?? 'Add by entity ID'}
             keyLabel="Entity"
             keyValue={editing?.id ?? ''}
             existing={listed}
@@ -302,11 +352,27 @@ export default function HomeAssistantPage() {
                 onChange={pickId}
               />
             }
-            schema={entitySchema}
-            value={editing?.value}
-            onChange={(value) => setEditing((e) => e && { ...e, value: value as ExposedEntity })}
             onSubmit={commit}
-          />
+          >
+            <SchemaForm
+              schema={entitySchema}
+              value={editing?.value}
+              onChange={(value) => setEditing((e) => e && { ...e, value: value as ExposedEntity })}
+            />
+            {theirs.length ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-1">
+                  {theirs.map((a) => (
+                    <Badge key={a} variant="outline">
+                      {a}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-sm text-muted-foreground">From Home Assistant: kept. Edit them there.</p>
+              </div>
+            ) : null}
+            <p className="text-sm text-muted-foreground">Sent to Home Assistant when you save the page.</p>
+          </ItemDialog>
         </>
       ) : null}
     </SettingsPage>

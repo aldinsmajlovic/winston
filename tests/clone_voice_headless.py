@@ -27,12 +27,12 @@ from pipecat.processors.aggregators.llm_response_universal import LLMContextAggr
 from pipecat.workers.runner import WorkerRunner
 
 sys.path.insert(0, str(Path(__file__).parent))
-from m2_headless_roundtrip import Heard, Mic, Speaker, synth_user_audio, write_wav  # noqa: E402
-from winston.channels import voice as vp  # noqa: E402
-from winston.channels.clone import CONSENT_LINE, MicTap, make_voice_tools  # noqa: E402
-from winston.config import resolve  # noqa: E402
-from winston.core import speaker as same_voice, voices  # noqa: E402
-from winston.core.brain import Brain, ToolCallLogObserver  # noqa: E402
+from m2_headless_roundtrip import Heard, Mic, Speaker, synth_user_audio, write_wav
+from winston.channels import voice as vp
+from winston.channels.clone import CONSENT_LINE, MicTap, make_voice_tools
+from winston.config import resolve
+from winston.core import speaker as same_voice, voices
+from winston.core.brain import Brain, ToolCallLogObserver
 
 USER_VOICE, FRIEND_VOICE, FRIEND = "vctk/p226_023", "vctk/p243_023", "Zelda"
 PASSAGE = ("Well, today started slowly. I made coffee, read the news for a while and then walked down to the "

@@ -24,7 +24,7 @@ const queryClient = new QueryClient({ mutationCache, defaultOptions: { queries: 
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange scriptProps={{ type: 'application/json' }}>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <TooltipProvider>

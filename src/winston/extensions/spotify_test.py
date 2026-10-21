@@ -2,9 +2,11 @@
 its api-spec.yml), a fake Spotify search and a fake library in Home Assistant; nothing is run or
 downloaded."""
 import asyncio
+import contextlib
 import json
 import os
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -31,6 +33,8 @@ class Receiver:
         self.records: dict[str, list[dict]] = {}    # Spotify's list of an artist's records, by group
         self.next_track: dict | None = None     # the receiver's next song (metadata.enabled)
         self.modes: dict = {}                   # repeat_track, repeat_context, shuffle_context in its status
+        self.track_artists: dict[str, list[str]] = {}   # a song's artists by its id, as Spotify looks it up
+        self.mine: dict[str, list[dict]] = {}   # his account's lists (me/tracks, a playlist's items), by path
         self.found = {"artists": {"items": [{"uri": "spotify:artist:dp", "name": "Daft Punk"}]},
                       "albums": {"items": [{"uri": "spotify:album:ram", "name": "Random Access Memories",
                                             "artists": [{"name": "Daft Punk"}]}]},
@@ -48,9 +52,20 @@ class Receiver:
             ok = request.headers["authorization"] == httpx.BasicAuth("app-id", "app-secret")._auth_header
             self.calls[-1] = ("APP TOKEN", path, dict(parse_qsl(request.content.decode())))
             return httpx.Response(200 if ok else 400, json={"access_token": "app", "expires_in": 3600})
+        if request.url.host == "api.spotify.com" and request.headers["authorization"] == "Bearer user":
+            q = dict(parse_qsl(request.url.query.decode()))
+            self.calls[-1] = ("MINE", path, q)
+            items = self.mine.get(path.removeprefix("/v1/"), [])
+            at, n = int(q.get("offset") or 0), int(q["limit"])
+            return httpx.Response(200, json={"items": items[at:at + n], "next": "more" if at + n < len(items) else None})
         if request.url.host == "api.spotify.com":
             assert request.headers["authorization"] == "Bearer app"
             q = dict(parse_qsl(request.url.query.decode()))
+            if path.startswith("/v1/tracks/"):
+                self.calls[-1] = ("TRACK", path, None)
+                names = self.track_artists.get(path.rpartition("/")[2])
+                return httpx.Response(200, json={"artists": [{"name": a} for a in names]}) if names \
+                    else httpx.Response(404, json={"error": {"status": 404}})
             if path.startswith("/v1/artists/"):
                 self.calls[-1] = ("RECORDS", path, {"group": q["include_groups"]})
                 return httpx.Response(200, json={"items": self.records.get(q["include_groups"], [])})
@@ -131,11 +146,11 @@ def library_ha() -> FakeHA:
     return FakeHA(services={"media_player.browse_media": browse})
 
 
-def harness(rx: Receiver, keys: bool = True, library: bool = False, names: list[str] | None = None,
-            **settings) -> Harness:
+def harness(rx: Receiver, keys: bool = True, library: bool = False, names: dict[str, str] | None = None,
+            accounts: dict[str, str] | None = None, **settings) -> Harness:
     return Harness(HERE, settings={**({"library": PLAYER} if library else {}), **({"names": names} if names else {}),
                                    **settings},
-                   background=False,
+                   background=False, accounts=accounts,
                    secrets=KEYS if keys else {"client_id": "", "client_secret": "", "listenbrainz_token": ""},
                    http=httpx.MockTransport(rx.handle), ha=library_ha() if library else None)
 
@@ -290,7 +305,7 @@ async def test_the_speakers_follow_spotify_and_a_pause_loses_nothing():
     await handle(ctx, {"type": "playing", "data": {}})
     await handle(ctx, {"type": "playing", "data": {"resume": True}})
     assert h.speakers == [("play", "http://127.0.0.1:3679/stream.wav", "Get Lucky by Daft Punk")], h.speakers
-    going = lambda: (h.rt.state_dir / "ongoing.txt").read_text() if (h.rt.state_dir / "ongoing.txt").exists() else None
+    going = lambda: (h.rt.state_dir / "ongoing.txt").read_text() if (h.rt.state_dir / "ongoing.txt").exists() else None  # noqa: E731
     assert going() == "playing Get Lucky by Daft Punk", going()      # in each message's stamp
     state.until = time.monotonic() + 1.5                            # the box has 1.5 s it has not played
     await handle(ctx, {"type": "paused", "data": {}})
@@ -312,7 +327,7 @@ async def test_a_track_change_keeps_the_speakers_connected():
     rx = Receiver()
     h = harness(rx)
     module = h.ext.tools["play"].fn.__globals__
-    handle, state = module["handle_event"], module["state"]
+    handle = module["handle_event"]
     ctx = h.rt.ctx
     await h.status()
     await handle(ctx, {"type": "metadata", "data": {"name": "Get Lucky", "artist_names": ["Daft Punk"]}})
@@ -325,6 +340,55 @@ async def test_a_track_change_keeps_the_speakers_connected():
     assert [a for a, *_ in h.speakers] == ["play"], h.speakers            # never disconnected
     await asyncio.sleep(0.6)
     assert [a for a, *_ in h.speakers] == ["play"], h.speakers            # the deferred stop was cancelled
+    await h.close()
+
+
+async def test_music_another_device_took_is_said_and_resume_brings_it_back():
+    rx = Receiver()
+    rx.playing = False                                              # the receiver let go of it
+    h = harness(rx, library=True)
+    module = h.ext.tools["play"].fn.__globals__
+    handle, ctx = module["handle_event"], h.rt.ctx
+    await h.status()
+    await handle(ctx, {"type": "metadata", "data": {"uri": "spotify:track:pride", "name": "PRIDE.",
+                                                    "artist_names": ["Kendrick Lamar"]}})
+    await handle(ctx, {"type": "playing", "data": {"context_uri": "spotify:station:artist:mac"}})
+    await module["moved"](ctx, "A Phone")                           # the receiver logged the hand-off
+    await handle(ctx, {"type": "inactive"})
+    await asyncio.sleep(0.6)
+    assert [a for a, *_ in h.speakers] == ["play", "stop"], h.speakers
+    [(kind, nudge)] = h.pushed
+    assert kind == "moved" and nudge.facts["device"] == "A Phone" and nudge.facts["song"] == "PRIDE. by Kendrick Lamar"
+    ago = (datetime.now(UTC) - timedelta(seconds=10)).isoformat()   # the phone plays on from where it took it
+    h.ha.set(PLAYER, "playing", {"media_content_id": "spotify:track:pride", "media_title": "PRIDE.",
+                                 "media_artist": "Kendrick Lamar", "media_position": 60, "media_duration": 275,
+                                 "media_position_updated_at": ago})
+    assert await h.tool("resume") == "Back on the speakers: PRIDE. by Kendrick Lamar."
+    body = [b for m, p, b in rx.calls if p == "/player/play"][-1]
+    assert body["uri"] == "spotify:track:pride" and "skip_to_uri" not in body, body   # a radio: its song alone
+    assert 69_000 <= body["position"] <= 72_000, body
+    await handle(ctx, {"type": "playing", "data": {}})
+    assert "moved" not in h.store and len(h.pushed) == 1                # here again: nothing to bring back
+    assert await h.tool("resume") == "Nothing is loaded to carry on with; something has to be asked for first."
+    await h.close()
+
+
+async def test_a_list_comes_back_at_the_song_the_other_device_is_on_and_a_quiet_move_says_nothing():
+    rx = Receiver()
+    rx.playing = False
+    h = harness(rx, library=True)
+    module = h.ext.tools["play"].fn.__globals__
+    handle, ctx = module["handle_event"], h.rt.ctx
+    await h.status()
+    await handle(ctx, {"type": "metadata", "data": {"uri": "spotify:track:a", "name": "A"}})
+    await handle(ctx, {"type": "paused", "data": {"context_uri": "spotify:playlist:mix"}})
+    await module["moved"](ctx, "A Phone")                           # paused here, then picked in the app
+    assert not h.pushed and h.store["moved"]["context"] == "spotify:playlist:mix"
+    h.ha.set(PLAYER, "paused", {"media_content_id": "spotify:track:b", "media_title": "B", "media_artist": "Them",
+                                "media_position": 30, "media_duration": 200})
+    assert await h.tool("resume") == "Back on the speakers: B by Them."
+    body = [b for m, p, b in rx.calls if p == "/player/play"][-1]
+    assert body == {"uri": "spotify:playlist:mix", "skip_to_uri": "spotify:track:b"}, body  # a new song: its start
     await h.close()
 
 
@@ -502,6 +566,7 @@ async def test_a_song_by_an_artist_is_by_that_artist_or_he_is_told_whose_it_is()
     assert await h.tool("play", what="One", by="U2", next=True) == "Queued One by U2."
     await h.close()
 
+
 async def test_a_song_said_a_little_off_is_the_artists_own_or_he_is_asked_with_their_songs():
     """As heard on 2026-10-18: "I'm Tired by Fugazi" played Labrinth's I'm Tired, not Fugazi's I'm So Tired;
     "Fugazis" was no Fugazi, and "Tied by Fugazi" named nothing to ask about."""
@@ -530,7 +595,7 @@ async def test_a_song_said_a_little_off_is_the_artists_own_or_he_is_asked_with_t
 
 async def test_my_music_stays_in_his_library_and_an_emoji_is_said_by_its_name():
     rx = Receiver()
-    h = harness(rx, library=True, names=["\U0001f941 = drum and bass, drum n bass"])
+    h = harness(rx, library=True, names={"\U0001f941": "drum and bass, drum n bass"})
     await h.run("library")
     assert await h.tool("play", what="my DJ playlist") == "Playing your playlist Dj."
     assert await h.tool("play", what="my drum playlist") == "Playing your playlist \U0001f941."
@@ -542,6 +607,13 @@ async def test_my_music_stays_in_his_library_and_an_emoji_is_said_by_its_name():
     assert not any(c[0] == "SEARCH" for c in rx.calls), rx.calls
     assert "\U0001f941 (drum with drumsticks)" in (await h.tool("my_music"))["playlist"]
     await h.close()
+
+
+def test_names_saved_as_lines_still_load():
+    """Names were once lines of "name = words"; settings saved that way load as the map."""
+    model = harness(Receiver()).ext.settings_model
+    lines = ["\U0001f941 = drum and bass", "\U0001f941 = drum n bass", "no words", "Dj = the mix "]
+    assert model.model_validate({"names": lines}).names == {"\U0001f941": "drum and bass, drum n bass", "Dj": "the mix"}
 
 
 async def test_a_genre_said_as_a_name_is_a_genre_and_named_artists_always_seed():
@@ -599,12 +671,79 @@ async def test_a_slow_listenbrainz_plays_radio_and_what_was_found_or_unknown_is_
     assert await h.tool("play", mood="chill", artists=["Radiohead"]) == "Playing radio from Radiohead, for chill."
     assert played(rx)[-1] == "spotify:station:artist:rh", played(rx)
     rx.lb_slow, rx.refusing = False, 80056
-    try:
+    with contextlib.suppress(Exception):
         await h.tool("play", what="Push the Feeling On")              # Spotify starts refusing searches
-    except Exception:                                               # noqa: BLE001
-        pass
     assert await h.tool("play", mood="chill", artists=["Daft Punk"]) == "Playing radio from Daft Punk, for chill."
     assert [e["recipe"] for e in h.rt.store["mood_log"]][-2:] == ["spotify_radio", "spotify_radio"]   # what played
+    await h.close()
+
+
+async def test_a_mood_mix_starts_from_the_three_that_fit_best():
+    """2026-10-18: of Elliott Smith, Tame Impala, Men I Trust and Daft Punk for calm, the two used lately were
+    passed over for Daft Punk, the brain's last pick, and the mix opened with Digital Love."""
+    rx = Receiver()
+    h = harness(rx)
+    h.rt.store["seeds"] = ["Air", "Radiohead"]
+    await h.tool("play", mood="calm", artists=["Air", "Radiohead", "Justice", "Daft Punk"])
+    assert [p for m, p, b in rx.calls if m == "LB"] == ["artist:(Justice) artist:(Air)"], rx.calls
+    await h.close()
+
+
+async def test_something_familiar_is_his_own_songs_by_the_artists_that_fit():
+    rx = Receiver()
+    rx.track_artists = {"omt": ["Daft Punk"]}
+    h = harness(rx, library=True)
+    await h.run("library")
+    await h.run("library")
+    assert h.rt.store["track_artists"] == {"spotify:track:omt": ["Daft Punk"], "spotify:track:cppm": []}
+    assert [p for m, p, b in rx.calls if m == "TRACK"] == ["/v1/tracks/omt", "/v1/tracks/cppm"], rx.calls  # once
+    said = await h.tool("play", mood="calm", artists=["Radiohead", "Daft Punk"], familiar=True)
+    assert said == ("Playing Radiohead's popular songs, for calm: few of the user's own songs (1) are by "
+                    "Radiohead and Daft Punk."), said
+    assert played(rx) == ["spotify:artist:rh"], rx.calls
+    library = h.rt.store["library"]["track"]
+    for n, by in enumerate(["Radiohead"] * 4 + ["Justice"]):
+        library.append({"type": "track", "name": f"Song {n}", "uri": f"spotify:track:s{n}"})
+        h.rt.store["track_artists"][f"spotify:track:s{n}"] = [by]
+    said = await h.tool("play", mood="calm", artists=["Radiohead", "Daft Punk", "Air", "Justice"], familiar=True)
+    assert said.startswith("Playing a calm mix of the user's own songs by Radiohead and Daft Punk, 5 songs, "), said
+    listed = played(rx)[-1:] + [b["uri"] for m, p, b in rx.calls if p == "/player/add_to_queue"]
+    assert sorted(listed) == ["spotify:track:omt"] + [f"spotify:track:s{n}" for n in range(4)], listed  # not Justice's
+    assert not any(c[0] in ("SEARCH", "LB") for c in rx.calls) and not h.rt.store.get("mood_log"), rx.calls
+    module = h.ext.tools["play"].fn.__globals__
+    module["state"].on = True                       # "something familiar" while that mix plays: its artists
+    said = await h.tool("play", mood="calm", familiar=True)
+    assert said.startswith("Playing a calm mix of the user's own songs by Radiohead and Daft Punk, 5 songs, "), said
+    module["state"].on = False                      # nothing playing: all of their songs
+    said = await h.tool("play", familiar=True)
+    assert said.startswith("Playing the user's own songs, 7 songs, starting with "), said
+    assert await h.tool("play", what="Radiohead") == "Playing Radiohead." and "mix_artists" not in h.rt.store
+    await h.close()
+
+
+async def test_signed_in_every_song_he_knows_is_read_with_its_artists():
+    """Home Assistant lists his newest 48 liked and top 48 songs without artists (spotifyaio asks for one page of
+    48); signed in, all of them, his top and recent ones and his own playlists' songs, never the mix playlist's."""
+    rx = Receiver()
+    rx.playlists = [playlist("Running 2026", "run1", mine=True), playlist("Winston", "mix", mine=True),
+                    playlist("Discover Weekly", "dw")]
+    track = lambda n, by: {"type": "track", **song(f"s{n}", f"Song {n}", by)}     # noqa: E731
+    rx.mine = {"me/tracks": [{"track": track(n, "Radiohead")} for n in range(120)],
+               "me/top/tracks": [track(200, "Air")], "me/player/recently-played": [{"track": track(201, "Justice")}],
+               "playlists/run1/items": [{"item": track(202, "Daft Punk")}, {"item": {"type": "episode", "uri": "e"}}],
+               "playlists/mix/items": [{"item": track(203, "Someone New")}]}
+    h = harness(rx, library=True, accounts={"account": "user"}, mix_playlist="Winston")
+    await h.run("library")
+    known = {s["uri"].rpartition(":")[2]: s["artists"][0]["name"] for s in h.rt.store["known"]}
+    assert len(known) == 123 and known["s119"] == "Radiohead" and known["s202"] == "Daft Punk", known
+    assert "s203" not in known and not [c for c in rx.calls if c[0] == "TRACK"], rx.calls  # no song looked up alone
+    calls = len(rx.calls)
+    await h.run("library")                          # within a day: the newest liked and the last played only
+    assert sorted(p for m, p, q in rx.calls[calls:] if m == "MINE") == ["/v1/me/player/recently-played", "/v1/me/tracks"]
+    offsets = [q["offset"] for m, p, q in rx.calls if p == "/v1/me/tracks"]
+    assert offsets[:3] == ["0", "50", "100"] and set(offsets[3:]) == {"0"}, offsets      # all once, then the newest
+    said = await h.tool("play", mood="calm", artists=["Radiohead"], familiar=True)
+    assert said.startswith("Playing a calm mix of the user's own songs by Radiohead, 50 songs, "), said   # one list
     await h.close()
 
 
@@ -635,6 +774,29 @@ async def test_his_playlists_come_from_the_receiver_spotifys_own_by_what_they_ar
     await h.close()
 
 
+async def test_the_card_picks_from_his_playlists_with_their_songs_and_covers():
+    rx = Receiver()
+    rx.playlists = [playlist("\U0001f941", "drums", 34, "https://i.example.com/drums.jpg", mine=True),
+                    playlist("Discover Weekly", "dw", 1, "https://pickasso.spotifycdn.com/x/dw/cover/en"),
+                    playlist("\U0001f941", "drums2", 3)]                  # the same name twice: one choice
+    h = harness(rx, library=True)
+    await h.run("library")
+    assert await h.choices("playlists") == [
+        {"value": "\U0001f941", "label": "\U0001f941", "hint": "34 songs", "image": "https://i.example.com/drums.jpg"},
+        {"value": "Discover Weekly", "label": "Discover Weekly", "hint": "1 song",
+         "image": "https://pickasso.spotifycdn.com/x/dw/cover/en"},
+        {"value": "Liked Songs", "label": "Liked Songs", "hint": None, "image": None}]
+    assert [(c["value"], c["image"]) for c in await h.choices("own_playlists")] == [   # mixes go only to his own
+        ("\U0001f941", "https://i.example.com/drums.jpg")]
+    props = h.describe()["settings"]["schema"]["properties"]
+    assert props["names"]["key_options_query"] == {"choices": "playlists", "extension": "spotify"}, props["names"]
+    assert props["mix_playlist"]["options_query"] == {"choices": "own_playlists", "extension": "spotify"}
+    assert await h.configure({"library": PLAYER, "mix_playlist": "", "names": {"\U0001f941": "drums"}}) == []
+    assert h.rt.settings.mix_playlist == "" and h.rt.settings.names == {"\U0001f941": "drums"}  # saved values load as before
+    assert "drums" in await h.hint_words()                          # his own words for it are heard right
+    await h.close()
+
+
 async def test_a_mix_is_one_list_in_his_playlist_and_old_mixes_are_trimmed_after():
     rx = Receiver()
     rx.playlists = [playlist("Winston", "win", 0, mine=True)]
@@ -660,8 +822,8 @@ async def test_he_is_remembered_liked_banned_and_not_now():
     await h.run("library")
     module = h.ext.tools["play"].fn.__globals__
     handle, ctx = module["handle_event"], h.rt.ctx
-    song = lambda uri, name, *artists: {"type": "metadata", "data": {"uri": uri, "name": name, "artist_names": list(artists)}}
-    nexts = lambda: [p for m, p, b in rx.calls if p == "/player/next"]
+    song = lambda uri, name, *artists: {"type": "metadata", "data": {"uri": uri, "name": name, "artist_names": list(artists)}}  # noqa: E731
+    nexts = lambda: [p for m, p, b in rx.calls if p == "/player/next"]  # noqa: E731
 
     assert await h.tool("feedback", verdict="like") == "Saved Get Lucky by Daft Punk to the user's Liked Songs."
     assert ("POST", "/library/liked", {"uris": ["spotify:track:gl"], "liked": True}) in rx.calls
@@ -706,7 +868,7 @@ async def test_a_sleep_timer_fades_out_in_silence_and_the_first_music_of_the_day
     h = harness(rx)
     module = h.ext.tools["play"].fn.__globals__
     fade_step = module["fade_step"]
-    vols = lambda: [b["volume"] for m, p, b in rx.calls if p == "/player/volume" and m == "POST"]
+    vols = lambda: [b["volume"] for m, p, b in rx.calls if p == "/player/volume" and m == "POST"]  # noqa: E731
     said = await h.tool("sleep", minutes=30)
     assert said.startswith("The music fades out over the last 30 minutes and stops in 30 minutes;"), said
     end = h.rt.store["sleep"]["end"]
@@ -748,8 +910,8 @@ async def test_a_song_heard_long_enough_goes_to_listenbrainz_once_and_one_not_se
     module = h.ext.tools["play"].fn.__globals__
     handle, ctx = module["handle_event"], h.rt.ctx
     await h.status()
-    listens = lambda: [b for m, p, b in rx.calls if m == "LISTENS"]
-    song = lambda uri, name, ms: {"type": "metadata", "data": {"uri": uri, "name": name, "artist_names": ["Daft Punk"],
+    listens = lambda: [b for m, p, b in rx.calls if m == "LISTENS"]  # noqa: E731
+    song = lambda uri, name, ms: {"type": "metadata", "data": {"uri": uri, "name": name, "artist_names": ["Daft Punk"],  # noqa: E731
                                                                "album_name": "Discovery", "duration": ms}}
     await handle(ctx, song("spotify:track:omt", "One More Time", 200))      # counts after half: 0.1 s
     await handle(ctx, {"type": "playing", "data": {}})
@@ -866,7 +1028,7 @@ async def test_shuffle_repeat_seek_a_song_to_a_playlist_and_what_is_next():
     rx.next_track = {"name": "Digital Love", "artist_names": ["Daft Punk"], "uri": "spotify:track:dl"}
     h = harness(rx, library=True)
     await h.run("library")
-    posts = lambda path: [b for m, p, b in rx.calls if p == path]
+    posts = lambda path: [b for m, p, b in rx.calls if p == path]  # noqa: E731
     assert await h.tool("shuffle") == "Shuffling." and posts("/player/shuffle_context") == [{"shuffle_context": True}]
     assert await h.tool("repeat", what="song") == "Repeating this song."
     assert posts("/player/repeat_track")[-1] == {"repeat_track": True}
@@ -893,7 +1055,7 @@ async def test_a_new_request_ends_a_song_on_repeat_and_a_mix_plays_in_its_own_or
     rx.modes = {"repeat_track": True, "shuffle_context": True}
     h = harness(rx, library=True, mix_playlist="Winston")
     await h.run("library")
-    posts = lambda path: [b for m, p, b in rx.calls if p == path]
+    posts = lambda path: [b for m, p, b in rx.calls if p == path]  # noqa: E731
     await h.tool("play", what="Daft Punk")
     assert posts("/player/repeat_track") == [{"repeat_track": False}], rx.calls
     assert posts("/player/shuffle_context") == [], rx.calls          # a playlist asked for keeps their shuffle

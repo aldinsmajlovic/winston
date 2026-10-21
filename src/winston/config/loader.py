@@ -97,7 +97,7 @@ def apply_changes(raw: dict, changes: list[tuple[Path_, object]]) -> dict:
             nxt = get_in(node, [key], _MISSING)
             if not isinstance(nxt, dict | list):
                 if isinstance(node, list):
-                    raise ValueError(f"no item {key} in {'.'.join(map(str, path))}")
+                    raise ValueError(f"no item {key} in {'.'.join(map(str, path))}")  # noqa: TRY004
                 nxt = node[key] = {}
             node = nxt
         last = path[-1]

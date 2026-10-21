@@ -8,6 +8,26 @@ export const SLOT_TITLES: Record<Kind, string> = { llm: 'Brain', tts: 'Speaking'
 
 export const CUSTOM = 'custom'
 
+// What a preset needs, in words.
+const NEEDS: Record<string, string> = {
+  docker: 'Docker',
+  nvidia: 'NVIDIA GPU',
+  cuda: 'NVIDIA GPU (CUDA)',
+  ollama: 'Ollama installed',
+  internet: 'Sends your requests out of your network',
+}
+
+/** A preset's line under its title in the Runs on list: what it needs that the title does not already name
+ * ("Docker" under "llama.cpp on NVIDIA (Docker)"), then its hint's first sentence. */
+export function presetFacts(p: Preset): string {
+  const needs = p.needs
+    .map((n) => NEEDS[n] ?? n)
+    .filter((n) => !p.title.toLowerCase().includes(n.split(' ')[0].toLowerCase()))
+    .join(', ')
+  const first = p.hint.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? p.hint
+  return [needs, first].filter(Boolean).join('. ')
+}
+
 function merge(base: unknown, over: unknown): unknown {
   if (!isRecord(base) || !isRecord(over)) return over
   const out: Record<string, unknown> = { ...base }
@@ -18,7 +38,9 @@ function merge(base: unknown, over: unknown): unknown {
 /** The draft with a preset's engine block and settings in place of the current ones. */
 export function applyPreset(config: Config, kind: Kind, preset: Preset): Config {
   const engines: Record<string, EngineConfig> = { ...(config.engines ?? {}) }
-  if (preset.engine) engines[kind] = preset.engine as unknown as EngineConfig
+  // A slot switched off stays off: picking where it runs does not start it.
+  const was = config.engines?.[kind]
+  if (preset.engine) engines[kind] = { ...(preset.engine as unknown as EngineConfig), ...(was?.enabled === false ? { enabled: false } : {}) }
   else delete engines[kind]
   return merge({ ...config, engines }, preset.settings) as Config
 }

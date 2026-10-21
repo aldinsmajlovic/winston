@@ -7,6 +7,7 @@ Precision: 200 ordinary English sentences, full of words near the hint words (wi
 winter, Erica's cousins), must come through unchanged."""
 import sys
 import wave
+from types import SimpleNamespace
 
 import harness
 from harness import expect, scratch_data
@@ -19,8 +20,10 @@ with wave.open(str(friends / "maria.wav"), "wb") as w:
     w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b"\0\0" * 160)
 
 from loguru import logger  # noqa: E402
-from winston.config.schema import WinstonConfig  # noqa: E402  (after WINSTON_DATA is set)
+from winston.api.options import _hint_words  # noqa: E402
+from winston.config.schema import ExtensionConfig, WinstonConfig  # noqa: E402  (after WINSTON_DATA is set)
 from winston.core.hints import Hearing, correct, hints  # noqa: E402
+from winston.extension_host import texts  # noqa: E402
 
 
 cfg = WinstonConfig.model_validate({
@@ -56,6 +59,28 @@ off.stt.hint_words_removed = ["hektar", "Maria"]
 expect("a removed automatic word is left out", not {"Hektar", "Maria"} & {h.word for h in hints(off)})
 off.stt.hint_words.append("Hektar")
 expect("and comes back as yours when you add it", any(h.word == "Hektar" and h.source == "yours" for h in hints(off)))
+
+# an extension's words, and how the Voice page lists them
+texts.write("music", None, ["Radiohead", "Bench Press"])
+music = cfg.model_copy(deep=True)
+music.extensions["music"] = ExtensionConfig(enabled=True)
+ext = {(h.word, h.origin) for h in hints(music) if h.source == "extension"}
+expect("an extension's words keep which extension asked", ext == {("Radiohead", "music"), ("Bench", "music"), ("Press", "music")},
+       ext)
+host = SimpleNamespace(described={"music": {"manifest": {"name": "Music", "icon": "simple-icons:spotify"}}})
+shown = {c.value: c for c in _hint_words(music, {"extensions": host}).choices}
+expect("listed under the extension, by its name and icon",
+       (shown["Radiohead"].group, shown["Radiohead"].hint, shown["Radiohead"].icon)
+       == ("extension:music", "Music", "simple-icons:spotify"), shown.get("Radiohead"))
+expect("common words are not listed, since the correction leaves them alone", "Press" not in shown and "Bench" in shown,
+       sorted(shown))
+expect("the other sources keep their own groups",
+       (shown["Winston"].group, shown["Maria"].group, shown["Erik"].group, shown["Hektar"].group)
+       == ("assistant", "voice", "contact", "home_assistant"), sorted(shown))
+bare = {c.value: c for c in _hint_words(music, {}).choices}
+expect("an extension the host has not described is named by its id", bare["Radiohead"].hint == "music",
+       bare.get("Radiohead"))
+texts.clear("music")
 
 # corrections
 W = words + ["Aldin", "Sara", "Omar"]

@@ -74,7 +74,7 @@ def main():
         voice = args.voice
         if not voice:
             choices = c.get("/api/options/voices").raise_for_status().json()["choices"]
-            voice = next((ch["value"] for ch in choices if ch.get("group") == "Your clips"
+            voice = next((ch["value"] for ch in choices if ch.get("group") not in (None, "Your voices", "Built in")
                           and ch["value"] != saved.get("voice") and not ch["value"].startswith("friends/")), None)
         if not voice:
             sys.exit("no voice other than the saved one to try; pass --voice")

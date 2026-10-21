@@ -29,21 +29,24 @@ TIMEOUT = 15
 
 class WebSettings(Settings):
     api_key: str = Secret("GEMINI_API_KEY", label="API key",
-                          description="From aistudio.google.com. Grounding needs billing enabled on the key; the "
-                                      "paid tier includes a monthly grounding quota and does not train on prompts.")
+                          help="From aistudio.google.com; searching needs billing turned on for the key.",
+                          description="The paid tier includes a monthly number of searches and does not train on "
+                                      "your questions.")
     max_per_day: int = Field(100, ge=0, title="Searches per day",
-                             description="Hard cap; past it he says he cannot search until midnight.")
-    model: str = Field("gemini-3.5-flash-lite", level="advanced",
-                       description="The Gemini model that searches. Flash-Lite answered in about 1.4 s, Flash in 2.3 s "
-                                   "(minimal thinking, measured 2026-09-23).")
+                             help="Past it, he says he cannot search until midnight.")
+    model: str = Field("gemini-3.5-flash-lite", title="Gemini model",
+                       description="The Gemini model that searches. Flash-Lite answers fastest, Flash about a second "
+                                   "later.")
     thinking: Literal["minimal", "low", "medium", "high"] = Field(
-        "minimal", level="advanced", description="Reasoning at the search model. Each step up costs about a second.")
+        "minimal", title="How hard Gemini thinks",
+        description="Each step up takes about a second longer.")
 
 
 ext.settings(WebSettings)
 
 
-@ext.tool(tier="read", timeout=TIMEOUT + 5, filler="Let me look that up.", filler_after=0)
+@ext.tool(tier="read", timeout=TIMEOUT + 5, filler="Let me look that up.", filler_after=0, title="Search the web",
+          summary="Looks up current facts with Gemini and Google Search; only the question leaves the house.")
 async def search(ctx, query: str) -> dict:
     """Look up current facts on the internet: populations, prices, exchange rates, sports results, news, opening
     hours, anything that changes or that you are unsure of. Not for the state of the home. Answer in one sentence

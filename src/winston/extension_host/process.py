@@ -3,7 +3,7 @@
 It starts with only what it needs in its environment (never winstond's keys), gets its settings and
 the values of its own secret fields over the protocol, and is watched: a crash restarts it after 1, 5
 and 30 s, five crashes in ten minutes stop it, past its memory limit it is stopped, and one that
-stops answering is started again. Every reason lands on its card."""
+stops answering is started again. Every reason lands on its page."""
 from __future__ import annotations
 
 import asyncio
@@ -25,6 +25,7 @@ from mcp.shared._httpx_utils import create_mcp_http_client
 from pydantic import BaseModel, ConfigDict
 from winston_sdk.server import request
 
+from winston.core.common import failure_text, failure_words
 from winston.extension_host import texts
 from winston.extension_host.sources import Source, base_env, command, state_dir
 
@@ -113,7 +114,7 @@ class ExtensionProcess:
         if self._task:
             try:
                 await asyncio.wait_for(asyncio.shield(self._task), 10)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 self._kill(signal.SIGKILL)
                 self._task.cancel()
         self.state, self.detail = "stopped", ""
@@ -136,11 +137,11 @@ class ExtensionProcess:
         while not self._stop.is_set():
             texts.clear_ongoing(self.id)        # what it said was going on ended with the process that said it
             self.state = "starting" if not self.crashes else "restarting"
-            error = None
+            error = full = None
             try:
                 await self._run_once()
             except Exception as e:                                      # noqa: BLE001  (its failure, not ours)
-                error = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+                error, full = failure_words(e), failure_text(e)
             finally:
                 self.client, self.pid = None, None
                 self.ready.clear()
@@ -152,17 +153,17 @@ class ExtensionProcess:
             self.crashes.append(now)
             while self.crashes and now - self.crashes[0] > CRASH_WINDOW:
                 self.crashes.popleft()
-            logger.warning(f"extension {self.id}: {why}")
+            logger.warning(f"extension {self.id}: {full if why == error else why}")
             self.exits.append({"at": time.time(), "why": why})
             if len(self.crashes) >= CRASH_LIMIT:
                 self.state = "failed"
-                self.detail = f"Stopped after {CRASH_LIMIT} crashes in ten minutes. The last: {why}"
+                self.detail = f"{CRASH_LIMIT} crashes in ten minutes. The last: {why}"
                 return
             wait = BACKOFF[min(len(self.crashes), len(BACKOFF)) - 1]
             self.state, self.detail = "restarting", f"{why}; starting again in {wait} s"
             try:
                 await asyncio.wait_for(self._stop.wait(), wait)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
     def _params(self) -> StdioServerParameters:
@@ -179,15 +180,16 @@ class ExtensionProcess:
 
     async def _run_once(self) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.log_path, "a", buffering=1) as log:
+        with open(self.log_path, "a", buffering=1) as log:          # noqa: ASYNC230  (a local file)
             log.write(f"--- started {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             auth = _Bearer(self.mcp_token()) if self.mcp_url and self.is_mcp_server else None
             try:
                 await self._session(log, auth)
-            except Exception:
+            except Exception as e:
+                log.write(f"--- stopped: {failure_text(e)}\n")     # the page has it in words
                 if auth and auth.refused:
-                    raise ConnectionError("it refused its token (401)" if auth.token else
-                                          "it wants a token (401); paste one on its card") from None
+                    raise PermissionError("it refused its token (401)" if auth.token else
+                                          "it wants a token (401); paste one under Settings on its page") from None
                 raise
 
     async def _session(self, log, auth: _Bearer | None) -> None:
@@ -214,8 +216,10 @@ class ExtensionProcess:
             try:
                 await asyncio.wait_for(self._stop.wait(), WATCH_EVERY)
                 return
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
+            if self.exits and time.time() - self.started_at > CRASH_WINDOW:
+                self.exits.clear()                  # ten clean minutes: its stops are no longer news
             if self.pid:
                 alive, rss = proc_status(self.pid)
                 self.rss_mb, self.peak_mb = rss, max(self.peak_mb, rss)

@@ -1,6 +1,6 @@
 """Tests for Hevy: `winston ext test hevy`. Hevy's answers are made up here, shaped as its API
 documents them (api.hevyapp.com/docs); the fake clock is in Stockholm."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qsl
 
@@ -65,7 +65,7 @@ def harness(hevy: Hevy, start: str = "2026-10-05T10:00:00", **settings) -> Harne
 
 def three_months(hevy: Hevy) -> None:
     """A workout every third day for 150 days, the last on Friday 2 October at 18:00 Stockholm time."""
-    last = datetime(2026, 10, 2, 16, 0, tzinfo=timezone.utc)
+    last = datetime(2026, 10, 2, 16, 0, tzinfo=UTC)
     hevy.workouts = [workout(f"w{i}", (last - timedelta(days=3 * i)).isoformat().replace("+00:00", "Z"))
                      for i in range(50)]
 

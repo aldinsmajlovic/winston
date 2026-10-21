@@ -1,13 +1,13 @@
 # Announcements
 
-Winston can speak without being spoken to: a chime, then the text as given, on every connected
-speaker (the Talk page with its talk button on, and each Voice PE box). Extensions speak up the same
-way, with their own rules ([speaking up](extensions.md#speaking-up)). Outside quiet hours
-(`announce.quiet_hours`, default 22:00-07:00) it is spoken; `announce.discord` decides when it also
-goes to Discord (`fallback`: only when nothing could speak it). You can answer: the announcement and
-its `context` join the conversation, so "how long did it run?" works right after. Every announcement
-also shows on the Talk page, and a typed follow-up there knows it too, even when the typed
-conversation starts after it.
+Winston can speak without being spoken to: a chime, then the text as given, on every connected speaker
+(a Talk page or wall display while its microphone is on, and each Voice PE box). Extensions speak up the
+same way, with their own rules ([speaking up](extensions.md#speaking-up)). Outside quiet hours
+(`announce.quiet_hours`, default 22:00-07:00) it is spoken; `announce.discord` decides when it also goes
+to Discord (`fallback`: only when nothing could speak it). You can answer: the announcement and its
+`context` join the conversation, so "how long did it run?" works right after. Every announcement also
+shows on the Talk page, and a typed follow-up there knows it too, even when the typed conversation
+starts after it.
 
 ```mermaid
 sequenceDiagram
@@ -42,8 +42,24 @@ From a shell: `winston announce "Dinner is ready" -c cook=oven`. From anything e
 
 ## Settings
 
-Under `announce` (web UI: Channels): `enabled`, `chime` (any 16-bit WAV, empty for none),
-`quiet_hours`, `discord` (always, fallback, never) and `ha_event`.
+Announcements are set on Settings, Speaking up, beside what extensions bring up.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/speaking-up-dark.png">
+  <img src="images/speaking-up-light.png" alt="The Speaking up page: quiet hours, spoken messages a day and the morning briefing, then when you put something off: when after work is and the parts of the day" width="720">
+</picture>
+
+- **Quiet hours** (`announce.quiet_hours`, 22:00 to 07:00), under When he may speak: nothing is spoken
+  then except what you asked for, like reminders, and urgent alerts.
+- **Also send to Discord** (`announce.discord`: Always, When it cannot be spoken, Never), under
+  Reaching you once Discord is on.
+- **From automations and apps.** Let automations make him speak (`announce.enabled`), and the action
+  to paste into an automation, with Copy, and Sound before an announcement (`announce.chime`, any
+  16-bit WAV, None for none). The event name (`announce.ha_event`, `winston_announce`) is config.yaml
+  only; the example to paste uses it.
+
+The rest of the page, spoken messages a day, the morning briefing, how he reaches you and what
+extensions may bring up, is in [speaking up](extensions.md#speaking-up).
 
 ## Checking it
 

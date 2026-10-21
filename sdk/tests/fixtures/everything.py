@@ -12,7 +12,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel
 
-from winston_sdk import (Choices, Duration, Entity, Extension, Field, From, Model, Nudge, Secret, Settings,
+from winston_sdk import (Choice, Choices, Duration, Entity, Extension, Field, From, Model, Nudge, Secret, Settings,
                          SettingsError, TimeOfDay, Topic, When)
 
 ext = Extension()
@@ -31,7 +31,9 @@ class Everything(Settings):
     wait: timedelta = Duration("1h30m")
     mode: Literal["calm", "keen"] = Field("calm")
     chores: dict[str, Chore] = Field(default_factory=dict)
-    words: list[str] = Field(default_factory=list, level="advanced")
+    words: list[str] = Field(default_factory=list, level="advanced")    # deprecated: still accepted, and ignored
+    pick: str | None = Field(None, choices="moods")
+    nicknames: dict[str, str] = Field(default_factory=dict, key_choices="moods")
 
 
 ext.settings(Everything)
@@ -142,7 +144,7 @@ async def forever(ctx):
 @ext.nudge("due", title="A chore is due", deliver={1: "next_talk", 2: "when_home"}, repeat="1d", every="1h")
 async def due(ctx):
     out = []
-    for name, chore in ctx.settings.chores.items():
+    for name in ctx.settings.chores:
         last = ctx.store.get("done", {}).get(name)
         if last is None:
             out.append(Nudge(about=name, say=f"The {name} is due, sir.", facts={"chore": name}, actions=["done_it"]))
@@ -186,6 +188,11 @@ async def context(ctx):
 @ext.hint_words
 async def hints(ctx):
     return list(ctx.settings.chores)
+
+
+@ext.choices
+async def moods(ctx):
+    return ["calm", Choice(value="keen", hint="Eager", image="https://example.com/keen.png")]
 
 
 @ext.validate

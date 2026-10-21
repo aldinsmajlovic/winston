@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+from collections import deque
 from pathlib import Path
 from typing import Protocol
 
@@ -24,6 +25,7 @@ class Driver(Protocol):
     async def stop(self) -> None: ...
     async def running(self) -> bool: ...
     def log_path(self) -> Path | None: ...
+    def tail(self, n: int) -> list[str]: ...
 
 
 FINGERPRINT = "winston.config"      # container label: which engine config the container was started from
@@ -70,13 +72,13 @@ class DockerDriver:
             hub = hf_cache({"volumes": volumes})
             if str(hub.parent) in volumes:              # from one of its volumes, not the HF_HOME fallback
                 hub.mkdir(exist_ok=True)
-            kwargs = dict(
-                name=self.name, command=[_expand(a) for a in self.cfg.args], detach=True,
-                labels={FINGERPRINT: self.fingerprint},
-                environment=self.cfg.env,
-                ports={f"{self.cfg.port}/tcp": ("127.0.0.1", self.cfg.port)},
-                volumes={h: {"bind": c_, "mode": "rw"} for h, c_ in volumes.items()},
-            )
+            kwargs = {
+                "name": self.name, "command": [_expand(a) for a in self.cfg.args], "detach": True,
+                "labels": {FINGERPRINT: self.fingerprint},
+                "environment": self.cfg.env,
+                "ports": {f"{self.cfg.port}/tcp": ("127.0.0.1", self.cfg.port)},
+                "volumes": {h: {"bind": c_, "mode": "rw"} for h, c_ in volumes.items()},
+            }
             if self.cfg.ipc_host:
                 kwargs["ipc_mode"] = "host"
             if self.cfg.runtime:
@@ -96,6 +98,11 @@ class DockerDriver:
     def log_path(self) -> Path | None:
         return None   # `docker logs winston-<name>`
 
+    def tail(self, n: int) -> list[str]:
+        """The last n lines of the container's log (blocking: call it in a thread)."""
+        c = self._get()
+        return c.logs(tail=n).decode(errors="replace").splitlines() if c else []
+
 
 class SubprocessDriver:
     def __init__(self, name: str, cfg: EngineConfig, cmd: list[str] | None = None):
@@ -113,8 +120,9 @@ class SubprocessDriver:
             return
         self._log.parent.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, **self.cfg.env, "WINSTON_DATA": str(data_dir()), "PYTHONUNBUFFERED": "1"}
-        logf = open(self._log, "ab")
-        self._proc = await asyncio.create_subprocess_exec(*self.cmd, cwd=self.cwd, env=env, stdout=logf, stderr=logf)
+        with open(self._log, "ab") as logf:     # noqa: ASYNC230  (a local file; the process keeps its own copy)
+            self._proc = await asyncio.create_subprocess_exec(*self.cmd, cwd=self.cwd, env=env, stdout=logf,
+                                                              stderr=logf)
         logger.info(f"{self.name}: started pid {self._proc.pid} ({' '.join(self.cmd)}) -> {self._log}")
 
     async def stop(self) -> None:
@@ -123,12 +131,19 @@ class SubprocessDriver:
         self._proc.terminate()
         try:
             await asyncio.wait_for(self._proc.wait(), 15)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self._proc.kill()
             await self._proc.wait()   # reap it, or running() stays True and the next start() is a no-op
 
     def log_path(self) -> Path | None:
         return self._log
+
+    def tail(self, n: int) -> list[str]:
+        try:
+            with open(self._log, encoding="utf-8", errors="replace") as f:
+                return [ln.rstrip("\n") for ln in deque(f, maxlen=n)]
+        except FileNotFoundError:
+            return []
 
     def exit_code(self) -> int | None:
         """The return code once the process has exited, None while it runs or before it started."""
@@ -143,6 +158,7 @@ class ExternalDriver:
     async def stop(self) -> None: ...
     async def running(self) -> bool: return True
     def log_path(self) -> Path | None: return None
+    def tail(self, n: int) -> list[str]: return []
 
 
 def voice_channel_cmd(host: str, port: int) -> list[str]:

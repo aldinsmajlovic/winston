@@ -17,7 +17,7 @@ follows that gap and a workout ends it."""
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from winston_sdk import Extension, Field, Nudge, Secret, Settings, SettingsError
 
@@ -28,10 +28,10 @@ PAGE = 10                                  # Hevy's largest page
 
 
 class HevySettings(Settings):
-    api_key: str = Secret("HEVY_API_KEY", description="From hevy.com/settings?developer (needs Hevy Pro).")
-    rest_days: int = Field(3, ge=1, le=30, description="Days without a workout before he mentions it.")
-    firmer_after: int = Field(2, ge=1, le=30, level="advanced",
-                              description="Days after that before he says it more firmly.")
+    api_key: str = Secret("HEVY_API_KEY", label="API key", help="From hevy.com/settings?developer; it needs Hevy Pro.")
+    rest_days: int = Field(3, ge=1, le=30, title="Days without training before he mentions it")
+    firmer_after: int = Field(2, ge=1, le=30, title="Days until he says it more firmly",
+                              help="Counted from when he first mentions it.")
 
 
 ext.settings(HevySettings)
@@ -57,7 +57,7 @@ async def _get(ctx, path: str, key: str | None = None, **params) -> dict:
 
 def _utc(iso: str) -> str:
     """One form for a time, whatever form Hevy wrote it in ("Z" or "+00:00"): a nudge's about stays put."""
-    return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+    return datetime.fromisoformat(iso).astimezone(UTC).isoformat()
 
 
 def _slim(w: dict) -> dict:
@@ -71,7 +71,7 @@ def _slim(w: dict) -> dict:
 
 
 def _local(ctx, iso: str) -> datetime:
-    return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone(ctx.now().tzinfo)
+    return datetime.fromisoformat(iso).astimezone(ctx.now().tzinfo)
 
 
 def _trim(ctx) -> None:
@@ -141,7 +141,8 @@ async def poll(ctx):
     await this_week.set(_counts(ctx)[0])
 
 
-@ext.nudge("rest", title="Time to train", deliver="when_home", every="1h")
+@ext.nudge("rest", title="Time to train", deliver="when_home", every="1h",
+           description="Says so when you have not trained for the days you set, and more firmly later.")
 async def rest(ctx):
     """No workout for rest_days: about the gap since the last one, firmer firmer_after days later."""
     last = _last(ctx)
@@ -234,7 +235,8 @@ async def _exercise(ctx, name: str) -> dict:
             "sets_logged": len(history)}
 
 
-@ext.tool(tier="read", filler="Let me look.")
+@ext.tool(tier="read", filler="Let me look.", title="Check your training",
+          summary="Reads your workouts from Hevy: the last one, how often you train and an exercise's sets.")
 async def get_training(ctx, exercise: str | None = None) -> dict:
     """The user's training from Hevy: days since the last workout, workouts this week and this month,
     and the last workout. With an exercise, its sets last time and the best set logged.
@@ -284,5 +286,5 @@ async def check_key(ctx, event):
         await _get(ctx, "/user/info", key=event.settings.api_key)
     except HevyError as e:
         raise SettingsError("api_key", str(e)) from e
-    except Exception as e:                                              # noqa: BLE001
+    except Exception as e:
         raise SettingsError("api_key", f"Hevy could not be reached to check the key: {e}") from e

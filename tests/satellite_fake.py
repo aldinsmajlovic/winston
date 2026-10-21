@@ -38,7 +38,7 @@ from aioesphomeapi import api_pb2 as pb
 from aioesphomeapi.core import MESSAGE_TYPE_TO_PROTO
 
 sys.path.insert(0, str(Path(__file__).parent))
-from conversations import ACT_STUBS, stub  # noqa: E402
+from conversations import ACT_STUBS, stub
 
 
 def second_channel(piece: np.ndarray) -> bytes:
@@ -112,7 +112,7 @@ class FakeVoicePE:
                 self.handle(msg)
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
-        except Exception as e:                                          # noqa: BLE001
+        except Exception as e:
             print(f"fake box: {type(e).__name__}: {e}", flush=True)
             raise
 
@@ -221,7 +221,6 @@ class FakeVoicePE:
         heard = await self.wait_event(Ev.VOICE_ASSISTANT_STT_END, since)
         progress = await self.wait_event(Ev.VOICE_ASSISTANT_INTENT_PROGRESS, since)
         run_start = next((d for _, e, d in self.events[since:] if e == Ev.VOICE_ASSISTANT_RUN_START), {})
-        t_fetch = time.perf_counter()
         wav, t_first = b"", None
         if progress and run_start.get("url"):
             # the WAV variant of the reply the box gets as FLAC, so the bytes can be counted and played
@@ -320,8 +319,9 @@ async def main() -> int:
     room = f"test room {uuid.uuid4().hex[:6]}"          # its own conversation, not a leftover of the last run
     cfg.channels.satellite.devices = {room: SatelliteDevice(host="127.0.0.1", port=PORT, wake_word="hey_jarvis")}
     cfg.channels.satellite.http_port, cfg.channels.satellite.public_host = HTTP_PORT, "127.0.0.1"
-    for f in ("barge_in_secs", "barge_in_volume", "barge_in_gain_db", "barge_in_grace_secs"):   # even if off here
+    for f in ("barge_in_volume", "barge_in_gain_db", "barge_in_grace_secs"):   # even if off here
         setattr(cfg.channels.satellite, f, type(cfg.channels.satellite).model_fields[f].default)
+    cfg.channels.satellite.barge_in_secs = 0.3          # open barge-in is off by default; the fake box still tests it
     turns_dir = Path(tempfile.mkdtemp(prefix="winston-turns-"))      # never the real data/turns
     cfg.logging.turns.enabled, cfg.logging.turns.dir = True, str(turns_dir)
     cfg.logging.latency = str(turns_dir / "latency.jsonl")             # never the real data/logs
@@ -410,7 +410,6 @@ async def main() -> int:
     chime_secs = len(chime) / 2 / sat.OUT_RATE
     starts_with_chime = bool(chime) and len(said.get("pcm", [])) > len(chime) // 2 and np.array_equal(
         said["pcm"][:len(chime) // 2], np.frombuffer(chime, dtype="<i2"))
-    worded = satellite.conversation.speaker.text if satellite.conversation else []
     print(f"\n> (a nudge: {ev['say']!r})\n  {said.get('audio_secs', 0):.1f} s of audio in {time.perf_counter() - t0:.1f} s, "
           f"the chime first {starts_with_chime}, then listening {said.get('start_conversation')}")
     ok &= starts_with_chime and said.get("audio_secs", 0) > chime_secs + 1 and said.get("start_conversation")

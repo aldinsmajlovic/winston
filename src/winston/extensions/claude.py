@@ -40,21 +40,20 @@ WORKDIR = tempfile.mkdtemp(prefix="winston-claude-")        # empty: nothing on 
 
 
 class ClaudeSettings(Settings):
-    key: str = Secret("CLAUDE_CODE_OAUTH_TOKEN", label="Key",
+    key: str = Secret("CLAUDE_CODE_OAUTH_TOKEN", label="Key", optional=True,
+                      help="Optional: empty uses this computer's Claude Code login.",
                       description="A token from claude setup-token (sk-ant-oat...) uses your Claude plan's credit; an "
-                                  "API key (sk-ant-api...) is billed per question. Empty: the Claude Code login on "
-                                  "this machine.")
-    max_usd_per_day: float = Field(3.0, ge=0, title="Budget per day (USD)",
-                                   description="Past it he says Claude's budget is used up until midnight. A Max 5x "
-                                               "plan's monthly Agent SDK credit is 100 USD.")
-    model: str = Field("claude-opus-5", level="advanced",
+                                  "API key (sk-ant-api...) is billed per question.")
+    max_usd_per_day: float = Field(3.0, ge=0, title="Spending limit per day", unit="USD",
+                                   help="Past it, he says Claude's limit is reached until midnight.")
+    max_usd_per_question: float = Field(0.5, gt=0, title="Spending limit per question", unit="USD",
+                                        description="A longer answer is cut off at it.")
+    model: str = Field("claude-opus-5", title="Claude model",
                        description="The Claude model the question goes to. Opus is best at hard questions, Sonnet "
                                    "and Haiku are faster and cheaper.")
-    effort: Literal["low", "medium", "high"] = Field("low", level="advanced",
-                                                     description="Reasoning effort. Low answered in about 3 to 5 s; "
-                                                                 "each step up is slower.")
-    max_usd_per_question: float = Field(0.5, gt=0, title="Budget per question (USD)", level="advanced",
-                                        description="Hard cap for one question; a longer answer is cut off.")
+    effort: Literal["low", "medium", "high"] = Field("low", title="How hard Claude thinks",
+                                                     description="Low answers in a few seconds; each step up is "
+                                                                 "slower and costs more.")
 
 
 ext.settings(ClaudeSettings)
@@ -76,7 +75,8 @@ def spent(ctx) -> float:
     return float(ctx.store.get("spent", {}).get(ctx.today().isoformat(), 0.0))
 
 
-@ext.tool(tier="read", timeout=60, filler="Let me think about that.", filler_after=0)
+@ext.tool(tier="read", timeout=60, filler="Let me think about that.", filler_after=0, title="Ask Claude",
+          summary="Sends a hard question to Claude in the cloud; only the question leaves the house.")
 async def ask(ctx, question: str) -> dict:
     """Ask Claude, a much stronger AI model in the cloud, when a question needs careful reasoning, explanation,
     writing, planning, maths or knowledge you are unsure of, rather than guessing. Not for current facts and not

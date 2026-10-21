@@ -1,6 +1,6 @@
 """Small helpers more than one part of the core shares: how names are folded and matched, the tool-call
-log, observers that act on a frame once, re-wrapping a tool's handler, and reading winstond's
-server-sent events."""
+log, observers that act on a frame once, re-wrapping a tool's handler, reading winstond's server-sent
+events and saying in words why a server could not be reached."""
 import asyncio
 import json
 import re
@@ -29,6 +29,32 @@ def words_pattern(names: Iterable[str]) -> re.Pattern:
     """Any of names as whole words in folded text, the longest first, so "shelf lamp" wins over "lamp"."""
     folded = sorted({key(n) for n in names} - {""}, key=len, reverse=True)
     return re.compile(r"\b(?:" + "|".join(map(re.escape, folded)) + r")\b")
+
+
+def _leaf(e: BaseException) -> BaseException:
+    """MCP clients wrap their errors in exception groups; the first leaf is the one that says what happened."""
+    while isinstance(e, BaseExceptionGroup) and e.exceptions:
+        e = e.exceptions[0]
+    return e
+
+
+def failure_text(e: BaseException) -> str:
+    """What failed as it was raised, for a log: what an error in words was raised from, when it was."""
+    e = _leaf(e)
+    e = e.__cause__ or e
+    return f"{type(e).__name__}: {e}"
+
+
+def failure_words(e: BaseException) -> str:
+    """Why a server could not be reached, in words."""
+    e = _leaf(e)
+    if isinstance(e, (TimeoutError, httpx.TimeoutException)):
+        return "it did not answer in time"
+    if status := getattr(getattr(e, "response", None), "status_code", None):
+        return f"it answered {status}"
+    if "Connect" in type(e).__name__:
+        return "nothing answered at that address"
+    return str(e) or type(e).__name__
 
 
 class Once:

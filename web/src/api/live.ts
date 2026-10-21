@@ -1,26 +1,57 @@
 import { useEffect, useReducer } from 'react'
-import { $api, type LiveEvent } from './client'
+import { $api, type Config, type LiveEvent, type Status } from './client'
+import { restartCost } from './status'
+import { formatTime, type Clock } from '@/lib/format'
 
 export type PresenceState = NonNullable<LiveEvent['state']>
 
 export const STATE_LABEL: Record<PresenceState, string> = {
-  idle: 'Idle',
+  idle: 'Ready',
   listening: 'Listening',
   thinking: 'Thinking',
   speaking: 'Speaking',
 }
 
-/** A server timestamp (seconds) as a local time of day. */
-export const clock = (ts: number) => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+/** A server timestamp (seconds) as a time of day, by the Region's clock (useRegion). */
+export const clock = (ts: number, by?: Clock) => formatTime(ts, by)
 
+/** Why he cannot answer: Winston cannot be reached (`failed`, the status request failing), or his brain's
+ * engine is still loading, or stopped, failed or turned off (then Status has more). Nothing when he can, or
+ * when his brain is a server Winston does not run. */
+export function notReady(status: Status | undefined, config?: Config, failed = false): { text: string; starting: boolean } | undefined {
+  if (failed) return { text: "Can't reach Winston", starting: false }
+  const brain = status?.engines.find((e) => e.name === 'llm')
+  if (!brain && config?.engines?.llm?.enabled === false) return { text: "Can't answer: his brain is off", starting: false }
+  if (!brain || brain.state === 'healthy') return undefined
+  if (brain.state === 'starting') return { text: `Starting: his brain is loading (${restartCost(brain)})`, starting: true }
+  const why = { stopped: 'is stopped', error: 'has failed', unhealthy: 'is not responding' }[brain.state]
+  return { text: `Can't answer: his brain ${why}`, starting: false }
+}
+
+// Every line has its server time; lines said somewhere have their channel, and a room when the event names one.
 export type Item =
-  | { kind: 'user'; id: string; text: string; channel: string; turn?: string } // turn: its id in the turn record, once kept
-  | { kind: 'reply'; id: string; text: string; done: boolean; channel: string }
-  | { kind: 'tool'; id: string; name: string; label: string; status: NonNullable<LiveEvent['status']>; icon?: string | null }
-  | { kind: 'announcement'; id: string; text: string; ts: number }
-  | { kind: 'error'; id: string; text: string }
-  | { kind: 'confirm'; id: string; label: string; status: NonNullable<LiveEvent['status']>; outcome: string }
-  | { kind: 'nudge'; id: string; label: string; text: string; via: string; ts: number; links: { title: string; url: string }[] }
+  | { kind: 'user'; id: string; ts: number; text: string; channel: string; room?: string; turn?: string } // turn: its id in the turn record, once kept
+  | { kind: 'reply'; id: string; ts: number; text: string; done: boolean; channel: string; room?: string }
+  | {
+      kind: 'tool'
+      id: string
+      ts: number
+      name: string
+      label: string
+      status: NonNullable<LiveEvent['status']>
+      icon?: string | null
+      channel: string
+      room?: string
+    }
+  | { kind: 'error'; id: string; ts: number; text: string }
+  | { kind: 'confirm'; id: string; ts: number; label: string; status: NonNullable<LiveEvent['status']>; outcome: string; channel: string }
+  | { kind: 'conversation'; id: string; ts: number; text: string } // a new conversation starts; text says why
+  // He spoke up: an announcement (from: who asked, via: '') or an extension's message (from: the extension,
+  // via: where it went: speakers, phone, discord, conversation, silent).
+  | { kind: 'spoke'; id: string; ts: number; text: string; from: string; via: string; links: { title: string; url: string }[] }
+
+// Who asked for an announcement (core/announce.py, Announcement.source), in words.
+const ASKED_BY: Record<string, string> = { home_assistant: 'Home Assistant', api: 'an app', cli: 'the command line' }
 
 type Feed = {
   items: Item[]
@@ -34,15 +65,17 @@ const STALE_SECS = 90 // a state older than this without a follow-up is treated 
 
 function apply(feed: Feed, ev: LiveEvent): Feed {
   const id = ev.id ?? ''
+  const ts = ev.ts ?? 0
+  const room = ev.room ?? undefined
   const replace = (key: string, update: (item: Item) => Item) =>
     feed.items.map((item) => (item.id === key ? update(item) : item))
   switch (ev.type) {
     case 'state':
-      return ev.state ? { ...feed, states: { ...feed.states, [ev.channel]: { state: ev.state, ts: ev.ts ?? 0 } } } : feed
+      return ev.state ? { ...feed, states: { ...feed.states, [ev.channel]: { state: ev.state, ts } } } : feed
     case 'user':
       return {
         ...feed,
-        items: [...feed.items, { kind: 'user', id, text: ev.text ?? '', channel: ev.channel, turn: ev.call ?? undefined }],
+        items: [...feed.items, { kind: 'user', id, ts, text: ev.text ?? '', channel: ev.channel, room, turn: ev.call ?? undefined }],
       }
     case 'turn': {
       // A kept turn: its id goes onto the channel's latest line you said, as the server's history does.
@@ -56,36 +89,57 @@ function apply(feed: Feed, ev: LiveEvent): Feed {
       if (feed.items.some((item) => item.id === key)) {
         return { ...feed, items: replace(key, (item) => (item.kind === 'reply' ? { ...item, text: item.text + (ev.text ?? '') } : item)) }
       }
-      return { ...feed, items: [...feed.items, { kind: 'reply', id: key, text: ev.text ?? '', done: false, channel: ev.channel }] }
+      return { ...feed, items: [...feed.items, { kind: 'reply', id: key, ts, text: ev.text ?? '', done: false, channel: ev.channel, room }] }
     }
     case 'reply_end':
       return { ...feed, items: replace(ev.reply ?? '', (item) => (item.kind === 'reply' ? { ...item, done: true } : item)) }
     case 'tool': {
       const key = ev.call ?? id
-      const tool: Item = { kind: 'tool', id: key, name: ev.name ?? '', label: ev.label ?? ev.name ?? '', status: ev.status ?? 'running', icon: ev.icon }
+      const tool: Item = {
+        kind: 'tool',
+        id: key,
+        ts,
+        name: ev.name ?? '',
+        label: ev.label ?? ev.name ?? '',
+        status: ev.status ?? 'running',
+        icon: ev.icon,
+        channel: ev.channel,
+        room,
+      }
       return feed.items.some((item) => item.id === key)
         ? { ...feed, items: replace(key, () => tool) }
         : { ...feed, items: [...feed.items, tool] }
     }
-    case 'announcement':
-      return { ...feed, items: [...feed.items, { kind: 'announcement', id, text: ev.text ?? '', ts: ev.ts ?? 0 }] }
+    case 'conversation':
+      return { ...feed, items: [...feed.items, { kind: 'conversation', id, ts, text: ev.text ?? '' }] }
     case 'error':
-      return { ...feed, items: [...feed.items, { kind: 'error', id, text: ev.text ?? '' }] }
+      return { ...feed, items: [...feed.items, { kind: 'error', id, ts, text: ev.text ?? '' }] }
+    case 'announcement':
     case 'nudge': {
-      const nudge: Item = {
-        kind: 'nudge',
+      // An announcement's channel is who asked for it; an extension's message is labelled "<extension>: <kind>".
+      const nudge = ev.type === 'nudge'
+      const spoke: Item = {
+        kind: 'spoke',
         id,
-        label: ev.label ?? '',
+        ts,
         text: ev.text ?? '',
-        via: (ev.name ?? '').split(':')[0],
-        ts: ev.ts ?? 0,
+        from: nudge ? (ev.label ?? '').split(': ')[0] : (ASKED_BY[ev.channel] ?? ev.channel),
+        via: nudge ? (ev.name ?? '').split(':')[0] : '',
         links: (ev.links ?? []) as { title: string; url: string }[],
       }
-      return { ...feed, items: [...feed.items, nudge] }
+      return { ...feed, items: [...feed.items, spoke] }
     }
     case 'confirm': {
       const key = ev.call ?? id
-      const confirm: Item = { kind: 'confirm', id: key, label: ev.label ?? '', status: ev.status ?? 'waiting', outcome: ev.text ?? '' }
+      const confirm: Item = {
+        kind: 'confirm',
+        id: key,
+        ts,
+        label: ev.label ?? '',
+        status: ev.status ?? 'waiting',
+        outcome: ev.text ?? '',
+        channel: ev.channel,
+      }
       return feed.items.some((item) => item.id === key)
         ? { ...feed, items: replace(key, () => confirm) }
         : { ...feed, items: [...feed.items, confirm] }

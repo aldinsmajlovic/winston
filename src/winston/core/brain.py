@@ -130,9 +130,9 @@ def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice") -> str:
     diary = Diary(cfg).recent()
     parts = [text, prompt_block(cfg), extension_texts.prompt_block(cfg), house, region.prompt_block(cfg),
              _vocal_events(cfg, channel), diary, today(),
-             f"The user may speak another language, like Swedish: understand it and do what they ask, as you "
-             f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
-             f"only {cfg.assistant.language}."]
+             (f"The user may speak another language, like Swedish: understand it and do what they ask, as you "
+              f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
+              f"only {cfg.assistant.language}.")]
     return "\n\n".join(p for p in parts if p)
 
 
@@ -163,8 +163,10 @@ async def server_slot(cfg: WinstonConfig, spoken: bool) -> int | None:
 
 
 def thinking_for(cfg: WinstonConfig, channel: str) -> bool:
-    """WINSTON_THINKING=1|0 overrides the per-channel setting, for experiments."""
-    default = cfg.llm.thinking.voice if channel in SPOKEN else cfg.llm.thinking.text
+    """Whether every turn on the channel thinks (llm.thinking.spoken or typed: always). WINSTON_THINKING=1|0
+    overrides it, for experiments."""
+    t = cfg.llm.thinking
+    default = t.spoken == "always" if channel in SPOKEN else t.typed == "always"
     v = os.environ.get("WINSTON_THINKING", str(default))
     return str(v).strip().lower() in ("1", "true", "yes")
 
@@ -318,9 +320,9 @@ def last_said(messages: list) -> str | None:
     """The newest thing the user said in a request's messages, skipping the house's notes; a tool
     result after it keeps the same turn, so a request's follow-up call thinks like its first."""
     for m in reversed(messages):
-        if isinstance(m, dict) and m.get("role") == "user" and isinstance(m.get("content"), str):
-            if not guard.is_note(m["content"]):
-                return _STAMP.sub("", m["content"], count=1)
+        if (isinstance(m, dict) and m.get("role") == "user" and isinstance(m.get("content"), str)
+                and not guard.is_note(m["content"])):
+            return _STAMP.sub("", m["content"], count=1)
     return None
 
 
@@ -337,7 +339,7 @@ def newest_said(messages: list) -> int:
 
 class WinstonLLM(OpenAILLMService):
     """The OpenAI-compatible LLM, with thinking switched on per request for a spoken home request
-    (llm.thinking.home). Measured 2026-09-26 on the 27B with actions stubbed: thinking off called a
+    (llm.thinking.spoken: home). Measured 2026-09-26 on the 27B with actions stubbed: thinking off called a
     tool 18 of 24 times ("Kitchen lights are on." with no call; once the main room lights for "turn off
     the living room lights"), on 24 of 24, about 3 s slower. The effort comes from
     llm.thinking.home_effort: on 2026-09-27 medium was as right as the template's default xhigh (21 of
@@ -438,7 +440,11 @@ class WinstonLLM(OpenAILLMService):
         # Only the pass that decides what to call thinks. After the tool results the answer is a sentence:
         # thinking there cost 0.5 s a home turn and changed no outcome in the trials of 2026-10-11.
         self._think = bool(said and self._home and self._home.search(key(said)) and not rounds)
-        own = next((o for o in self._own if said and o.pattern.search(key(said))), None)
+        # A request right after one that acted is often a tweak of it with no name or verb in it: "maybe not that
+        # punk, they're not that calm" got "let me find something softer" and no call (2026-10-18). It thinks
+        # too, without a line: it may only be "thanks".
+        tweak = bool(said and self._home and not rounds and acted(messages[:newest_said(messages)]))
+        own =next((o for o in self._own if said and o.pattern.search(key(said))), None)
         # Quiet only when its name is all that was said: a request that named a quiet scene and asked for music
         # too ran the scene and ended there, 5 times in 5 (2026-10-16), the music never asked for.
         if own and own.quiet and acted(messages) and own.names & name_forms(only_name(said, self._assistant)):
@@ -458,6 +464,7 @@ class WinstonLLM(OpenAILLMService):
                 self._lines += 1
                 line = HOME_LINES[(self._lines - 1) % len(HOME_LINES)]
             await self.push_frame(TTSSpeakFrame(line, append_to_context=False))
+        self._think = self._think or tweak
         try:
             return await super().get_chat_completions(context)
         except BadRequestError as e:
@@ -498,7 +505,8 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
     s = c.sampling
     body = thinking_body(cfg, channel) | ({"id_slot": slot} if slot is not None else {})
     # Only where thinking is otherwise off: text channels already think every turn.
-    home = home_request(cfg) if channel in SPOKEN and c.thinking.home and not thinking_for(cfg, channel) else None
+    home = home_request(cfg) if channel in SPOKEN and c.thinking.spoken == "home" and not thinking_for(cfg, channel) \
+        else None
     return WinstonLLM(
         home=home, control=c.thinking.control, effort=c.thinking.home_effort,
         own=own_answers(cfg) if channel in SPOKEN else None, assistant=cfg.assistant.name,

@@ -15,15 +15,17 @@ stays until it is done.
 
 Every 10 minutes it keeps the events from the start of today to 36 hours ahead. Two kinds:
 
-- "soon": each timed event, held until `before` its start and checked again then, so a moved or
-  cancelled event is never said. Asked for (you put it in your calendar), so it comes through quiet
-  hours and the daily limit.
+- "soon": each timed event, held until `before` minutes before its start and checked again then, so
+  a moved or cancelled event is never said. Asked for (you put it in your calendar), so it comes
+  through quiet hours and the daily limit.
 - "today": the day's events, and the tasks due today or overdue, for the morning briefing."""
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 
-from winston_sdk import Duration, Entity, Extension, Field, Nudge, Settings
+from pydantic import field_validator
+from winston_sdk import Entity, Extension, Field, Nudge, Settings
+from winston_sdk.fields import parse_duration
 
 ext = Extension()
 AHEAD = timedelta(hours=36)
@@ -31,13 +33,22 @@ AHEAD = timedelta(hours=36)
 
 class AgendaSettings(Settings):
     calendars: list[str] = Entity(domain="calendar", default=[],
-                                  description="The calendars he reads. Picking one lets him read it, exposed or not.")
+                                  description="The calendars he reads. Picking one lets him read it, whether or not "
+                                              "Assist can see it.")
     lists: list[str] = Entity(domain="todo", default=[], title="To-do lists",
                               description="Lists whose open tasks with a due date he reads, like events at their "
                                           "due time; due today or overdue, in the briefing.")
-    before: timedelta = Duration("30m", description="How long before an event he mentions it.")
+    before: int = Field(30, ge=1, le=1440, title="Mention events this long before", unit="min")
     all_day: bool = Field(True, title="All-day events in the briefing",
-                          description="Name all-day events (birthdays, holidays) in the morning briefing.")
+                          help="Birthdays, holidays and other events that last all day.")
+
+    @field_validator("before", mode="before")
+    @classmethod
+    def _minutes(cls, value):
+        """The lead time was once a duration ("30m", "1h30m"); those still load, as minutes."""
+        if isinstance(value, str) and not value.strip().isdigit():
+            return max(1, round(parse_duration(value).total_seconds() / 60))
+        return value
 
 
 ext.settings(AgendaSettings)
@@ -114,9 +125,10 @@ def _kept(ctx) -> list[tuple[dict, datetime]]:
     return [(e, datetime.fromisoformat(e["start"]).astimezone(zone)) for e in ctx.store.get("events", [])]
 
 
-@ext.nudge("soon", title="Coming up", requested=True, outside=True)
+@ext.nudge("soon", title="Coming up", requested=True, outside=True,
+           description="Names each timed event or task the set time before it starts.")
 async def soon(ctx):
-    """Every timed event still to come, each held until `before` its start."""
+    """Every timed event still to come, each held until `before` minutes before its start."""
     now = ctx.now()
     out = []
     for e, at in _kept(ctx):
@@ -129,11 +141,12 @@ async def soon(ctx):
         out.append(Nudge(about=f"{e['calendar']}|{e['summary']}|{e['start']}",
                          say=f"{e['summary']} {'is due' if e.get('task') else 'starts'} in {minutes} minutes.",
                          facts=facts,
-                         not_before=at - ctx.settings.before, expires=at))
+                         not_before=at - timedelta(minutes=ctx.settings.before), expires=at))
     return out
 
 
-@ext.nudge("today", title="Today's events", deliver="briefing", outside=True)
+@ext.nudge("today", title="Today's events", deliver="briefing", outside=True,
+           description="Names today's events, and tasks due today or overdue, in the morning briefing.")
 async def today(ctx):
     now = ctx.now()
     rows, heads = [], []
@@ -155,7 +168,8 @@ async def today(ctx):
                  facts={"events": rows})
 
 
-@ext.tool(tier="read")
+@ext.tool(tier="read", title="Read your agenda",
+          summary="Reads the events and due tasks on the calendars and to-do lists you picked.")
 async def upcoming(ctx, days: int = 1) -> list[dict] | str:
     """The user's calendar and to-do lists: events from the start of today for this many days, and
     tasks due by then or overdue, soonest first.

@@ -40,8 +40,8 @@ def setup(api_port: int, ha_port: int, lab_port: int):
     (DATA / "extensions").mkdir()
     doc = (REPO / "docs" / "extensions.md").read_text()
     builtin = {p.stem for p in (REPO / "src" / "winston" / "extensions").glob("*.py")}
-    for block in re.findall(r"```python\n(# /// script.*?)```", doc, re.S):
-        ident = re.search(r'^# id = "(\w+)"', block, re.M).group(1)
+    for block in re.findall(r"```python\n(# /// script.*?)```", doc, re.DOTALL):
+        ident = re.search(r'^# id = "(\w+)"', block, re.MULTILINE).group(1)
         if ident not in builtin:                        # the docs' trimmed Hevy is the built-in's example
             (DATA / "extensions" / f"{ident}.py").write_text(block)
 

@@ -21,7 +21,7 @@ check *ARGS:
     uv run winston check {{ARGS}}
 
 lint:
-    uvx ruff check src tests scripts
+    uvx ruff check src tests sdk scripts
     ! grep -rn "—" --include='*.py' --include='*.md' --include='*.yaml' src docs examples README.md
 
 # the checks that need no hardware

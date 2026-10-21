@@ -1,6 +1,6 @@
 """Tests for News: `winston ext test news`. Every feed and Krisinformation answer here is made up; the
 fake clock is in Stockholm."""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from pathlib import Path
 
@@ -13,7 +13,7 @@ START = "2026-10-05T12:00:00"                               # Stockholm, UTC+2: 
 
 def utc(minutes: float) -> datetime:
     """Minutes after START, in UTC."""
-    return datetime(2026, 10, 5, 10, 0, tzinfo=timezone.utc) + timedelta(minutes=minutes)
+    return datetime(2026, 10, 5, 10, 0, tzinfo=UTC) + timedelta(minutes=minutes)
 
 
 def rss(items: list[tuple[str, str, float]]) -> str:
@@ -79,7 +79,7 @@ OLD = [("Parliament debates the budget for roads", "Members argued about road re
 
 
 async def first_read(web: Web, h: Harness) -> None:
-    for name, url in OUTLETS.items():
+    for url in OUTLETS.values():
         web.feeds[url] = rss(OLD)
     await h.run("read")
 
@@ -170,7 +170,7 @@ async def test_etags_are_sent_back_and_a_broken_feed_does_not_stop_the_rest():
     await h.run("read")
     sent = {url: headers.get("if-none-match") for url, headers in web.asked}
     assert sent[OUTLETS["BBC"]] and sent[OUTLETS["Guardian"]], sent
-    assert "not answering: NPR" in await h.status(), await h.status()
+    assert (await h.status_parts())["warning"].startswith("Not answering: NPR"), await h.status_parts()
     await h.close()
 
 
@@ -203,6 +203,17 @@ async def test_the_digest_puts_your_topics_first():
     assert [s["headline"] for s in n.facts["stories"]] == ["Parliament debates the budget for roads",
                                                             "Local team wins the cup final"], n.facts
     assert n.say == "Your news: Parliament debates the budget for roads; Local team wins the cup final.", n.say
+    await h.close()
+
+
+async def test_a_headline_ending_in_a_question_gets_no_full_stop():
+    web = Web()
+    h = harness(web, digest_size=1)
+    for url in OUTLETS.values():
+        web.feeds[url] = rss([("What is different about today's protests?", "Crowds gathered again.", -100)])
+    await h.run("read")
+    [n] = await h.check("digest")
+    assert n.say == "Your news: What is different about today's protests?", n.say
     await h.close()
 
 
@@ -342,7 +353,7 @@ async def test_topics_learned_from_memory_the_diary_and_music():
     await h.run("read")
     found = await h.tool("get_news")
     assert found["stories"][0]["headline"] == "Ransomware attack hits hospital computer systems", found
-    assert "topics from you: ransomware, Daft Punk" in await h.status()
+    assert (await h.status_parts())["note"] == "Topics from what he knows: ransomware, Daft Punk"
     await h.close()
 
 

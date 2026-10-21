@@ -1,19 +1,28 @@
-import { createContext, useCallback, useContext, useState, type Dispatch, type SetStateAction } from 'react'
+import { createContext, useCallback, useContext, type Dispatch, type SetStateAction } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 import { toast } from 'sonner'
-import { $api, errorText, fetchClient, type Config, type EngineStatus, type PersonaRename, type SecretStatus } from '@/api/client'
-import { clearFieldErrors, showFieldErrors } from '@/api/field-errors'
+import {
+  $api,
+  errorText,
+  fetchClient,
+  type Config,
+  type EngineStatus,
+  type ExtensionView,
+  type PersonaRename,
+  type SecretStatus,
+} from '@/api/client'
+import { clearFieldErrors, hiddenAt, showFieldErrors } from '@/api/field-errors'
 import { configKey, patchConfig, useConfig, useSchema, type ConfigChange, type PatchOutcome } from '@/api/config'
-import { engineLabel, restartCost, statusKey, useEngineActions } from '@/api/status'
+import { engineLabel, isRunning, partName, restartCost, statusKey, useEngineActions } from '@/api/status'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useDraft } from '@/hooks/use-draft'
 import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
-import { refreshHomeAssistant, toastSaved, type HAApply } from '@/hooks/use-home-assistant'
+import { haNames, planParts, refreshHomeAssistant, toastSaved, type ExposurePlan, type HAApply } from '@/hooks/use-home-assistant'
 import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
-import { capitalize, humanize, joinNames } from '@/lib/format'
+import { humanize, joinNames } from '@/lib/format'
 import { presetSwitches } from '@/lib/presets'
-import { deepEqual, deref, getIn, hasBasicFields, isRecord, section, type JsonSchema, type Path } from '@/lib/schema'
+import { deepEqual, deref, getIn, isRecord, SECRET_SUFFIX, section, type JsonSchema, type Path } from '@/lib/schema'
 
 type Edits = { changes: ConfigChange[]; version: string | undefined }
 
@@ -77,36 +86,54 @@ export function effectiveChanges(saved: unknown, changes: ConfigChange[]): Confi
   return changes.filter((c) => !same(getIn(saved, c.path), c.value))
 }
 
-const startsWith = (path: Path, prefix: Path) => prefix.every((step, i) => path[i] === step)
+/** Whether a path lies under a section; '*' in the section matches any one key (an extension's id). */
+const under = (path: Path, section: string[]) =>
+  path.length >= section.length && section.every((step, i) => step === '*' || path[i] === step)
 
-// Which page shows which part of the config (pages/*.tsx), for the sidebar's dots and the confirms.
+// Which page edits which part of the config (pages/*.tsx), for the sidebar's dots and the confirms.
+// `views` are another page's editor shown filtered there (an extension's own actions and messages).
 
-export type SettingsPageInfo = { to: string; label: string; sections: string[][] }
+export type SettingsPageInfo = { to: string; label: string; sections: string[][]; views?: string[][] }
 
 export const settingsPages: SettingsPageInfo[] = [
-  { to: '/assistant', label: 'Assistant', sections: [['assistant'], ['region'], ['memory']] },
+  { to: '/status', label: 'Status', sections: [['engines'], ['logging'], ['control'], ['version']] },
+  { to: '/assistant', label: 'Assistant', sections: [['assistant'], ['region'], ['memory'], ['logging', 'turns']] },
   { to: '/brain', label: 'Brain', sections: [['llm'], ['engines', 'llm']] },
-  { to: '/voice', label: 'Voice', sections: [['tts'], ['stt'], ['vad'], ['engines', 'tts'], ['engines', 'stt']] },
-  { to: '/channels', label: 'Channels', sections: [['channels'], ['announce']] },
+  { to: '/voice', label: 'Voice', sections: [['tts'], ['stt'], ['engines', 'tts'], ['engines', 'stt']] },
+  { to: '/ways-to-talk', label: 'Ways to talk', sections: [['channels'], ['vad']] },
   { to: '/home-assistant', label: 'Home Assistant', sections: [['providers']] },
-  { to: '/extensions', label: 'Extensions', sections: [['extensions'], ['speak_up']] },
-  { to: '/system', label: 'System', sections: [['logging'], ['control'], ['version'], ['engines']] },
+  {
+    to: '/extensions',
+    label: 'Extensions',
+    sections: [['extensions']],
+    views: [['extensions', '*', 'tools'], ['extensions', '*', 'kinds']],
+  },
+  { to: '/actions', label: 'Actions', sections: [['extensions', '*', 'tools']] },
+  { to: '/speaking-up', label: 'Speaking up', sections: [['speak_up'], ['announce'], ['extensions', '*', 'kinds']] },
 ]
 
-/** Every page that shows a path, most specific first (engines.llm is on Brain and on System). */
+/** How far into a path a page's sections reach: its longest section that holds the path, 0 for none. */
+const depthIn = (page: SettingsPageInfo, path: Path) => Math.max(0, ...page.sections.filter((s) => under(path, s)).map((s) => s.length))
+
+/** The pages that show a path: first its owner, the page with the longest matching section (engines.llm.args
+ * is Brain's, not Status's; ties keep every tied page), then the pages that show it in a view. */
 export function pagesOf(path: Path): SettingsPageInfo[] {
-  return settingsPages.filter((p) => p.sections.some((s) => startsWith(path, s) || startsWith(s, path)))
+  const longest = Math.max(0, ...settingsPages.map((p) => depthIn(p, path)))
+  const owners = longest ? settingsPages.filter((p) => depthIn(p, path) === longest) : []
+  const viewers = settingsPages.filter((p) => !owners.includes(p) && p.views?.some((v) => under(path, v)))
+  return [...owners, ...viewers]
 }
 
 const pageAt = (pathname: string) => settingsPages.find((p) => pathname.startsWith(p.to))
 
-/** A field's name for a person, from the schema titles: "Voice", "Contacts: Mom", "llm: Args". */
-export function fieldLabel(root: JsonSchema, path: Path): string {
-  let current: JsonSchema | undefined = deref(root, root)
+/** A path's names from the schema titles, one per key it passes, with where it last crosses a keyed map's
+ * key (`keyAt` among the names, `keyStep` in the path). */
+function labelSteps(root: JsonSchema, path: Path, from: JsonSchema = root) {
+  let current: JsonSchema | undefined = deref(from, root)
   const parts: string[] = []
   let keyAt = -1
-  let switchAt = -1
-  for (const step of path) {
+  let keyStep = -1
+  for (const [i, step] of path.entries()) {
     if (!current) {
       parts.push(String(step))
       continue
@@ -117,33 +144,47 @@ export function fieldLabel(root: JsonSchema, path: Path): string {
     }
     const property: JsonSchema | undefined = current.properties?.[step]
     if (property) {
-      // A section switch ("Enabled") is named with its section, "Announce: Enabled".
-      switchAt = current.enabled_by === step ? parts.length : -1
       current = deref(property, root)
       // A section's own title is its model's class name ("AnnounceConfig"); its key reads better.
       parts.push(property.title ?? (property.$ref ? humanize(step) : (current.title ?? humanize(step))))
     } else if (isRecord(current.additionalProperties)) {
       current = deref(current.additionalProperties as JsonSchema, root)
       keyAt = parts.length
+      keyStep = i
       parts.push(step)
     } else {
       current = undefined
       parts.push(humanize(step))
     }
   }
+  return { parts, keyAt, keyStep }
+}
+
+/** A field's name for a person, from the schema titles: "Voice", "Contacts: Mom", "llm: Args". A section's
+ * switch is titled as a sentence naming it ("Talk to him on Discord"). `from` is the section the path
+ * starts in (one extension's), else the config. */
+export function fieldLabel(root: JsonSchema, path: Path, from: JsonSchema = root): string {
+  const { parts, keyAt } = labelSteps(root, path, from)
   const last = parts.length - 1
   if (last < 0) return 'Config'
   if (keyAt === last && last > 0) return `${parts[last - 1]}: ${parts[last]}`
   if (keyAt >= 0 && keyAt < last) return `${parts[keyAt]}: ${parts[last]}`
-  if (switchAt === last && last > 0) return `${parts[last - 1]}: ${parts[last]}`
   return parts[last]
+}
+
+/** A field's name on the page that owns it: a key that page's own section names (engines.llm on Brain)
+ * is the page, not part of the name, so "Startup time limit" and not "llm: Startup time limit". */
+function pageFieldLabel(root: JsonSchema, path: Path, owner?: SettingsPageInfo): string {
+  const { parts, keyAt, keyStep } = labelSteps(root, path)
+  const inPage = keyStep >= 0 && keyStep < (owner ? depthIn(owner, path) : 0)
+  return inPage && keyAt < parts.length - 1 ? parts[parts.length - 1] : fieldLabel(root, path)
 }
 
 /** The config paths that name a key, so it counts on their page; none for a name nothing uses yet. */
 const secretPaths = (name: string, byName: Map<string, SecretStatus>): Path[] => byName.get(name)?.used_by ?? []
 
 /** A pasted key by its field's label ("Bot token"), else its variable name. */
-function keyLabel(root: JsonSchema, path: Path, name: string): string {
+export function keyLabel(root: JsonSchema, path: Path, name: string): string {
   let current: JsonSchema | undefined = deref(root, root)
   for (const step of path) {
     const next: JsonSchema | undefined =
@@ -157,24 +198,84 @@ function keyLabel(root: JsonSchema, path: Path, name: string): string {
   return typeof label === 'string' ? label : name
 }
 
-/** "Voice: Voice, Speed" per page, for the confirms. */
-function summary(root: JsonSchema, edits: ConfigChange[], keys: string[], byName: Map<string, SecretStatus>,
-                 switches: { line: string; paths: string[][] }[] = []): string[] {
-  const groups = new Map<string, Set<string>>()
-  const add = (page: string, label: string) => groups.set(page, (groups.get(page) ?? new Set()).add(label))
+/** What the confirms name edits by: the schema, the saved config and the draft, the keys' variables, and
+ * the extensions found (their names and their actions' and messages' titles). */
+type Names = { root: JsonSchema; saved: Config; value: Config; byName: Map<string, SecretStatus>; extensions: ExtensionView[] }
+
+/** The draft field whose value is a variable's name: where a key is pasted before the config that names it
+ * is saved (a new MCP server's token). */
+function namedAt(value: unknown, name: string, path: Path = []): Path | undefined {
+  if (value === name) return path
+  if (!isRecord(value)) return undefined
+  for (const [k, v] of Object.entries(value)) {
+    const found = namedAt(v, name, [...path, k])
+    if (found) return found
+  }
+  return undefined
+}
+
+/** An edit under an extension as its pages show it: an action or a message by its title, "Play music
+ * (Spotify)"; the extension itself, "Spotify (removed)"; else "Spotify: Speaker name". */
+function extensionLabel(names: Names, path: Path, removed: boolean): string {
+  const id = String(path[1])
+  const view = names.extensions.find((e) => e.id === id)
+  // One not found yet (an MCP server added in this draft) by the name it is given, else its id.
+  const title = getIn(names.value, ['extensions', id, 'mcp', 'title'])
+  const name = view?.name ?? (typeof title === 'string' && title ? title : id)
+  const [field, key] = [path[2], path[3] === undefined ? undefined : String(path[3])]
+  if (field === undefined) return removed ? `${name} (removed)` : name
+  if (field === 'tools' && key) return `${view?.tools?.find((t) => t.name === key)?.title ?? humanize(key)} (${name})`
+  if (field === 'kinds' && key) return `${view?.kinds?.find((k) => k.kind === key)?.title ?? humanize(key)} (${name})`
+  return `${name}: ${fieldLabel(names.root, path.slice(2), section(names.root, ['extensions', id]))}`
+}
+
+/** "Voice: Voice, Speed" per page, for the confirms. The entries of a list keyed by name read as one label,
+ * "Devices he can use: Desk lamp, PC (removed)". */
+function summary(names: Names, edits: ConfigChange[], keys: string[], switches: { line: string; paths: string[][] }[] = []): string[] {
+  const { root, byName } = names
+  // Per page, each label with the entries it names.
+  const groups = new Map<string, Map<string, Set<string>>>()
+  const add = (page: string, label: string, entry?: string) => {
+    const labels = groups.get(page) ?? new Map<string, Set<string>>()
+    const entries = labels.get(label) ?? new Set<string>()
+    if (entry) entries.add(entry)
+    groups.set(page, labels.set(label, entries))
+  }
+  const nameOf = (entry: unknown) => (isRecord(entry) && typeof entry.name === 'string' && entry.name ? entry.name : undefined)
   const switched = (path: Path) => switches.some((w) => w.paths.some((p) => p.every((k, i) => path[i] === k)))
   for (const c of edits) {
     if (switched(c.path)) continue
-    const page = pagesOf(c.path)[0]?.label ?? 'Other'
-    const label = fieldLabel(root, c.path)
-    add(page, label.startsWith(`${page}: `) ? label.slice(page.length + 2) : label)     // not "Engines: Engines: stt"
+    const owner = pagesOf(c.path)[0]
+    const page = owner?.label ?? 'Other'
+    if (c.path[0] === 'extensions' && c.path.length > 1) {
+      add(page, extensionLabel(names, c.path, c.value === null))
+      continue
+    }
+    const { parts, keyAt, keyStep } = labelSteps(root, c.path)
+    // A key the page's own section names (engines.llm on Brain) is not an entry: the field inside it is.
+    if (keyStep >= 0 && keyStep < (owner ? depthIn(owner, c.path) : 0)) {
+      add(page, pageFieldLabel(root, c.path, owner))
+    } else if (keyAt > 0) {
+      // An entry by its name in the draft, else as saved (one being removed), else its key.
+      const at = c.path.slice(0, keyStep + 1)
+      const entry = getIn(names.value, at)
+      const name = nameOf(entry) ?? nameOf(getIn(names.saved, at)) ?? String(c.path[keyStep])
+      add(page, parts[keyAt - 1], entry == null ? `${name} (removed)` : name)
+    } else {
+      add(page, fieldLabel(root, c.path))
+    }
   }
   for (const name of keys) {
-    const path = secretPaths(name, byName)[0]
-    // A key the saved config does not name yet (a new MCP server's token) is listed by its name.
+    // A key the saved config does not name yet (a new MCP server's token) is found by the draft field naming it.
+    const path = secretPaths(name, byName)[0] ?? namedAt(names.value, name)
     add((path && pagesOf(path)[0]?.label) || 'Keys', path ? keyLabel(root, path, name) : name)
   }
-  return [...switches.map((w) => w.line), ...[...groups].map(([page, labels]) => `${page}: ${[...labels].join(', ')}`)]
+  const line = (labels: Map<string, Set<string>>) => {
+    const named = [...labels].map(([label, entries]) => (entries.size ? `${label}: ${[...entries].join(', ')}` : label))
+    // Labels that list entries are kept apart by semicolons, so an entry never reads as a field.
+    return named.join([...labels.values()].some((e) => e.size) ? '; ' : ', ')
+  }
+  return [...switches.map((w) => w.line), ...[...groups].map(([page, labels]) => `${page}: ${line(labels)}`)]
 }
 
 /** The pages with unsaved edits or pasted keys, for the sidebar's dots. */
@@ -190,9 +291,9 @@ export type SettingsState = {
   schema: JsonSchema
   value: Config
   dirty: boolean
+  /** How many fields and pasted keys are unsaved. */
+  changes: number
   saving: boolean
-  advanced: boolean
-  setAdvanced: (advanced: boolean) => void
   update: (fn: (current: Config) => Config) => void
   reset: () => void
   save: () => Promise<void>
@@ -208,23 +309,57 @@ async function needsDownload(changes: ConfigChange[], config: Config, restartabl
   return mustDownload(data, config.llm.model)
 }
 
+const channelIn = (c: Config, name: string) =>
+  (c.channels as Record<string, { enabled?: boolean; devices?: object } | undefined> | undefined)?.[name]
+const boxes = (c: Config) => Object.keys(channelIn(c, 'satellite')?.devices ?? {}).length
+
+/** Running parts this draft switches off or removes (an engine, a channel, the room boxes' last box),
+ * against the saved config: saving stops them. */
+function stoppedBy(saved: Config, draft: Config, parts: EngineStatus[]): EngineStatus[] {
+  const off = (c: Config, e: EngineStatus) => {
+    if (e.kind === 'engine') return !c.engines?.[e.name] || c.engines[e.name].enabled === false
+    return channelIn(c, e.name)?.enabled === false || (e.name === 'satellite' && boxes(c) === 0)
+  }
+  return parts.filter((e) => isRunning(e) && off(draft, e) && !off(saved, e))
+}
+
+/** Channels this draft switches on that are not running (the room boxes once they have a box): saving
+ * starts them. */
+function startedBy(saved: Config, draft: Config, parts: EngineStatus[]): string[] {
+  return ['voice', 'discord', 'satellite'].filter(
+    (name) =>
+      channelIn(saved, name)?.enabled !== true &&
+      channelIn(draft, name)?.enabled === true &&
+      (name !== 'satellite' || boxes(draft) > 0) &&
+      !parts.some((e) => e.name === name && isRunning(e)),
+  )
+}
+
+/** What the save would change in Home Assistant, from the dry run, as one confirm line; none when nothing.
+ * `name` names the entities it stops exposing. */
+function haPlanLine(plan: ExposurePlan | null | undefined, error: string | null | undefined, name: (id: string) => string): string | null {
+  if (error) return `Home Assistant: could not preview what changes there (${error})`
+  const parts = plan ? planParts(plan, name) : []
+  return parts.length ? `Home Assistant: ${parts.join(', ')}` : null
+}
+
 /** A page's view of the shared draft plus the save flow: a dry-run patch of only the changed paths,
- * confirm what changes and restarts, save with the version the edits started from, write pending
- * keys, restart. `paths` are the sections the page shows; a page with no basic field opens Advanced. */
-export function useSettings(paths: string[][]): Loading | Ready {
+ * confirm what changes, starts, stops and restarts, save with the version the edits started from, write
+ * pending keys, restart. */
+export function useSettings(): Loading | Ready {
   const client = useQueryClient()
   const config = useConfig()
   const schema = useSchema()
   const actions = useEngineActions()
   const status = $api.useQuery('get', '/api/status')
   const presets = $api.useQuery('get', '/api/presets')
+  const extensions = $api.useQuery('get', '/api/extensions')
   const secrets = useSecretsDraft()
   const { byName } = useSecretStatus()
   const ask = useConfirm()
   const { pathname } = useLocation()
   const { draft, setDraft } = useDraft()
   const store = useDraftStore()
-  const [advancedChoice, setAdvancedChoice] = useState<boolean | null>(null)
 
   const update = useCallback((fn: (current: Config) => Config) => setDraft((d) => (d ? fn(d) : d)), [setDraft])
 
@@ -235,12 +370,11 @@ export function useSettings(paths: string[][]): Loading | Ready {
   const { edits } = store
   const keys = Object.keys(secrets.pending)
   const dirty = edits.length > 0 || keys.length > 0
-  const anyBasic = paths.some((p) => hasBasicFields(section(root, p), root))
-  const advanced = advancedChoice ?? !anyBasic
   const current = pageAt(pathname)
   const onCurrent = (path: Path) => !!current && pagesOf(path).includes(current)
   const keyHere = (name: string) => secretPaths(name, byName).some(onCurrent)
   const elsewhere = edits.some((c) => !onCurrent(c.path)) || keys.some((n) => !keyHere(n))
+  const names: Names = { root, saved: base, value, byName, extensions: extensions.data ?? [] }
 
   const discardAll = () => {
     store.setEdits({ changes: [], version: undefined })
@@ -254,7 +388,7 @@ export function useSettings(paths: string[][]): Loading | Ready {
     const here = !!current && (edits.some((c) => onCurrent(c.path)) || keys.some(keyHere))
     const choice = await ask({
       title: 'Discard unsaved changes?',
-      lines: summary(root, edits, keys, byName),
+      lines: summary(names, edits, keys),
       choices: [
         ...(here && current ? [{ label: `Only ${current.label}`, value: 'page' }] : []),
         { label: 'Discard all', value: 'all', destructive: true },
@@ -278,17 +412,27 @@ export function useSettings(paths: string[][]): Loading | Ready {
       }
       await client.refetchQueries({ queryKey: configKey })
       store.setEdits((e) => ({ ...e, version: conflict.version }))
-      const what = conflict.paths.length ? conflict.paths.map((p) => p.join('.')).join(', ') : 'the config'
-      toast.warning(`Winston changed ${what} meanwhile; your edits are kept on top`, {
+      const what = conflict.paths.length ? conflict.paths.map((p) => fieldLabel(root, p)).join(', ') : 'the config'
+      toast.warning(`Changed elsewhere meanwhile: ${what}. Your edits are kept on top.`, {
         description: 'Check them and save again.',
       })
       return
     }
-    const errors = outcome.status === 422 ? showFieldErrors(outcome.error, { schema: root, setAdvanced: setAdvancedChoice }) : []
+    const errors = outcome.status === 422 ? showFieldErrors(outcome.error, root) : []
     if (errors.length) {
-      const lines = errors.map((e) =>
-        e.loc.length ? `${pagesOf(e.loc)[0]?.label ?? 'Config'}, ${fieldLabel(root, e.loc)}: ${e.msg}` : e.msg,
-      )
+      // A hidden field is on no page: its section and its own title, and where it is set. A key by its label.
+      const line = (e: (typeof errors)[number]) => {
+        const page = `${pagesOf(e.loc)[0]?.label ?? 'Config'}, `
+        const last = String(e.loc[e.loc.length - 1])
+        if (last.endsWith(SECRET_SUFFIX)) {
+          const named = [...e.loc.slice(0, -1), last.slice(0, -SECRET_SUFFIX.length)]
+          return `${page}${keyLabel(root, named, last)}: ${e.msg}`
+        }
+        return hiddenAt(root, e.loc)
+          ? `${labelSteps(root, e.loc).parts.slice(-2).join(', ')}: ${e.msg} (in config.yaml)`
+          : `${page}${pageFieldLabel(root, e.loc, pagesOf(e.loc)[0])}: ${e.msg}`
+      }
+      const lines = errors.map((e) => (e.loc.length ? line(e) : e.msg))
       toast.error('Not saved', { description: lines.join('; ') })
       return
     }
@@ -301,66 +445,71 @@ export function useSettings(paths: string[][]): Loading | Ready {
     clearFieldErrors()
     let restarts: string[] = []
     let rename: PersonaRename | null | undefined
+    let haLine: string | null = null
     if (changes.length) {
       const dry = await patchConfig(changes, { version, dryRun: true })
       if (!dry.ok) return refused(dry)
       restarts = dry.result.restarts
       rename = dry.result.persona_rename
+      const ha = dry.result as { ha_plan?: ExposurePlan | null; ha_plan_error?: string | null }
+      haLine = haPlanLine(ha.ha_plan, ha.ha_plan_error, haNames(client))
     }
     restarts = [...new Set([...restarts, ...secretRestarts(keys, byName)])]
 
     const engines = status.data?.engines ?? []
-    const restartable = engines.filter((e) => restarts.includes(e.name) && e.state !== 'stopped' && e.state !== 'error')
-    // An engine the config gains starts on save (winstond starts what it did not run before).
-    const starting = [...new Set(changes.filter((c) => c.path[0] === 'engines').map((c) => String(c.path[1])))]
-      .filter((n) => value.engines?.[n] && value.engines[n].enabled !== false && !engines.some((e) => e.name === n))
-    const later = restarts.some((name) => !engines.some((e) => e.name === name))
-    const download = await needsDownload(changes, value, restartable)
-    // An engine the config no longer has (hearing switched back to Parakeet): its "restart" stops it for good.
-    const stopping = restartable.filter((e) => e.kind === 'engine' && !value.engines?.[e.name])
-    const restarting = restartable.filter((e) => !stopping.includes(e))
-    const costs = [
-      ...stopping.map((e) => `${capitalize(engineLabel(e))}: stops, nothing uses it now`),
-      ...restarting.map((e) =>
-        e.name === 'llm' && download
-          ? `${capitalize(engineLabel(e))}: ${DOWNLOAD_COST}`
-          : `${capitalize(engineLabel(e))}: ${restartCost(e)}`,
+    // What the draft switches off or removes stops when saved (hearing switched back to Parakeet, Discord off).
+    const stopping = stoppedBy(base, value, engines)
+    const restarting = engines.filter((e) => restarts.includes(e.name) && isRunning(e) && !stopping.includes(e))
+    // An engine the config gains, or a channel switched on, starts on save (winstond starts what it did not run before).
+    const starting = [
+      ...[...new Set(changes.filter((c) => c.path[0] === 'engines').map((c) => String(c.path[1])))].filter(
+        (n) => value.engines?.[n] && value.engines[n].enabled !== false && !engines.some((e) => e.name === n),
       ),
-      ...starting.map((n) => `The ${n} engine: starts when saved`),
-      ...(later ? ['Some changes apply on the next winston up'] : []),
+      ...startedBy(base, value, engines),
+    ]
+    const later = restarts.some((name) => !engines.some((e) => e.name === name))
+    const download = await needsDownload(changes, value, restarting)
+    const costs = [
+      ...stopping.map((e) => `${partName(e.name)}: stops now`),
+      ...restarting.map((e) => `${partName(e.name)}: restarts, ${e.name === 'llm' && download ? DOWNLOAD_COST : restartCost(e)}`),
+      ...starting.map((n) => `${partName(n)}: starts when saved`),
+      ...(haLine ? [haLine] : []),
+      ...(later ? ['Some changes take effect when Winston restarts'] : []),
     ]
 
     // A rename whose old name his persona says: the same confirm offers to change it there too.
     let renamePersona = false
     const check = rename
       ? {
-          label: `His persona says ${rename.old} in ${rename.places} ${rename.places === 1 ? 'place' : 'places'}. Change ${rename.places === 1 ? 'it' : 'them'} to ${rename.new}?`,
-          detail: rename.lines.map((line) => (line.length > 72 ? `${line.slice(0, 71)}…` : line)),
+          label: `His personality says ${rename.old} in ${rename.places} ${rename.places === 1 ? 'place' : 'places'}. Change ${rename.places === 1 ? 'it' : 'them'} to ${rename.new}?`,
+          // A heading's marks ("## Voice") are the file's, not his words.
+          detail: rename.lines.map((line) => {
+            const text = line.replace(/^[#\s]+/, '')
+            return text.length > 72 ? `${text.slice(0, 71)}…` : text
+          }),
           checked: true,
           answer: (on: boolean) => { renamePersona = on },
         }
       : undefined
+    // "Save and start the room boxes, restart the brain and stop Discord?"
+    const verbs = [
+      starting.length ? `start ${joinNames(starting.map(engineLabel))}` : null,
+      restarting.length ? `restart ${joinNames(restarting.map(engineLabel))}` : null,
+      stopping.length ? `stop ${joinNames(stopping.map(engineLabel))}` : null,
+    ].filter((v) => v !== null)
     let restart = false
     if (costs.length || elsewhere || check) {
       const choice = await ask({
         // A rename leads (its restarts are in the lines and the choices), as Save and restart would bury it.
-        title: rename
-          ? `Rename him to ${rename.new}?`
-          : restarting.length
-            ? `Save and restart ${joinNames(restarting.map(engineLabel))}?`
-            : stopping.length
-              ? `Save and stop ${joinNames(stopping.map(engineLabel))}?`
-              : starting.length
-              ? `Save and start the ${joinNames(starting)} engine?`
-              : 'Save these changes?',
-        lines: [...summary(root, changes, keys, byName, presetSwitches(base, value, presets.data)), ...costs],
+        title: rename ? `Rename him to ${rename.new}?` : verbs.length ? `Save and ${joinNames(verbs)}?` : 'Save these changes?',
+        lines: [...summary(names, changes, keys, presetSwitches(base, value, presets.data)), ...costs],
         check,
-        choices: restartable.length
+        choices: restarting.length
           ? [
               { label: 'Save only', value: 'save' },
-              { label: restarting.length ? 'Save and restart' : 'Save and stop', value: 'restart' },
+              { label: 'Save and restart', value: 'restart' },
             ]
-          : [{ label: 'Save', value: 'save' }],
+          : [{ label: stopping.length ? 'Save and stop' : 'Save', value: 'save' }],
       })
       if (!choice) return
       restart = choice === 'restart'
@@ -386,7 +535,7 @@ export function useSettings(paths: string[][]): Loading | Ready {
     if (changes.some((c) => c.path[0] === 'providers')) refreshHomeAssistant(client)
     if (changes.length || written.saved.length) toastSaved(haApply)
     if (restart) {
-      for (const e of restartable) actions.restart.mutate({ params: { path: { name: e.name } } })
+      for (const e of restarting) actions.restart.mutate({ params: { path: { name: e.name } } })
     }
   }
 
@@ -395,6 +544,8 @@ export function useSettings(paths: string[][]): Loading | Ready {
     store.setSaving(true)
     try {
       await runSave()
+    } catch (e) {
+      toast.error('Not saved', { description: errorText(e) })
     } finally {
       store.setSaving(false)
     }
@@ -403,7 +554,7 @@ export function useSettings(paths: string[][]): Loading | Ready {
   return {
     loading: false,
     page: {
-      schema: root, value, dirty, saving: store.saving || secrets.saving, advanced, setAdvanced: setAdvancedChoice,
+      schema: root, value, dirty, changes: edits.length + keys.length, saving: store.saving || secrets.saving,
       update, reset: () => void reset(), save,
     },
   }

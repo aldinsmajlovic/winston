@@ -48,6 +48,10 @@ port 8880 in Chatterbox's place:
 | Gepard 1.1 (`services/tts-gepard`) | GPU, about 2.2 GB | a clip alone | 22.05 kHz | Fastest to start, but drops and garbles more words |
 | Breeze TTS 2 (`services/tts-breeze2`) | GPU, about 5.9 GB | a clip and its words | 24 kHz | The most natural in blind pairs; beside the 27B brain only with Parakeet hearing; non-commercial weights |
 
+Each preset sets Sample rate (`tts.sample_rate`) to what its server sends, the Out column; it sits in
+How it runs on the Speaking card. A server no preset knows needs it set by hand, or he sounds too fast
+or too slow.
+
 Only one GPU voice fits beside the brain, so picking one stops the other. Qwen3-TTS, VoxCPM2 and Breeze clone
 from the clip's words as well: a `.txt` beside the clip if there is one, otherwise Parakeet
 transcribes it once. How they compare is under [Benchmark](#benchmark).
@@ -90,16 +94,20 @@ voice or streaming settings that are not saved yet, which is how the Voice page 
 It speaks with the engine that is running. A changed engine in unsaved settings needs saving and a
 restart of speaking before it can be heard.
 
-On the Voice page, the play button beside Voice says "Hello, I'm Winston. This is how I sound." in
-the voice picked, saved or not. When the Streaming settings show (the Chatterbox preset), "Play a
-sample" on their heading speaks one long sentence with the unsaved switch, chunk length and, under
-Advanced, first chunk and look-ahead, then shows the time from the click to the first sound beside
-it until a streaming value changes. The sentence runs several seconds because chunks double from the
+On the Voice page, Hear this voice (the play button beside Voice) says "Hello, I'm Winston. This is
+how I sound." (with his configured name) in the voice picked, saved or not. Streaming is on the
+Speaking card, and only for an engine whose command takes it (the Chatterbox preset): Stream speech
+and Chunk length. First chunk and Look-ahead (`tts.streaming.first_secs`, `lookahead_secs`) are
+config.yaml only, or a value in place of their placeholder in the engine's arguments under How it
+runs. "Play a sample" on its heading speaks one long sentence
+with the unsaved values, then shows the time from the click to the first sound beside it until a
+streaming value changes. The sentence runs several seconds because chunks double from the
 first one and start over with each sentence: a short line never reaches a long chunk length, so its
 joins would not be heard. A warning icon beside the time means the running server did not use the
-settings (`X-Streaming: ignored`). Both buttons are disabled, with "Save and restart speaking to hear
-this engine", while the unsaved engine or server address differs from the saved one or speaking
-waits for a restart; the sample also while look-ahead is not shorter than the first chunk.
+settings (`X-Streaming: ignored`). Both buttons are disabled, their reason in the tooltip: "Save and
+restart speaking to hear this engine" while the unsaved engine or server address differs from the
+saved one or speaking waits for a restart, "Speaking is not running yet", or "Turn on speaking to hear
+a voice"; the sample also while look-ahead is not shorter than the first chunk.
 
 `uv run python tests/preview_check.py` checks the same on the running Winston without a browser: it
 asks for a voice other than the saved one, twice, and the sample unstreamed and streamed with 2.4 s
@@ -109,9 +117,10 @@ is saved.
 ## Voice dropdown
 
 The voice dropdown on the Voice page lists, for a local server, "Server default" with the clip the
-server started with (for instance "Server default: vctk/p254_023"; that clip is marked "server
-default" below it), then your clips under `data/voices/`, then cloned voices by the friend's name,
-marked "cloned". Consent recordings are never offered as a voice. A hosted server lists only your
+server started with (for instance "Server default: p254_023"; that clip is marked "server default"
+below it), then your clips under `data/voices/` by file name, grouped by their folder ("Your clips"
+for the top level), then Your voices, the cloned ones by the friend's name, then the server's
+built-in voices. Consent recordings are never offered as a voice. A hosted server lists only your
 clips, cloned voices and its built-in voices.
 
 ## Reference voices
@@ -148,16 +157,19 @@ already cloned is switched to by name ("use Maria's voice") without recording ag
 voice" reverts; the clone lasts the conversation unless you say to keep it, which saves it as
 `tts.voice`. Asking again for the same name records over the old clone.
 
-Recording needs the browser (the Talk page or the dashboard's talk button). Switching does not: a
-Voice PE box takes "Okay Winston, talk like Maria" and "your own voice again" too, for its conversation.
+Recording needs the browser (the Talk page's microphone or the wall display's talk button).
+Switching does not: a Voice PE box takes "Okay Winston, talk like Maria" and "your own voice again"
+too, for its conversation.
 
 Each clone is `data/voices/friends/<name>.wav`, with the consent recording (`<name>.consent.wav`)
-and its record (`<name>.json`) beside it. The Voice page lists them, plays both recordings and
-deletes them.
+and its record (`<name>.json`) beside it. Your voices on the Voice page lists them with when each was
+recorded, its length and its voice match: Play, Use (picks it as his voice in the draft; the one in
+use says In use), and a menu with Play their permission and Delete, which removes both recordings.
+With none yet, it says how to make one.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
-  <img src="images/voice-light.png" alt="The Voice page with two cloned voices, one checked as the same voice and one not checked, and the hint words under Hearing" width="720">
+  <img src="images/voice-light.png" alt="The Voice page: Speaking with its voice, streaming and its closed How it runs, then Your voices, with Hearing below" width="720">
 </picture>
 
 ### The consent record
@@ -179,11 +191,12 @@ What it does and does not prevent:
 - It does not stop a recording of the same person saying the line and then talking, played from a
   speaker; a replay of a real recording scores as the same voice.
 - It cannot stop a clip added to `data/voices/` by hand. Such a clip is in the voice dropdown and
-  never in Cloned voices, since there is no record for it.
+  never in Your voices, since there is no record for it.
 
-The Consent column on the Voice page shows the check as an icon: a check for the same voice, a
-question mark for Not checked, with the score, the time and what speech to text heard in the
-tooltip. A mismatch never shows, since it is not kept. Clones made before the check have no score
+The Voice match column on the Voice page shows the check in a word with its icon: Checked, or Not
+checked; the icon opens the score and the one needed, when it was checked and what speech to text
+heard. A mismatch is not kept, so Below the threshold shows only for a score under a threshold
+raised since. Clones made before the check have no score
 and read Not checked, and so does a clone made while the model could not load: the check is
 optional and never makes a clone fail.
 
@@ -219,7 +232,8 @@ friend. Recording from a satellite's far-field mic waits for M3.
 
 ## Hearing engines
 
-Speech to text is a slot like the brain and the voice: the Hearing card on the Voice page picks a preset.
+Speech to text is a slot like the brain and the voice: Runs on in the Hearing card on the Voice page
+picks a preset.
 
 | Preset | Where it runs | Takes hint words | Notes |
 | --- | --- | --- | --- |
@@ -227,6 +241,11 @@ Speech to text is a slot like the brain and the voice: the Hearing card on the V
 | Qwen3-ASR 0.6B on GPU | `services/stt-qwen3-asr` on port 8001 | yes, as its context | About 2.2 GB of VRAM; fits beside the 27B brain and Chatterbox |
 | Qwen3-ASR 1.7B on GPU | the same service | yes | About 5 GB: beside the 27B brain it needs Pocket TTS instead of Chatterbox |
 | Hosted | any server speaking OpenAI's transcription API | as its prompt | `STT_API_KEY` in `.env`; your speech leaves the LAN |
+
+Parakeet runs in int8 (`stt.quantization`, config.yaml only), faster on the CPU at no audible
+accuracy cost; empty is full precision. Its Hearing card has no How it runs, since it runs inside
+Winston; with Qwen3-ASR or a hosted server the card has one, holding the API address while Winston
+runs the engine.
 
 The Qwen3-ASR service has its own venv: run `uv sync` in `services/stt-qwen3-asr` once; the model
 downloads on its first start. The presets after Parakeet use the `openai_transcription` adapter, which
@@ -250,13 +269,13 @@ the 1.7B is ahead on both.
 
 ## Hint words
 
-Speech to text gets names wrong: Parakeet wrote "Hey Winson.", "Windsun" and "They win some." for
-"Hey Winston" on a real mic, and "Vardag's Rummet" for Vardagsrummet. Hint words are the names it
-should hear right. Winston adds some by himself: his name (`assistant.name`), the cloned voices,
-Discord contacts while Discord is on, and the proper nouns among the names and aliases in the Home
-Assistant list, one word at a time ("hektar lamp" gives Hektar; "the lights", "battery" and "phone"
-give nothing). `stt.hint_words` adds the rest, such as room names in Swedish. While a voice is being
-cloned, the friend's name is added for the consent recording.
+Speech to text gets names wrong: Parakeet wrote "Hey Winson.", "Windsun" and "They win some." for "Hey
+Winston" on a real mic, and "Vardag's Rummet" for Vardagsrummet. Hint words are the names it should hear
+right. Winston adds some by himself: his name (`assistant.name`), the cloned voices, Discord contacts
+while Discord is on, words running extensions ask for, and the proper nouns among the names and aliases
+in the Home Assistant list, one word at a time ("hektar lamp" gives Hektar; "the lights", "battery" and
+"phone" give nothing). `stt.hint_words` adds the rest, such as room names in Swedish. While a voice is
+being cloned, the friend's name is added for the consent recording.
 
 An engine that can be told words in advance (`supports_hints` in the adapter contract) gets the list:
 Qwen3-ASR as its context, a Whisper-style server as its prompt. Parakeet cannot, so with
@@ -279,13 +298,22 @@ Every change is in the STT log line, before and after:
 STT 1.20s audio -> 'Hey Winson.' -> 'Hey Winston.' (Winson -> Winston) in 180 ms
 ```
 
-On the Voice page, Hearing shows the automatic words with their source's icon (the source in the
-tooltip), yours after them, and a box to add more; the (i) on Hint words says what the current engine
-does with them. Every word has a Remove x. Removing one of the automatic words crosses it out with an
-Add back button and stores it in `stt.hint_words_removed`, so it stays out when its source lists it
-again (a lamp alias that keeps getting misheard into other words, say). `tests/hints_cases.py` (in `winston check unit`) checks the list, the
-corrections and 200 ordinary English sentences that must come through unchanged. "I modeled in" for
-"I'm" and a name is out of reach: every word in it is a common one.
+On the Voice page, the Hearing card has:
+
+- **Correct misheard names** (`stt.fix_misspellings`), the switch for all of this.
+- **Your words**, first under Names he should hear right: chips with a box to add more. A pasted list
+  adds each word and says how many it skipped for having spaces.
+- **His words**, folded by where they come from, with a count and the source's icon: His name and
+  voices, Home Assistant, Discord contacts and each extension by its name. Common words, which the
+  correction never changes, are left out. Removing one crosses it out with Add back and stores it in
+  `stt.hint_words_removed`, so it stays out when its source lists it again (a lamp alias that keeps
+  getting misheard into other words, say).
+- **A line under them** says what the current engine does with the words, and links to History,
+  Marked to see what he misheard (with recordings off, to Assistant to turn them on).
+
+`tests/hints_cases.py` (in `winston check unit`) checks the list, the corrections and 200 ordinary
+English sentences that must come through unchanged. "I modeled in" for "I'm" and a name is out of
+reach: every word in it is a common one.
 
 ## Benchmark
 
@@ -458,7 +486,7 @@ Aldin heard the next sentence start right on the last one's final sound. Breeze 
 about 0.04 s after its last sound, against Turbo's 0.16 s, and Winston sends a reply a sentence at a
 time, so its pauses at full stops were mostly under 0.1 s (Turbo's 0.16 to 0.4 s). The Breeze server
 now adds `--pause-secs` of silence after each sentence, 0.25 s by default, which makes a full stop
-0.30 to 0.32 s. Change it in the engine's command (Advanced) to taste.
+0.30 to 0.32 s. Change it in How it runs on the Speaking card to taste.
 
 Measured again with the pause (`breeze2-pause`): first byte 0.14 s, first sound 0.18 s (slowest
 tenth 0.26 s), RTF 0.41. The slowest lines start with "[sigh]", which Breeze breathes quietly before

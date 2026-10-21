@@ -498,6 +498,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rooms/{room}/box": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** A room's box connected or went away (the satellite channel reports each change) */
+        put: operations["room_box_api_rooms__room__box_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rooms/{room}/mic": {
         parameters: {
             query?: never;
@@ -878,6 +895,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engines/{name}/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The end of an engine's or channel's log; none for an external server */
+        get: operations["engine_log_api_engines__name__log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines/start_all": {
         parameters: {
             query?: never;
@@ -937,7 +971,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** JSON Schema of the config, with level and restarts per field */
+        /** JSON Schema of the config, with restarts and what the form draws per field */
         get: operations["get_schema_api_config_schema_get"];
         put?: never;
         post?: never;
@@ -982,6 +1016,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/extensions/{ext_id}/accounts/{field}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start signing in to an extension's account (localhost only): the service's sign-in page */
+        post: operations["start_account_api_extensions__ext_id__accounts__field__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/presets": {
         parameters: {
             query?: never;
@@ -1006,7 +1057,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Live choices for a dropdown: env, personas, sounds, stt_adapters, stt_models, hint_words, memory_topics, extension_tools, llm_models, voices, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
+        /** Live choices for a dropdown: control_hosts, sounds, stt_models, hint_words, memory_topics, extension_tools, extension_choices, llm_models, voices, ha_entities, ha_domains, ha_notify, ha_areas, discord_users */
         get: operations["get_options_api_options__name__get"];
         put?: never;
         post?: never;
@@ -1023,10 +1074,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Whether Home Assistant answers at the URL with the configured token */
-        get: operations["ha_check_api_providers_home_assistant_check_get"];
+        get?: never;
         put?: never;
-        post?: never;
+        /** Whether Home Assistant answers at an address with a token, both before they are saved */
+        post: operations["ha_check_api_providers_home_assistant_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1105,6 +1156,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccountStart */
+        AccountStart: {
+            /** Url */
+            url: string;
+            /** Redirect */
+            redirect: string;
+        };
         /** AllFacts */
         AllFacts: {
             /** Facts */
@@ -1113,33 +1171,33 @@ export interface components {
         /** AnnounceConfig */
         AnnounceConfig: {
             /**
-             * Enabled
-             * @description Let him speak on his own: Home Assistant automations, the API and `winston announce` send him something to say.
+             * Let automations make him speak
+             * @description Through a Home Assistant event, Winston's API or the winston announce command.
              * @default true
              */
             enabled?: boolean;
             /**
-             * Chime
-             * @description Sound played before an announcement, so it is clearly a notification. Empty for none.
+             * Sound before an announcement
+             * @description So it is clearly an announcement. Empty for none.
              * @default {repo}/assets/sounds/chime.wav
              */
             chime?: string;
             /**
              * Quiet hours
-             * @description HH:MM-HH:MM when announcements are not spoken, only sent to Discord. Empty for never quiet.
+             * @description Empty is never quiet.
              * @default 22:00-07:00
              */
             quiet_hours?: string | null;
             /**
-             * Also to Discord
-             * @description always: every announcement; fallback: when nothing can speak it (quiet hours, no speaker connected); never.
+             * Also send to Discord
+             * @description It cannot be spoken in quiet hours, or with no speaker connected.
              * @default fallback
              * @enum {string}
              */
             discord?: "always" | "fallback" | "never";
             /**
-             * Home Assistant event
-             * @description Event type an automation fires with data {text, context} to announce.
+             * Home Assistant event name
+             * @description The event type an automation fires with data {text, context} to announce.
              * @default winston_announce
              */
             ha_event?: string;
@@ -1169,19 +1227,18 @@ export interface components {
         AssistantConfig: {
             /**
              * Name
-             * @description What he is called: his name in the prompt, the consent line and the hint words. Renaming offers to change it in his persona too.
+             * @description His name in the prompt, the consent line and the names he should hear right. Renaming offers to change it in his personality too.
              * @default Winston
              */
             name?: string;
             /**
-             * Persona file
-             * @description Persona file, relative to the data directory.
+             * Personality file
+             * @description The file in the data folder his personality is read from. Edit its words under Assistant, Personality.
              * @default persona.md
              */
             persona?: string;
             /**
              * Reply language
-             * @description The language he always answers in, whatever language he is spoken to in. Match it to the voice: Chatterbox-Turbo speaks only English.
              * @default English
              */
             language?: string;
@@ -1198,6 +1255,14 @@ export interface components {
              * @default
              */
             text?: string;
+        };
+        /** BoxState */
+        BoxState: {
+            /**
+             * Connected
+             * @description The room's box connected (true) or went away (false).
+             */
+            connected: boolean;
         };
         /** BrainTool */
         BrainTool: {
@@ -1226,10 +1291,16 @@ export interface components {
             filler_after?: number;
             /**
              * Title
-             * @description Its extension's name, for the tool's line on Talk
+             * @description Its extension's name
              * @default
              */
             title?: string;
+            /**
+             * Tool Title
+             * @description Its own title for people, for its line on Talk
+             * @default
+             */
+            tool_title?: string;
             /**
              * Icon
              * @description Its extension's icon: a lucide name, or simple-icons:<slug> for a maker's logo
@@ -1244,6 +1315,7 @@ export interface components {
         /** Channels */
         Channels: {
             /**
+             * Talk page
              * @default {
              *       "enabled": true,
              *       "host": "127.0.0.1",
@@ -1263,19 +1335,20 @@ export interface components {
              */
             discord?: components["schemas"]["DiscordChannel"];
             /**
+             * Room boxes
              * @default {
              *       "enabled": false,
              *       "devices": {},
+             *       "follow_up_secs": 6,
              *       "http_port": 8702,
+             *       "session_idle_mins": 10,
              *       "end_silence_secs": 0.8,
              *       "unfinished_silence_secs": 2.5,
              *       "chat_silence_secs": 1.5,
-             *       "follow_up_secs": 6,
-             *       "barge_in_secs": 0.3,
+             *       "barge_in_secs": 0,
              *       "barge_in_volume": 0.6,
              *       "barge_in_gain_db": 30,
-             *       "barge_in_grace_secs": 3,
-             *       "session_idle_mins": 10
+             *       "barge_in_grace_secs": 3
              *     }
              */
             satellite?: components["schemas"]["SatelliteChannel"];
@@ -1324,6 +1397,8 @@ export interface components {
              * @default false
              */
             disabled?: boolean;
+            /** Image */
+            image?: string | null;
         };
         /** ClearedFact */
         ClearedFact: {
@@ -1407,6 +1482,9 @@ export interface components {
             /** Version */
             version: string;
             ha_apply?: components["schemas"]["HAApply"] | null;
+            ha_plan?: components["schemas"]["ExposurePlan"] | null;
+            /** Ha Plan Error */
+            ha_plan_error?: string | null;
             persona_rename?: components["schemas"]["PersonaRename"] | null;
         };
         /** Confirmation */
@@ -1440,14 +1518,13 @@ export interface components {
         /** ControlConfig */
         ControlConfig: {
             /**
-             * Host
-             * @description Address winstond listens on. 127.0.0.1 keeps the API and web UI on this machine; it has no login.
+             * Who can open this page
+             * @description 0.0.0.0 opens it to your whole network.
              * @default 127.0.0.1
              */
             host?: string;
             /**
              * Port
-             * @description Port for the API and the web UI.
              * @default 8700
              */
             port?: number;
@@ -1478,8 +1555,7 @@ export interface components {
         /** DiscordChannel */
         DiscordChannel: {
             /**
-             * Enabled
-             * @description Talk to him in Discord DMs and get announcements there.
+             * Talk to him on Discord
              * @default false
              */
             enabled?: boolean;
@@ -1490,26 +1566,26 @@ export interface components {
              */
             token_env?: string;
             /**
-             * Your Discord user id
-             * @description The one Discord user he answers and calls "me". In Discord: Settings, Advanced, Developer Mode on, then right-click yourself, Copy User ID. Empty reads the variable under Advanced.
+             * Your Discord user ID
+             * @description The one Discord user he answers and calls "me".
              * @default
              */
             allowed_user?: string;
             /**
-             * User id variable
-             * @description The variable in data/.env read for your user id while the field above is empty; older configs kept it there.
+             * Variable for your user ID (older setups)
+             * @description The variable in data/.env read for your user ID while the field above is empty.
              * @default DISCORD_ALLOWED_USER_ID
              */
             allowed_user_env?: string;
             /**
-             * Conversation resets after (min)
-             * @description Idle minutes before a DM conversation starts fresh (and re-reads memory).
+             * New conversation after
+             * @description Quiet minutes before a direct-message conversation starts fresh and reads memory again.
              * @default 30
              */
             session_idle_mins?: number;
             /**
-             * Contacts
-             * @description People he may message, by the name you say and their Discord user. The bot can only reach people who share a server with it.
+             * People he can message
+             * @description By the name you say and their Discord user.
              */
             contacts?: {
                 [key: string]: string;
@@ -1521,44 +1597,46 @@ export interface components {
          */
         EngineConfig: {
             /**
-             * Driver
-             * @description How the engine is run. Docker container: Winston runs an image. Process: Winston runs a command on this machine. External server: something you run yourself; Winston only checks it.
+             * Runs as
+             * @description Docker container: Winston runs an image. Process: Winston runs a command on this computer. External server: something you run yourself; Winston only checks it.
              * @enum {string}
              */
             driver: "docker" | "subprocess" | "external";
             /**
-             * Enabled
-             * @description Start it with winston up. Off keeps the entry without running it.
+             * Start with Winston
              * @default true
              */
             enabled?: boolean;
             /**
              * Port
-             * @description Local port the engine listens on.
+             * @description The port the engine listens on.
              */
             port: number;
-            /**
-             * Health path
-             * @description HTTP path that returns 200 when ready. Empty: no check, the engine counts as up whenever its process is (hosted APIs).
-             * @default /health
-             */
-            health?: string;
-            /**
-             * Startup timeout (s)
-             * @description Seconds to wait for health before giving up.
-             * @default 600
-             */
-            startup_timeout?: number;
             /**
              * Image
              * @description Container image (docker driver).
              */
             image?: string | null;
             /**
+             * Use the graphics card
+             * @default false
+             */
+            gpu?: boolean;
+            /**
              * Arguments
-             * @description Command arguments (docker driver). {model} expands to the brain's model, {section.field} (say {tts.streaming.chunk_secs}) to that config value.
+             * @description Arguments to the container's command. {model} becomes the model chosen on Brain, {section.field} that setting's value, say {tts.streaming.chunk_secs}.
              */
             args?: string[];
+            /**
+             * Command
+             * @description {model}, {data}, {repo} and {section.field} become the model chosen on Brain, the data folder, the repo and that setting's value.
+             */
+            cmd?: string[];
+            /**
+             * Working directory
+             * @description Working directory, {repo}-relative allowed.
+             */
+            cwd?: string | null;
             /**
              * Environment
              * @description Environment variables for the engine's process or container.
@@ -1568,43 +1646,39 @@ export interface components {
             };
             /**
              * Volumes
-             * @description Folders the container sees: a path on this machine and where it appears inside the container.
+             * @description Folders the container sees: a path on this computer and where it appears inside the container.
              */
             volumes?: {
                 [key: string]: string;
             };
             /**
-             * GPU
-             * @description Give the container the GPU.
-             * @default false
-             */
-            gpu?: boolean;
-            /**
-             * Runtime
-             * @description Container runtime, e.g. nvidia.
+             * Container runtime
+             * @description Such as nvidia.
              */
             runtime?: string | null;
             /**
              * IPC host
-             * @description Share the host's IPC namespace; vLLM needs it for shared memory between workers.
+             * @description Shares the host's IPC namespace with the container.
              * @default false
              */
             ipc_host?: boolean;
             /**
-             * Command
-             * @description Command line (subprocess driver). {data}, {repo}, {model} and {section.field} (say {tts.streaming.chunk_secs}) expand.
-             */
-            cmd?: string[];
-            /**
-             * Working directory
-             * @description Working directory, {repo}-relative allowed.
-             */
-            cwd?: string | null;
-            /**
-             * URL
-             * @description Base URL of an engine you run yourself (external driver).
+             * Address
+             * @description Where an engine you run yourself answers.
              */
             url?: string | null;
+            /**
+             * Health check path
+             * @description HTTP path that returns 200 when ready. Empty: no check, the engine counts as up whenever its process is (hosted APIs).
+             * @default /health
+             */
+            health?: string;
+            /**
+             * Startup time limit
+             * @description How long it may take to pass its health check before it counts as failed.
+             * @default 600
+             */
+            startup_timeout?: number;
         };
         /** EngineStatus */
         EngineStatus: {
@@ -1680,30 +1754,27 @@ export interface components {
         };
         /** ExposedEntity */
         ExposedEntity: {
-            /**
-             * Name
-             * @description What you call it. Saved to Home Assistant as an alias; Home Assistant's own name is never changed.
-             */
+            /** Main name */
             name?: string | null;
             /**
-             * Aliases
-             * @description Other names people say for it, saved to Home Assistant as aliases.
+             * Other names
+             * @description Other names people say for it, added to Home Assistant too.
              */
             aliases?: string[];
             /**
-             * Said first
-             * @description What he says as soon as a spoken request names it (by name or alias), in place of "One moment.", before he acts. For a script that sets a scene: "Movie night it is."
+             * Say first
+             * @description By name or another name, before he acts. For a script that sets a scene: "Movie night it is."
              */
             say_first?: string | null;
             /**
-             * Quiet after
-             * @description Once a spoken request that names it has worked, he says nothing more and the box does not listen on: for a scene with music that speaks for itself. A failure is still reported.
+             * Stay quiet when it works
+             * @description A room box does not listen on either. A failure is still reported.
              * @default false
              */
             quiet_after?: boolean;
             /**
-             * Run when named
-             * @description For a script: saying just one of its names ("Winston, movie night") runs it straight away without asking the model, so it does the same every time, even twice in a row. Anything longer goes to the model as usual.
+             * Run it as soon as you say its name
+             * @description Even twice in a row. Anything longer goes to the brain as usual.
              * @default false
              */
             shortcut?: boolean;
@@ -1772,8 +1843,7 @@ export interface components {
         /** ExtensionConfig */
         ExtensionConfig: {
             /**
-             * Enabled
-             * @description Run it. Off until switched on; its card shows what it may reach first.
+             * Use this extension
              * @default false
              */
             enabled?: boolean;
@@ -1786,21 +1856,20 @@ export interface components {
             };
             /**
              * Speaking up
-             * @description Your choices for each kind of nudge, by kind.
+             * @description Your choices for each kind of message it brings up.
              */
             kinds?: {
                 [key: string]: components["schemas"]["ExtensionKind"];
             };
             /**
-             * Tools
-             * @description Your choices for each tool, by the tool's own name. For an MCP server, only the tools listed here are offered.
+             * Actions
+             * @description Your choices for each action, by its own name. For an MCP server, only the actions listed here are offered.
              */
             tools?: {
                 [key: string]: components["schemas"]["ExtensionTool"];
             };
             /**
-             * Memory limit (MB)
-             * @description Past this much memory it is stopped, with the reason on its card.
+             * Memory limit
              * @default 500
              */
             memory_mb?: number;
@@ -1813,13 +1882,12 @@ export interface components {
         /** ExtensionKind */
         ExtensionKind: {
             /**
-             * Enabled
-             * @description Let him speak up with this kind at all.
+             * Let him bring this up
              * @default true
              */
             enabled?: boolean;
             /**
-             * Deliver
+             * When
              * @description When it is said, over the extension's own choice; one per level if you like.
              */
             deliver?: string | {
@@ -1836,19 +1904,18 @@ export interface components {
         /** ExtensionTool */
         ExtensionTool: {
             /**
-             * Enabled
-             * @description Offer the tool to the brain.
+             * Let him use it
              * @default true
              */
             enabled?: boolean;
             /**
-             * Tier
-             * @description Your tier for it, over what the extension says: read runs, act runs and is logged as an action, restricted waits for you to confirm it outside the voice.
+             * Permission
+             * @description Over the extension's own choice: read and act run on their own, restricted asks you first, outside the voice.
              */
             tier?: ("read" | "act" | "restricted") | null;
             /**
-             * Offer to other apps
-             * @description List it at winstond's /mcp, for Claude Code and other MCP clients.
+             * Shared with other apps
+             * @description Listed at Winston's /mcp address, for Claude Code and other MCP clients.
              * @default false
              */
             offer?: boolean;
@@ -1896,6 +1963,11 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * Reach
+             * @description Its permissions in words, what it can change first
+             */
+            reach?: components["schemas"]["ReachView"][];
+            /**
              * Secrets
              * @description Its key fields and the variable each names
              */
@@ -1909,6 +1981,16 @@ export interface components {
             needs?: string[];
             /** Status */
             status?: string | null;
+            /**
+             * Status Warning
+             * @description Something wrong it reports, shown as a warning
+             */
+            status_warning?: string | null;
+            /**
+             * Status Note
+             * @description A quieter line under its status
+             */
+            status_note?: string | null;
             /**
              * Memory Mb
              * @default 0
@@ -2077,6 +2159,15 @@ export interface components {
             state: string | null;
             /** State Text */
             state_text: string | null;
+            /** Last Run */
+            last_run?: string | null;
+            /** Category */
+            category?: string | null;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
             /** Listed */
             listed: boolean;
             /** Applied */
@@ -2163,6 +2254,11 @@ export interface components {
             source: string;
             /** Description */
             description: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "read" | "act";
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2186,15 +2282,12 @@ export interface components {
         /** HomeAssistantConfig */
         HomeAssistantConfig: {
             /**
-             * Enabled
-             * @description Connect Winston to Home Assistant: its devices as tools, sensors, units and announcement events. Off keeps the settings without using them.
+             * Use Home Assistant
+             * @description Its devices as his actions, its sensors and units, and automations that make him speak.
              * @default true
              */
             enabled?: boolean;
-            /**
-             * URL
-             * @description Home Assistant base URL on the LAN.
-             */
+            /** Address */
             url: string;
             /**
              * Token variable
@@ -2203,25 +2296,25 @@ export interface components {
              */
             token_env?: string;
             /**
-             * MCP path
-             * @description Path of Home Assistant's MCP server integration.
+             * MCP server path
+             * @description Path of Home Assistant's Model Context Protocol Server integration.
              * @default /api/mcp
              */
             mcp_path?: string;
             /**
-             * Entities
-             * @description Entities he may see and control, with the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: exposes it, un-exposes the rest and adds the aliases.
+             * Devices he can use
+             * @description With the names people say for them. Nothing else in Home Assistant is visible to him. Saving applies the list to Home Assistant: it exposes these, stops exposing the rest and adds their names.
              */
             expose?: {
                 [key: string]: components["schemas"]["ExposedEntity"];
             };
             /**
-             * Domains
-             * @description Whole domains to expose, without aliases.
+             * Kinds
+             * @description Kinds of things exposed whole, without names of their own, like people and weather.
              */
             expose_domains?: string[];
             /**
-             * After an action
+             * Check it worked
              * @description Home Assistant says done before a device has acted. He answers straight away, then checks and corrects himself if it did not happen.
              * @default {
              *       "enabled": true,
@@ -2229,6 +2322,19 @@ export interface components {
              *     }
              */
             verify?: components["schemas"]["VerifyConfig"];
+        };
+        /** HomeAssistantTry */
+        HomeAssistantTry: {
+            /**
+             * Url
+             * @description Address to try instead of the saved one
+             */
+            url?: string | null;
+            /**
+             * Token
+             * @description Token to try instead of the saved one; used for this check only, never kept
+             */
+            token?: string | null;
         };
         /** JobResult */
         JobResult: {
@@ -2254,6 +2360,12 @@ export interface components {
             kind: string;
             /** Title */
             title: string;
+            /**
+             * Description
+             * @description For people: what he will say and when; may be empty
+             * @default
+             */
+            description?: string;
             /** Checked */
             checked: boolean;
             /** Deliver */
@@ -2296,8 +2408,8 @@ export interface components {
              */
             provider?: "openai_compatible";
             /**
-             * Base URL
-             * @description Where the brain's OpenAI-compatible API answers, ending in /v1. Presets set it.
+             * API address
+             * @description Where the brain's API answers. Runs on sets it.
              * @default http://127.0.0.1:8000/v1
              */
             base_url?: string;
@@ -2308,11 +2420,11 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Model
-             * @description Model name as the server knows it. Downloaded lists what the engine can load from this machine; any other model is downloaded when the brain restarts, and the brain is offline until the download ends.
+             * @description Downloaded lists the models the engine can load from this computer.
              */
             model: string;
             /**
-             * @description How the brain picks its words. The defaults suit tool calls; change them only to fix a specific habit.
+             * How he picks his words
              * @default {
              *       "temperature": 0.3,
              *       "top_p": 0.8,
@@ -2322,11 +2434,9 @@ export interface components {
              */
             sampling?: components["schemas"]["Sampling"];
             /**
-             * @description Whether the brain reasons before it answers, per kind of channel. Better answers to hard requests, at the cost of time.
              * @default {
-             *       "voice": false,
-             *       "text": true,
-             *       "home": true,
+             *       "spoken": "home",
+             *       "typed": "always",
              *       "home_effort": "medium",
              *       "control": "chat_template"
              *     }
@@ -2346,6 +2456,9 @@ export interface components {
          *     or would have.
          *     turn: call (the turn's id in the turn record), text (what was heard), room: a spoken turn was kept
          *     (core/turns.py); the history gives its id to the channel's latest user line, so the page can mark it.
+         *     conversation: room, text (why, in words: "after 30 min of quiet", "his actions changed", "settings were
+         *     saved"): the next line starts a new typed conversation (channels/web.py). One you start is its start_over
+         *     tool line.
          */
         LiveEvent: {
             /**
@@ -2364,7 +2477,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge" | "turn";
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge" | "turn" | "conversation";
             /** State */
             state?: ("idle" | "listening" | "thinking" | "speaking") | null;
             /** Text */
@@ -2400,38 +2513,40 @@ export interface components {
         /** LoggingConfig */
         LoggingConfig: {
             /**
-             * Turns
-             * @description Each spoken turn kept with its audio, to find his mistakes and test changes.
+             * Recordings
+             * @description Each spoken request kept with its audio, to find his mistakes and test changes.
              */
             turns?: components["schemas"]["TurnsConfig"];
             /**
-             * Tool calls
-             * @description Every tool call with its arguments and result, one JSON line each, relative to the data directory.
+             * Action log file
+             * @description Every action with its arguments and result, one JSON line each, relative to the data folder.
              * @default logs/tool_calls.jsonl
              */
             tool_calls?: string;
             /**
-             * Latency
-             * @description Per-turn timings (speech end, first token, first audio), one JSON line each.
+             * Timing log file
+             * @description Each request's timings (speech end, first token, first audio), one JSON line each.
              * @default logs/latency.jsonl
              */
             latency?: string;
         };
         /** McpServer */
         McpServer: {
+            /** Name */
+            title?: string | null;
             /**
-             * Command
-             * @description How to start it, for a server that talks over stdio.
+             * Start command
+             * @description For a server that talks over stdio.
              */
             command?: string[] | null;
             /**
-             * Url
+             * Address
              * @description Where it listens, for a server that talks over HTTP.
              */
             url?: string | null;
             /**
-             * Env
-             * @description Variables from data/.env it gets; no others.
+             * Keys it needs
+             * @description The keys it gets from this computer, by the name it reads each one by; it gets no others.
              */
             env?: string[];
             /**
@@ -2443,20 +2558,19 @@ export interface components {
         /** MemoryConfig */
         MemoryConfig: {
             /**
-             * Enabled
-             * @description Load remembered facts into every new conversation and offer the remember tool.
+             * Remember what you tell him
+             * @description Off also takes away his way to remember something new.
              * @default true
              */
             enabled?: boolean;
             /**
-             * Directory
-             * @description Where the fact files live, relative to the data directory.
+             * Memory folder
+             * @description Where the fact files live, relative to the data folder.
              * @default memory
              */
             dir?: string;
             /**
-             * Commit on write
-             * @description Commit every remembered fact to the vault's git repository, so changes can be reviewed and undone.
+             * Keep a history of every change
              * @default true
              */
             commit_on_write?: boolean;
@@ -2501,8 +2615,6 @@ export interface components {
             chars: number;
             /** Limit */
             limit: number;
-            /** Day First */
-            day_first: boolean;
         };
         /** MicHold */
         MicHold: {
@@ -2589,6 +2701,11 @@ export interface components {
             via?: string | null;
             /** Said At */
             said_at?: string | null;
+            /**
+             * Seen At
+             * @description When it came up
+             */
+            seen_at: string;
             /** Held Until */
             held_until?: string | null;
             /**
@@ -2711,11 +2828,26 @@ export interface components {
              */
             home_assistant?: components["schemas"]["HomeAssistantConfig"] | null;
         };
+        /** ReachView */
+        ReachView: {
+            /** Text */
+            text: string;
+            /**
+             * Risk
+             * @enum {string}
+             */
+            risk: "changes" | "reads" | "connects";
+            /**
+             * Hosts
+             * @description The hosts it may reach, this computer as one
+             */
+            hosts?: string[];
+        };
         /** RegionConfig */
         RegionConfig: {
             /**
-             * Temperature
-             * @description Degrees he speaks in. Auto follows Home Assistant's unit system.
+             * Temperature unit
+             * @description Same as Home Assistant goes by its unit system.
              * @default auto
              * @enum {string}
              */
@@ -2729,21 +2861,21 @@ export interface components {
             distance?: "auto" | "metric" | "imperial";
             /**
              * Clock
-             * @description How he says the time. Auto follows the country set in Home Assistant.
+             * @description How he says the time. Same as Home Assistant goes by the country set there.
              * @default auto
              * @enum {string}
              */
             time_format?: "auto" | "24h" | "12h";
             /**
              * Dates
-             * @description Day or month first. Auto follows the country set in Home Assistant.
+             * @description Day or month first. Same as Home Assistant goes by the country set there.
              * @default auto
              * @enum {string}
              */
             date_format?: "auto" | "day_month" | "month_day";
             /**
              * Currency
-             * @description Currency for prices, like SEK or EUR. Empty follows Home Assistant.
+             * @description A currency code for prices, like EUR or USD.
              * @default
              */
             currency?: string;
@@ -2778,18 +2910,28 @@ export interface components {
              * @default 0
              */
             messages?: number;
+            /**
+             * Connected
+             * @description Its box is connected now; None: the room has no box.
+             */
+            connected?: boolean | null;
+            /**
+             * Since
+             * @description When the box last connected or went away (epoch seconds); None: not since winstond started.
+             */
+            since?: number | null;
         };
         /** STTConfig */
         STTConfig: {
             /**
-             * Provider
-             * @description Speech-to-text adapter. parakeet runs inside Winston on the CPU; openai_transcription sends the audio to a server (Qwen3-ASR on vLLM, a hosted one). Presets set it.
+             * Hearing adapter
+             * @description parakeet runs inside Winston on the CPU; openai_transcription sends the audio to a server. Runs on sets it.
              * @default parakeet
              */
             provider?: string;
             /**
-             * Base URL
-             * @description Where the speech-to-text server's OpenAI transcription API answers, ending in /v1. Presets set it.
+             * API address
+             * @description Where the hearing server's OpenAI transcription API answers. Runs on sets it.
              */
             base_url?: string | null;
             /**
@@ -2799,38 +2941,38 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Model
-             * @description Speech-to-text model: for Parakeet an onnx-asr model (v3 is multilingual, v2 English only), for a server the model name it knows.
+             * @description For Parakeet, v3 understands 25 European languages and v2 only English; for a server, the model name it knows.
              * @default nemo-parakeet-tdt-0.6b-v3
              */
             model?: string;
             /**
-             * Quantization
-             * @description Weight precision. int8 is faster on the CPU at no audible accuracy cost; empty for full precision.
+             * Precision
+             * @description int8 is faster on the CPU at no audible accuracy cost; empty for full precision.
              * @default int8
              */
             quantization?: string | null;
             /**
-             * Hint words
-             * @description Names and words he should hear right. His name, cloned voices, Discord contacts and names from the Home Assistant list are added by themselves (remove one with its x); add the rest here, one word each, such as room names in another language.
-             */
-            hint_words?: string[];
-            /**
-             * Removed hint words
-             * @description Words he would add by himself that you took out; the Hint words field writes these.
-             */
-            hint_words_removed?: string[];
-            /**
-             * Fix close misspellings
-             * @description After speech to text, a word that sounds like a hint word and is spelled close to it becomes that word, so a misheard name comes out right. Common English words are never changed, and every change is logged as before and after.
+             * Correct misheard names
+             * @description Every change is logged with what was heard first.
              * @default true
              */
             fix_misspellings?: boolean;
+            /**
+             * Names he should hear right
+             * @description One word each, such as room names in another language. Remove an added one with its x.
+             */
+            hint_words?: string[];
+            /**
+             * Removed names
+             * @description Names he would add by himself that you took out; the names field writes these.
+             */
+            hint_words_removed?: string[];
         };
         /** Sampling */
         Sampling: {
             /**
              * Temperature
-             * @description Lower is more reliable at tool calls.
+             * @description Lower is more reliable at actions.
              * @default 0.3
              */
             temperature?: number;
@@ -2842,13 +2984,13 @@ export interface components {
             top_p?: number;
             /**
              * Presence penalty
-             * @description Positive values push the model away from repeating itself. Qwen's chat default is 1.5; 0 calls tools more reliably.
+             * @description Positive values push him away from repeating himself; 0 calls actions more reliably.
              * @default 0
              */
             presence_penalty?: number;
             /**
-             * Max tokens
-             * @description Longest reply in tokens. Spoken replies are short; this is a safety cap. A turn he thinks on gets at least 2048, since the thinking counts too.
+             * Longest reply
+             * @description Spoken replies are short; this is a safety cap. A request he thinks on gets at least 2048, since the thinking counts too.
              * @default 512
              */
             max_tokens?: number;
@@ -2856,18 +2998,23 @@ export interface components {
         /** SatelliteChannel */
         SatelliteChannel: {
             /**
-             * Enabled
-             * @description Talk to him through room satellites such as Home Assistant's Voice Preview Edition. The box must not also be in Home Assistant's voice pipeline: only one client can have its microphone.
+             * Listen through room boxes
              * @default false
              */
             enabled?: boolean;
             /**
-             * Devices
-             * @description Satellites by room or name, e.g. "living room".
+             * Room boxes
+             * @description Each box by its room, like "living room". What you say there shares one conversation.
              */
             devices?: {
                 [key: string]: components["schemas"]["SatelliteDevice"];
             };
+            /**
+             * Listen after a reply
+             * @description At least 8 s after a question.
+             * @default 6
+             */
+            follow_up_secs?: number;
             /**
              * Audio port
              * @description Port the boxes fetch his spoken replies from, on every interface.
@@ -2876,70 +3023,60 @@ export interface components {
             http_port?: number;
             /**
              * Address the boxes use
-             * @description This machine's address as the boxes reach it. Unset finds it from the route to each box.
+             * @description This computer's address as the boxes reach it. Unset finds it from the route to each box.
              */
             public_host?: string | null;
             /**
-             * End of speech (s)
-             * @description Silence after speech that ends a request.
+             * New conversation after
+             * @description Quiet minutes before a room's conversation starts fresh: its box and the Talk pages set to that room share one.
+             * @default 10
+             */
+            session_idle_mins?: number;
+            /**
+             * Silence before he answers
              * @default 0.8
              */
             end_silence_secs?: number;
             /**
-             * Pause when unfinished (s)
-             * @description Silence that ends a request when the turn detector thinks the sentence is unfinished, so a pause to think does not cut you off.
+             * Silence mid-sentence
+             * @description Used instead when what you said sounds unfinished, so a pause to think does not cut you off.
              * @default 2.5
              */
             unfinished_silence_secs?: number;
             /**
-             * Pause in a conversation (s)
+             * Pause in a conversation
              * @description Silence that ends a finished-sounding sentence when you answer him after a reply that did nothing in the house, so you can stop to think between sentences.
              * @default 1.5
              */
             chat_silence_secs?: number;
             /**
-             * Listen after a reply (s)
-             * @description After every reply the box listens this long for more, without the wake word (at least 8 s after a question). 0: only after a question.
-             * @default 6
-             */
-            follow_up_secs?: number;
-            /**
-             * Speech that interrupts him (s)
-             * @description Talking over a reply this long stops him, and what you say is the next request. Needs Winston's firmware on the box. Longer if his own voice or the room stops him; 0: never.
-             * @default 0.3
+             * Talk over him for at least
+             * @description Longer if his own voice or the room stops him.
+             * @default 0
              */
             barge_in_secs?: number;
             /**
-             * Loudness that interrupts him
-             * @description How loud talking over a reply must be to count. Lower if speaking across the room does not stop him, higher if his own voice does.
+             * How loud you must be
+             * @description Lower if speaking across the room does not stop him, higher if his own voice does.
              * @default 0.6
              */
             barge_in_volume?: number;
             /**
-             * Gain on the quiet microphone (dB)
+             * Boost on the second microphone
              * @description A box with a second microphone channel (the Voice PE's carries little of his voice) is listened to there for talking over him, this much louder: you read -55 to -65 dBFS on it.
              * @default 30
              */
             barge_in_gain_db?: number;
             /**
-             * No interrupting at first (s)
+             * Not at the start of a reply
              * @description The start of a reply that talking over does not stop: the box's echo cancelling lets his voice through while it settles.
              * @default 3
              */
             barge_in_grace_secs?: number;
-            /**
-             * Conversation resets after (min)
-             * @description Idle minutes before a room's conversation starts fresh: its box and the browser sessions set to that room share one.
-             * @default 10
-             */
-            session_idle_mins?: number;
         };
         /** SatelliteDevice */
         SatelliteDevice: {
-            /**
-             * Host
-             * @description Address of the box on the LAN, an IP or its .local name.
-             */
+            /** Address */
             host: string;
             /**
              * Port
@@ -2949,24 +3086,24 @@ export interface components {
             port?: number;
             /**
              * Key variable
-             * @description The variable in data/.env that holds the box's API encryption key (the one Home Assistant shows for it). Unset for a box without encryption.
+             * @description The variable in data/.env that holds the box's API encryption key. Unset for a box without encryption.
              */
             key_env?: string | null;
             /**
              * Wake word
-             * @description On-device wake word to switch on, by id (okay_nabu, hey_jarvis, hey_mycroft on a stock Voice PE; okay_winston with Winston's firmware). Several, comma separated, if the box runs more than one at a time. Unset keeps the box's choice. A long press on the box's button switches it off and on again (button only).
+             * @description Several, comma separated, if the box runs more than one at a time. A long press on the box's button switches it off and on again (button only).
              */
             wake_word?: string | null;
             /**
              * Wake word sensitivity
-             * @description How readily the box wakes. More sensitive misses less and wakes by mistake more. On a stock Voice PE it covers its own wake words; Okay Winston needs Winston's firmware from 2026-09-27 on (0.95, 0.85, 0.70). Empty keeps the box's setting.
+             * @description How readily the box wakes. More sensitive misses less and wakes by mistake more. On a stock box it covers its own wake words; Okay Winston needs Winston's firmware. Empty keeps the box's setting.
              * @default
              * @enum {string}
              */
             wake_sensitivity?: "" | "Slightly sensitive" | "Moderately sensitive" | "Very sensitive";
             /**
              * Home Assistant area
-             * @description The area this room is in Home Assistant, so "turn off the lights" said here means its lights. Unset uses the room's name. Browser sessions set to the same room use it too.
+             * @description Talk pages set to the same room use it too.
              */
             area?: string | null;
         };
@@ -3020,8 +3157,8 @@ export interface components {
              */
             say_first?: string | null;
             /**
-             * Quiet after
-             * @description Once it has worked he says nothing more and the box does not listen on: for a scene with music that speaks for itself. A failure is still reported.
+             * Stay quiet when it works
+             * @description A room box does not listen on either. A failure is still reported.
              * @default false
              */
             quiet_after?: boolean;
@@ -3045,21 +3182,21 @@ export interface components {
         SpeakStreaming: {
             /**
              * Stream speech
-             * @description Start speaking before a sentence is fully rendered: first audio in about 0.3 s instead of up to 2 s for a long sentence, with a join between chunks that can sound a little choppy. Off renders whole sentences. For the Chatterbox server.
+             * @description Off renders whole sentences.
              */
             enabled?: boolean;
             /**
-             * Chunk length (s)
+             * Chunk length
              * @description Audio per chunk after the first. Longer means fewer joins and smoother speech; how soon he starts talking depends only on the first chunk.
              */
             chunk_secs?: number;
             /**
-             * First chunk (s)
+             * First chunk
              * @description Audio rendered before anything is sent. Shorter starts sooner; below about 0.9 s the second chunk can arrive late and leave a short gap.
              */
             first_secs?: number;
             /**
-             * Look-ahead (s)
+             * Look-ahead
              * @description Audio held back at the end of each chunk until the sounds after it are known. More smooths the joins but makes the first chunk shorter.
              */
             lookahead_secs?: number;
@@ -3067,29 +3204,27 @@ export interface components {
         /** SpeakUpConfig */
         SpeakUpConfig: {
             /**
-             * You
-             * @description The person entity that says whether you are home: for nudges held until you get home, spoken at home and sent to your phone away, and extensions allowed to know.
+             * Your person in Home Assistant
+             * @description For messages held until you get home, spoken at home and sent to your phone away, and for extensions allowed to know.
              */
             home?: string | null;
             /**
              * Your phone
-             * @description The Home Assistant notify service that reaches your phone (the companion app's): nudges while you are away, and confirming restricted calls. Empty: Discord, when it is set up.
+             * @description The Home Assistant notify service that reaches your phone (the companion app's). Empty: Discord, when it is set up.
              */
             phone?: string | null;
             /**
-             * Spoken nudges a day
-             * @description Past this many spoken nudges in a day, the rest wait for the next morning's briefing. What you asked for (reminders, a time you gave) does not count.
+             * Spoken messages a day
              * @default 4
              */
             max_per_day?: number;
             /**
-             * Briefing from
-             * @description The morning briefing is given at your first conversation after this time, or when you ask what's new.
+             * Morning briefing from
              * @default 06:00
              */
             briefing_from?: string;
             /**
-             * After work
+             * When after work is
              * @description "Remind me after work" when he does not know when you finish: when you get home that day, or at this time if you are home already.
              * @default 18:00
              */
@@ -3234,8 +3369,8 @@ export interface components {
              */
             provider?: "openai_speech";
             /**
-             * Base URL
-             * @description Where the speech server's OpenAI speech API answers, ending in /v1. Presets set it.
+             * API address
+             * @description Where the speech server's OpenAI speech API answers. Runs on sets it.
              * @default http://127.0.0.1:8880/v1
              */
             base_url?: string;
@@ -3246,19 +3381,19 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Voice
-             * @description Voice name sent to the server. OpenAI names map to the server's default clip.
+             * @description The clip or built-in voice he speaks with. Server default is the clip in the engine's command.
              * @default onyx
              */
             voice?: string;
             /**
              * Sample rate
-             * @description Audio rate the speech server returns, in Hz.
+             * @description The audio rate the speech server returns.
              * @default 24000
              */
             sample_rate?: number;
             /**
              * Streaming
-             * @description How speech is cut into chunks so he starts talking before a sentence is fully rendered.
+             * @description Speech is cut into chunks: a short first one so he starts soon, then longer ones that join smoothly.
              */
             streaming?: components["schemas"]["TTSStreamingConfig"];
         };
@@ -3270,24 +3405,24 @@ export interface components {
         TTSStreamingConfig: {
             /**
              * Stream speech
-             * @description Start speaking before a sentence is fully rendered: first audio in about 0.3 s instead of up to 2 s for a long sentence, with a join between chunks that can sound a little choppy. Off renders whole sentences. For the Chatterbox server.
+             * @description Off renders whole sentences.
              * @default true
              */
             enabled?: boolean;
             /**
-             * Chunk length (s)
+             * Chunk length
              * @description Audio per chunk after the first. Longer means fewer joins and smoother speech; how soon he starts talking depends only on the first chunk.
              * @default 1.6
              */
             chunk_secs?: number;
             /**
-             * First chunk (s)
+             * First chunk
              * @description Audio rendered before anything is sent. Shorter starts sooner; below about 0.9 s the second chunk can arrive late and leave a short gap.
              * @default 0.96
              */
             first_secs?: number;
             /**
-             * Look-ahead (s)
+             * Look-ahead
              * @description Audio held back at the end of each chunk until the sounds after it are known. More smooths the joins but makes the first chunk shorter.
              * @default 0.32
              */
@@ -3296,32 +3431,28 @@ export interface components {
         /** Thinking */
         Thinking: {
             /**
-             * Voice
-             * @description Reasoning before answering on the voice channel. Costs seconds.
-             * @default false
+             * When you talk to him
+             * @description A home request names a device or asks to change something. Thinking there means fewer slips when switching things.
+             * @default home
+             * @enum {string}
              */
-            voice?: boolean;
+            spoken?: "never" | "home" | "always";
             /**
-             * Text
-             * @description Reasoning on text channels. Much better at multi-part requests.
-             * @default true
+             * When you type to him
+             * @default always
+             * @enum {string}
              */
-            text?: boolean;
+            typed?: "never" | "always";
             /**
-             * Home requests
-             * @description Reasoning on a spoken request about the home (a light, a lamp, the PC), even with voice off. About 1 s slower at medium effort; without it he sometimes said a light was on without switching it.
-             * @default true
-             */
-            home?: boolean;
-            /**
-             * Home request effort
-             * @description How long he reasons about a home request, for chat templates that take a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, high). Medium was as right as xhigh on the 27B and about twice as fast. Empty uses the template's default. A template that writes the effort at the top of the system prompt makes every spoken home request read the whole prompt again (about 8 s): on Qwen3.8 low, xhigh and empty do; medium adds nothing there.
+             * Effort on home requests
+             * @description Medium was as accurate as the highest setting and about twice as fast. Not every model takes every level.
              * @default medium
+             * @enum {string}
              */
-            home_effort?: string;
+            home_effort?: "" | "low" | "medium" | "high" | "xhigh";
             /**
-             * Control
-             * @description How the server is told to think or not: chat_template for vLLM and llama.cpp (enable_thinking), reasoning_effort for Ollama, none for servers without a switch.
+             * How thinking is switched
+             * @description How Winston turns his thinking on and off on this server. No switch: the server decides by itself.
              * @default chat_template
              * @enum {string}
              */
@@ -3348,6 +3479,17 @@ export interface components {
             name: string;
             /** Brain Name */
             brain_name: string;
+            /**
+             * Title
+             * @description For people: its own title, else its name in words
+             */
+            title: string;
+            /**
+             * Summary
+             * @description For people: one sentence on what it does; may be empty
+             * @default
+             */
+            summary?: string;
             /** Description */
             description: string;
             /** Tier */
@@ -3531,20 +3673,19 @@ export interface components {
          */
         TurnsConfig: {
             /**
-             * Keep turns
-             * @description Keep each spoken turn: the audio of what you said, what he heard, what he did and said, and how long each step took. Used to find and mark his mistakes and to test changes on them. Stays on this machine.
+             * Keep recordings of what you say
+             * @description Also how long each step took, to find and mark his mistakes and test changes on them.
              * @default false
              */
             enabled?: boolean;
             /**
-             * Keep for (days)
-             * @description Days a turn is kept; older days are removed.
+             * Delete recordings after
              * @default 14
              */
             keep_days?: number;
             /**
-             * Folder
-             * @description Where turns are kept, relative to the data directory.
+             * Recordings folder
+             * @description Where recordings are kept, relative to the data folder.
              * @default turns
              */
             dir?: string;
@@ -3559,14 +3700,13 @@ export interface components {
              */
             provider?: "silero";
             /**
-             * End of speech (s)
-             * @description Silence after speech before the utterance is sent.
+             * Silence before he answers
              * @default 0.3
              */
             stop_secs?: number;
             /**
-             * Pause when unfinished (s)
-             * @description Extra wait after silence when the turn detector thinks the sentence is unfinished. One-word answers pay this in full.
+             * Extra wait mid-sentence
+             * @description Added when what you said sounds unfinished. A one-word answer waits it in full.
              * @default 2.5
              */
             unfinished_stop_secs?: number;
@@ -3587,14 +3727,14 @@ export interface components {
         /** VerifyConfig */
         VerifyConfig: {
             /**
-             * Check after an action
-             * @description After he turns something on or off or sets a light, he reads its state from Home Assistant and says so when it did not change ("The shelf lamp did not respond."). His answer is not delayed; the correction follows it.
+             * Check the device after he acts
+             * @description After he turns something on or off or sets a light, he reads its state from Home Assistant ("The shelf lamp did not respond.").
              * @default true
              */
             enabled?: boolean;
             /**
-             * Give up after (s)
-             * @description Seconds a device has to show the change before he says it did not. He reads it at 0.5 s, 1.5 s and this, and stops as soon as it matches.
+             * Give up after
+             * @description How long a device has to show the change before he says it did not. He reads it at 0.5 s, 1.5 s and this, and stops as soon as it matches.
              * @default 3
              */
             wait_secs?: number;
@@ -3602,20 +3742,19 @@ export interface components {
         /** VoiceChannel */
         VoiceChannel: {
             /**
-             * Enabled
-             * @description Talk to him by voice from the browser. Room satellites have their own channel.
+             * Talk by voice
              * @default true
              */
             enabled?: boolean;
             /**
-             * Host
-             * @description Address the voice channel listens on. 127.0.0.1 keeps it on this machine; winstond passes the browser's offer to it.
+             * Address
+             * @description Where the browser's voice is received. 127.0.0.1 keeps it on this computer; Winston passes the browser's connection to it.
              * @default 127.0.0.1
              */
             host?: string;
             /**
              * Port
-             * @description Port the voice channel listens on; Pipecat's own test page is served here too.
+             * @description Pipecat's own test page is served here too.
              * @default 7860
              */
             port?: number;
@@ -3623,8 +3762,8 @@ export interface components {
         /** WebChannel */
         WebChannel: {
             /**
-             * Conversation resets after (min)
-             * @description Idle minutes before the Talk page's typed conversation starts fresh (and re-reads memory).
+             * New conversation after
+             * @description Quiet minutes before the Talk page's typed conversation starts fresh and reads memory again.
              * @default 30
              */
             session_idle_mins?: number;
@@ -3657,19 +3796,19 @@ export interface components {
             /** Brain */
             llm: components["schemas"]["LLMConfig"];
             /**
-             * Speech to text
+             * Hearing
              * @default {
              *       "provider": "parakeet",
              *       "model": "nemo-parakeet-tdt-0.6b-v3",
              *       "quantization": "int8",
+             *       "fix_misspellings": true,
              *       "hint_words": [],
-             *       "hint_words_removed": [],
-             *       "fix_misspellings": true
+             *       "hint_words_removed": []
              *     }
              */
             stt?: components["schemas"]["STTConfig"];
             /**
-             * Text to speech
+             * Speaking
              * @default {
              *       "provider": "openai_speech",
              *       "base_url": "http://127.0.0.1:8880/v1",
@@ -3685,7 +3824,7 @@ export interface components {
              */
             tts?: components["schemas"]["TTSConfig"];
             /**
-             * Voice activity
+             * Turn taking in the browser
              * @default {
              *       "provider": "silero",
              *       "stop_secs": 0.3,
@@ -3694,6 +3833,7 @@ export interface components {
              */
             vad?: components["schemas"]["VADConfig"];
             /**
+             * Ways to talk
              * @default {
              *       "voice": {
              *         "enabled": true,
@@ -3711,7 +3851,7 @@ export interface components {
              *       "satellite": {
              *         "barge_in_gain_db": 30,
              *         "barge_in_grace_secs": 3,
-             *         "barge_in_secs": 0.3,
+             *         "barge_in_secs": 0,
              *         "barge_in_volume": 0.6,
              *         "chat_silence_secs": 1.5,
              *         "devices": {},
@@ -3728,7 +3868,10 @@ export interface components {
              *     }
              */
             channels?: components["schemas"]["Channels"];
-            /** @default {} */
+            /**
+             * Home Assistant
+             * @default {}
+             */
             providers?: components["schemas"]["Providers"];
             /**
              * @default {
@@ -3739,6 +3882,7 @@ export interface components {
              */
             memory?: components["schemas"]["MemoryConfig"];
             /**
+             * Announcements
              * @default {
              *       "enabled": true,
              *       "chime": "{repo}/assets/sounds/chime.wav",
@@ -3750,7 +3894,7 @@ export interface components {
             announce?: components["schemas"]["AnnounceConfig"];
             /**
              * Extensions
-             * @description Each extension by its id: whether it runs, its settings, and your choices for its tools and nudges.
+             * @description Each extension by its id: whether it runs, its settings, and your choices for its actions and messages.
              */
             extensions?: {
                 [key: string]: components["schemas"]["ExtensionConfig"];
@@ -3788,6 +3932,7 @@ export interface components {
              */
             logging?: components["schemas"]["LoggingConfig"];
             /**
+             * Web address
              * @default {
              *       "host": "127.0.0.1",
              *       "port": 8700
@@ -4676,6 +4821,41 @@ export interface operations {
             };
         };
     };
+    room_box_api_rooms__room__box_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                room: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoxState"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     room_mic_events_api_rooms__room__mic_get: {
         parameters: {
             query?: never;
@@ -5535,6 +5715,39 @@ export interface operations {
             };
         };
     };
+    engine_log_api_engines__name__log_get: {
+        parameters: {
+            query?: {
+                lines?: number;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogLines"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     start_all_api_engines_start_all_post: {
         parameters: {
             query?: never;
@@ -5753,6 +5966,38 @@ export interface operations {
             };
         };
     };
+    start_account_api_extensions__ext_id__accounts__field__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ext_id: string;
+                field: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountStart"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_presets_api_presets_get: {
         parameters: {
             query?: never;
@@ -5786,6 +6031,10 @@ export interface operations {
                 engine?: string | null;
                 /** @description extension_tools: the read tool they must have */
                 tool?: string | null;
+                /** @description extension_choices: the extension to ask */
+                extension?: string | null;
+                /** @description extension_choices: its @ext.choices list */
+                choices?: string | null;
             };
             header?: never;
             path: {
@@ -5815,17 +6064,18 @@ export interface operations {
             };
         };
     };
-    ha_check_api_providers_home_assistant_check_get: {
+    ha_check_api_providers_home_assistant_check_post: {
         parameters: {
-            query?: {
-                /** @description URL to try instead of the saved one */
-                url?: string | null;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HomeAssistantTry"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

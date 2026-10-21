@@ -14,6 +14,7 @@ import time
 import unicodedata
 import wave
 from dataclasses import asdict, dataclass
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -97,7 +98,7 @@ def speech_only(pcm: np.ndarray, voiced: np.ndarray, rate: int, frame: int, gap_
     keep = np.zeros(len(voiced), bool)
     keep[idx] = True
     max_gap = int(gap_secs * rate / frame)
-    for a, b in zip(idx[:-1], idx[1:]):           # a pause keeps its edges, the middle of a long one goes
+    for a, b in pairwise(idx):                     # a pause keeps its edges, the middle of a long one goes
         k = min(b - a - 1, max_gap)
         keep[a + 1:a + 1 + k // 2] = True
         keep[b - (k - k // 2):b] = True

@@ -21,9 +21,10 @@ import asyncio
 import json
 import time
 import uuid
+from collections.abc import AsyncIterator
 from datetime import datetime
 from datetime import time as dtime
-from typing import Any, AsyncIterator
+from typing import Any
 
 from loguru import logger
 from pydantic import BaseModel, Field

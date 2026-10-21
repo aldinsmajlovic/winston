@@ -33,15 +33,15 @@ import numpy as np
 from aiortc import RTCPeerConnection, RTCSessionDescription
 
 sys.path.insert(0, str(Path(__file__).parent))
-from announce_voice import Mic, speech  # noqa: E402
-from conversations import ACT_STUBS, stub  # noqa: E402
-from m2_headless_roundtrip import synth_user_audio  # noqa: E402
-from satellite_fake import FakeVoicePE, USER  # noqa: E402
-from winston.channels import satellite as sat  # noqa: E402
-from winston.config import load  # noqa: E402
-from winston.config.schema import SatelliteDevice  # noqa: E402
-from winston.core import brain as brain_mod  # noqa: E402
-from winston.core.hints import Hearing  # noqa: E402
+from announce_voice import Mic, speech
+from conversations import ACT_STUBS, stub
+from m2_headless_roundtrip import synth_user_audio
+from satellite_fake import FakeVoicePE, USER
+from winston.channels import satellite as sat
+from winston.config import load
+from winston.config.schema import SatelliteDevice
+from winston.core import brain as brain_mod
+from winston.core.hints import Hearing
 
 ROOM = f"test room {uuid.uuid4().hex[:6]}"      # its own conversation, not a leftover of the last run
 PORT, HTTP_PORT = 16054, 18703
@@ -72,8 +72,8 @@ class Live:
         self.api, self.events, self.t0 = api, [], time.time()
 
     async def run(self):
-        async with httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as c:
-            async with c.stream("GET", f"{self.api}/api/live") as r:
+        async with (httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as c,
+                    c.stream("GET", f"{self.api}/api/live") as r):
                 async for line in r.aiter_lines():
                     if line.startswith("data: "):
                         ev = json.loads(line[6:])
@@ -127,7 +127,8 @@ async def main() -> int:
                                                              "requestData": {"room": ROOM}})).json()
     await pc.setRemoteDescription(RTCSessionDescription(sdp=ans["sdp"], type=ans["type"]))
     await asyncio.sleep(8)                                  # the greeting, and the browser session settles
-    state = next((x for x in httpx.get(f"{api}/api/rooms").json() if x["name"].casefold() == ROOM), {})
+    rooms = (await asyncio.to_thread(httpx.get, f"{api}/api/rooms")).json()
+    state = next((x for x in rooms if x["name"].casefold() == ROOM), {})
     if not state.get("screens"):
         print(f"FAIL: the browser session is not in {ROOM!r} ({state}); stopping before anything is said")
         await pc.close(); await satellite.stop(); server.close(); feed.cancel()
@@ -162,7 +163,7 @@ async def main() -> int:
     heard = [e.get("text") for e in live.since(t2, channel="voice", type="user")]
     answer = live.said(t2, "voice")
     print(f"browser heard {heard}, answered {answer!r}")
-    rooms = httpx.get(f"{api}/api/rooms").json()
+    rooms = (await asyncio.to_thread(httpx.get, f"{api}/api/rooms")).json()
     held = next((x for x in rooms if x["name"].casefold() == ROOM), {})
     print(f"room: {held}")
 

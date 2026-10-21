@@ -1,6 +1,6 @@
 [project]
 name = "winston-sdk"
-version = "1.0.0a3"
+version = "1.0.0a4"
 description = "Write extensions for Winston, the self-hosted voice assistant for Home Assistant"
 readme = "README.md"
 license = "Apache-2.0"
@@ -21,3 +21,8 @@ packages = ["src/winston_sdk"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+
+[tool.ruff.lint]
+# The same rules as Winston's own pyproject.toml.
+extend-select = ["BLE001", "E402", "E731"]
+ignore = ["I001"]

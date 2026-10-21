@@ -1,118 +1,82 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Blocks, CircleAlert, CircleCheck, CloudUpload, LoaderCircle, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { $api, errorText } from '@/api/client'
-import { IconButton } from '@/components/icon-button'
-import { StatusTip } from '@/components/status-tip'
-import { refreshHomeAssistant, useApplyNow, type ExposurePlan, type HAEntity, type HAExposure } from '@/hooks/use-home-assistant'
+import { StatusLine } from '@/components/status-line'
+import { refreshHomeAssistant, type HAExposure } from '@/hooks/use-home-assistant'
 
-const names = (entities: HAEntity[]) => entities.map((e) => e.friendly_name ?? e.entity_id).join(', ')
-
-/** What a save would still change in Home Assistant, a line per kind. */
-function pendingLines(plan: ExposurePlan | null | undefined): string[] {
-  if (!plan) return []
-  const lines: string[] = []
-  if (plan.expose?.length) lines.push(`To expose: ${plan.expose.join(', ')}`)
-  if (plan.unexpose?.length) lines.push(`To un-expose: ${plan.unexpose.join(', ')}`)
-  const add = Object.entries(plan.aliases_add ?? {})
-  if (add.length) lines.push(`Aliases to add: ${add.map(([id, a]) => `${id} (${a.join(', ')})`).join('; ')}`)
-  const remove = Object.entries(plan.aliases_remove ?? {})
-  if (remove.length) lines.push(`Aliases to remove: ${remove.map(([id, a]) => `${id} (${a.join(', ')})`).join('; ')}`)
-  if (plan.skipped?.length) lines.push(`Not in Home Assistant: ${plan.skipped.join(', ')}`)
-  if (plan.auto_expose_off) lines.push('New entities are exposed automatically')
-  return lines
+/** The value once it has stopped changing for a moment, so typing an address asks once, not per key. */
+function useSettled(value: string, ms = 600): string {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), ms)
+    return () => clearTimeout(timer)
+  }, [value, ms])
+  return settled
 }
 
-/** Reachable at the draft's URL when it is not the saved one (the rest follows the saved config). */
-function DraftReachable({ url }: { url: string }) {
-  const check = $api.useQuery('get', '/api/providers/home_assistant/check', { params: { query: { url } } }, { enabled: url !== '' })
-  if (!check.data) return <StatusTip icon={LoaderCircle} className="animate-spin text-muted-foreground" label="Checking" />
-  return check.data.ok ? (
-    <StatusTip icon={Wifi} className="text-success" label="Reachable" lines={[check.data.detail, 'Save to see the rest']} />
-  ) : (
-    <StatusTip icon={WifiOff} className="text-destructive" label="Not reachable" lines={[check.data.detail]} />
+/** Whether Home Assistant answers at an address with a token, both unsaved: the setup card's checks and
+ * the Connection card's while its address or token is being changed. Without a pasted token the saved
+ * one is tried. */
+export function HACheck({ url, token }: { url?: string | null; token?: string }) {
+  const at = useSettled((url ?? '').trim())
+  const pasted = useSettled(token ?? '')
+  const check = $api.useQuery(
+    'post',
+    '/api/providers/home_assistant/check',
+    { body: { url: at, token: pasted || null } },
+    { enabled: at !== '', retry: false },
   )
-}
-
-type Props = {
-  exposure: { data?: HAExposure; error: unknown; isFetching: boolean; isLoading: boolean }
-  /** The draft's URL differs from the saved one. */
-  draftUrl?: string
-  /** Unsaved edits: Apply would apply the saved list, not what the page shows. */
-  dirty: boolean
-}
-
-/** Beside the Connection title: reachable, MCP server, in sync; Sync reads Home Assistant again, and
- * Apply catches up on a save Home Assistant missed. */
-export function HAConnectionStatus({ exposure, draftUrl, dirty }: Props) {
-  const client = useQueryClient()
-  const apply = useApplyNow()
-  const data = exposure.data
-  let icons: ReactNode
-  if (draftUrl !== undefined) icons = <DraftReachable url={draftUrl} />
-  else if (exposure.isLoading) icons = <StatusTip icon={LoaderCircle} className="animate-spin text-muted-foreground" label="Checking" />
-  else if (!data) icons = <StatusTip icon={WifiOff} className="text-destructive" label="Not reachable" lines={[errorText(exposure.error)]} />
-  else if (!data.ok) icons = <StatusTip icon={WifiOff} className="text-destructive" label="Not reachable" lines={[data.detail]} />
-  else {
-    const pending = pendingLines(data.pending)
-    const drift = data.drift ?? []
-    icons = (
-      <>
-        <StatusTip icon={Wifi} className="text-success" label="Reachable" lines={[`Home Assistant ${data.version ?? ''}`.trim()]} />
-        {data.mcp_server === true ? (
-          <StatusTip icon={Blocks} className="text-success" label="MCP server loaded" />
-        ) : data.mcp_server === false ? (
-          <StatusTip
-            icon={Blocks}
-            className="text-warning"
-            label="MCP server not loaded"
-            lines={['Add the Model Context Protocol Server integration in Home Assistant; without it he has no tools there']}
-          />
-        ) : (
-          <StatusTip icon={Blocks} className="text-muted-foreground" label="MCP server unknown" lines={[data.detail]} />
-        )}
-        {!data.registry ? (
-          <StatusTip
-            icon={CircleAlert}
-            className="text-muted-foreground"
-            label="Sync unknown"
-            lines={['Comparing needs an admin token: the registry and exposure are admin only']}
-          />
-        ) : data.in_sync ? (
-          <StatusTip icon={CircleCheck} className="text-success" label="In sync" />
-        ) : (
-          <StatusTip
-            icon={CircleAlert}
-            className="text-warning"
-            label="Not in sync"
-            lines={[...pending, ...(drift.length ? [`Exposed in Home Assistant, not on the list: ${names(drift)}`] : [])]}
-          />
-        )}
-      </>
+  if (at === '') return null
+  if (!check.data) {
+    return <StatusLine tone="muted">{check.error ? errorText(check.error) : 'Checking'}</StatusLine>
+  }
+  const { ok, detail = '', version } = check.data
+  if (ok) {
+    return (
+      <div className="flex flex-col gap-2">
+        <StatusLine tone="ok">Reachable: Home Assistant {version}</StatusLine>
+        <StatusLine tone="ok">Token accepted</StatusLine>
+      </div>
     )
   }
-  const canApply = draftUrl === undefined && !!data?.ok && data.registry && !data.in_sync
+  // The token is read before anything is asked, and refused only by a Home Assistant that answered.
+  if (detail.endsWith('is not set')) return <StatusLine tone="muted">Paste the access token to check the connection.</StatusLine>
+  if (detail.startsWith('Token')) {
+    return (
+      <div className="flex flex-col gap-2">
+        <StatusLine tone="ok">Reachable</StatusLine>
+        <StatusLine tone="error">Token refused. Make a new one in Home Assistant and paste it.</StatusLine>
+      </div>
+    )
+  }
+  return <StatusLine tone="error">Can't reach Home Assistant at this address.</StatusLine>
+}
+
+type Props = { exposure: { data?: HAExposure; error: unknown; isLoading: boolean } }
+
+/** The saved connection in words: which Home Assistant answered, and a warning when his actions cannot
+ * come from it or the token may not read rooms and names; Check again reads it all again. */
+export function HAConnectionStatus({ exposure }: Props) {
+  const client = useQueryClient()
+  const again = { label: 'Check again', onClick: () => refreshHomeAssistant(client) }
+  const data = exposure.data
+  if (exposure.isLoading) return <StatusLine tone="muted">Checking</StatusLine>
+  if (!data || !data.ok) {
+    return (
+      <StatusLine tone="error" action={again}>
+        {data ? data.detail : errorText(exposure.error)}
+      </StatusLine>
+    )
+  }
   return (
-    <span className="ml-auto flex items-center gap-2">
-      <span className="flex items-center gap-2">{icons}</span>
-      {canApply ? (
-        <IconButton
-          label={dirty ? 'Apply the saved list to Home Assistant (not the unsaved edits)' : 'Apply the saved list to Home Assistant'}
-          variant="outline"
-          disabled={apply.isPending}
-          onClick={() => apply.mutate({})}
-        >
-          {apply.isPending ? <LoaderCircle className="animate-spin" /> : <CloudUpload />}
-        </IconButton>
+    <div className="flex flex-col gap-2">
+      <StatusLine tone="ok" action={again}>
+        Connected to Home Assistant {data.version}
+      </StatusLine>
+      {data.mcp_server === false ? (
+        <StatusLine tone="warning">Add the Model Context Protocol Server integration in Home Assistant, or he has no actions there.</StatusLine>
       ) : null}
-      <IconButton
-        label="Sync"
-        variant="outline"
-        disabled={draftUrl !== undefined}
-        onClick={() => refreshHomeAssistant(client)}
-      >
-        <RefreshCw className={exposure.isFetching ? 'animate-spin' : undefined} />
-      </IconButton>
-    </span>
+      {!data.registry ? <StatusLine tone="warning">Needs an administrator's token to read rooms and names.</StatusLine> : null}
+    </div>
   )
 }

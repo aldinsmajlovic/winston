@@ -3,19 +3,22 @@
 token), and their hooks (/hooks/<id>/<name>)."""
 from __future__ import annotations
 
+import ipaddress
 from collections import deque
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from winston.extension_host.host import Host, brain_name
+from winston.extension_host.host import Host, brain_name, tool_title
 from winston.extension_host.services import BadCall, Failed, Refused, Services
 
 
 class ToolView(BaseModel):
     name: str
     brain_name: str
+    title: str = Field(description="For people: its own title, else its name in words")
+    summary: str = Field("", description="For people: one sentence on what it does; may be empty")
     description: str
     tier: str
     declared_tier: str
@@ -27,6 +30,7 @@ class ToolView(BaseModel):
 class KindView(BaseModel):
     kind: str
     title: str
+    description: str = Field("", description="For people: what he will say and when; may be empty")
     checked: bool
     deliver: Any
     where: Any
@@ -54,6 +58,7 @@ class NudgeView(BaseModel):
     why: str | None = Field(None, description="Why it waits or is held")
     via: str | None = Field(None, description="Where it was said: speakers, phone, discord, conversation, silent")
     said_at: str | None = None
+    seen_at: str = Field(description="When it came up")
     held_until: str | None = None
     put_off: str | None = Field(None, description="Put off until, as he was told")
     reason: str | None = None
@@ -105,6 +110,12 @@ class ErrorView(BaseModel):
     error: str
 
 
+class ReachView(BaseModel):
+    text: str
+    risk: Literal["changes", "reads", "connects"]
+    hosts: list[str] = Field(default_factory=list, description="The hosts it may reach, this computer as one")
+
+
 class ExtensionView(BaseModel):
     id: str
     name: str
@@ -119,9 +130,13 @@ class ExtensionView(BaseModel):
     api: int | None = None
     sdk: str | None = None
     permissions: dict[str, Any] = Field(default_factory=dict)
+    reach: list[ReachView] = Field(default_factory=list,
+                                   description="Its permissions in words, what it can change first")
     secrets: dict[str, str] = Field(default_factory=dict, description="Its key fields and the variable each names")
     needs: list[str] = Field(default_factory=list, description="Variables it names that are not set in data/.env")
     status: str | None = None
+    status_warning: str | None = Field(None, description="Something wrong it reports, shown as a warning")
+    status_note: str | None = Field(None, description="A quieter line under its status")
     memory_mb: float = 0
     peak_mb: float = 0
     memory_limit_mb: int = 500
@@ -146,7 +161,8 @@ class BrainTool(BaseModel):
     outside: bool
     filler: str | None = None
     filler_after: float = 1
-    title: str = Field("", description="Its extension's name, for the tool's line on Talk")
+    title: str = Field("", description="Its extension's name")
+    tool_title: str = Field("", description="Its own title for people, for its line on Talk")
     icon: str | None = Field(None, description="Its extension's icon: a lucide name, or simple-icons:<slug> for a maker's logo")
     timeout: float = 10
 
@@ -180,7 +196,59 @@ class LogLines(BaseModel):
     lines: list[str]
 
 
-def view(host: Host, ext_id: str, status_text: str | None = None) -> ExtensionView:
+# What each permission (winston_sdk.manifest.Permissions) lets it do, by its value, and its risk. extensions
+# and network name what they reach, so reach() words them. A case test fails on a permission missing here.
+PHRASES: dict[str, dict[Any, tuple[str, str]]] = {
+    "tools": {"act": ("Can run his actions for you", "changes"),
+              "read": ("Can use his read-only actions", "reads")},
+    "speakers": {True: ("Plays on your speakers", "changes")},
+    "home_assistant": {"act": ("Controls devices in Home Assistant", "changes"),
+                       "read": ("Reads Home Assistant", "reads")},
+    "memory": {"write": ("Reads and adds to his memory", "changes"), "read": ("Reads his memory", "reads")},
+    "presence": {True: ("Knows whether you are home", "reads")},
+    "devices": {True: ("Sees the list of your devices", "reads")},
+    "llm": {True: ("Uses his brain for work in the background", "connects")},
+    "extensions": {},
+    "network": {},
+}
+RISKS = ("changes", "reads", "connects")
+
+
+def _loopback(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return host == "localhost"
+
+
+def _network(hosts: list[str]) -> ReachView:
+    if "*" in hosts:
+        return ReachView(text="Uses any website", risk="connects")
+    shown = [h for h in hosts if not _loopback(h)] + (["This computer"] if any(map(_loopback, hosts)) else [])
+    if not shown[1:] and shown[0] == "This computer":
+        return ReachView(text="Connects to programs on this computer", risk="connects", hosts=shown)
+    more = f" and {len(shown) - 1} more" if shown[1:] else ""
+    return ReachView(text=f"Uses the internet: {shown[0]}{more}", risk="connects", hosts=shown)
+
+
+def reach(host: Host, permissions: dict[str, Any]) -> list[ReachView]:
+    """What its permissions let it do, in words: what it can change, what it reads, where it connects."""
+    out = []
+    for name in PHRASES:
+        if not (value := permissions.get(name)):
+            continue
+        if name == "network":
+            out.append(_network(value))
+        elif name == "extensions":
+            names = [host.described.get(i, {}).get("manifest", {}).get("name", i) for i in value]
+            listed = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+            out.append(ReachView(text=f"Uses actions of {listed}", risk="reads"))
+        elif phrase := PHRASES.get(name, {}).get(value):
+            out.append(ReachView(text=phrase[0], risk=phrase[1]))
+    return sorted(out, key=lambda r: RISKS.index(r.risk))
+
+
+def view(host: Host, ext_id: str, status: dict[str, str | None] | None = None) -> ExtensionView:
     src = host.sources.get(ext_id)
     d = host.described.get(ext_id, {})
     m = d.get("manifest") or (src.manifest.model_dump() if src and src.manifest else {})
@@ -195,6 +263,7 @@ def view(host: Host, ext_id: str, status_text: str | None = None) -> ExtensionVi
         choice = ec.tools.get(t["name"])
         on = (choice is not None and choice.enabled) if mcp else not (choice and not choice.enabled)
         tools.append(ToolView(name=t["name"], brain_name=brain.get(t["name"], {}).get("name", brain_name(ext_id, t["name"])),
+                              title=tool_title(t), summary=t.get("summary") or "",
                               description=t["description"],
                               tier=(choice.tier if choice and choice.tier else t["tier"]), declared_tier=t["tier"],
                               outside=t["outside"], enabled=on, offer=bool(choice and choice.offer)))
@@ -202,7 +271,8 @@ def view(host: Host, ext_id: str, status_text: str | None = None) -> ExtensionVi
     nudges = host.nudges
     for k in d.get("kinds", []):
         choice = ec.kinds.get(k["kind"])
-        kinds.append(KindView(kind=k["kind"], title=k["title"], checked=k["checked"],
+        kinds.append(KindView(kind=k["kind"], title=k["title"], description=k.get("description") or "",
+                              checked=k["checked"],
                               deliver=choice.deliver if choice and choice.deliver else k["deliver"],
                               where=choice.where if choice and choice.where else k["where"],
                               declared_deliver=k["deliver"], declared_where=k["where"],
@@ -226,8 +296,10 @@ def view(host: Host, ext_id: str, status_text: str | None = None) -> ExtensionVi
         origin=src.origin if src else "unknown", target=src.target if src else "",
         enabled=ec.enabled, state="problem" if problem else (proc.state if proc else "stopped"),
         detail=proc.detail if proc else "", problem=problem, api=m.get("api"), sdk=d.get("sdk"),
-        permissions=m.get("permissions", {}), secrets=host.secret_fields(ext_id), needs=host.missing_secrets(ext_id),
-        status=status_text, memory_mb=round(proc.rss_mb, 1) if proc else 0,
+        permissions=m.get("permissions", {}), reach=reach(host, m.get("permissions") or {}),
+        secrets=host.secret_fields(ext_id), needs=host.missing_secrets(ext_id),
+        status=(status or {}).get("text"), status_warning=(status or {}).get("warning"),
+        status_note=(status or {}).get("note"), memory_mb=round(proc.rss_mb, 1) if proc else 0,
         peak_mb=round(proc.peak_mb, 1) if proc else 0, memory_limit_mb=ec.memory_mb,
         started_at=proc.started_at if proc and proc.state == "running" else None,
         tools=tools, kinds=kinds, nudges=[NudgeView(**n) for n in nudges.listing(ext_id)] if nudges else [],
@@ -246,9 +318,9 @@ def router(host: Host, services: Services) -> APIRouter:
     @r.get("/api/extensions", response_model=list[ExtensionView], tags=["extensions"],
            summary="Every extension found: where it comes from, whether it runs, what it offers and may reach")
     async def list_extensions():
-        texts = await host.status_texts()
+        statuses = await host.statuses()
         ids = sorted(set(host.sources) | {k for k in host.problems if "~" in k})
-        return [view(host, i, texts.get(i)) for i in ids]
+        return [view(host, i, statuses.get(i)) for i in ids]
 
     @r.get("/api/extensions/tools", response_model=list[BrainTool], tags=["extensions"],
            summary="The tools the brain is offered, in a fixed order, the same for every channel")
@@ -264,7 +336,7 @@ def router(host: Host, services: Services) -> APIRouter:
     @r.get("/api/extensions/{ext_id}", response_model=ExtensionView, tags=["extensions"])
     async def one(ext_id: str):
         known(ext_id)
-        return view(host, ext_id, (await host.status_texts()).get(ext_id))
+        return view(host, ext_id, (await host.statuses()).get(ext_id))
 
     @r.post("/api/extensions/{ext_id}/tools/{tool}", response_model=ToolResult, tags=["extensions"],
             summary="Call a tool as the brain would; the answer or an error written for him to say")
@@ -310,7 +382,7 @@ def router(host: Host, services: Services) -> APIRouter:
 
     @r.get("/api/extensions/{ext_id}/log", response_model=LogLines, tags=["extensions"],
            summary="The end of its log: what it printed and every failure with its traceback")
-    async def log(ext_id: str, lines: int = Query(200, ge=1, le=5000)):
+    def log(ext_id: str, lines: int = Query(200, ge=1, le=5000)):      # reads a file: runs in a thread
         known(ext_id)
         path = host.log_path(ext_id)
         if not path.is_file():

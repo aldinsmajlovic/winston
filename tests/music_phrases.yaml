@@ -106,7 +106,24 @@ cases:
     expect: ["spotify_play(fresh)"]
     forbid: ["spotify_play(what)"]
   - say: Play something chill.
-    forbid: ["spotify_play(fresh)", "spotify_play(what)"]
+    forbid: ["spotify_play(fresh)", "spotify_play(familiar)", "spotify_play(what)"]
+  # music the user knows, and a correction acted on, never only promised (2026-10-18: "let me find something
+  # softer", then no call; then the library read and a question instead of music)
+  - say: Play something familiar.
+    expect: ["spotify_play(familiar)"]
+    forbid: ["spotify_play(fresh)"]
+  - before: [Play something calm.]
+    say: That's not very calm.
+    expect: ["spotify_play(mood)|spotify_play(artists)"]
+    forbid: ["spotify_play(what)", "spotify_play(fresh)"]
+  - before: [Play something calm.]
+    say: Something more familiar. Not these new songs.
+    expect: ["spotify_play(familiar)"]
+    forbid: ["spotify_play(fresh)"]
+  - before: [Play something calm., That's not very calm.]
+    say: Maybe a playlist I know, or something familiar.
+    expect: ["spotify_play(familiar)|spotify_play(what)"]
+    forbid: ["spotify_play(fresh)"]
   - say: Play the new Tame Impala album.
     expect: ["spotify_play(latest)"]
   - say: Play Fred again's latest song.

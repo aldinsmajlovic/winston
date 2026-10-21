@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -21,8 +22,8 @@ const OWN_ERRORS = { meta: { showsErrors: true } }
 
 type Props = { turnId: string; heard: string; mark?: TurnMark | null; className?: string }
 
-/** A flag beside a turn you said: mark it as one of his mistakes (core/turns.py), or take the mark off. Shown
- * on the line's hover until it is marked, then always. Misheard asks what you actually said. */
+/** A flag beside a turn you said: mark it as one of his mistakes (core/turns.py), or take the mark off. Until
+ * it is marked it shows on the line's hover, and always on a touch screen. Misheard asks what you actually said. */
 export function TurnMarkControl({ turnId, heard, mark, className }: Props) {
   const client = useQueryClient()
   const put = $api.useMutation('put', '/api/turns/{turn_id}/mark', OWN_ERRORS)
@@ -65,8 +66,8 @@ export function TurnMarkControl({ turnId, heard, mark, className }: Props) {
                 size="icon-sm"
                 aria-label={mark ? `Marked: ${MARK_LABEL[mark.kind]}` : 'Mark a mistake'}
                 className={cn(
-                  !mark && 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100',
-                  mark ? 'text-destructive' : 'text-muted-foreground',
+                  !mark &&
+                    'text-muted-foreground opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 pointer-coarse:opacity-100',
                   className,
                 )}
               >
@@ -76,7 +77,14 @@ export function TurnMarkControl({ turnId, heard, mark, className }: Props) {
           </TooltipTrigger>
           <TooltipContent>{mark ? markText(mark) : 'Mark a mistake'}</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel className="flex flex-col gap-0.5 text-sm text-foreground">
+            Mark a mistake
+            <span className="font-normal text-muted-foreground">
+              Kept so later changes can be tested on it. He does not learn from it by himself.
+            </span>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => {
               setSaid(mark?.said ?? heard)

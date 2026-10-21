@@ -36,6 +36,7 @@ SOURCES = {"assistant": "His name", "voice": "A cloned voice", "contact": "A Dis
 class Hint:
     word: str
     source: str             # a key of SOURCES
+    origin: str | None = None   # the extension that asked for it, for an "extension" word
 
 
 @cache
@@ -70,11 +71,11 @@ def automatic(cfg: WinstonConfig, clone_names: list[str] | None = None) -> list[
     from winston.core import voices
     out: list[Hint] = []
 
-    def add(text: str, source: str, only_proper: bool = True):
+    def add(text: str, source: str, only_proper: bool = True, origin: str | None = None):
         for w in str(text).split():
             w = w.strip(".,!?;:\"()")
             if w and (_proper(w) if only_proper else len(_fold(w)) >= MIN_LETTERS):
-                out.append(Hint(_display(w), source))
+                out.append(Hint(_display(w), source, origin))
 
     add(cfg.assistant.name, "assistant", only_proper=False)
     for n in clone_names if clone_names is not None else [c.name for c in voices.clones()]:
@@ -87,8 +88,8 @@ def automatic(cfg: WinstonConfig, clone_names: list[str] | None = None) -> list[
             for n in [e.name or "", *e.aliases]:
                 add(n, "home_assistant")
     from winston.extension_host import texts
-    for w in texts.hint_words(cfg):                       # words running extensions asked for, whole
-        add(w, "extension", only_proper=False)
+    for ext_id, w in texts.hint_words(cfg):               # words running extensions asked for, whole
+        add(w, "extension", only_proper=False, origin=ext_id)
     return out
 
 

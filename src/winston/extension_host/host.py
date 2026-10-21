@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import itertools
 import json
 import re
 import secrets as pysecrets
@@ -20,16 +21,20 @@ from typing import Any
 
 import jsonschema
 from loguru import logger
+from mcp.shared.exceptions import MCPError
+from mcp.types import INVALID_PARAMS
 from winston_sdk.context import local_zone
 
 from winston.api.secrets import value as secret_value
 from winston.config import resolve
 from winston.config.schema import ExtensionConfig, WinstonConfig
-from winston.extension_host import texts
+from winston.core.common import failure_text, failure_words
+from winston.extension_host import accounts, texts
 from winston.extension_host.process import ExtensionProcess
 from winston.extension_host.sources import Source, describe, discover
 
 TOOL_NAME = re.compile(r"[^a-zA-Z0-9_-]")
+MCP_DESCRIPTION = "Actions from an MCP server you added."
 RESULT_MAX = 4000
 CONFIRM_SECS = 300
 ERROR_PREFIX = re.compile(r"^Error executing tool [^:]+: ")
@@ -37,6 +42,48 @@ ERROR_PREFIX = re.compile(r"^Error executing tool [^:]+: ")
 
 def brain_name(ext_id: str, tool: str) -> str:
     return TOOL_NAME.sub("_", f"{ext_id}_{tool}")[:64]
+
+
+def in_words(name: str) -> str:
+    """A tool's name as a title for people, when it has none: "next_track" and "getWeather" are "Next track"
+    and "Get weather"."""
+    words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name).replace("_", " ").replace("-", " ").strip()
+    return words[:1].upper() + words[1:].lower()
+
+
+def first_sentence(text: str | None) -> str:
+    """The first sentence of its first paragraph, past any Markdown headings: a tool's description in a
+    line."""
+    lines = itertools.dropwhile(lambda line: not line.strip() or line.lstrip().startswith("#"),
+                                (text or "").splitlines())
+    text = " ".join(" ".join(itertools.takewhile(str.strip, lines)).split())
+    m = re.match(r"(.+?[.!?])(?:\s|$)", text)
+    return m.group(1) if m else text
+
+
+def tool_title(t: dict[str, Any]) -> str:
+    """Its title for people: its own (an older SDK describes none), else its name in words."""
+    return t.get("title") or in_words(t["name"])
+
+
+def server_name(ext_id: str) -> str:
+    """An MCP server's name when you gave it none: its id in words, or in capitals when it is one or two
+    letters ("pc" is "PC")."""
+    return ext_id.upper() if len(ext_id) <= 2 and ext_id.isalpha() else in_words(ext_id)
+
+
+def problem_words(message: str) -> str:
+    """A settings check's message in words: pydantic's "Field required" is "not set" and "Input should be a
+    valid integer, unable to parse ..." is "should be a whole number"; an extension's own reason is kept."""
+    if message == "Field required":
+        return "not set"
+    if message.startswith("Value error, "):
+        return message.removeprefix("Value error, ")
+    said = re.sub(r"^\w+ should", "should", message).split(",")[0]
+    for kind, words in (("a valid string", "text"), ("a valid integer", "a whole number"),
+                        ("a valid number", "a number"), ("a valid boolean", "on or off")):
+        said = said.replace(kind, words)
+    return said
 
 
 def mcp_tier(annotations: Any) -> str:
@@ -110,13 +157,21 @@ class Host:
         saved = self.config(ext_id).settings
         return {f: str(saved.get(f) or var) for f, var in d["settings"]["secrets"].items()}
 
-    def secret_values(self, ext_id: str) -> dict[str, str]:
+    def account_vars(self, ext_id: str) -> dict[str, str]:
+        """Field -> the variable of each Account setting, which holds its refresh token."""
+        return {f: a["var"] for f, a in accounts.fields(self.described.get(ext_id)).items()}
+
+    def secret_values(self, ext_id: str) -> dict[str, Any]:
         """The keys, from the environment or data/.env as it is now: one added by hand takes on the
-        extension's next start."""
-        return {f: secret_value(var) for f, var in self.secret_fields(ext_id).items()}
+        extension's next start. An Account setting gets whether it is connected, never its token."""
+        return {**{f: secret_value(var) for f, var in self.secret_fields(ext_id).items()},
+                **{f: bool(secret_value(var)) for f, var in self.account_vars(ext_id).items()}}
 
     def missing_secrets(self, ext_id: str) -> list[str]:
-        return [var for f, var in self.secret_fields(ext_id).items() if not secret_value(var)]
+        """The variables of its keys that are not set, leaving out keys it marks optional."""
+        props = self.described.get(ext_id, {}).get("settings", {}).get("schema", {}).get("properties", {})
+        return [var for f, var in self.secret_fields(ext_id).items()
+                if not secret_value(var) and not props.get(f, {}).get("secret", {}).get("optional")]
 
     # finding and describing
 
@@ -144,7 +199,7 @@ class Host:
                 try:
                     self.described[src.id] = await describe(src)
                     self.problems.pop(src.id, None)
-                except Exception as e:                                  # noqa: BLE001  (its fault, shown on its card)
+                except Exception as e:                                  # noqa: BLE001  (its fault, shown on its page)
                     self.problems[src.id] = f"Could not describe it: {e}"
                     self.described.pop(src.id, None)
 
@@ -152,7 +207,8 @@ class Host:
                                if i in self.sources and not self.sources[i].error and self.sources[i].origin != "mcp"))
         for i in changed:
             if i in self.sources and self.sources[i].origin == "mcp":
-                self.described[i] = {"manifest": {"id": i, "name": i, "description": "An MCP server, tools only.",
+                name = getattr(self.config(i).mcp, "title", None) or server_name(i)
+                self.described[i] = {"manifest": {"id": i, "name": name, "description": MCP_DESCRIPTION,
                                                   "icon": "simple-icons:modelcontextprotocol", "api": None, "permissions": {}},
                                      "tools": [], "kinds": [], "entities": [], "jobs": [], "actions": [],
                                      "settings": {"schema": {"type": "object", "properties": {}}, "secrets": {}},
@@ -241,6 +297,9 @@ class Host:
         if proc.is_mcp_server:
             self.mcp_tools[proc.id] = [
                 {"name": t.name, "description": t.description or "", "tier": mcp_tier(t.annotations),
+                 "title": (getattr(t, "title", None) or (t.annotations.title if t.annotations else None)
+                           or in_words(t.name)),
+                 "summary": first_sentence(t.description),
                  "outside": t.annotations.open_world_hint is not False if t.annotations else True,
                  "timeout": 30, "filler": None, "input_schema": t.input_schema}
                 for t in await proc.list_tools()]
@@ -248,11 +307,7 @@ class Host:
             # an extension's @ext.context is: so the brain knows what it reaches, with nothing in the core.
             texts.write(proc.id, (proc.client.instructions or "").strip() or None, None)
             return
-        result = await proc.call("configure", settings=self.config(proc.id).settings,
-                                 secrets=self.secret_values(proc.id), time_zone=local_zone().key)
-        if not result.get("ok"):
-            problems = "; ".join(f"{e.get('field') or 'settings'}: {e.get('message')}" for e in result.get("errors", []))
-            raise RuntimeError(f"its settings were refused: {problems}")
+        await self._configure(proc, time_zone=local_zone().key)
         for job in self.described.get(proc.id, {}).get("jobs", []):
             if job["trigger"]["kind"] == "on_start":
                 await self.run_job(proc.id, job["name"])
@@ -350,15 +405,38 @@ class Host:
         if not proc or proc.state != "running" or proc.is_mcp_server:
             return
         try:
-            r = await proc.call("configure", settings=self.config(ext_id).settings, secrets=self.secret_values(ext_id))
-            if not r.get("ok"):
-                self._note(ext_id, "settings", "; ".join(e.get("message", "") for e in r.get("errors", [])))
+            await self._configure(proc)
         except Exception as e:                                          # noqa: BLE001
-            self._note(ext_id, "settings", str(e))
+            logger.warning(f"extension {ext_id}: {failure_text(e)}")
+            self._note(ext_id, "settings", failure_words(e))
+
+    async def _configure(self, proc: ExtensionProcess, **params: Any) -> None:
+        """Hands it its settings and keys. When they do not load it raises why in words, each setting by its
+        title, from what the extension said (for the log)."""
+        try:
+            result = await proc.call("configure", settings=self.config(proc.id).settings,
+                                     secrets=self.secret_values(proc.id), **params)
+        except MCPError as e:
+            if e.code != INVALID_PARAMS:
+                raise
+            # its SDK could not take what was sent ("winston/configure: secrets.account: ..."), an older one
+            said = (p.partition(": ") for p in e.message.removeprefix("winston/configure: ").split("; "))
+            raise RuntimeError(self._not_loaded(proc.id, [(loc.partition(".")[2], m) for loc, _, m in said])) from e
+        if not result.get("ok"):
+            errors = [(e.get("field") or "", e.get("message") or "") for e in result.get("errors", [])]
+            raise RuntimeError(self._not_loaded(proc.id, errors)) from ValueError(
+                "; ".join(f"{f or 'settings'}: {m}" for f, m in errors))
+
+    def _not_loaded(self, ext_id: str, errors: list[tuple[str, str]]) -> str:
+        """Why its settings did not load, each problem after the title of the setting it is about."""
+        props = self.described.get(ext_id, {}).get("settings", {}).get("schema", {}).get("properties", {})
+        said = (": ".join(filter(None, (props.get(f.split(".")[0], {}).get("title"), problem_words(m)))) for f, m in errors)
+        return "its settings did not load: " + "; ".join(said)
 
     async def secret_changed(self, name: str) -> None:
+        accounts.forget(name)
         for ext_id in list(self.procs):
-            if name in self.secret_fields(ext_id).values():
+            if name in (*self.secret_fields(ext_id).values(), *self.account_vars(ext_id).values()):
                 await self.reconfigure(ext_id)
             ec = self.config(ext_id)
             if ec.mcp and name in ec.mcp.env:
@@ -391,6 +469,12 @@ class Host:
             entry = copy.deepcopy(base)
             entry["properties"]["settings"] = {**settings, "title": "Settings"}
             entry["title"] = d["manifest"]["name"]
+            if ext_id in self.sources and self.sources[ext_id].origin == "mcp" and "McpServer" in defs:
+                server = copy.deepcopy(defs["McpServer"])            # its Name shows what it is called unset
+                server["properties"]["title"]["placeholder"] = server_name(ext_id)
+                defs[f"{prefix}mcp"] = server
+                entry["properties"]["mcp"] = json.loads(json.dumps(entry["properties"]["mcp"]).replace(
+                    '"#/$defs/McpServer"', f'"#/$defs/{prefix}mcp"'))
             defs[f"Ext_{ext_id}"] = entry
             props[ext_id] = {"$ref": f"#/$defs/Ext_{ext_id}"}
         out["properties"]["extensions"]["properties"] = props
@@ -432,6 +516,7 @@ class Host:
                 manifest = self.described.get(ext_id, {}).get("manifest", {})
                 out.append({"name": brain_name(ext_id, t["name"]), "extension": ext_id, "tool": t["name"],
                             "title": manifest.get("name") or ext_id, "icon": manifest.get("icon"),
+                            "tool_title": tool_title(t),
                             "description": t["description"],
                             "parameters": self._resolve_parameters(ext_id, t["input_schema"]),
                             "tier": (choice.tier if choice and choice.tier else t["tier"]),
@@ -440,7 +525,7 @@ class Host:
         return out
 
     def offered_tools(self) -> list[dict[str, Any]]:
-        """The tools marked "Offer to other apps", for winstond's /mcp."""
+        """The tools shared under "Share with other AI apps" (stored as `offer`), for winstond's /mcp."""
         return [t for t in self.brain_tools()
                 if (choice := self.config(t["extension"]).tools.get(t["tool"])) is not None and choice.offer]
 
@@ -477,7 +562,7 @@ class Host:
         t0 = time.perf_counter()
         try:
             r = await proc.call_tool(tool, args, timeout + 2)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return self._fail(ext_id, tool, f"{name} did not answer within {timeout:g} s.")
         except Exception as e:                                          # noqa: BLE001
             return self._fail(ext_id, tool, f"{name} failed: {e}")
@@ -576,7 +661,7 @@ class Host:
         timeout = (spec or {}).get("timeout") or 120
         try:
             r = await proc.call("run", timeout=timeout + 5, job=job, data=data or {})
-        except asyncio.TimeoutError:
+        except TimeoutError:
             r = {"ok": False, "error": f"{job} did not finish within {timeout:g} s"}
         except Exception as e:                                          # noqa: BLE001
             r = {"ok": False, "error": str(e)}
@@ -596,18 +681,32 @@ class Host:
             self.handled(ext_id)
         return r
 
-    # what the card shows
+    # what its page shows
 
-    async def status_texts(self) -> dict[str, str | None]:
+    async def statuses(self) -> dict[str, dict[str, str | None] | None]:
+        """Each running extension's status: its line, and a warning and a note when it gives them."""
         async def one(ext_id: str, proc: ExtensionProcess):
             if proc.state != "running" or proc.is_mcp_server or not self.described.get(ext_id, {}).get("has", {}).get("status"):
                 return ext_id, None
             try:
-                return ext_id, (await proc.call("status", timeout=2)).get("text")
+                return ext_id, await proc.call("status", timeout=2)
             except Exception:                                           # noqa: BLE001
                 return ext_id, None
         pairs = await asyncio.gather(*(one(i, p) for i, p in self.procs.items()))
         return dict(pairs)
+
+    async def choices(self, ext_id: str, name: str) -> dict[str, Any]:
+        """What its `@ext.choices` function `name` offers a picker in its settings: {ok, choices}, or {ok: false,
+        error} in words for the page, whose field then takes a typed value."""
+        title = self.described.get(ext_id, {}).get("manifest", {}).get("name", ext_id)
+        proc = self.procs.get(ext_id)
+        if not self.enabled(ext_id) or proc is None or proc.state != "running" or proc.is_mcp_server:
+            return {"ok": False, "error": f"{title} is not running, so there is no list to pick from."}
+        try:
+            r = await proc.call("choices", timeout=7, name=name)
+        except Exception as e:                                          # noqa: BLE001
+            r = {"ok": False, "error": failure_words(e)}
+        return r if r.get("ok") else {"ok": False, "error": f"{title} gave no list: {r.get('error')}"}
 
     def prompt_cost(self, ext_id: str) -> int:
         """Characters its tools and its prompt lines add to every conversation's prompt."""

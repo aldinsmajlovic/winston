@@ -31,13 +31,13 @@ import httpx
 
 from winston_sdk.context import Clock
 from winston_sdk.errors import NotPermitted
-from winston_sdk.fields import picked
+from winston_sdk.fields import account_fields, picked
 from winston_sdk.loader import load
 from winston_sdk.manifest import refusal, tool_refusal
 from winston_sdk.nudge import Nudge, NudgeInfo
 from winston_sdk.runtime import Runtime
 
-__all__ = ["FakeClock", "FakeHA", "Harness", "HandlerFailed", "recorded", "run_tests", "tests_for"]
+__all__ = ["FakeClock", "FakeHA", "HandlerFailed", "Harness", "recorded", "run_tests", "tests_for"]
 
 
 class HandlerFailed(AssertionError):
@@ -182,6 +182,10 @@ class FakeServices:
             case "timer.cancel":
                 h.timers.pop(p["id"], None)
                 return None
+            case "account.token":
+                if p["field"] not in account_fields(h.ext.settings_model):
+                    raise RuntimeError(f"account.token: {p['field']} is not an Account setting")
+                return h.accounts.get(p["field"])
             case "quota":
                 key = (p["name"], str(h.clock.now().date()))
                 h.quota_used[key] = h.quota_used.get(key, 0) + 1
@@ -226,7 +230,7 @@ class Harness:
                  ha: FakeHA | None = None, clock: FakeClock | None = None, home: bool = True,
                  facts: list[dict[str, Any]] | None = None, diary: dict[str, str] | None = None, llm: Any = None,
                  others: dict[str, dict[str, Any]] | None = None, day_parts: dict[str, str] | None = None,
-                 tools: dict[str, dict[str, Any]] | None = None,
+                 tools: dict[str, dict[str, Any]] | None = None, accounts: dict[str, str] | None = None,
                  background: bool = True):
         self.ext = load(str(target))
         self.clock = clock or FakeClock()
@@ -236,6 +240,7 @@ class Harness:
         # The brain's tools, for ctx.tools: {"HassTurnOn": {"tier": "act", "answer": "ok" or a function}}
         self.tools, self.tool_calls = dict(tools or {}), []
         self.entities: dict[str, Any] = {}
+        self.accounts = dict(accounts or {})                            # an Account field -> the token it gives
         self.pushed: list[tuple[str, Nudge]] = []
         self.timers: dict[str, dict[str, Any]] = {}
         self.pokes: list[str] = []
@@ -257,7 +262,7 @@ class Harness:
 
     async def _start(self) -> None:
         if not self._started:
-            result = await self.rt.configure(self._settings, self._secrets, day_parts=self._day_parts)
+            result = await self.rt.configure(self._settings, self._connected(self._secrets), day_parts=self._day_parts)
             if not result["ok"]:
                 raise HandlerFailed(f"settings: {result['errors']}")
             self._started = True
@@ -266,8 +271,12 @@ class Harness:
                         validate: bool = True) -> list[dict[str, Any]]:
         """Saves new settings as the card would; returns the field errors, empty when they took."""
         await self._start()
-        result = await self.rt.configure(settings, secrets or self._secrets, validate_first=validate)
+        result = await self.rt.configure(settings, self._connected(secrets or self._secrets), validate_first=validate)
         return result.get("errors", [])
+
+    def _connected(self, secrets: dict[str, Any]) -> dict[str, Any]:
+        """The keys, and whether each Account field is connected, as winstond sends them."""
+        return {**secrets, **{f: f in self.accounts for f in account_fields(self.ext.settings_model)}}
 
     @staticmethod
     def _ok(result: dict[str, Any]) -> Any:
@@ -336,6 +345,11 @@ class Harness:
         await self._start()
         return (await self.rt.status())["text"]
 
+    async def status_parts(self) -> dict[str, str | None]:
+        """Its line with a `Status`'s warning and note."""
+        await self._start()
+        return await self.rt.status()
+
     async def context(self) -> str | None:
         await self._start()
         return (await self.rt.context())["text"]
@@ -343,6 +357,14 @@ class Harness:
     async def hint_words(self) -> list[str]:
         await self._start()
         return (await self.rt.hint_words())["words"]
+
+    async def choices(self, name: str, /) -> list[dict[str, Any]]:
+        """What an `@ext.choices` function offers its settings form, as winstond gets it."""
+        await self._start()
+        result = await self.rt.choices(name)
+        if not result.get("ok"):
+            raise HandlerFailed(result.get("error"))
+        return result["choices"]
 
     def describe(self) -> dict[str, Any]:
         return self.rt.describe()
@@ -387,7 +409,7 @@ def run_tests(path: str | Path, only: str | None = None) -> int:
             if inspect.iscoroutine(result):
                 asyncio.run(result)
             print(f"ok   {name} ({(_time.perf_counter() - t0) * 1000:.0f} ms)")
-        except Exception as e:                          # a failing test prints and the next one runs
+        except Exception as e:                          # noqa: BLE001  (a failing test prints and the next one runs)
             failed += 1
             print(f"FAIL {name}: {type(e).__name__}: {e}")
             print("".join(traceback.format_exception(e)[-3:]).rstrip())

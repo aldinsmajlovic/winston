@@ -94,7 +94,7 @@ def _ok(r: httpx.Response) -> dict | list:
 
 def _line(e: dict) -> str:
     state = e["state"]
-    why = e["problem"] or e["detail"] or e.get("status") or ""
+    why = e["problem"] or e["detail"] or e.get("status_warning") or e.get("status") or ""
     needs = f"  (needs {', '.join(e['needs'])})" if e.get("needs") and e["enabled"] else ""
     on = "on " if e["enabled"] else "off"
     return f"  {ICONS.get(state, '?')} {e['id']:<14} {on} {state:<10} {e['origin']:<9} {why}{needs}"
@@ -141,6 +141,42 @@ def disable(ext_id: str = typer.Argument(..., metavar="ID")):
 def restart(ext_id: str = typer.Argument(..., metavar="ID")):
     """Start an extension again."""
     print(_line(_ok(_call("POST", f"/api/extensions/{ext_id}/restart"))))
+
+
+@ext_app.command()
+def connect(ext_id: str = typer.Argument(..., metavar="ID"),
+            field: str = typer.Argument("account", help="Its account setting, when it has more than one.")):
+    """Sign in to an extension's account in the browser, from this machine: what Connect on its page does,
+    for a winstond that listens beyond this machine, whose page may not set keys."""
+    import webbrowser
+
+    from winston.api import secrets
+    from winston.extension_host import accounts
+    from winston.extension_host.sources import read_json, state_dir
+
+    cfg = load()
+    _ok(_call("GET", "/api/health"))                        # winstond takes the sign-in when it comes back
+    described = (read_json(state_dir(ext_id) / "describe.json", {}) or {}).get("describe")
+    saved = (cfg.extensions.get(ext_id).settings if cfg.extensions.get(ext_id) else {}) or {}
+    keys = {f: secrets.value(str(saved.get(f) or var)) for f, var in ((described or {}).get("settings") or {}).get(
+        "secrets", {}).items()}
+    redirect = f"http://127.0.0.1:{cfg.control.port}{accounts.CALLBACK}"
+    try:
+        url = accounts.begin(described, ext_id, field, keys, redirect)
+    except accounts.AccountError as e:
+        print(f"{ext_id}: {e}" if described else f"{ext_id} is not known yet: start winston once with it on")
+        raise typer.Exit(1)
+    var = accounts.fields(described)[field]["var"]
+    before = secrets.value(var)
+    print(f"Your app must list {redirect} as a redirect URI.\nSign in on this page (opening it now):\n{url}")
+    webbrowser.open(url)
+    for _ in range(accounts.STATE_SECS):
+        time.sleep(1)
+        if secrets.value(var) and secrets.value(var) != before:
+            print(f"Connected. {ext_id} reads it from now on.")
+            return
+    print("No sign-in came back in ten minutes; run it again.")
+    raise typer.Exit(1)
 
 
 @ext_app.command()
@@ -259,4 +295,4 @@ def test(which: str = typer.Argument(..., metavar="ID_OR_PATH",
         print(f"cannot read its manifest: {e}")
         raise typer.Exit(1)
     run = command(Source(id=m.id, origin="personal", target=str(extension), manifest=m))
-    sys.exit(subprocess.run([*run, "test", str(path)]).returncode)
+    sys.exit(subprocess.run([*run, "test", str(path)], check=False).returncode)

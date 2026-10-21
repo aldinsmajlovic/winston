@@ -15,7 +15,7 @@ function today(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-test('the Turns page shows a day and marks a turn from it', async ({ page }) => {
+test('the History page shows a day and marks a spoken request from it', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   const id = 'abcdef012345'
@@ -29,22 +29,22 @@ test('the Turns page shows a day and marks a turn from it', async ({ page }) => 
   }
   writeFileSync(join(folder, 'voice.jsonl'), JSON.stringify(turn) + '\n')
 
-  await page.goto('/turns')
+  await page.goto('/history')
   await expect(page.getByText('Turn on the lamb.')).toBeVisible()
   await expect(page.getByText('Checked the home')).toBeVisible()        // the tool as the live feed words it
   await expect(page.getByText('Which lamb, sir?')).toBeVisible()
 
   await page.getByText('Turn on the lamb.').hover()
   await page.getByRole('button', { name: 'Mark a mistake' }).click()
-  await page.getByRole('menuitem', { name: 'Misheard' }).click()
+  await page.getByRole('menuitem', { name: 'He misheard me' }).click()
   await page.getByRole('textbox', { name: 'What you said' }).fill('Turn on the lamp.')
   await page.getByRole('button', { name: 'Mark', exact: true }).click()
-  await expect(page.getByText('Misheard: you said "Turn on the lamp."')).toBeVisible()
+  await expect(page.getByText('He misheard me. You said "Turn on the lamp."')).toBeVisible()
   expect(existsSync(join(data, 'turns', 'marked', `${id}.json`))).toBe(true)  // kept past its day
 
   await page.getByRole('button', { name: 'Marked (1)' }).click()
   await expect(page.getByText('Turn on the lamb.')).toBeVisible()
-  await page.getByRole('button', { name: 'Marked: Misheard' }).click()
+  await page.getByRole('button', { name: 'Marked: He misheard me' }).click()
   await page.getByRole('menuitem', { name: 'Remove mark' }).click()
   await expect(page.getByText('Nothing marked yet.')).toBeVisible()
   expect(existsSync(join(data, 'turns', 'marked', `${id}.json`))).toBe(false)
@@ -73,7 +73,7 @@ test('a spoken line on Talk gets a flag once its turn is kept, and marks it', as
   await page.goto('/')
   await page.getByText(turn.heard).hover()
   await page.getByRole('button', { name: 'Mark a mistake' }).click()
-  await page.getByRole('menuitem', { name: 'Too slow' }).click()
-  await expect(page.getByRole('button', { name: 'Marked: Too slow' })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'He was too slow' }).click()
+  await expect(page.getByRole('button', { name: 'Marked: He was too slow' })).toBeVisible()
   expect(existsSync(join(data, 'turns', 'marked', `${id}.json`))).toBe(true)
 })

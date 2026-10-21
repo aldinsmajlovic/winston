@@ -16,18 +16,20 @@ from winston.core.live import Feed, LiveEvent, LiveObserver, know_extension_tool
 LABELS = [
     ("intent__HassTurnOn", {"name": "Kitchen lights"}, "ok", "Turned on Kitchen lights"),
     ("intent__HassTurnOff", {"area": "Living Room", "domain": ["light"]}, "running", "Turning off Living Room lights"),
-    ("light__HassLightSet", {"name": "living room lights", "brightness": 50}, "error", "Could not set living room lights"),
+    ("light__HassLightSet", {"name": "living room lights", "brightness": 50}, "error", "Couldn't set living room lights"),
+    ("intent__HassTurnOn", {"area": "Hall", "domain": "switch"}, "ok", "Turned on Hall switches"),
+    ("intent__HassTurnOff", {"area": "Hall", "domain": ["media_player"]}, "ok", "Turned off Hall media players"),
     ("homeassistant__GetLiveContext", {"area": "Living Room"}, "ok", "Checked the home"),
     ("forget", {"fact": "Omar visits on Fridays"}, "ok", "Forgot Omar visits on Fridays"),
-    ("some_new_tool", {}, "ok", "Used some_new_tool"),
+    ("some_new_tool", {}, "ok", "Some new tool"),
 ]
 for name, args, status, want in LABELS:
     check(f"label {name}", tool_label(name, args, status), want)
-# An extension's tool, by its extension's name and first text argument, with its icon.
+# An extension's tool, by its title (its extension's name when it has none) and first text argument, with its icon.
 know_extension_tools([{"name": "web_search", "extension": "web", "title": "Web search", "icon": "search"}])
 check("label of an extension's tool", tool_label("web_search", {"query": "population of Sarajevo"}, "ok"),
       "Web search: population of Sarajevo")
-check("an extension's tool failing", tool_label("web_search", {"query": "x"}, "error"), "Web search failed")
+check("an extension's tool failing", tool_label("web_search", {"query": "x"}, "error"), "Couldn't web search")
 check("its icon", tool_icon("web_search"), "search")
 
 # History: pieces of one reply become one event; a tool's result updates its running event.
@@ -68,8 +70,8 @@ async def observer_turn():
                                                 direction=FrameDirection.DOWNSTREAM, timestamp=0))
     call = FunctionCallFromLLM(function_name="web_search", tool_call_id="c1",
                                arguments={"query": "capital of Norway"}, context=None)
-    result = dict(function_name="web_search", tool_call_id="c1", arguments={"query": "capital of Norway"},
-                  result={"answer": "Oslo"})
+    result = {"function_name": "web_search", "tool_call_id": "c1", "arguments": {"query": "capital of Norway"},
+              "result": {"answer": "Oslo"}}
     for frame in (LLMFullResponseStartFrame(), FunctionCallsStartedFrame(function_calls=[call]),
                   FunctionCallsStartedFrame(function_calls=[call]),     # the upstream copy
                   LLMFullResponseEndFrame(), FunctionCallResultFrame(**result),

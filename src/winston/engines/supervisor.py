@@ -31,7 +31,6 @@ class Managed:
     started_in: float | None = None     # seconds the last successful start took
     owned: bool = False                 # this supervisor started it, so it may stop it on exit
     pending: Managed | None = None      # built from a newer config; swapped in on the next stop
-    retired: bool = False               # gone from config; dropped on the next stop
     stale: bool = False                 # runs with settings or secrets saved since it started; a restart applies them
     stale_base: dict | None = None      # the saved config it runs with, while stale from a setting (None: a secret)
     needs_env: list[str] = field(default_factory=list)  # variables it cannot start without (data/.env)
@@ -150,7 +149,8 @@ class Supervisor:
 
     async def reload(self, cfg: WinstonConfig) -> list[str]:
         """Adopt a new config. A running engine whose config changed keeps its process and takes
-        the new config on its next stop or restart; returns the names of those."""
+        the new config on its next stop or restart; returns the names of those. One the config no
+        longer has (removed, switched off, a channel with nothing to serve) is stopped and dropped."""
         self.cfg = cfg
         await self.refresh()                # decide on live state, not the last poll
         fresh = self._build(cfg)
@@ -163,18 +163,16 @@ class Supervisor:
                 self.items[name] = m if not old.same_as(m) else old
             elif not old.same_as(m):
                 old.pending = m
-                old.retired = False
                 old.detail = "config changed, restart to apply"
                 waiting.append(name)
             else:
                 old.pending = None
-        for name, m in list(self.items.items()):
-            if name not in fresh:
-                if m.state == "stopped":
-                    del self.items[name]
-                else:
-                    m.pending, m.retired, m.detail = None, True, "removed from config, stop to drop"
-                    waiting.append(name)
+        gone = [name for name in self.items if name not in fresh]
+        for name in gone:
+            self.items[name].pending = None
+        await asyncio.gather(*(self.stop(name) for name in gone if self.items[name].state != "stopped"))
+        for name in gone:
+            del self.items[name]
         return waiting
 
     def mark_stale(self, names, base: dict | None = None) -> list[str]:
@@ -188,7 +186,7 @@ class Supervisor:
             if m and m.state in ("starting", "healthy", "unhealthy"):
                 m.stale_base = base if not m.stale else (m.stale_base if base is not None else None)
                 m.stale = True
-                if not (m.pending or m.retired):
+                if not m.pending:
                     m.detail = "config changed, restart to apply"
                 out.append(name)
         return out
@@ -199,7 +197,7 @@ class Supervisor:
         for m in self.items.values():
             if m.stale and m.stale_base is not None and m.name not in restarts(m.stale_base):
                 m.stale, m.stale_base = False, None
-                if not (m.pending or m.retired):
+                if not m.pending:
                     m.detail = ""
 
     def _set(self, m: Managed, state: str, detail: str = ""):
@@ -213,14 +211,14 @@ class Supervisor:
         try:
             async with httpx.AsyncClient(timeout=3) as c:
                 return (await c.get(m.health_url)).status_code == 200
-        except Exception:
+        except Exception:  # noqa: BLE001
             return False
 
     async def refresh(self) -> list[Managed]:
         for m in self.items.values():
             if m.state == "starting":
                 continue
-            keep = m.detail if m.pending or m.retired or m.stale else ""
+            keep = m.detail if m.pending or m.stale else ""
             if await self.healthy(m):
                 self._set(m, "healthy", keep)
             elif await m.driver.running():
@@ -232,7 +230,7 @@ class Supervisor:
                 self._set(m, "error", _exited(m)); logger.error(f"{m.name}: {m.detail}")
             else:
                 m.stale = False
-                self._set(m, "stopped", keep if m.pending or m.retired else "")
+                self._set(m, "stopped", keep if m.pending else "")
         return list(self.items.values())
 
     async def start(self, name: str, wait: bool = True) -> Managed:
@@ -244,6 +242,11 @@ class Supervisor:
             self._set(m, "healthy"); return m
         m.stale = False                         # a fresh start reads the saved config and data/.env
         if missing := _missing_env(m.needs_env):
+            d = self.cfg.channels.discord       # an empty user ID reads an older setup's variable, never drawn
+            if name == "discord" and not d.allowed_user and _missing_env([d.allowed_user_env]):
+                rest = _missing_env([n for n in m.needs_env if n != d.allowed_user_env])
+                unset = "Your Discord user ID is not set: add it on Ways to talk, Discord"
+                missing = f"{rest}; {unset}" if rest else unset
             m.expected = False
             self._set(m, "error", missing); logger.error(f"{name}: not started, {missing}"); return m
         self._set(m, "starting")
@@ -251,7 +254,7 @@ class Supervisor:
         m.log_start = _log_size(m.driver)
         try:
             await m.driver.start()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._set(m, "error", str(e)); logger.error(f"{name}: {e}"); return m
         m.expected = True
         if not wait:
@@ -269,7 +272,11 @@ class Supervisor:
                 self._set(m, "error", detail); logger.error(f"{name}: {detail}")
                 return m
             await asyncio.sleep(3)
-        self._set(m, "error", f"not healthy after {m.cfg.startup_timeout} s")
+        # Only an engine Winston runs downloads, and only an engine has Startup time limit to raise.
+        hint = ("; nothing answered at its Address, check that it runs" if m.cfg.driver == "external"
+                else "; a first start may still be downloading: raise Startup time limit under How it runs"
+                if m.kind == "engine" else "")
+        self._set(m, "error", f"not ready after {m.cfg.startup_timeout} s{hint}")
         return m
 
     async def stop(self, name: str) -> Managed:
@@ -277,9 +284,7 @@ class Supervisor:
         m.expected, m.stale = False, False
         await m.driver.stop()
         self._set(m, "stopped")
-        if m.retired:
-            del self.items[name]
-        elif m.pending:
+        if m.pending:
             m.pending.started_in, m.pending.owned = m.started_in, m.owned
             self.items[name] = m = m.pending
         return m

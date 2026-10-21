@@ -8,13 +8,12 @@ import asyncio
 import os
 import sys
 import time
-from pathlib import Path
 
 import httpx
 from loguru import logger
 
-from winston.channels.text import run  # noqa: E402
-from winston.config import load  # noqa: E402
+from winston.channels.text import run
+from winston.config import load
 
 CFG = load()
 HA = CFG.providers.ha.url.rstrip("/"); H = {"Authorization": f"Bearer {os.environ['HA_TOKEN']}"}

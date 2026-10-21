@@ -203,7 +203,7 @@ async def rules():
     expect("past speak_up.max_per_day (3) spoken nudges the rest wait", len(w.said) == 3, w.said)
     later = [r for r in n.records.values() if r["state"] != "said"]
     expect("they wait for the next briefing, and say so", all(r["held_why"] == "past today's limit of spoken "
-                                                             "nudges" for r in later) and len(later) == 2, later)
+                                                             "messages" for r in later) and len(later) == 2, later)
     w.now = at("2026-09-29T11:00")
     expect("a later conversation that day is not the briefing", await n.mentions("turn on the lamp") == [])
     got = await n.mentions("what's new?")
@@ -465,7 +465,7 @@ def setup_winstond(ha_port: int, api_port: int):
     winstond_data(DATA, cfg, fixtures=("trainer.py",))
     doc = (harness.REPO / "docs" / "extensions.md").read_text()
     for ext_id in ("plants", "remind"):
-        block = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if f'id = "{ext_id}"' in b)
+        block = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.DOTALL) if f'id = "{ext_id}"' in b)
         (DATA / "extensions" / f"{ext_id}.py").write_text(block)
 
 
@@ -495,19 +495,19 @@ async def through_winstond():
 
         async def running(ext_id):
             return (await api.get(f"/api/extensions/{ext_id}")).json()["state"] == "running"
-        ok = all([await until(lambda: running(i), 40) for i in ("plants", "remind", "trainer")])
+        ok = all([await until(lambda i=i: running(i), 40) for i in ("plants", "remind", "trainer")])
         expect("three extensions with kinds run", ok)
         expect("the brain gets follow_up while any has kinds", await speaking_up(load()))
 
         heard: dict[str, list[dict]] = {"Kitchen": [], "Office": []}
 
         async def speaker(channel: str, room: str):
-            async with httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as c:
-                async with c.stream("GET", f"http://127.0.0.1:{api_port}/api/events",
-                                    params={"channel": channel, "room": room}) as r:
-                    async for line in r.aiter_lines():
-                        if line.startswith("data: "):
-                            heard[room].append(json.loads(line[6:]))
+            async with (httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as c,
+                        c.stream("GET", f"http://127.0.0.1:{api_port}/api/events",
+                                 params={"channel": channel, "room": room}) as r):
+                async for line in r.aiter_lines():
+                    if line.startswith("data: "):
+                        heard[room].append(json.loads(line[6:]))
         listeners = [asyncio.create_task(speaker("voice", "Kitchen")), asyncio.create_task(speaker("satellite", "Office"))]
         await until(lambda: asyncio.sleep(0, result=app.state.hub.speakers() == 2), 5)
         await api.post("/api/rooms/Kitchen/sync", json={"origin": "test", "messages": [

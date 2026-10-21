@@ -72,10 +72,18 @@ async def test_cancelled_or_started_is_not_returned():
 
 
 async def test_custom_lead_time():
-    h = harness(before="10m")
+    h = harness(before=10)
     await h.run("read")
     [dentist] = [n for n in await h.check("soon") if n.facts["event"] == "Dentist"]
     assert dentist.not_before.isoformat() == "2026-10-12T09:50:00+02:00"
+    await h.close()
+
+
+async def test_a_lead_time_once_written_as_a_duration_still_loads():
+    h = harness(before="1h30m")
+    await h.run("read")
+    [dentist] = [n for n in await h.check("soon") if n.facts["event"] == "Dentist"]
+    assert dentist.not_before.isoformat() == "2026-10-12T08:30:00+02:00"
     await h.close()
 
 

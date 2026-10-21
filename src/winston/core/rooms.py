@@ -26,8 +26,9 @@ import re
 import time
 import uuid
 import weakref
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Awaitable, Callable
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -108,6 +109,13 @@ class RoomState(BaseModel):
     held_by: str | None = Field(None, description="Who has the room's mic now; None: nobody.")
     screens: int = Field(0, description="Browser voice sessions in the room now (they follow its mic).")
     messages: int = 0
+    connected: bool | None = Field(None, description="Its box is connected now; None: the room has no box.")
+    since: float | None = Field(None, description="When the box last connected or went away (epoch seconds); "
+                                                  "None: not since winstond started.")
+
+
+class BoxState(BaseModel):
+    connected: bool = Field(description="The room's box connected (true) or went away (false).")
 
 
 @dataclass
@@ -127,6 +135,7 @@ class Rooms:
         self.cfg, self.on_mic = cfg, on_mic
         self._rooms: dict[str, Room] = {}
         self._subs: dict[str, set[asyncio.Queue]] = {}
+        self._boxes: dict[str, tuple[bool, float]] = {}     # by room key: connected, since (epoch seconds)
 
     @property
     def idle_secs(self) -> float:
@@ -148,6 +157,13 @@ class Rooms:
         r.epoch, r.messages = uuid.uuid4().hex[:12], []
         return r
 
+    def box(self, name: str, connected: bool) -> None:
+        """A room's box connected or went away, as the satellite channel reports it. One that never
+        connected stays so."""
+        k = key(name)
+        if self._boxes.get(k, (False,))[0] != connected:
+            self._boxes[k] = (connected, time.time())
+
     def states(self) -> list[RoomState]:
         """The boxes' rooms and any room a browser session is in now. A room nobody uses any more
         (a test's, a name typed once) is forgotten once its conversation has idled out."""
@@ -158,12 +174,13 @@ class Rooms:
                 names.setdefault(k, r.name)
             elif k not in names and not self.holder(r.name) and now - r.last_used > self.idle_secs:
                 del self._rooms[k]
-        out = []
+        out, boxes = [], {key(b) for b in configured(self.cfg)}
         for k, n in names.items():
             r = self._rooms.get(k)
-            out.append(RoomState(name=n, box=k in {key(b) for b in configured(self.cfg)}, area=area(self.cfg, n),
+            connected, since = self._boxes.get(k, (False, None)) if k in boxes else (None, None)
+            out.append(RoomState(name=n, box=k in boxes, area=area(self.cfg, n),
                                  held_by=self.holder(n), screens=len(self._subs.get(k, ())),
-                                 messages=len(r.messages) if r else 0))
+                                 messages=len(r.messages) if r else 0, connected=connected, since=since))
         return out
 
     def sync(self, name: str, req: SyncRequest) -> SyncResult:

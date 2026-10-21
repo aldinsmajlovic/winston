@@ -30,8 +30,8 @@ for kind, group in (("llm", LLM), ("tts", TTS), ("stt", stt_presets())):
             failed += 1; print(f"FAIL preset {kind}/{p['id']}: {e}")
 # Engine commands take config values: the Chatterbox preset's streaming arguments expand, and changing
 # one restarts the speech engine.
-from winston.config.restarts import restarts_for
-from winston.engines.supervisor import _expand_model
+from winston.config.restarts import restarts_for  # noqa: E402
+from winston.engines.supervisor import _expand_model  # noqa: E402
 
 cfg = WinstonConfig.model_validate(apply(base, "tts", "chatterbox"))
 cmd = _expand_model(cfg.engines["tts"], cfg).cmd
@@ -46,6 +46,14 @@ if got != {"tts"}:
     failed += 1; print(f"FAIL chunk length restarts {got}, want tts")
 else:
     print("ok   changing the chunk length restarts tts")
+# Thinking when typed reaches only Discord's process; when spoken, only the spoken channels.
+for key, value, want in (("typed", "never", {"discord"}), ("spoken", "always", {"voice", "satellite"})):
+    new = {**old, "llm": {**old["llm"], "thinking": {**old["llm"]["thinking"], key: value}}}
+    got = restarts_for(old, new, WinstonConfig.model_json_schema())
+    if got != want:
+        failed += 1; print(f"FAIL thinking {key} restarts {got}, want {want}")
+    else:
+        print(f"ok   thinking {key} restarts {', '.join(sorted(want))}")
 # A version 1 file's tools section loads as the built-in extensions, with the same settings.
 v1 = {"version": 1, "llm": {"model": "x"}, "extensions": {"hevy": {"enabled": True}}, "tools": {
     "sensors": {"Phone": {"level": "sensor.phone_battery_level"}},

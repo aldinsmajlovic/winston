@@ -25,22 +25,23 @@ function engine(name: string, config: Config | undefined): string | undefined {
 
 /** The query a list is asked with for this config (the draft or the saved one). */
 /** What a field's `options_query` may narrow its list by: domains (ha_entities), a user id (discord_users),
- * the read tool they must have (extension_tools). */
-export type OptionsQuery = { domain?: string; q?: string; tool?: string }
+ * the read tool they must have (extension_tools), the extension and which of its own lists (extension_choices). */
+export type OptionsQuery = { domain?: string; q?: string; tool?: string; extension?: string; choices?: string }
 
 export function optionsParams(name: string, config: Config | undefined, query?: OptionsQuery) {
   return {
     params: {
       path: { name },
-      query: { base_url: baseUrl(name, config), domain: query?.domain, q: query?.q, tool: query?.tool, engine: engine(name, config) },
+      query: { ...query, base_url: baseUrl(name, config), engine: engine(name, config) },
     },
   }
 }
 
 /** Whether a restart of the brain has to download its model first: the engine's list of what it can load
- * from the disk is known (served_by) and the model is neither running nor there. */
+ * from the disk is known (served_by) and the model is neither running nor there. A Suggested model is listed
+ * but not on the disk, so it still downloads. */
 export function mustDownload(list: Options | undefined, model: string): boolean {
-  return !!list?.served_by && !list.choices.some((c) => c.value === model && !c.disabled)
+  return !!list?.served_by && !list.choices.some((c) => c.value === model && !c.disabled && c.group !== 'Suggested')
 }
 
 /** The brain's restart cost when it downloads first; the Hub is never asked, so the size is not known. */

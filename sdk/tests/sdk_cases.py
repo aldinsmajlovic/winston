@@ -21,11 +21,10 @@ from pydantic import BaseModel, ConfigDict
 from mcp.client.client import Client
 from mcp.client.stdio import StdioServerParameters
 from mcp.shared.exceptions import MCPError
-import mcp.types as mt
 
-from winston_sdk import manifest
+from winston_sdk import Status, manifest
 from winston_sdk.errors import NotPermitted
-from winston_sdk.testing import FakeHA, Harness, HandlerFailed, recorded
+from winston_sdk.testing import FakeHA, Harness, recorded
 from winston_sdk.when import parse_when
 
 HERE = Path(__file__).parent
@@ -43,8 +42,8 @@ def examples() -> Path:
     """The docs' examples, exactly as written, as files."""
     out = Path(tempfile.mkdtemp(prefix="winston-sdk-examples-"))
     doc = (REPO / "docs" / "extensions.md").read_text()
-    for block in re.findall(r"```python\n(# /// script.*?)```", doc, re.S):
-        ident = re.search(r'^# id = "(\w+)"', block, re.M).group(1)
+    for block in re.findall(r"```python\n(# /// script.*?)```", doc, re.DOTALL):
+        ident = re.search(r'^# id = "(\w+)"', block, re.MULTILINE).group(1)
         (out / f"{ident}.py").write_text(block)
     return out
 
@@ -79,12 +78,12 @@ def manifests():
 def describe_cli():
     for name in ("coin", "hevy", "plants", "remind"):
         r = subprocess.run([sys.executable, "-m", "winston_sdk", "describe", str(EX / f"{name}.py")],
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, text=True, timeout=60, check=False)
         ok = r.returncode == 0
         d = json.loads(r.stdout) if ok else {}
         expect(f"describe the doc's {name} example", ok and d["manifest"]["id"] == name, r.stderr[-300:])
     d = json.loads(subprocess.run([sys.executable, "-m", "winston_sdk", "describe", str(EX / "hevy.py")],
-                                  capture_output=True, text=True).stdout)
+                                  capture_output=True, text=True, check=False).stdout)
     props = d["settings"]["schema"]["properties"]
     expect("hevy: the key is a secret field defaulting to HEVY_API_KEY",
            d["settings"]["secrets"] == {"api_key": "HEVY_API_KEY"} and props["api_key"]["secret"]["default"] ==
@@ -100,7 +99,7 @@ def describe_cli():
     expect("hevy: its sensor", d["entities"][0]["key"] == "days_since_workout"
            and d["entities"][0]["state_class"] == "measurement", d["entities"])
     r = subprocess.run([sys.executable, "-m", "winston_sdk", "describe", str(EVERYTHING)],
-                       capture_output=True, text=True, timeout=60)
+                       capture_output=True, text=True, timeout=60, check=False)
     d = json.loads(r.stdout)
     props = d["settings"]["schema"]["properties"]
     expect("an entity picker with domains", props["heater"]["options"] == "ha_entities"
@@ -108,6 +107,12 @@ def describe_cli():
     expect("times and durations shown as text", props["remind_at"]["default"] == "07:30"
            and props["remind_at"]["widget"] == "time" and props["wait"]["default"] == "1h30m", props["wait"])
     expect("a memory topic picker", props["topic"]["options"] == "memory_topics", props["topic"])
+    expect("a deprecated level= is ignored", "level" not in props["words"], props["words"])
+    own = {"choices": "moods", "extension": "everything"}
+    expect("a picker of its own list names it and the extension", props["pick"].get("options") == "extension_choices"
+           and props["pick"].get("options_query") == own, props["pick"])
+    expect("a map's keys from its own list", props["nicknames"].get("key_options") == "extension_choices"
+           and props["nicknames"].get("key_options_query") == own, props["nicknames"])
     trig = {j["name"]: j["trigger"] for j in d["jobs"]}
     expect("From() travels as a field name", trig["morning"]["time"] == {"from": "remind_at"}
            and trig["heater_on"]["entity"] == {"from": "heater"} and trig["morning"]["days"] == [0, 1, 2, 3, 4],
@@ -129,7 +134,8 @@ def describe_cli():
     broken.write_text('# /// script\n# [tool.winston]\n# id = "broken"\n# name = "B"\n# api = 1\n# ///\n'
                       "from winston_sdk import Extension\next = Extension()\n@ext.tool(tier='read')\n"
                       "def sync(ctx):\n    'Not async.'\n")
-    r = subprocess.run([sys.executable, "-m", "winston_sdk", "describe", str(broken)], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-m", "winston_sdk", "describe", str(broken)], capture_output=True, text=True,
+                       check=False)
     expect("a sync handler is refused with a plain message", r.returncode == 1 and "must be async" in r.stderr,
            r.stderr)
 
@@ -176,7 +182,7 @@ async def harness_examples():
     try:
         await h.tool("add", what="x", at="whenever you like")
         expect("remind: an unreadable time is refused", False)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         expect("remind: an unreadable time is refused with a hint", "Could not read the time" in str(e), e)
     await h.close()
 
@@ -223,7 +229,7 @@ async def harness_everything_rest():
     try:
         await h.tool("mark", chore="plants", when="whenever")
         expect("an unreadable When is refused", False)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         expect("an unreadable When is refused", "Could not read the time" in str(e), e)
     out = await h.tool("mark", chore="plants", when="in two hours")
     expect("a readable When arrives as a time", out["at"] == "2026-01-05T11:00:00+00:00", out)
@@ -233,14 +239,14 @@ async def harness_everything_rest():
     try:
         await h.tool("slow")
         expect("a tool past its timeout fails", False)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         expect("a tool past its timeout fails, in its time", "longer than 1 s" in str(e)
                and time.perf_counter() - t0 < 2, e)
     expect("fetch from a declared host", await h.tool("fetch", host="example.com") == 200)
     try:
         await h.tool("fetch", host="evil.example.net")
         expect("fetch from an undeclared host is refused", False)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         expect("fetch from an undeclared host is refused", "not in this extension's network permission" in str(e), e)
     nudges = await h.check("due")
     expect("a check returns one nudge per chore", sorted(n.about for n in nudges) == ["bins", "plants"]
@@ -254,12 +260,27 @@ async def harness_everything_rest():
     expect("a hook answers", await h.hook("ping", json={"n": 1}) == {"pong": {"n": 1}})
     await h.nudge_event("said", nudges[0], kind="due")
     expect("on_nudge hears it", h.store["heard"] == [["said", nudges[0].about]], h.store.get("heard"))
-    timer = await h.rt.ctx.later(timedelta(minutes=5), "later", data={"x": 1})
+    await h.rt.ctx.later(timedelta(minutes=5), "later", data={"x": 1})
     h.clock.advance(minutes=6)
     ran = await h.run_due_timers()
     expect("a timer runs its job with its data", ran == 1 and h.store["later"] == {"x": 1}, h.store)
     expect("context is cut at 300 characters", len(await h.context()) == 300)
     expect("hint words from settings", await h.hint_words() == ["bins", "plants"])
+    expect("a plain status is its line", (await h.status_parts())["text"].endswith(" done"))
+
+    async def warned(ctx):
+        return Status(text="a", warning="b")
+    h.rt.ext.status_fn = warned
+    expect("a Status carries its warning and note", await h.status_parts() == {"text": "a", "warning": "b",
+                                                                                "note": None})
+    expect("its own list for a picker: plain values and Choices", await h.choices("moods") == [
+        {"value": "calm", "label": "calm", "hint": None, "image": None},
+        {"value": "keen", "label": "keen", "hint": "Eager", "image": "https://example.com/keen.png"}])
+    try:
+        await h.choices("nope")
+        expect("a list it does not have is refused", False)
+    except Exception as e:  # noqa: BLE001
+        expect("a list it does not have is refused", "no choices named 'nope'" in str(e), e)
     errors = await h.configure({"key": "bad"}, {"key": "bad"})
     expect("validate refuses on the field", errors == [{"field": "key", "message": "That key was refused."}], errors)
     errors = await h.configure({"heater": "switch.heater", "mode": "keen", "chores": {}}, {"key": "k"})
@@ -327,7 +348,7 @@ async def harness_picks_and_devices():
     try:
         await h.tool("look", server="nas")
         expect("one not picked is refused", False)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         expect("one not picked is refused", "may not call nas" in str(e), e)
     schema = h.describe()["settings"]["schema"]["properties"]["machines"]
     expect("the picker says what the form needs", schema.get("options") == "extension_tools"
@@ -343,15 +364,149 @@ async def harness_picks_and_devices():
     shutil.rmtree(folder, ignore_errors=True)
 
 
+SIGNED = """# /// script
+# [tool.winston]
+# id = "signed"
+# name = "Signed"
+# api = 1
+# permissions = { network = ["music.example"] }
+# ///
+from winston_sdk import Account, Extension, Secret, Settings
+
+ext = Extension()
+
+
+class S(Settings):
+    client_id: str = Secret("SIGNED_ID", optional=True)
+    client_secret: str = Secret("SIGNED_SECRET", optional=True)
+    account: bool = Account("SIGNED_ACCOUNT", authorize="https://music.example/authorize",
+                            token="https://music.example/token", scopes=["read"], client_id="client_id",
+                            client_secret="client_secret", label="Music account")
+
+
+ext.settings(S)
+
+
+@ext.tool(tier="read")
+async def mine(ctx) -> dict:
+    \"\"\"Whether it is connected, and its token.\"\"\"
+    return {"connected": ctx.settings.account, "token": await ctx.token("account")}
+"""
+
+
+async def harness_accounts():
+    folder = Path(tempfile.mkdtemp(prefix="winston-sdk-accounts-"))
+    (folder / "signed.py").write_text(SIGNED)
+    h = Harness(folder / "signed.py", accounts={"account": "made-up-token"})
+    expect("a connected account: true in its settings, and its token", await h.tool("mine") ==
+           {"connected": True, "token": "made-up-token"})
+    d = h.describe()["settings"]
+    prop = d["schema"]["properties"]["account"]
+    expect("the account says what winstond needs, and is no key handed to the extension",
+           prop["account"]["var"] == "SIGNED_ACCOUNT" and prop["account"]["scopes"] == ["read"]
+           and "account" not in d["secrets"] and prop.get("default") is False, (prop, d["secrets"]))
+    expect("an account carries no level and is drawn", "level" not in prop and "hidden" not in prop, prop)
+    from winston_sdk.server import build, request
+    async with Client(build(h.rt)) as c:          # as winstond sends it: the keys, and the account as true or false
+        r = (await c.session.send_request(request("configure", settings={}, secrets={
+            "client_id": "", "client_secret": "", "account": False}), Anything)).model_dump()
+    expect("over the protocol, an account's true or false is taken with the keys (it once crashed Spotify)",
+           r["ok"] and h.rt.settings.account is False, r)
+    await h.close()
+    h = Harness(folder / "signed.py")
+    expect("not connected: false, and no token", await h.tool("mine") == {"connected": False, "token": None})
+    await h.close()
+    shutil.rmtree(folder, ignore_errors=True)
+
+
+WORDS = """# /// script
+# [tool.winston]
+# id = "words"
+# name = "Words"
+# api = 1
+# ///
+from datetime import timedelta
+
+from winston_sdk import Duration, Entity, Extension, Field, Secret, Settings
+
+ext = Extension()
+
+
+class S(Settings):
+    key: str = Secret("WORDS_KEY", label="Bot token", help="From the bot's settings page.")
+    extra: str = Secret("WORDS_EXTRA", help="Empty uses the free tier.", optional=True, group="Optional keys")
+    wait: int = Field(5, help="Shown under it.", unit="min", widget="slider", group="Timing")
+    names: dict[str, str] = Field(default_factory=dict, key_title="Playlist", value_title="What you call it")
+    before: timedelta = Duration("15m", help="Like 15m, 1h or 1h30m.")
+    lamp: str | None = Entity("light", default=None, help="Picking one lets it read the lamp.")
+    port: int = Field(3000, hidden=True)
+    old: int = Field(1, level="advanced")                         # deprecated: accepted, and ignored
+    old_lamp: str | None = Entity("light", default=None, level="advanced")
+
+
+ext.settings(S)
+ext.kind("told", "Told", description="Says what you asked for.")
+ext.kind("plain", "Plain")
+
+
+@ext.tool(tier="act", title="Play music", summary="Plays what you ask for.")
+async def play(ctx) -> str:
+    \"\"\"Play music.\"\"\"
+    return "ok"
+
+
+@ext.tool(tier="read")
+async def next_track(ctx) -> str:
+    \"\"\"What plays next.\"\"\"
+    return "ok"
+"""
+
+
+def words_for_people():
+    """Titles, summaries and descriptions for people, with their fallbacks; help and optional keys."""
+    folder = Path(tempfile.mkdtemp(prefix="winston-sdk-words-"))
+    (folder / "words.py").write_text(WORDS)
+    h = Harness(folder / "words.py")
+    d = h.describe()
+    tools = {t["name"]: t for t in d["tools"]}
+    expect("a tool's title and summary", tools["play"]["title"] == "Play music"
+           and tools["play"]["summary"] == "Plays what you ask for.", tools["play"])
+    expect("without them: the name in words and no summary", tools["next_track"]["title"] == "Next track"
+           and tools["next_track"]["summary"] == "", tools["next_track"])
+    kinds = {k["kind"]: k for k in d["kinds"]}
+    expect("a kind's description, else empty", kinds["told"]["description"] == "Says what you asked for."
+           and kinds["plain"]["description"] == "", kinds)
+    props = d["settings"]["schema"]["properties"]
+    expect("a key's help; optional only when said", props["key"]["secret"] == {
+        "default": "WORDS_KEY", "label": "Bot token", "help": "From the bot's settings page."}
+           and props["extra"]["secret"].get("optional") is True, props["extra"])
+    expect("help, unit, widget and group for the form", {k: props["wait"].get(k) for k in
+                                                         ("help", "unit", "widget", "group")} ==
+           {"help": "Shown under it.", "unit": "min", "widget": "slider", "group": "Timing"}, props["wait"])
+    expect("a key's group", props["extra"].get("group") == "Optional keys", props["extra"])
+    expect("a map's column titles", (props["names"].get("key_title"), props["names"].get("value_title")) ==
+           ("Playlist", "What you call it"), props["names"])
+    expect("help on a duration and on a picker", (props["before"].get("help"), props["lamp"].get("help")) ==
+           ("Like 15m, 1h or 1h30m.", "Picking one lets it read the lamp."), (props["before"], props["lamp"]))
+    expect("both keys are still secret fields", d["settings"]["secrets"] == {"key": "WORDS_KEY",
+                                                                             "extra": "WORDS_EXTRA"})
+    expect("a key's variable is never drawn: hidden, beside its secret", props["key"].get("hidden") is True
+           and props["key"]["secret"]["default"] == "WORDS_KEY" and props["extra"].get("hidden") is True,
+           (props["key"], props["extra"]))
+    expect("Field(hidden=True) is hidden; other fields carry no hidden", props["port"].get("hidden") is True
+           and "hidden" not in props["wait"], (props["port"], props["wait"]))
+    expect("level= still loads on Field and Entity and is not in the schema", "level" not in props["old"]
+           and "level" not in props["old_lamp"] and props["old_lamp"]["options"] == "ha_entities"
+           and '"level"' not in json.dumps(d["settings"]["schema"]), (props["old"], props["old_lamp"]))
+    shutil.rmtree(folder, ignore_errors=True)
+
+
 class Anything(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
 async def over_mcp():
-    from winston_sdk.loader import load
-    from winston_sdk.runtime import Runtime
     from winston_sdk.server import IDENTIFIER, build, request
-    from winston_sdk.testing import FakeServices
 
     h = Harness(EVERYTHING, settings={}, secrets={"key": "k"})
     srv = build(h.rt)
@@ -395,6 +550,8 @@ async def over_mcp():
         expect("a failing tool keeps its message", r.is_error and "longer than 1 s" in r.content[0].text, r.content)
         r = await send("winston/status")
         expect("winston/status", r["text"] == "1 done", r)
+        r = await send("winston/choices", {"name": "moods"})
+        expect("winston/choices", r["ok"] and [c["value"] for c in r["choices"]] == ["calm", "keen"], r)
     await h.close()
 
 
@@ -436,10 +593,12 @@ def when_reader():
 manifests()
 describe_cli()
 when_reader()
+words_for_people()
 asyncio.run(harness_examples())
 asyncio.run(harness_everything())
 asyncio.run(harness_everything_rest())
 asyncio.run(harness_picks_and_devices())
+asyncio.run(harness_accounts())
 asyncio.run(over_mcp())
 asyncio.run(over_stdio())
 print(f"\n{'all passed' if not failed else f'{failed} failed'}")

@@ -3,7 +3,7 @@
 # [tool.winston]
 # id = "news"
 # name = "News"
-# description = "Feeds you pick, read every 15 minutes: breaking stories, crisis alerts for your county and a morning digest."
+# description = "Feeds you pick, read every 15 minutes: breaking stories, crisis alerts for a county in Sweden and a morning digest."
 # icon = "newspaper"
 # api = 1
 # permissions = { network = ["*"], llm = true, memory = "read" }
@@ -37,11 +37,11 @@ import json
 import re
 import sqlite3
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel
-from winston_sdk import Extension, Extensions, Field, Link, Model, Nudge, Settings
+from winston_sdk import Extension, Extensions, Field, Link, Model, Nudge, Settings, Status
 
 ext = Extension()
 KEEP_DAYS = 7
@@ -123,43 +123,41 @@ def _outlets(preset: str) -> str:
 
 
 class Feed(Model):
-    url: str = Field(description="The feed's address (RSS or Atom).")
-    source: str = Field("", description="Who publishes it; feeds of one source count once for breaking news. "
-                                        "Empty: the feed's name.")
-    region: str = Field("", description="Where its news is from, for \"news from Sweden\".")
-    topic: str = Field("", description="What its news is about, for \"tech news\".")
+    url: str = Field(title="Feed address", help="RSS or Atom.")
+    source: str = Field("", help="Who publishes it, so two feeds of one source count once for breaking news; empty "
+                                 "uses the feed's name.")
+    region: str = Field("", help="Where its news is from, so asking for news from there finds it.")
+    topic: str = Field("", help="What its news is about, so asking for news on that finds it.")
 
 
 class NewsSettings(Settings):
-    sweden_en: bool = Field(True, title="Sweden in English", description=_outlets("sweden_en") + ".")
-    sweden_sv: bool = Field(False, title="Swedish outlets", description=_outlets("sweden_sv") + ", in Swedish; "
-                                                                        "he tells you in English.")
-    world: bool = Field(True, title="World", description=_outlets("world") + ".")
-    tech: bool = Field(False, title="Tech", description=_outlets("tech") + ".")
-    security: bool = Field(False, title="Security", description=_outlets("security") + ".")
-    music: bool = Field(False, title="Music", description=_outlets("music") + ".")
-    feeds: dict[str, Feed] = Field(default_factory=dict, title="Your feeds", description="Feeds of your own, by name.")
-    topics: list[str] = Field(default_factory=list, description="What you care about, one per line (energy prices, "
-                                                                "AI): stories about them come first, and count "
-                                                                "when deciding what is breaking.")
+    sweden_en: bool = Field(False, title="Sweden, in English", help=_outlets("sweden_en") + ".", group="Feeds")
+    sweden_sv: bool = Field(False, title="Sweden, in Swedish", help=_outlets("sweden_sv") + ".", group="Feeds")
+    world: bool = Field(True, title="World", help=_outlets("world") + ".", group="Feeds")
+    tech: bool = Field(False, title="Tech", help=_outlets("tech") + ".", group="Feeds")
+    security: bool = Field(False, title="Security", help=_outlets("security") + ".", group="Feeds")
+    music: bool = Field(False, title="Music", help=_outlets("music") + ".", group="Feeds")
+    feeds: dict[str, Feed] = Field(default_factory=dict, title="Your feeds", group="Feeds", key_title="Feed")
+    topics: list[str] = Field(default_factory=list, help="Stories about these come first, and count when deciding "
+                                                         "what is breaking.")
     learn_topics: bool = Field(True, title="Topics from what he knows",
-                               description="Once a day, up to eight more topics from what he remembers about you, "
-                                           "his diary and the music below; shown in the status line.")
-    music_from: str | None = Extensions(tool="my_music", default=None, title="Artists from",
-                                        description="Where your music library is, for topics from the artists you "
-                                                    "play.")
-    county: County | None = Field(None, placeholder="None: no crisis alerts",
-                                  description="Your county, for Krisinformation.se: crisis news there, and VMAs.")
-    breaking_per_day: int = Field(2, ge=0, le=10, title="Breaking stories a day",
-                                  description="At most this many breaking stories a day.")
-    digest_size: int = Field(5, ge=1, le=10, title="Stories in the digest", level="advanced",
-                             description="How many stories the morning digest names.")
+                               help="Once a day, up to eight more from what he remembers, his diary and your music.")
+    music_from: str | None = Extensions(tool="my_music", default=None, title="Your music library",
+                                        description="For topics from the artists you play.")
+    county: County | None = Field(None, title="County in Sweden for crisis alerts",
+                                  placeholder="None: no crisis alerts",
+                                  help="Crisis news there and public warnings, from Sweden's Krisinformation.se.")
+    breaking_per_day: int = Field(2, ge=0, le=10, title="Breaking stories a day")
+    digest_size: int = Field(5, ge=1, le=10, title="Stories in the morning digest")
 
 
 ext.settings(NewsSettings)
-ext.kind("breaking", title="Breaking news", outside=True)
-ext.kind("crisis", title="Crisis alerts", may_be_urgent=True, outside=True)
-ext.kind("links", title="Links you asked for", requested=True, where="phone", outside=True)
+ext.kind("breaking", title="Breaking news", outside=True,
+         description="Tells you a major story as several outlets break it, if it is worth interrupting for.")
+ext.kind("crisis", title="Crisis alerts", may_be_urgent=True, outside=True,
+         description="Tells you crisis news for your county in Sweden; public warnings come through quiet hours too.")
+ext.kind("links", title="Links you asked for", requested=True, where="phone", outside=True,
+         description="Sends a story's links to your phone when you ask for them.")
 
 
 def topics(ctx) -> list[str]:
@@ -188,7 +186,7 @@ STOP = set("""a an the and or but of in on at to for from by with as is are was 
 that these those he she they we you i his her their our not no new says said after over into about than more
 up out will would can could may might amid how why what who when where which just also us one two three
 en ett och eller men av i på till för från med som är var har hade det den de vi ni jag han hon inte ny nya
-efter över om när så nu ska kan vill säger sade enligt""".split())
+efter över om när så nu ska kan vill säger sade enligt""".split())  # noqa: SIM905  (a word list reads best as text)
 
 
 def words(text: str) -> set[str]:
@@ -215,6 +213,11 @@ def clean(text: str, limit: int = 400) -> str:
     text = html.unescape(re.sub(r"<[^>]+>", " ", text or ""))
     text = re.sub(r"\s+", " ", text).strip()
     return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "..."
+
+
+def sentence(text: str) -> str:
+    """Ends text with a ".", unless it ends a sentence already ("Why now?" stays as it is)."""
+    return text if re.search(r"[.!?][\"'”’)]*$", text) else text + "."
 
 
 # the database, used from a worker thread (ctx.run_sync) so the event loop never waits on it
@@ -426,7 +429,7 @@ def ingest_all(folder, answers: list[tuple[dict, dict]], now: float) -> None:
 
 def _county_key(name: str) -> str:
     base = name.lower().replace(" county", "").replace(" län", "").strip()
-    return base[:-1] if base.endswith("s") else base
+    return base.removesuffix("s")
 
 
 async def crisis(ctx) -> None:
@@ -457,8 +460,8 @@ async def crisis(ctx) -> None:
             about = f"krisinformation:{iid}"
             await ctx.nudge("crisis", Nudge(
                 about=about, level=2 if vma else 1, urgent=vma, expires=timedelta(hours=12),
-                say=("An important public announcement: " if vma else "From Krisinformation: ")
-                + headline[:200] + ".",
+                say=sentence(("An important public announcement: " if vma else "From Krisinformation: ")
+                             + headline[:200]),
                 facts={"headline": headline, "text": clean(it.get("preamble") or it.get("bodyText") or ""),
                        "areas": [a.get("description") for a in areas], "vma": vma},
                 links=links))
@@ -495,7 +498,7 @@ async def breaking(ctx) -> None:
         links = [{"title": i["source"], "url": i["url"]} for i in c["items"] if i["url"]][:3]
         await ctx.nudge("breaking", Nudge(
             about=about, expires=timedelta(hours=6),
-            say=(f"Breaking news: {c['english'][:230]}." if c["english"] else
+            say=(sentence(f"Breaking news: {c['english'][:230]}") if c["english"] else
                  f"Breaking news from {', '.join(c['sources'][:3])}."),
             facts={"headline": c["headline"], "sources": c["sources"],
                    "reports": [{"source": i["source"], "title": i["title"], "summary": i["summary"]}
@@ -598,7 +601,8 @@ async def digest_said(ctx, event):
         ctx.store["digest_pick"]["said"] = True
 
 
-@ext.nudge("digest", title="Daily digest", deliver="briefing")
+@ext.nudge("digest", title="Daily digest", deliver="briefing",
+           description="Names the day's main stories in the morning briefing.")
 async def digest(ctx):
     """Today's digest, for the briefing: the stories the model picked, or the best of each topic and
     then the rest by rank; newest facts each time."""
@@ -619,7 +623,7 @@ async def digest(ctx):
     while len(say) > 290 and len(heads) > 1:
         heads.pop()
         say = "Your news: " + "; ".join(heads)
-    return Nudge(about=f"digest:{ctx.today().isoformat()}", say=say[:299] + ".",
+    return Nudge(about=f"digest:{ctx.today().isoformat()}", say=sentence(say[:299]),
                  facts={"stories": [{"headline": t["headline"], "sources": t["sources"], "summary": t["summary"]}
                                     for t in top]},
                  expires=timedelta(hours=20))
@@ -698,7 +702,8 @@ async def music_changed(ctx, event):
         await learn(ctx)
 
 
-@ext.tool(tier="read", timeout=10)
+@ext.tool(tier="read", timeout=10, title="Read the news",
+          summary="Reads the main stories of the last day from the feeds you picked.")
 async def get_news(ctx, topic: str | None = None) -> dict:
     """The news now, prepared from the feeds the user picked (read every 15 minutes, so this never waits
     on the web): the main stories of the last day, with their sources and a summary.
@@ -714,20 +719,20 @@ async def get_news(ctx, topic: str | None = None) -> dict:
                                    topics(ctx), {f["name"]: f for f in feeds(s)}, 5)
     zone = ctx.now().tzinfo
     return {"stories": [{"headline": f["headline"], "sources": f["sources"], "summary": f["summary"],
-                         "since": datetime.fromtimestamp(f["first"], timezone.utc).astimezone(zone).strftime("%A %H:%M")}
+                         "since": datetime.fromtimestamp(f["first"], UTC).astimezone(zone).strftime("%A %H:%M")}
                         for f in found],
             "read_at": ctx.store.get("read_at"),
             **({"note": f"Nothing about {topic} in the last week"} if not found and topic else {})}
 
 
 @ext.status
-async def status(ctx) -> str:
+async def status(ctx) -> Status:
     chosen = feeds(ctx.settings)
     day, failing = await ctx.run_sync(counts, ctx.folder, ctx.now().timestamp() - 86400)
     failing = [f["name"] for f in chosen if f["url"] in failing]
     read_at = ctx.store.get("read_at")
     when = datetime.fromisoformat(read_at).strftime("%H:%M") if read_at else "not yet"
     learned = (ctx.store.get("learned") or {}).get("topics", []) if ctx.settings.learn_topics else []
-    return f"{len(chosen)} feeds, {day} stories today, read {when}" + \
-        (f"; not answering: {', '.join(failing)}" if failing else "") + \
-        (f"; topics from you: {', '.join(learned)}" if learned else "")
+    return Status(text=f"{len(chosen)} feeds, {day} stories today, read {when}",
+                  warning=f"Not answering: {', '.join(failing)}" if failing else None,
+                  note=f"Topics from what he knows: {', '.join(learned)}" if learned else None)

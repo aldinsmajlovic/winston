@@ -1,7 +1,8 @@
 """Secrets in data/.env, set and removed from the web UI. The config names variables (fields with
-`secret` metadata in the schema); this module says which of them hold a value and writes new values,
-never reading one back out. Only names the config points at (or a schema default for such a field) can
-be written, and only through a winstond that listens on this machine alone.
+`secret` metadata in the schema, and the keys each MCP server gets in its `env`); this module says which
+of them hold a value and writes new values, never reading one back out. Only names the config points at
+(or a schema default for such a field) can be written, and only through a winstond that listens on this
+machine alone.
 
 Plan §6 rule 5: no secrets in prompts, and none in API responses either."""
 import ipaddress
@@ -63,6 +64,10 @@ def references(config: dict, schema: dict) -> dict[str, list[list[str]]]:
     out: dict[str, list[list[str]]] = {}
     for path, name, _ in found:
         out.setdefault(name, []).append(path)
+    # The list field itself, not an index in it: restarts() and _set_in step through mappings only.
+    for ext_id, ext in (config.get("extensions") or {}).items():
+        for name in ((ext or {}).get("mcp") or {}).get("env") or []:
+            out.setdefault(name, []).append(["extensions", ext_id, "mcp", "env"])
     return out
 
 
@@ -127,7 +132,7 @@ def check_value(name: str, value: str):
         raise HTTPException(422, "a key cannot hold ${; data/.env would expand it into another variable")
 
 
-def _loopback(host: str) -> bool:
+def loopback(host: str) -> bool:
     if host in LOCAL_HOSTS:
         return True
     try:
@@ -162,14 +167,19 @@ def cross_site(request: Request) -> str | None:
     return None
 
 
-def guard(request: Request, control_hosts: list[str], body: bool):
+def guard(request: Request, control_hosts: list[str], body: bool, name: str | None = None):
     """Writes only through a winstond bound to this machine (control.host as started and as saved), from a
     client on it, asked for by a page on it (the Host and Origin headers stop DNS rebinding), with a JSON body
-    (which a cross-site form cannot send without CORS)."""
-    if exposed := [h for h in control_hosts if not _loopback(h)]:
+    (which a cross-site form cannot send without CORS). `name`, the variable a key goes under, is said in the
+    refusal while the page is open to the network, since the form no longer shows it."""
+    if exposed := [h for h in control_hosts if not loopback(h)]:
+        if name:        # body: a paste (PUT); else a removal (DELETE)
+            what, how = ("pasted", f"Add {name} to") if body else ("removed", f"Remove {name} from")
+            raise HTTPException(403, f"Keys can be {what} here only while this page is open to this computer "
+                                     f"alone. {how} the .env file in the data folder instead.")
         raise HTTPException(403, f"secrets are set from the UI only while winstond listens on this machine alone "
                                  f"(control.host is {exposed[0]}); edit data/.env instead")
-    if not request.client or not _loopback(request.client.host):
+    if not request.client or not loopback(request.client.host):
         raise HTTPException(403, "secrets can only be changed from this machine")
     host = urlsplit("//" + request.headers.get("host", "")).hostname or ""
     if host not in LOCAL_HOSTS:

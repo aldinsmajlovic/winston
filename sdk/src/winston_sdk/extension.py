@@ -28,7 +28,7 @@ _made: list[Extension] = []
 def _doc(fn: Callable) -> tuple[str, dict[str, str]]:
     """The docstring's first paragraph, and an `Args:` section as name -> description."""
     doc = inspect.cleandoc(fn.__doc__ or "")
-    head, _, rest = doc.partition("\n\n")
+    head = doc.partition("\n\n")[0]
     args: dict[str, str] = {}
     m = re.search(r"(?ms)^Args:\s*\n(.*?)(?:^\S|\Z)", doc)
     if m:
@@ -55,7 +55,7 @@ def _days(days: str | None) -> list[int] | None:
         if a[:3] not in names or (b and b[:3] not in names):
             raise ValueError(f"not a day: {part!r} (use mon-fri, sat,sun)")
         i, j = names.index(a[:3]), names.index((b or a)[:3])
-        out.update(range(i, j + 1) if i <= j else [*range(i, 7), *range(0, j + 1)])
+        out.update(range(i, j + 1) if i <= j else [*range(i, 7), *range(j + 1)])
     return sorted(out)
 
 
@@ -76,6 +76,8 @@ class ToolSpec:
     filler_after: float
     description: str
     arg_docs: dict[str, str]
+    title: str | None = None            # for people: a short verb phrase, "Play music"
+    summary: str | None = None          # for people: one sentence on what it does
 
 
 @dataclass
@@ -99,6 +101,7 @@ class KindSpec:
     requested: bool = False
     outside: bool = True
     triggers: dict[str, Any] = field(default_factory=dict)
+    description: str | None = None      # for people: what he will say and when
 
 
 @dataclass
@@ -180,6 +183,7 @@ class Extension:
         self.context_fn: Callable | None = None
         self.hint_words_fn: Callable | None = None
         self.validate_fn: Callable | None = None
+        self.choice_fns: dict[str, Callable] = {}
         self._bound = None
         _made.append(self)
 
@@ -199,7 +203,10 @@ class Extension:
     # tools
 
     def tool(self, tier: Tier, name: str | None = None, outside: bool = True, timeout: float = 10,
-             filler: str | None = None, filler_after: float = 1) -> Callable[[Callable], Callable]:
+             filler: str | None = None, filler_after: float = 1, title: str | None = None,
+             summary: str | None = None) -> Callable[[Callable], Callable]:
+        """A tool for the brain; its docstring is what he is told. `title` ("Play music") and `summary` (one
+        sentence) are what people read in settings: the title defaults to the name in words."""
         if tier not in ("read", "act", "restricted"):
             raise ValueError(f"tier must be read, act or restricted, not {tier!r}")
         if not 0 < timeout <= 60:
@@ -218,7 +225,7 @@ class Extension:
             if not description:
                 raise ValueError(f"tool {tool_name!r} needs a docstring: its first paragraph describes it")
             self.tools[tool_name] = ToolSpec(tool_name, fn, tier, outside, timeout, filler, filler_after,
-                                             description, arg_docs)
+                                             description, arg_docs, title, summary)
             return fn
         return add
 
@@ -291,7 +298,8 @@ class Extension:
 
     # speaking up
 
-    def _kind(self, kind: str, title: str, check: Callable | None, options: dict[str, Any]) -> KindSpec:
+    def _kind(self, kind: str, title: str, check: Callable | None, options: dict[str, Any],
+              description: str | None = None) -> KindSpec:
         if not re.fullmatch(r"[a-z][a-z0-9_]{0,39}", kind):
             raise ValueError(f"kind {kind!r}: lowercase letters, digits and underscores")
         if kind in self.kinds:
@@ -305,7 +313,7 @@ class Extension:
         repeat = options.get("repeat")
         spec = KindSpec(kind, title, check, options["deliver"], options["where"],
                         parse_duration(repeat) if repeat is not None else None, options["may_be_urgent"],
-                        options["requested"], options["outside"], options.get("triggers", {}))
+                        options["requested"], options["outside"], options.get("triggers", {}), description)
         if repeat is not None and check is None:
             raise ValueError("repeat is for checked kinds; a pushed kind pushes again")
         self.kinds[kind] = spec
@@ -315,9 +323,10 @@ class Extension:
               repeat: str | timedelta | None = None, may_be_urgent: bool = False, requested: bool = False,
               outside: bool = True, every: str | timedelta | None = None, at: str | From | None = None,
               cron: str | None = None, on_state: str | list[str] | From | None = None,
-              on_event: str | None = None, on_arrive: bool = False, on_leave: bool = False
-              ) -> Callable[[Callable], Callable]:
-        """A checked kind: the function is its check, returning None, a Nudge or a list."""
+              on_event: str | None = None, on_arrive: bool = False, on_leave: bool = False,
+              description: str | None = None) -> Callable[[Callable], Callable]:
+        """A checked kind: the function is its check, returning None, a Nudge or a list. `description` tells
+        people what he will say and when."""
         triggers: dict[str, Any] = {}
         if every is not None:
             triggers["every"] = parse_duration(every).total_seconds()
@@ -336,17 +345,18 @@ class Extension:
 
         def add(fn: Callable) -> Callable:
             _need_async(fn)
-            self._kind(kind, title, fn, dict(deliver=deliver, where=where, repeat=repeat,
-                                             may_be_urgent=may_be_urgent, requested=requested,
-                                             outside=outside, triggers=triggers))
+            self._kind(kind, title, fn, {"deliver": deliver, "where": where, "repeat": repeat,
+                                          "may_be_urgent": may_be_urgent, "requested": requested,
+                                          "outside": outside, "triggers": triggers}, description)
             return fn
         return add
 
     def kind(self, kind: str, title: str, *, deliver: Any = "now", where: Any = "auto",
-             may_be_urgent: bool = False, requested: bool = False, outside: bool = True) -> None:
+             may_be_urgent: bool = False, requested: bool = False, outside: bool = True,
+             description: str | None = None) -> None:
         """A pushed kind, for `ctx.nudge(kind, Nudge(...))`."""
-        self._kind(kind, title, None, dict(deliver=deliver, where=where, may_be_urgent=may_be_urgent,
-                                           requested=requested, outside=outside))
+        self._kind(kind, title, None, {"deliver": deliver, "where": where, "may_be_urgent": may_be_urgent,
+                                        "requested": requested, "outside": outside}, description)
 
     def action(self, title: str, kinds: list[str] | None = None, name: str | None = None,
                tier: Tier = "act") -> Callable[[Callable], Callable]:
@@ -404,6 +414,12 @@ class Extension:
 
     def validate(self, fn: Callable) -> Callable:
         self.validate_fn = _need_async(fn)
+        return fn
+
+    def choices(self, fn: Callable) -> Callable:
+        """A list for pickers in its settings, by the function's name: `Field(choices="playlists")` offers
+        what `async def playlists(ctx)` returns, `Choice`s or plain values."""
+        self.choice_fns[fn.__name__] = _need_async(fn)
         return fn
 
 

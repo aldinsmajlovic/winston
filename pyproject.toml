@@ -48,3 +48,13 @@ winston-sdk = { workspace = true }
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+
+[tool.ruff.lint]
+# Ruff's defaults, plus late imports and named lambdas, which the code marks where it means them. Blind
+# excepts are named too: left to the defaults, ruff 0.17 calls their noqa marks unused yet still flags them.
+# Import sorting is off: the code wraps a long import as a grid, which it would rewrite one name per line.
+extend-select = ["BLE001", "E402", "E731"]
+ignore = ["I001"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Body", "fastapi.Query", "typer.Argument", "typer.Option"]

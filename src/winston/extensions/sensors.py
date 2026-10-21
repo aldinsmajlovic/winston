@@ -17,15 +17,15 @@ ext = Extension()
 
 
 class Sensor(Model):
-    level: str = Entity(domain="sensor", title="Value sensor", description="The sensor he reads, such as a phone's "
-                                                                           "battery level.")
-    state: str | None = Entity(domain=["sensor", "binary_sensor"], default=None, title="State sensor",
-                               description="Optional companion state sensor (charging, etc.).")
+    level: str = Entity(domain="sensor", title="Sensor", description="The sensor he reads, such as a phone's "
+                                                                     "battery level.")
+    state: str | None = Entity(domain=["sensor", "binary_sensor"], default=None, title="Second sensor",
+                               description="Optional: read with the first, such as whether the phone is charging.")
 
 
 class SensorsSettings(Settings):
-    sensors: dict[str, Sensor] = Field(default_factory=dict, description="Watched sensors by label; readings come "
-                                                                          "with their age.")
+    sensors: dict[str, Sensor] = Field(default_factory=dict, key_title="Reading",
+                                       description="Each reading comes with how long ago it changed.")
 
 
 ext.settings(SensorsSettings)
@@ -38,7 +38,8 @@ def _age(ctx, when) -> str:
     return f"{mins} minutes ago" if mins < 120 else f"{mins // 60} hours ago"
 
 
-@ext.tool(tier="read")
+@ext.tool(tier="read", title="Read sensors",
+          summary="Reads the sensors you picked, with how long ago each one changed.")
 async def get_readings(ctx) -> dict:
     """Current value of watched sensors such as phone batteries, with how long ago each last changed. Use this for
     those instead of GetLiveContext, and mention how old a reading is when it is more than about thirty minutes."""

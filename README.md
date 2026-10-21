@@ -12,7 +12,7 @@ by default, and any part can be swapped for a hosted service.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/talk-dark.png">
-  <img src="docs/images/talk-light.png" alt="The Talk page: an announcement, a typed follow-up and a web search" width="720">
+  <img src="docs/images/talk-light.png" alt="The Talk page: an announcement from Home Assistant, a typed request that dims the lights, a spoken reminder from a room box, and a question about the weather" width="720">
 </picture>
 
 ## Features
@@ -23,8 +23,8 @@ by default, and any part can be swapped for a hosted service.
 - **Controls your home** through Home Assistant's MCP server, then checks the device really changed
   and corrects himself when it did not.
 - **In every room.** A [Voice Preview Edition](#works-with-home-assistant-voice-preview-edition) per
-  room, and the browser with a full-screen dashboard for a wall screen. Start a conversation at the
-  box and finish it on the screen beside it.
+  room, and the browser, with a full-screen wall display for a tablet on the wall. Start a
+  conversation at the box and finish it on the screen beside it.
 - **Remembers** what you tell him, in plain Markdown you can read and edit, and writes a diary of each
   day you can ask him about.
 - **Speaks up.** Announcements from Home Assistant, a word before what is on your calendar, and
@@ -72,9 +72,10 @@ uv run winston init                       # creates ./data; --list shows the pro
 uv run winston up                         # everything; Ctrl-C stops it
 ```
 
-Open http://localhost:8700, paste your Home Assistant URL and token in settings, and talk.
-Optional keys (web search, Claude, Discord) go on the extension card or page that uses them: see
-[built-in extensions](docs/built-in-extensions.md) and [Discord](docs/discord.md).
+Open http://localhost:8700, paste your Home Assistant address and access token on Settings, Home
+Assistant, and talk. Optional keys go on the page that uses them: web search and Claude on their
+pages under Extensions, Discord under Ways to talk. See [built-in extensions](docs/built-in-extensions.md)
+and [Discord](docs/discord.md).
 
 ## Documentation
 

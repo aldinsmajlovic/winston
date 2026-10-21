@@ -1,7 +1,7 @@
 """The extension as an MCP server over stdio. Tools are plain MCP tools, so any MCP client can use
 them; the rest travels on Winston's extension to the protocol (SEP-2133), `winston/*` methods that
-winstond calls: configure, run, check, act, nudge_event, entity, hook, status, context, hint_words
-and info. Each is the Runtime method of the same name, its params that method's arguments."""
+winstond calls: configure, run, check, act, nudge_event, entity, hook, status, context, hint_words,
+choices and info. Each is the Runtime method of the same name, its params that method's arguments."""
 from __future__ import annotations
 
 from typing import Any
@@ -20,7 +20,7 @@ from winston_sdk.runtime import Runtime
 IDENTIFIER = "io.github.aldinsmajlovic/winston"
 PROTOCOL_VERSION = 1
 METHODS = ("configure", "run", "check", "act", "nudge_event", "entity", "hook", "status", "context", "hint_words",
-           "info")
+           "choices", "info")
 
 
 class Params(RequestParams):

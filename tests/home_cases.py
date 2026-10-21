@@ -9,7 +9,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 
 from winston.config.schema import WinstonConfig
 from winston.core.brain import acted, build_llm, home_request, name_forms, only_name, own_answers
-from winston.providers.home_assistant import Snapshot, unusable
+from winston.providers.home_assistant import Snapshot, registry_view, tool_description, tool_label, unusable
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}, "providers": {"home_assistant": {
     "url": "http://ha.invalid:8123", "expose": {
@@ -208,5 +208,51 @@ check("no satellite: its tools are left out", unusable(offered, Snapshot(states=
       {"assist_satellite__HassBroadcast", "intent__HassCancelAllTimers"})
 check("a satellite: all kept", unusable(offered, Snapshot(states={"assist_satellite.kitchen": {}})), set())
 check("Home Assistant unread: all kept", unusable(offered, None), set())
+
+# The picker hides Home Assistant's settings and diagnostics, and reads each room by name; buttons, scenes and
+# scripts say when they last ran.
+snap = Snapshot(states={
+    "light.b": {"state": "on", "attributes": {"friendly_name": "bench lamp"}},
+    "light.a": {"state": "off", "attributes": {"friendly_name": "Wall lamp"}},
+    "sensor.rssi": {"state": "-60", "attributes": {"friendly_name": "Signal"}},
+    "button.wake": {"state": "2026-09-24T07:12:00+00:00", "attributes": {}},
+    "button.never": {"state": "unknown", "attributes": {}},
+    "script.movie": {"state": "off", "attributes": {"last_triggered": "2026-10-11T20:00:00+00:00"}},
+    "sensor.boot": {"state": "2026-10-01T06:00:00+00:00", "attributes": {}}},
+    registry={"sensor.rssi": {"entity_category": "diagnostic"}, "light.a": {"hidden_by": "user"}, "light.b": {}})
+view = {e.entity_id: e for g in registry_view(cfg.providers.home_assistant, snap).groups for e in g.entities}
+check("a diagnostic entity says so", (view["sensor.rssi"].category, view["light.b"].category), ("diagnostic", None))
+check("a hidden one too", (view["light.a"].hidden, view["light.b"].hidden), (True, False))
+check("a room lists by name, not by id", [e.entity_id for e in registry_view(cfg.providers.home_assistant, snap).groups[0].entities][:2],
+      ["light.b", "button.never"])
+check("buttons and scripts say when they last ran",
+      [view[e].last_run for e in ("button.wake", "button.never", "script.movie", "sensor.boot", "light.b")],
+      ["2026-09-24T07:12:00+00:00", None, "2026-10-11T20:00:00+00:00", None, None])
+
+# A room's devices Home Assistant cannot reach sit under the ones it can; a room where none can comes after the
+# others, and the devices with no room last.
+snap = Snapshot(states={
+    "media_player.a": {"state": "unavailable", "attributes": {"friendly_name": "A player"}},
+    "media_player.b": {"state": "unavailable", "attributes": {"friendly_name": "B player"}},
+    "light.c": {"state": "unavailable", "attributes": {"friendly_name": "Ceiling"}},
+    "light.d": {"state": "on", "attributes": {"friendly_name": "Desk"}},
+    "light.e": {"state": "unavailable", "attributes": {}}},
+    registry={"media_player.a": {"area_id": "g"}, "media_player.b": {"area_id": "g"}, "light.c": {"area_id": "o"},
+              "light.d": {"area_id": "o"}, "light.e": {}},
+    areas={"g": "Attic", "o": "Office"})
+check("unavailable sinks, in a room and as a room", [(g.name, [e.entity_id for e in g.entities])
+                                                     for g in registry_view(cfg.providers.home_assistant, snap).groups],
+      [("Office", ["light.d", "light.c"]), ("Attic", ["media_player.a", "media_player.b"]), (None, ["light.e"])])
+
+# Tools read in plain words; a script's description loses the aliases Home Assistant appends to it as a Python list,
+# and keeps one end to its sentence.
+check("the vacuum's room tool", tool_label("vacuum__HassVacuumCleanArea"), "Clean a room with the vacuum")
+check("a script's aliases are not shown",
+      tool_description("Lights only, for parties. Aliases: ['Lets Rock', \"let's rock and roll\"]"), "Lights only, for parties.")
+check("its own period is not doubled", tool_description("Only when it is said.. Aliases: ['a']"), "Only when it is said.")
+check("nor follows its question mark", tool_description("Ready?. Aliases: ['a']"), "Ready?")
+check("a description of only aliases is none", tool_description("Aliases: ['movie night']"), "")
+check("a long one is cut at a word", tool_description("word " * 60)[-5:], "word…")
+check("other tools keep theirs", tool_description("Turns on a device.\nMore."), "Turns on a device.")
 
 finish_checks("home: home requests, first lines, quiet after and shortcuts ok")

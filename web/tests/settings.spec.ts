@@ -5,7 +5,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Runs against the throwaway winstond `pnpm smoke` starts: WINSTON_DATA is its copy of data/, with the
 // engines and channels switched off and one external engine, `smoke`, that nothing runs.
 const data = process.env.WINSTON_DATA ?? ''
-const pages = ['/system', '/assistant', '/brain', '/voice', '/channels', '/home-assistant', '/extensions', '/extensions/speaking-up', '/extensions/plants']
+const pages = ['/status', '/assistant', '/assistant/personality', '/brain', '/voice', '/ways-to-talk', '/home-assistant', '/extensions', '/actions', '/speaking-up', '/extensions/plants']
 
 test.describe.configure({ mode: 'serial' })
 
@@ -27,10 +27,12 @@ async function open(page: Page, path: string) {
   await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0)
 }
 
-/** Turn Advanced on, on a page that has it. */
-async function advanced(page: Page) {
-  const toggle = page.getByRole('switch', { name: 'Advanced' })
-  if ((await toggle.count()) && (await toggle.getAttribute('aria-checked')) !== 'true') await toggle.click()
+/** Open every closed How it runs on the page, so what it holds is drawn too. */
+async function openFolds(page: Page) {
+  for (const fold of await page.getByRole('button', { name: 'How it runs', exact: true }).all()) {
+    if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click()
+    await expect(fold).toHaveAttribute('aria-expanded', 'true')
+  }
 }
 
 /** Save from the header; `choice` answers the confirmation a restart or a key asks for. */
@@ -47,14 +49,17 @@ test('every settings page loads, with nothing to save until something is changed
   const errors = watchErrors(page)
   for (const path of pages) {
     await open(page, path)
-    await advanced(page)
-    await expect(page.locator('[data-slot="skeleton"]')).toHaveCount(0)
+    // No page-wide view mode: a field is drawn or it is config.yaml only.
+    await expect(page.locator('header').getByRole('button', { name: 'Advanced', exact: true })).toHaveCount(0)
     // A form filling in its defaults is not a change: the plants card (off, so its config has no entry)
-    // shows Below at its default of 30, and redrawing the forms (Advanced off and on) must not save it.
+    // shows Below at its default of 30, and redrawing the forms (to the store and back, in the app) must
+    // not save it.
     if (path === '/extensions/plants') {
-      await expect(page.getByLabel('Below')).toHaveValue('30', { timeout: 30_000 })
-      await page.getByRole('switch', { name: 'Advanced' }).click()
-      await advanced(page)
+      await expect(page.getByLabel('Below', { exact: true })).toHaveValue('30', { timeout: 30_000 })
+      await page.locator('header').getByRole('link', { name: 'Extensions', exact: true }).click()
+      await expect(page).toHaveURL(/\/extensions$/)
+      await page.locator('a[href="/extensions/plants"]').click()
+      await expect(page.getByLabel('Below', { exact: true })).toHaveValue('30')
     }
     const saveButton = page.locator('header').getByRole('button', { name: 'Save', exact: true })
     if (await saveButton.count()) {
@@ -63,6 +68,49 @@ test('every settings page loads, with nothing to save until something is changed
     }
   }
   expect(errors).toEqual([])
+})
+
+test('every page fits a phone: no sideways scroll at 390 px, with every How it runs open', async ({ page }) => {
+  const errors = watchErrors(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  const fits = async (label: string) => {
+    expect(await page.locator('html').evaluate((html) => html.scrollWidth), label).toBeLessThanOrEqual(390)
+    // A card clips what is wider than it, so the page cannot see it: no card's content is wider than the card.
+    const clipped = await page.locator('[data-slot="card"]').evaluateAll((cards) =>
+      cards.filter((c) => c.scrollWidth > c.clientWidth + 1).map((c) => c.querySelector('[data-slot="card-title"]')?.textContent),
+    )
+    expect(clipped, `${label}: cards cut at the right`).toEqual([])
+  }
+  for (const path of ['/', '/history', '/memory', '/wall', ...pages, '/extensions/news']) {
+    if (path === '/wall') {
+      await page.goto(path)
+      await expect(page.getByRole('link', { name: 'Close', exact: true })).toBeVisible()     // no header: the panel's way back
+    } else await open(page, path)
+    // Open, a fold only adds below what was there: the engine forms (arguments, environment, volumes) fit too.
+    await openFolds(page)
+    await fits(path)
+    // The page's own name stays whole; the breadcrumb and the commands give way first.
+    if (path !== '/wall') expect(await page.locator('h1').evaluate((h) => h.scrollWidth <= h.clientWidth), `${path} title cut`).toBe(true)
+  }
+  // The header's More menu, where two or more commands fold, is as wide as its commands: none wraps onto a second line.
+  const more = page.locator('header').getByRole('button', { name: 'More', exact: true })
+  if (await more.count()) {
+    await more.click()
+    for (const item of await page.getByRole('menuitem').all()) expect((await item.boundingBox())?.height ?? 0).toBeLessThan(40)
+    await page.keyboard.press('Escape')
+  }
+  // A header's only command stays a button: a menu of one saves no room.
+  await open(page, '/extensions')
+  await expect(page.locator('header').getByRole('button', { name: 'Add an MCP server', exact: true })).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('an extension page fits beside the sidebar: no sideways scroll at 1280 px', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  for (const path of ['/extensions/news', '/extensions/plants', '/home-assistant', '/status']) {
+    await open(page, path)
+    expect(await page.locator('html').evaluate((html) => html.scrollWidth), path).toBeLessThanOrEqual(1280)
+  }
 })
 
 test('a rename is saved, still there after a reload, and changes his persona only when kept checked', async ({ page }) => {
@@ -78,7 +126,7 @@ test('a rename is saved, still there after a reload, and changes his persona onl
     await page.locator('header').getByRole('button', { name: 'Save', exact: true }).click()
     const dialog = page.getByRole('alertdialog')
     await expect(dialog.getByRole('heading')).toHaveText('Rename him to Smokey?')
-    const check = dialog.getByRole('checkbox', { name: `His persona says ${old} in 2 places. Change them to Smokey?` })
+    const check = dialog.getByRole('checkbox', { name: `His personality says ${old} in 2 places. Change them to Smokey?` })
     await expect(check).toBeChecked()
     const line = dialog.getByText(`You are ${old}, a butler and voice assistant`)
     await expect(line).toBeVisible()
@@ -113,7 +161,7 @@ test('a rename is saved, still there after a reload, and changes his persona onl
   }
 })
 
-test('a pasted key shows as Set and never comes back from the server', async ({ page }) => {
+test('a pasted key shows as Saved and never comes back from the server', async ({ page }) => {
   const secret = `smoke-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const leaks: string[] = []
   let seen = 0
@@ -124,17 +172,22 @@ test('a pasted key shows as Set and never comes back from the server', async ({ 
     if (text.includes(secret) || JSON.stringify(r.headers()).includes(secret)) leaks.push(r.url())
   })
 
-  await open(page, '/channels')
+  await open(page, '/ways-to-talk')
+  // The key is pasted; the variable it is stored under is config.yaml only.
+  await expect(page.getByText('Token variable', { exact: true })).toHaveCount(0)
   // Exact: once a token is saved, the contacts field checks it with Discord and a made-up one gets an
-  // icon labelled "Discord refused the bot token", which a loose match would find too.
+  // icon labelled "Discord refused the bot token", which a loose match would find too. The key's state is
+  // a word beside the field, and Discord is off in the copy: a key under a switched-off section never warns.
   const field = page.getByLabel('Bot token', { exact: true })
-  await expect(field.locator('..').getByLabel('Not set', { exact: true })).toBeVisible()
+  await expect(field.locator('..').getByText('Not set', { exact: true })).toHaveCount(0)
+  await expect(field).toHaveAttribute('placeholder', 'Paste the bot token')
   await field.fill(secret)
   await save(page)
   await page.reload()
-  await open(page, '/channels')
+  await open(page, '/ways-to-talk')
   const row = page.getByLabel('Bot token', { exact: true }).locator('..')
-  await expect(row.getByLabel('Set', { exact: true })).toBeVisible()
+  await expect(row.getByText('Saved', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Bot token', { exact: true })).toHaveAttribute('placeholder', 'Paste to replace it')
   await expect(page.getByLabel('Bot token', { exact: true })).toHaveValue('')
 
   for (const url of ['/api/config', '/api/secrets', '/api/status', '/api/config/schema']) {
@@ -147,26 +200,30 @@ test('a pasted key shows as Set and never comes back from the server', async ({ 
   expect(readFileSync(join(data, 'config.yaml'), 'utf8')).not.toContain(secret)
 })
 
-test('an MCP server added by URL keeps its token in data/.env alone, and its card shows it as Set', async ({ page }) => {
+test('an MCP server added by URL keeps its token in data/.env alone, and its page shows it as Saved', async ({ page }) => {
   const secret = `smoke-mcp-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const errors = watchErrors(page)
   await open(page, '/extensions')
   await page.getByRole('button', { name: 'Add an MCP server' }).click()
   const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Id').fill('smoke_http')
-  await expect(dialog.getByLabel('Token')).toHaveCount(0)
-  await dialog.getByLabel('Command or URL').fill('http://127.0.0.1:9/mcp')
-  await dialog.getByLabel('Token').fill(secret)
-  await dialog.getByRole('button', { name: 'Add' }).click()
+  await dialog.getByLabel('Name', { exact: true }).fill('smoke_http')
+  await expect(dialog.getByLabel('Token', { exact: true })).toHaveCount(0)
+  await dialog.getByLabel('How it starts').click()
+  await page.getByRole('option', { name: 'An address' }).click()
+  await dialog.getByLabel('Address', { exact: true }).fill('http://127.0.0.1:9/mcp')
+  await dialog.getByLabel('Token', { exact: true }).fill(secret)
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click()
+  // The server's page opens from the draft; Save stores it.
+  await expect(page).toHaveURL(/\/extensions\/smoke_http$/)
   await page.locator('header').getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByRole('alertdialog').getByText('Keys: SMOKE_HTTP_MCP_TOKEN')).toBeVisible()
+  await expect(page.getByRole('alertdialog').getByText('Extensions: smoke_http, Token')).toBeVisible()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('alertdialog')).toHaveCount(0)
   await open(page, '/extensions')
   await page.getByRole('link', { name: 'smoke_http' }).click()
   await expect(page).toHaveURL(/\/extensions\/smoke_http$/)
-  const field = page.locator('#smoke_http-token')
-  await expect(field.locator('..').getByLabel('Set', { exact: true })).toBeVisible()
+  const field = page.getByLabel('Token', { exact: true })
+  await expect(field.locator('..').getByText('Saved', { exact: true })).toBeVisible()
   await expect(field).toHaveValue('')
   for (const url of ['/api/config', '/api/secrets', '/api/extensions', '/api/config/schema']) {
     const body = await (await page.request.get(url)).text()
@@ -180,22 +237,65 @@ test('an MCP server added by URL keeps its token in data/.env alone, and its car
 })
 
 test('a field for hosted engines is left out for a local one', async ({ page }) => {
+  // The copy's brain runs in Docker: its API address sits in How it runs, beside the port, and it has no key.
   await open(page, '/brain')
-  await advanced(page)
+  const fold = page.getByRole('button', { name: 'How it runs', exact: true })
+  await expect(fold).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.locator('#cfg_llm_base_url')).toHaveCount(0)
+  await fold.click()
   await expect(page.locator('#cfg_llm_base_url')).toBeVisible()
-  await expect(page.locator('#cfg_llm_api_key_env')).toHaveCount(0)
+  await expect(page.locator('#cfg_llm_api_key_env__secret')).toHaveCount(0)
   await expect(page.getByText('Key variable', { exact: true })).toHaveCount(0)
 })
 
-test('Save only leaves a Restart button for the running engine', async ({ page }) => {
-  await open(page, '/system/engines/smoke')
-  await advanced(page)
+test('a refused save opens the How it runs that holds the field', async ({ page }) => {
+  const msg = 'Input should be greater than or equal to 10'
+  await page.route('**/api/config?*dry_run=true*', (route) =>
+    route.fulfill({ status: 422, json: { detail: [{ loc: ['body', 'engines', 'llm', 'startup_timeout'], msg, type: 'greater_than_equal' }] } }),
+  )
+  const errors = watchErrors(page)
+  await open(page, '/brain')
+  const fold = page.getByRole('button', { name: 'How it runs', exact: true })
+  await expect(fold).toHaveAttribute('aria-expanded', 'false')
+  await page.locator('#cfg_llm_sampling_max_tokens').fill('777')
+  await page.locator('header').getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(fold).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.locator('#cfg_engines_llm_startup_timeout')).toBeVisible()
+  await expect(page.locator('#cfg_engines_llm').getByText(msg, { exact: true })).toBeVisible()
+  // While the error stands, the fold stays open.
+  await fold.click()
+  await expect(fold).toHaveAttribute('aria-expanded', 'true')
+  const toast = page.locator('[data-sonner-toast]').filter({ hasText: 'Not saved' })
+  await expect(toast).toContainText(`Brain, `)
+  await expect(toast).toContainText(msg)
+  await page.getByRole('button', { name: 'Discard', exact: true }).click()
+  expect(errors).toEqual([])
+})
+
+test('Status lists the custom engines and who can open this page', async ({ page }) => {
+  await open(page, '/status')
+  // A custom engine has no row in His parts, so its card shows while there is one.
+  const custom = page.locator('[data-slot="card"]').filter({ has: page.getByText('Custom engines', { exact: true }) })
+  await expect(custom.getByText('smoke', { exact: true })).toBeVisible()
   const header = page.locator('header')
-  await expect(header.getByRole('button', { name: 'Restart' })).toHaveCount(0)
+  const add = header.getByRole('button', { name: 'Add a custom engine', exact: true })
+  if (!(await add.isVisible())) {
+    await header.getByRole('button', { name: 'More', exact: true }).click()
+    await expect(page.getByRole('menuitem', { name: 'Add a custom engine', exact: true })).toBeVisible()
+    await page.keyboard.press('Escape')
+  }
+  await expect(page.getByText('Web address', { exact: true })).toBeVisible()
+  await expect(page.getByText('Who can open this page', { exact: true })).toBeVisible()
+})
+
+test('Save only leaves a Restart button for the running engine', async ({ page }) => {
+  await open(page, '/status/engines/smoke')
+  const header = page.locator('header')
+  await expect(header.getByRole('button', { name: 'Restart', exact: true })).toHaveCount(0)
   await page.locator('#cfg_engines_smoke_startup_timeout').fill('61')
   await save(page, 'Save only')
   await expect(header.getByLabel('Saved changes wait for a restart')).toBeVisible()
-  await expect(header.getByRole('button', { name: 'Restart' })).toBeVisible()
+  await expect(header.getByRole('button', { name: 'Restart', exact: true })).toBeVisible()
 })
 
 test('the brain model lists running and downloaded models, and a model not on disk costs a download', async ({ page }) => {
@@ -237,7 +337,7 @@ test('the brain model lists running and downloaded models, and a model not on di
   // On disk: the restart costs what it did last time.
   await page.getByRole('option', { name: /smoke\/Other-GGUF:Q8_0/ }).click()
   await header.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(dialog).toContainText('The llm engine: about 12 s')
+  await expect(dialog).toContainText('Brain: restarts, about 12 s')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
 
   // Not on disk: the engine downloads it first, and the size is not known without asking the Hub.
@@ -245,13 +345,13 @@ test('the brain model lists running and downloaded models, and a model not on di
   await page.getByPlaceholder('Search').fill('smoke/New-GGUF:Q4_K_M')
   await page.getByRole('option', { name: 'Use smoke/New-GGUF:Q4_K_M' }).click()
   await header.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(dialog).toContainText('The llm engine: downloads the model first, size unknown, so it may take many minutes')
+  await expect(dialog).toContainText('Brain: restarts, downloads the model first, size unknown, so it may take many minutes')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
-  await page.getByRole('button', { name: 'Discard changes' }).click()
+  await page.getByRole('button', { name: 'Discard', exact: true }).click()
   expect(errors).toEqual([])
 })
 
-test('the Voice page plays the unsaved voice and streaming, and not an unsaved engine', async ({ page }) => {
+test('the Voice page plays the unsaved voice and its streaming, and not an unsaved engine', async ({ page }) => {
   const bodies: Record<string, unknown>[] = []
   await page.route('**/api/speak', async (route) => {
     bodies.push(route.request().postDataJSON() as Record<string, unknown>)
@@ -261,6 +361,19 @@ test('the Voice page plays the unsaved voice and streaming, and not an unsaved e
       headers: { 'content-type': 'audio/pcm', 'x-sample-rate': '24000', 'x-streaming': 'on' },
       body: Buffer.alloc(4800),
     })
+  })
+  // Speaking as running: the copy's engines are switched off, and a voice is heard only from a running one.
+  const running = { name: 'tts', kind: 'engine', driver: 'subprocess', state: 'healthy', detail: '', since: 0, port: 9,
+    startup_timeout: 120, started_in: 1, config_changed: false }
+  await page.route('**/api/status/stream', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' }))
+  await page.route('**/api/status', async (route) => {
+    const status = (await (await route.fetch()).json()) as { engines: { name: string }[] }
+    await route.fulfill({ json: { ...status, engines: [...status.engines.filter((e) => e.name !== 'tts'), running] } })
+  })
+  await page.route('**/api/config', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const config = (await (await route.fetch()).json()) as { engines: Record<string, { enabled?: boolean }> }
+    await route.fulfill({ json: { ...config, engines: { ...config.engines, tts: { ...config.engines.tts, enabled: true } } } })
   })
   const errors = watchErrors(page)
   await open(page, '/voice')
@@ -276,20 +389,27 @@ test('the Voice page plays the unsaved voice and streaming, and not an unsaved e
   expect(bodies[0].voice).toBe('smoke/unsaved_voice')
   expect(String(bodies[0].text)).toMatch(/^Hello, I'm .+\. This is how I sound\.$/)
 
-  // The sample carries the draft's streaming and shows its time to first sound.
-  const sample = page.getByRole('button', { name: 'Play a sample' })
-  await expect(sample).toBeEnabled()
-  await sample.click()
-  await expect.poll(() => bodies.length).toBe(2)
-  expect(bodies[1].voice).toBe('smoke/unsaved_voice')
-  expect(bodies[1].streaming).toMatchObject({ chunk_secs: expect.any(Number) as unknown })
-  await expect(page.getByText(/^\d+\.\d\d s to first sound$/)).toBeVisible()
+  // The sample carries the draft's streaming and shows its time to first sound. Streaming settings are
+  // drawn only for a speech engine whose command takes them ({tts.streaming.*}); the copy's may not.
+  const streams = readFileSync(join(data, 'config.yaml'), 'utf8').includes('{tts.streaming.')
+  if (streams) {
+    const sample = page.getByRole('button', { name: 'Play a sample' })
+    await expect(sample).toBeEnabled()
+    await sample.click()
+    await expect.poll(() => bodies.length).toBe(2)
+    expect(bodies[1].voice).toBe('smoke/unsaved_voice')
+    expect(bodies[1].streaming).toMatchObject({ chunk_secs: expect.any(Number) as unknown })
+    await expect(page.getByText(/^\d+\.\d\d s to first sound$/)).toBeVisible()
+  } else {
+    test.info().annotations.push({ type: 'skipped part', description: 'the speech engine takes no streaming settings' })
+    await expect(page.getByRole('button', { name: 'Play a sample' })).toHaveCount(0)
+  }
 
   // Another engine in the draft is not the one running: both wait for a save and restart.
   await page.locator('#tts-engine').click()
   await page.getByRole('option', { selected: false }).filter({ hasNotText: 'Custom' }).first().click()
   await expect(play).toBeDisabled()
-  expect(bodies).toHaveLength(2)
+  expect(bodies).toHaveLength(streams ? 2 : 1)
   expect(errors).toEqual([])
 })
 
@@ -298,6 +418,8 @@ test('the Hearing card shows his hint words, removes his and saves yours', async
   await open(page, '/voice')
   const name = String(/^ {2}name: (.+)$/m.exec(readFileSync(join(data, 'config.yaml'), 'utf8'))?.[1] ?? 'Winston')
   const words = page.locator('#cfg_stt_hint_words')
+  // His words are folded by where they come from; his name is among his own.
+  await words.getByRole('button', { name: /^His name and voices/ }).click()
   await expect(words.getByText(name, { exact: true })).toBeVisible()
   await words.getByRole('button', { name: `Remove ${name}` }).click()
   await save(page)
@@ -322,7 +444,7 @@ test('the Hearing card shows his hint words, removes his and saves yours', async
   expect(errors).toEqual([])
 })
 
-test('the Cloned voices card shows the consent check as an icon, the details in its tooltip', async ({ page }) => {
+test('the Your voices card shows the voice match in words that open its details', async ({ page }) => {
   const errors = watchErrors(page)
   // two clones in the throwaway copy: one checked as the same voice, one from before the check
   const friends = join(data, 'voices', 'friends')
@@ -340,11 +462,11 @@ test('the Cloned voices card shows the consent check as an icon, the details in 
   clone('smokemaria', {})
   try {
     await open(page, '/voice')
-    const same = page.getByRole('img', { name: 'Same voice' })
+    const same = page.getByRole('button', { name: 'Checked', exact: true })
     await expect(same).toBeVisible()
-    await expect(page.getByRole('img', { name: 'Not checked' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Not checked' })).toBeVisible()
     await same.hover()
-    await expect(page.getByRole('tooltip').getByText('Score 0.82, 0.55 needed')).toBeVisible()
+    await expect(page.getByRole('dialog').getByText('Score 0.82, 0.55 needed')).toBeVisible()
   } finally {
     for (const f of ['smokeerik.wav', 'smokeerik.json', 'smokemaria.wav', 'smokemaria.json']) rmSync(join(friends, f), { force: true })
   }
@@ -357,35 +479,46 @@ test('the Home Assistant page shows the list by room and saves aliases only', as
   const errors = watchErrors(page)
   await open(page, '/home-assistant')
 
-  // Home Assistant's rooms, the name he hears over Home Assistant's own, and what is not applied yet.
-  const living = page.getByRole('table', { name: 'Living room' })
+  // Home Assistant's rooms, the name he hears over Home Assistant's own, and a word only for what is not
+  // applied yet.
+  const living = page.getByRole('group', { name: 'Living room' })
   await expect(living.getByText('Ceiling lamp', { exact: true })).toBeVisible()
-  await expect(living.getByText('Taklampa in Home Assistant')).toBeVisible()
-  await expect(living.getByLabel('Not applied yet')).toBeVisible()
-  await expect(page.getByRole('table', { name: 'No room' }).getByText('Phone battery', { exact: true })).toBeVisible()
-  await expect(page.getByText('Also everything in: person, weather, todo')).toBeVisible()
-  await expect(page.getByRole('table', { name: 'What he can do' }).getByText('Turn things on and off')).toBeVisible()
-  await expect(page.getByLabel('Not in sync')).toBeVisible()
+  await expect(living.getByText('In Home Assistant: Taklampa')).toBeVisible()
+  await expect(living.getByText('Names not added yet')).toBeVisible()
+  const noRoom = page.getByRole('group', { name: 'No room' })
+  await expect(noRoom.getByText('Phone battery', { exact: true })).toBeVisible()
+  await expect(noRoom.getByText('Not exposed yet')).toBeVisible()
+  await expect(page.getByText(/^Also shared by kind, every one of them: People/)).toBeVisible()
+  await expect(page.getByText('Turn things on and off')).toBeVisible()
+  await expect(page.getByText(/^Home Assistant does not match this list yet/)).toBeVisible()
+  // What Home Assistant exposes beyond the list is named, with the way to keep it.
+  await expect(page.getByRole('button', { name: 'Add them to the list' })).toBeVisible()
 
-  // The picker hides what is listed and the noisy types, and adds with Home Assistant's name.
+  // The picker hides what is listed and, until asked, settings and diagnostics; it adds with Home
+  // Assistant's name.
   await page.getByRole('button', { name: 'Add from Home Assistant' }).click()
   const picker = page.getByRole('dialog')
-  await expect(picker.getByText('Plex client')).toHaveCount(0)
   await expect(picker.getByText('Taklampa')).toHaveCount(0)
+  await picker.getByLabel('Show 1 hidden (settings and diagnostics)').click()
+  await expect(picker.getByText('Taklampa signal')).toBeVisible()
   await picker.getByRole('group', { name: 'Kitchen' }).getByText('Köksspotlights').click()
   await picker.getByRole('button', { name: 'Add 1' }).click()
   await expect(picker).toHaveCount(0)
-  await expect(page.getByRole('table', { name: 'Kitchen' }).getByText('Köksspotlights')).toBeVisible()
+  const kitchen = page.getByRole('group', { name: 'Kitchen' })
+  await expect(kitchen.getByText('Köksspotlights')).toBeVisible()
+  await expect(kitchen.getByText('Waiting for Save')).toBeVisible()
 
   // Search filters by room.
-  await page.getByRole('searchbox', { name: 'Search names, aliases or rooms' }).fill('kitchen')
-  await expect(page.getByRole('table', { name: 'Living room' })).toHaveCount(0)
+  await page.getByRole('searchbox', { name: 'Search names or rooms' }).fill('kitchen')
+  await expect(page.getByRole('group', { name: 'Living room' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Clear search' }).click()
 
   const header = page.locator('header')
   await header.getByRole('button', { name: 'Save', exact: true }).click()
+  // The confirm says what the save changes in Home Assistant, from a dry run against it.
   const dialog = page.getByRole('alertdialog')
-  if (await dialog.isVisible().catch(() => false)) await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(dialog.getByText(/^Home Assistant: exposes \d+/)).toBeVisible()
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText(/^Saved; .*exposed/)).toBeVisible()
 
   // Home Assistant got exposure and aliases, and never a new name.
@@ -395,8 +528,9 @@ test('the Home Assistant page shows the list by room and saves aliases only', as
   for (const w of updates) expect(w).not.toHaveProperty('name')
   expect(writes.some((w) => w.type === 'homeassistant/expose_entity' && (w.entity_ids as string[]).includes('light.kok'))).toBe(true)
 
-  await expect(page.getByLabel('Applied', { exact: true })).toHaveCount(3)
-  await expect(page.getByLabel('In sync')).toBeVisible()
+  // Applied: no row has a word left and the list matches.
+  for (const word of ['Waiting for Save', 'Not exposed yet', 'Names not added yet']) await expect(page.getByText(word)).toHaveCount(0)
+  await expect(page.getByText(/does not match this list/)).toHaveCount(0)
   expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('light.kok')
   expect(errors).toEqual([])
 })
@@ -415,21 +549,20 @@ test('Memory shows the example topics, dated facts, and folds and clears the exp
   for (const title of ['About you', 'Home', 'Plans', 'People']) {
     await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
   }
-  // A topic's description behind its (i).
-  await page.getByRole('region', { name: 'About you' }).getByRole('button', { name: 'More information' }).hover()
-  await expect(page.getByText('The user himself: his likes, dislikes, habits')).toBeVisible()
+  // A topic's description is a line under its heading.
+  await expect(page.getByRole('region', { name: 'About you' }).getByText('Likes, dislikes, habits and ways of doing things.')).toBeVisible()
 
   // The dated fact carries its day; the expired one is folded and out of the size line.
-  const dentist = page.getByRole('region', { name: 'Plans' }).locator('div.group', { hasText: 'dentist' })
+  const dentist = page.getByRole('region', { name: 'Plans' }).locator('div', { hasText: 'dentist' }).last()
   await expect(dentist.getByText(/^Until (31 Dec|Dec 31)$/)).toBeVisible()
   await expect(page.getByText('The user had a haircut booked.')).toHaveCount(0)
-  await expect(page.getByText(/^1 fact, /)).toBeVisible()
+  await expect(page.getByText(/^Read in every conversation: /)).toBeVisible()
   await page.getByRole('button', { name: 'Expired (1)' }).click()
   await expect(page.getByText('The user had a haircut booked.')).toBeVisible()
 
   // Editing clears the date; the file keeps the fact without an until.
-  await dentist.hover()
-  await dentist.getByRole('button', { name: 'Edit' }).click()
+  await page.getByRole('button', { name: /^Actions for The user sees the dentist/ }).click()
+  await page.getByRole('menuitem', { name: 'Edit' }).click()
   await page.getByLabel('Until', { exact: true }).fill('')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect.poll(() => readFileSync(plans, 'utf8')).toMatch(/dentist on Monday 31 December 2099\. \(noted \d{4}-\d{2}-\d{2}\)\n/)
@@ -439,7 +572,8 @@ test('Memory shows the example topics, dated facts, and folds and clears the exp
   await page.getByRole('alertdialog').getByRole('button', { name: 'Clear expired' }).click()
   await expect(page.getByRole('button', { name: /^Expired/ })).toHaveCount(0)
   expect(readFileSync(plans, 'utf8')).not.toContain('haircut')
-  await page.getByRole('button', { name: 'Undo' }).click()
+  // The edit's toast offers an Undo too: take the one on the clearing's.
+  await page.getByRole('listitem').filter({ hasText: 'Cleared 1 expired fact' }).getByRole('button', { name: 'Undo' }).click()
   await expect(page.getByRole('button', { name: 'Expired (1)' })).toBeVisible()
   expect(readFileSync(plans, 'utf8')).toContain('The user had a haircut booked. (noted 2026-01-01, until 2026-01-02)')
   expect(errors).toEqual([])

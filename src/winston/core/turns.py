@@ -497,7 +497,9 @@ def make_mark_tool(cfg: WinstonConfig, previous: Callable[[], str | None]):
                     "they actually said or wanted, pass it.",
         properties={"kind": {"type": "string", "enum": ["misheard", "not_for_you", "wrong_thing", "too_slow"]},
                     "said": {"type": "string", "description": "What they actually said, if they told you."},
-                    "wanted": {"type": "string", "description": "What should have happened, if they told you."}},
+                    "wanted": {"type": "string", "description": "What they said should have happened, in their own "
+                                                          "words. Leave it out unless they told you; never your "
+                                                          "guess."}},
         required=["kind"])
     return schema, mark_mistake
 

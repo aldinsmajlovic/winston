@@ -28,6 +28,7 @@ from winston.config.schema import WinstonConfig
 from winston.core import guard, memory
 from winston.core.common import log_event
 from winston.core.brain import api_key, server_slot, thinking_body
+from winston.extension_host import accounts
 from winston.extension_host.sources import read_json, state_dir, write_json
 
 
@@ -131,6 +132,11 @@ class Services:
             return self._timers(ext_id, op, p)
         if op == "quota":
             return self._quota(ext_id, p["name"], int(p["per_day"]))
+        if op == "account.token":
+            try:
+                return await accounts.token(self.host, ext_id, str(p.get("field")))
+            except accounts.AccountError as e:
+                raise Failed(str(e)) from e
         if op == "entity.set":
             keys = {e["key"] for e in self.host.described.get(ext_id, {}).get("entities", [])}
             if p["key"] not in keys:
@@ -371,7 +377,7 @@ class Services:
             r = await client.chat.completions.create(
                 model=c.model, messages=[{"role": "user", "content": prompt}], max_tokens=max_tokens,
                 temperature=0.2, extra_body=extra or None, **kwargs)
-        except Exception as e:                                          # noqa: BLE001
+        except Exception as e:
             raise Failed(f"the model did not answer: {e}") from e
         text = (r.choices[0].message.content or "").strip()
         if not schema:

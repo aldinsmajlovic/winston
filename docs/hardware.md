@@ -130,8 +130,8 @@ renders a sentence whole, at about 25 ms per character, so our server streams: i
 speech tokens one at a time and vocodes what it has in chunks, sending only the new audio with a 20 ms
 cross-fade. First audio arrives in about 330 ms whatever the sentence length. The joins can sound a
 little choppy, so it is a setting: under Voice, Streaming turns it off (whole sentences) or makes the
-chunks longer (fewer joins, same start time, 1.6 s by default, up to 6 s); Advanced adds the first
-chunk (0.96 s) and the look-ahead held back at each join (0.32 s). Chunks double from the first up to
+chunks longer (fewer joins, same start time, 1.6 s by default, up to 6 s); the first chunk (0.96 s)
+and the look-ahead held back at each join (0.32 s) are set in config.yaml. Chunks double from the first up to
 the chosen length, so playback never catches up at any length (measured at 1.6, 3.2 and 6 s).
 
 **Pocket TTS.** Kyutai's 100M model, MIT code and CC BY 4.0 weights, its own venv

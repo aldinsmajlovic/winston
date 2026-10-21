@@ -193,7 +193,7 @@ async def describe(src: Source, timeout: float = 120) -> dict[str, Any]:
         env={**_path_env(), **base_env()}, cwd=str(data_dir()))
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         raise RuntimeError(f"describing it took longer than {timeout:g} s")
     if proc.returncode != 0:

@@ -57,8 +57,12 @@ export function useVoicePreviews(page: SettingsState): Record<string, ReactNode>
   const hello = usePreview()
   const sample = usePreview()
   const draft = page.value
-  const pending = status?.engines.some((e) => e.name === 'tts' && e.config_changed) ?? false
-  const blocked = engineDiffers(draft, saved, pending)
+  const tts = status?.engines.find((e) => e.name === 'tts')
+  const pending = tts?.config_changed ?? false
+  const blocked =
+    draft.engines?.tts?.enabled === false
+      ? 'Turn on speaking to hear a voice'
+      : (engineDiffers(draft, saved, pending) ?? (draft.engines?.tts && tts?.state !== 'healthy' ? 'Speaking is not running yet' : undefined))
   const name = draft.assistant?.name || status?.assistant || ''
   const voice = draft.tts?.voice || undefined
   const { streaming, problem } = draftStreaming(page)

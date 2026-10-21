@@ -1,6 +1,6 @@
 """Typed configuration. The YAML in the data directory is validated against this, the web UI
-generates its forms from the JSON Schema, and every field carries its UI level and which
-engine a change restarts (json_schema_extra: level, restarts; engine fields also list the drivers they apply to).
+generates its forms from the JSON Schema, and every field carries which engine a change restarts
+(json_schema_extra: restarts; engine fields also list the drivers they apply to).
 
 Restart metadata lives on the field when one field is special, else on the model: a section's
 `restarts` applies to every field in it, nested sections included, unless a field says otherwise.
@@ -13,21 +13,33 @@ The rest of the metadata tells the form what to draw (docs/architecture.md, "Con
   of the form unless every condition holds. "{slot}" in a path is the section's `slot` (llm, tts, stt);
   null in the values matches a missing key. cmd_uses holds when the slot's engine args or cmd contain
   "{<prefix>".
-- `enabled_by` (on a section): the sibling switch that turns the section on; while it is off every other
-  field is greyed but stays editable.
-- `hidden`: never drawn (a Literal with one value: nothing to choose).
-- `secret`: {"default": "<variable name>", "label": "<what it holds>"} on a field that names a variable in
-  data/.env; the form draws a field for the value (basic) beside the name (advanced). /api/secrets writes it.
-- keyed maps: `key_title`, `value_title`, `key_options`; value options sit on additionalProperties.
-- `icon`: a logo or kind for a section's title."""
+- `enabled_by` (on a section): the sibling switch that turns the section on; while it is off the other
+  fields wait for it but stay editable.
+- `hidden`: never drawn, config.yaml only (a variable's name, an address, a port, a path, a Literal with one
+  value, a value another control sets, or a measured timing; docs/running.md lists them).
+  Every other field is drawn where its section is.
+- `secret`: {"default": "<variable name>", "label": "<what it holds>", "help": "<where to get it>"} on a field
+  that names a variable in data/.env. That name field is hidden, while the form draws a field to
+  paste the key into; /api/secrets writes it.
+- keyed maps: `key_title`, `value_title`, `key_options` with `key_options_query`; value options sit on
+  additionalProperties.
+- `icon`: a logo or kind for a section's title.
+- `help`: one visible line under the field, at most 140 characters (tests/schema_copy_cases.py); on a section,
+  its lead line. `description` is the (i): how it works and its trade-offs.
+- `unit`: the suffix on a number ("s", "min", "MB"); titles carry none. `labels` on a number: words for
+  special values, keyed by the value as text ({"0": "Off"}).
+- `widget`: "slider" for a number felt rather than typed, "args" for a command line (one argument per line),
+  "time", "time_range", "hint_words".
+- `group`: fields of one section with the same group get one heading before the first of them."""
 import os
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-def ui(level: str = "basic", restarts: list[str] | None = None, **extra: Any) -> dict[str, Any]:
-    d: dict[str, Any] = {"level": level, **extra}
+def ui(*, restarts: list[str] | None = None, **extra: Any) -> dict[str, Any]:
+    """A field's form metadata. Keyword-only: a stale level passed by position fails at import."""
+    d: dict[str, Any] = dict(extra)
     if restarts:
         d["restarts"] = restarts
     return d
@@ -38,8 +50,9 @@ def section(*restarts: str, **extra: Any) -> ConfigDict:
     return ConfigDict(extra="forbid", json_schema_extra={"restarts": list(restarts), **extra})
 
 
-def secret(default: str, label: str) -> dict[str, str]:
-    return {"default": default, "label": label}
+def secret(default: str, label: str, help: str | None = None, optional: bool = False) -> dict[str, object]:
+    return {"default": default, "label": label, **({"help": help} if help else {}),
+            **({"optional": True} if optional else {})}
 
 
 HOSTED = {"engines.{slot}.driver": ["external", None]}     # an engine Winston does not run, or none at all
@@ -52,131 +65,161 @@ class Model(BaseModel):
 
 class AssistantConfig(Model):
     model_config = section("{brains}")
-    name: str = Field("Winston", description="What he is called: his name in the prompt, the "
-                                  "consent line and the hint words. Renaming offers to change it in "
-                                  "his persona too.")
-    persona: str = Field("persona.md", title="Persona file",
-                         description="Persona file, relative to the data directory.",
-                         json_schema_extra=ui("advanced", options="personas"))
+    name: str = Field("Winston", title="Name",
+                      description="His name in the prompt, the consent line and the names he should hear right. "
+                                  "Renaming offers to change it in his personality too.",
+                      json_schema_extra=ui(help="What he is called. A room box's wake word is set under Ways to "
+                                                "talk."))
+    persona: str = Field("persona.md", title="Personality file",
+                         description="The file in the data folder his personality is read from. Edit its words "
+                                     "under Assistant, Personality.",
+                         json_schema_extra=ui(hidden=True))
     language: str = Field("English", title="Reply language",
-                          description="The language he always answers in, whatever language he is spoken to in. "
-                                      "Match it to the voice: Chatterbox-Turbo speaks only English.")
+                          json_schema_extra=ui(help="He always answers in this language, whatever you speak to him "
+                                                    "in. Check on Voice that his voice speaks it."))
 
 
 class RegionConfig(Model):
-    model_config = section("{brains}")
+    model_config = section("{brains}", help="How he says temperatures, units, times and dates.")
     temperature: Literal["auto", "celsius", "fahrenheit"] = Field(
-        "auto", description="Degrees he speaks in. Auto follows Home Assistant's unit system.",
+        "auto", title="Temperature unit", description="Same as Home Assistant goes by its unit system.",
         json_schema_extra=ui(labels={"auto": "Same as Home Assistant", "celsius": "Celsius", "fahrenheit": "Fahrenheit"}))
     distance: Literal["auto", "metric", "imperial"] = Field(
         "auto", title="Units", description="Kilometres, kilograms and litres, or miles, pounds and gallons.",
         json_schema_extra=ui(labels={"auto": "Same as Home Assistant", "metric": "Metric (km, kg, litres)",
                                      "imperial": "Imperial (miles, pounds, gallons)"}))
     time_format: Literal["auto", "24h", "12h"] = Field(
-        "auto", title="Clock", description="How he says the time. Auto follows the country set in Home Assistant.",
-        json_schema_extra=ui(labels={"auto": "Same as the country", "24h": "24-hour (seventeen thirty)",
+        "auto", title="Clock", description="How he says the time. Same as Home Assistant goes by the country set "
+                                           "there.",
+        json_schema_extra=ui(labels={"auto": "Same as Home Assistant", "24h": "24-hour (seventeen thirty)",
                                      "12h": "12-hour (half past five)"}))
     date_format: Literal["auto", "day_month", "month_day"] = Field(
-        "auto", title="Dates", description="Day or month first. Auto follows the country set in Home Assistant.",
-        json_schema_extra=ui(labels={"auto": "Same as the country", "day_month": "24 September",
+        "auto", title="Dates", description="Day or month first. Same as Home Assistant goes by the country set there.",
+        json_schema_extra=ui(labels={"auto": "Same as Home Assistant", "day_month": "24 September",
                                      "month_day": "September 24"}))
-    currency: str = Field("", description="Currency for prices, like SEK or EUR. Empty follows Home Assistant.")
+    currency: str = Field("", description="A currency code for prices, like EUR or USD.",
+                          json_schema_extra=ui(placeholder="Same as Home Assistant"))
 
 
 class EngineConfig(Model):
     """A heavy process Winston depends on: LLM server, TTS server, later STT. Managed by the supervisor."""
     model_config = section("{engine}")
     driver: Literal["docker", "subprocess", "external"] = Field(
-        description="How the engine is run. Docker container: Winston runs an image. Process: Winston runs a "
-                    "command on this machine. External server: something you run yourself; Winston only checks it.",
+        title="Runs as",
+        description="Docker container: Winston runs an image. Process: Winston runs a command on this computer. "
+                    "External server: something you run yourself; Winston only checks it.",
         json_schema_extra=ui(labels={"docker": "Docker container", "subprocess": "Process", "external": "External server"},
                              icons={"docker": "docker", "subprocess": "process", "external": "external"}))
-    enabled: bool = Field(True, description="Start it with winston up. Off keeps the entry without running it.")
-    port: int = Field(description="Local port the engine listens on.",
-                      json_schema_extra=ui(drivers=["docker", "subprocess"]))
-    health: str = Field("/health", title="Health path",
-                        description="HTTP path that returns 200 when ready. Empty: no check, the engine counts as up "
-                                    "whenever its process is (hosted APIs).",
-                        json_schema_extra=ui("advanced", empty_means_off=True))
-    startup_timeout: int = Field(600, title="Startup timeout (s)",
-                                 description="Seconds to wait for health before giving up.",
-                                 json_schema_extra=ui("advanced"))
-    # docker
+    enabled: bool = Field(True, title="Start with Winston",
+                          json_schema_extra=ui(help="Off stops it when you save, and Winston no longer starts it."))
+    port: int = Field(ge=1, le=65535, description="The port the engine listens on.",
+                      json_schema_extra=ui(drivers=["docker", "subprocess"],
+                                           help="Must match any port in its arguments and the address that points "
+                                                "at it."))
     image: str | None = Field(None,
                               description="Container image (docker driver).", json_schema_extra=ui(drivers=["docker"]))
+    gpu: bool = Field(False, title="Use the graphics card", json_schema_extra=ui(drivers=["docker"]))
     args: list[str] = Field(default_factory=list, title="Arguments",
-                            description="Command arguments (docker driver). {model} expands to the brain's model, "
-                                        "{section.field} (say {tts.streaming.chunk_secs}) to that config value.",
-                            json_schema_extra=ui("advanced", drivers=["docker"]))
+                            description="Arguments to the container's command. {model} becomes the model chosen on "
+                                        "Brain, {section.field} that setting's value, say {tts.streaming.chunk_secs}.",
+                            json_schema_extra=ui(drivers=["docker"], widget="args", help="One per line."))
+    cmd: list[str] = Field(default_factory=list, title="Command",
+                           description="{model}, {data}, {repo} and {section.field} become the model chosen on Brain, "
+                                       "the data folder, the repo and that setting's value.",
+                           json_schema_extra=ui(drivers=["subprocess"], widget="args", help="One per line."))
+    cwd: str | None = Field(None, title="Working directory", description="Working directory, {repo}-relative allowed.",
+                            json_schema_extra=ui(drivers=["subprocess"]))
     env: dict[str, str] = Field(default_factory=dict, title="Environment",
                                 description="Environment variables for the engine's process or container.",
-                                json_schema_extra=ui("advanced", drivers=["docker", "subprocess"],
+                                json_schema_extra=ui(drivers=["docker", "subprocess"],
                                                      key_title="Variable", value_title="Value"))
     volumes: dict[str, str] = Field(default_factory=dict, title="Volumes",
-                                    description="Folders the container sees: a path on this machine and where it "
+                                    description="Folders the container sees: a path on this computer and where it "
                                                 "appears inside the container.",
-                                    json_schema_extra=ui("advanced", drivers=["docker"], key_title="Host path",
+                                    json_schema_extra=ui(drivers=["docker"], key_title="Host path",
                                                          value_title="Container path"))
-    gpu: bool = Field(False, title="GPU",
-                      description="Give the container the GPU.", json_schema_extra=ui(drivers=["docker"]))
-    runtime: str | None = Field(None, description="Container runtime, e.g. nvidia.",
-                                json_schema_extra=ui("advanced", drivers=["docker"]))
-    ipc_host: bool = Field(False, title="IPC host",
-                           description="Share the host's IPC namespace; vLLM needs it for shared memory between "
-                                       "workers.",
-                           json_schema_extra=ui("advanced", drivers=["docker"]))
-    # subprocess
-    cmd: list[str] = Field(default_factory=list, title="Command",
-                           description="Command line (subprocess driver). {data}, {repo}, {model} and "
-                                       "{section.field} (say {tts.streaming.chunk_secs}) expand.",
-                           json_schema_extra=ui("advanced", drivers=["subprocess"]))
-    cwd: str | None = Field(None, title="Working directory", description="Working directory, {repo}-relative allowed.",
-                            json_schema_extra=ui("advanced", drivers=["subprocess"]))
-    # external
-    url: str | None = Field(None, title="URL", description="Base URL of an engine you run yourself (external driver).",
-                            json_schema_extra=ui(drivers=["external"]))
+    runtime: str | None = Field(None, title="Container runtime", description="Such as nvidia.",
+                                json_schema_extra=ui(drivers=["docker"]))
+    ipc_host: bool = Field(False, title="IPC host", description="Shares the host's IPC namespace with the container.",
+                           json_schema_extra=ui(drivers=["docker"],
+                                                help="Some servers need it to share memory between their workers."))
+    url: str | None = Field(None, title="Address", description="Where an engine you run yourself answers.",
+                            json_schema_extra=ui(drivers=["external"], help="Where Winston checks that it answers."))
+    health: str = Field("/health", title="Health check path",
+                        description="HTTP path that returns 200 when ready. Empty: no check, the engine counts as up "
+                                    "whenever its process is (hosted APIs).",
+                        json_schema_extra=ui(empty_means_off=True))
+    startup_timeout: int = Field(600, title="Startup time limit",
+                                 description="How long it may take to pass its health check before it counts as "
+                                             "failed.",
+                                 json_schema_extra=ui(unit="s", help="A first start that downloads the model "
+                                                                     "can take much longer on a slow connection."))
 
 
 class Sampling(Model):
-    model_config = section("{brains}")
-    temperature: float = Field(0.3, ge=0, le=2, description="Lower is more reliable at tool calls.",
-                               json_schema_extra=ui("advanced"))
+    model_config = section("{brains}", help="The defaults suit actions. Change them when your model's page recommends "
+                                            "other values.")
+    temperature: float = Field(0.3, ge=0, le=2, title="Temperature", description="Lower is more reliable at actions.")
     top_p: float = Field(0.8, ge=0, le=1, title="Top-p",
                          description="Samples only from the most likely tokens that add up to this share. Lower is "
-                                     "more focused.",
-                         json_schema_extra=ui("advanced"))
+                                     "more focused.")
     presence_penalty: float = Field(0.0, ge=-2, le=2, title="Presence penalty",
-                                    description="Positive values push the model away from repeating itself. Qwen's "
-                                                "chat default is 1.5; 0 calls tools more reliably.",
-                                    json_schema_extra=ui("advanced"))
-    max_tokens: int = Field(512, ge=16, title="Max tokens",
-                            description="Longest reply in tokens. Spoken replies are short; this is a safety cap. "
-                                        "A turn he thinks on gets at least 2048, since the thinking counts too.",
-                            json_schema_extra=ui("advanced"))
+                                    description="Positive values push him away from repeating himself; 0 calls "
+                                                "actions more reliably.")
+    max_tokens: int = Field(512, ge=16, title="Longest reply",
+                            description="Spoken replies are short; this is a safety cap. A request he thinks on gets "
+                                        "at least 2048, since the thinking counts too.",
+                            json_schema_extra=ui(unit="tokens",
+                                                 help="Raise it if he stops mid-sentence, or says nothing after "
+                                                      "thinking."))
+
+
+THINKS = {"llm.thinking.control": ["chat_template", "reasoning_effort"]}   # a server Winston can switch
 
 
 class Thinking(Model):
-    model_config = section("{brains}")
-    voice: bool = Field(False, description="Reasoning before answering on the voice channel. Costs seconds.")
-    text: bool = Field(True, description="Reasoning on text channels. Much better at multi-part requests.")
-    home: bool = Field(True, title="Home requests",
-                       description="Reasoning on a spoken request about the home (a light, a lamp, the PC), even "
-                                   "with voice off. About 1 s slower at medium effort; without it he sometimes "
-                                   "said a light was on without switching it.")
-    home_effort: str = Field("medium", title="Home request effort",
-                             description="How long he reasons about a home request, for chat templates that take "
-                                         "a reasoning effort (Qwen3.8: low, medium, xhigh; gpt-oss: low, medium, "
-                                         "high). Medium was as right as xhigh on the 27B and about twice as fast. "
-                                         "Empty uses the template's default. A template that writes the effort at "
-                                         "the top of the system prompt makes every spoken home request read the "
-                                         "whole prompt again (about 8 s): on Qwen3.8 low, xhigh and empty do; "
-                                         "medium adds nothing there.",
-                             json_schema_extra=ui("advanced", when={"llm.thinking.control": ["chat_template"]}))
+    model_config = section("{brains}", help="Thinking gives better answers to harder requests, but he starts "
+                                            "talking later.")
+    spoken: Literal["never", "home", "always"] = Field(
+        "home", title="When you talk to him",
+        description="A home request names a device or asks to change something. Thinking there means fewer slips "
+                    "when switching things.",
+        json_schema_extra=ui(when=THINKS, restarts=["voice", "satellite"],   # the spoken channels
+                             labels={"never": "Answer straight away",
+                                     "home": "Think only for home requests (about 1 s slower)",
+                                     "always": "Always think (a few seconds slower)"}))
+    typed: Literal["never", "always"] = Field(
+        "always", title="When you type to him",
+        # Of the typed channels only Discord runs its own Brain; the Talk page's typing reads the saved config.
+        json_schema_extra=ui(when=THINKS, restarts=["discord"],
+                             labels={"never": "Answer straight away", "always": "Think first (a few seconds slower)"}))
+    home_effort: Literal["", "low", "medium", "high", "xhigh"] = Field(
+        "medium", title="Effort on home requests",
+        description="Medium was as accurate as the highest setting and about twice as fast. Not every model takes "
+                    "every level.",
+        json_schema_extra=ui(when={"llm.thinking.control": ["chat_template"],
+                                   "llm.thinking.spoken": ["home"]},
+                             labels={"": "Model default", "low": "Low (fastest)", "medium": "Medium",
+                                     "high": "High (slower)", "xhigh": "Extra high (slowest)"}))
     control: Literal["chat_template", "reasoning_effort", "none"] = Field(
-        "chat_template", description="How the server is told to think or not: chat_template for vLLM and llama.cpp "
-                                     "(enable_thinking), reasoning_effort for Ollama, none for servers without a switch.",
-        json_schema_extra=ui("advanced", labels={"chat_template": "Chat template (vLLM, llama.cpp)",
-                                                 "reasoning_effort": "Reasoning effort (Ollama)", "none": "No switch"}))
+        "chat_template", title="How thinking is switched",
+        description="How Winston turns his thinking on and off on this server. No switch: the server decides by "
+                    "itself.",
+        json_schema_extra=ui(labels={"chat_template": "Chat template (vLLM, llama.cpp)",
+                                     "reasoning_effort": "Reasoning effort (Ollama)", "none": "No switch"}))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _switches(cls, data: Any) -> Any:
+        """Older files had three switches: voice (always think when spoken to), home (think on a home request)
+        and text (think when typed to). They load as today's two choices; the next save writes those."""
+        if isinstance(data, dict) and {"voice", "home", "text"} & data.keys():
+            data = dict(data)
+            voice, home, text = data.pop("voice", False), data.pop("home", True), data.pop("text", None)
+            data.setdefault("spoken", "always" if voice else "home" if home else "never")
+            if text is not None:
+                data.setdefault("typed", "always" if text else "never")
+        return data
 
 
 class LLMConfig(Model):
@@ -184,26 +227,23 @@ class LLMConfig(Model):
     provider: Literal["openai_compatible"] = Field("openai_compatible",
                                                    description="Protocol the brain is spoken to with. Every "
                                                                "supported server speaks the OpenAI chat API.",
-        json_schema_extra=ui(
-        "advanced", hidden=True, labels={"openai_compatible": "OpenAI-compatible"}))
-    base_url: str = Field("http://127.0.0.1:8000/v1", title="Base URL",
-                          description="Where the brain's OpenAI-compatible API answers, ending in /v1. Presets set it.",
-                          json_schema_extra=ui("advanced"))
+        json_schema_extra=ui(hidden=True, labels={"openai_compatible": "OpenAI-compatible"}))
+    base_url: str = Field("http://127.0.0.1:8000/v1", title="API address",
+                          description="Where the brain's API answers. Runs on sets it.",
+                          json_schema_extra=ui(help="Where Winston sends its requests, ending in /v1."))
     api_key_env: str | None = Field(None, title="Key variable",
                                     description="The variable in data/.env that holds the API key. Unset for local "
                                                 "servers.",
-                                    json_schema_extra=ui("advanced", when=HOSTED,
-                                                         secret=secret("LLM_API_KEY", "API key")))
-    model: str = Field(description="Model name as the server knows it. Downloaded lists what the engine can load "
-                                   "from this machine; any other model is downloaded when the brain restarts, and "
-                                   "the brain is offline until the download ends.",
-                       json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models"))
-    sampling: Sampling = Field(Sampling(), title="Sampling",
-                               description="How the brain picks its words. The defaults suit tool calls; change "
-                                           "them only to fix a specific habit.")
-    thinking: Thinking = Field(Thinking(), title="Thinking",
-                               description="Whether the brain reasons before it answers, per kind of channel. "
-                                           "Better answers to hard requests, at the cost of time.")
+                                    json_schema_extra=ui(hidden=True, when=HOSTED,
+                                                         secret=secret("LLM_API_KEY", "API key",
+                                                                       "From your provider's account page.")))
+    model: str = Field(title="Model",
+                       description="Downloaded lists the models the engine can load from this computer.",
+                       json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models",
+                                            help="One not on this computer downloads when the brain restarts, and he "
+                                                 "can't answer until it's done."))
+    sampling: Sampling = Field(Sampling(), title="How he picks his words")
+    thinking: Thinking = Field(Thinking(), title="Thinking")
 
 
 TRANSCRIPTION = {"stt.provider": ["openai_transcription"]}     # speech to text on a server
@@ -211,66 +251,65 @@ TRANSCRIPTION = {"stt.provider": ["openai_transcription"]}     # speech to text 
 
 class STTConfig(Model):
     model_config = section("voice", "satellite", slot="stt")
-    provider: str = Field("parakeet",
-                          description="Speech-to-text adapter. parakeet runs inside Winston on the CPU; "
-                                      "openai_transcription sends the audio to a server (Qwen3-ASR on vLLM, a "
-                                      "hosted one). Presets set it.",
-                          json_schema_extra=ui("advanced", options="stt_adapters"))
-    base_url: str | None = Field(None, title="Base URL",
-                                 description="Where the speech-to-text server's OpenAI transcription API answers, "
-                                             "ending in /v1. Presets set it.",
-                                 json_schema_extra=ui("advanced", when=TRANSCRIPTION))
+    provider: str = Field("parakeet", title="Hearing adapter",
+                          description="parakeet runs inside Winston on the CPU; openai_transcription sends the audio "
+                                      "to a server. Runs on sets it.",
+                          json_schema_extra=ui(hidden=True))
+    base_url: str | None = Field(None, title="API address",
+                                 description="Where the hearing server's OpenAI transcription API answers. Runs on "
+                                             "sets it.",
+                                 json_schema_extra=ui(when=TRANSCRIPTION,
+                                                      help="Where Winston sends its requests, ending in /v1."))
     api_key_env: str | None = Field(None, title="Key variable",
                                     description="The variable in data/.env that holds the API key. Unset for local "
                                                 "servers.",
-                                    json_schema_extra=ui("advanced", when={**TRANSCRIPTION, **HOSTED},
-                                                         secret=secret("STT_API_KEY", "API key")))
-    model: str = Field("nemo-parakeet-tdt-0.6b-v3",
-                       description="Speech-to-text model: for Parakeet an onnx-asr model (v3 is multilingual, v2 "
-                                   "English only), for a server the model name it knows.",
-                       json_schema_extra=ui("advanced", options="stt_models"))
-    quantization: str | None = Field("int8",
-                                     description="Weight precision. int8 is faster on the CPU at no audible "
-                                                 "accuracy cost; empty for full precision.",
-                                     json_schema_extra=ui("advanced", empty_means_off=True,
+                                    json_schema_extra=ui(hidden=True, when={**TRANSCRIPTION, **HOSTED},
+                                                         secret=secret("STT_API_KEY", "API key",
+                                                                       "From your provider's account page.")))
+    model: str = Field("nemo-parakeet-tdt-0.6b-v3", title="Model",
+                       description="For Parakeet, v3 understands 25 European languages and v2 only English; for a "
+                                   "server, the model name it knows.",
+                       json_schema_extra=ui(options="stt_models"))
+    quantization: str | None = Field("int8", title="Precision",
+                                     description="int8 is faster on the CPU at no audible accuracy cost; empty for "
+                                                 "full precision.",
+                                     json_schema_extra=ui(hidden=True, empty_means_off=True,
                                                           when={"stt.provider": ["parakeet", None]}))
-    hint_words: list[str] = Field(default_factory=list, title="Hint words",
-                                  description="Names and words he should hear right. His name, cloned voices, "
-                                              "Discord contacts and names from the Home Assistant list are added by "
-                                              "themselves (remove one with its x); add the rest here, one word "
-                                              "each, such as room names in another language.",
-                                  json_schema_extra=ui(widget="hint_words"))
-    hint_words_removed: list[str] = Field(default_factory=list, title="Removed hint words",
-                                          description="Words he would add by himself that you took out; the "
-                                                      "Hint words field writes these.",
+    fix_misspellings: bool = Field(True, title="Correct misheard names",
+                                   description="Every change is logged with what was heard first.",
+                                   json_schema_extra=ui(help="A word that sounds like one of the names below becomes "
+                                                             "that name. Common English words are never changed."))
+    hint_words: list[str] = Field(default_factory=list, title="Names he should hear right",
+                                  description="One word each, such as room names in another language. Remove an "
+                                              "added one with its x.",
+                                  json_schema_extra=ui(widget="hint_words",
+                                                       help="His name, your voices, contacts and names from Home "
+                                                            "Assistant and extensions are added for you."))
+    hint_words_removed: list[str] = Field(default_factory=list, title="Removed names",
+                                          description="Names he would add by himself that you took out; the names "
+                                                      "field writes these.",
                                           json_schema_extra=ui(hidden=True))
-    fix_misspellings: bool = Field(True, title="Fix close misspellings",
-                                   description="After speech to text, a word that sounds like a hint word and is "
-                                               "spelled close to it becomes that word, so a misheard name comes "
-                                               "out right. Common English words are never changed, and "
-                                               "every change is logged as before and after.")
 
 
 class TTSStreamingConfig(Model):
     """Reaches the speech server through `{tts.streaming.*}` in its engine command; the Chatterbox preset
     passes them. Pocket TTS streams on its own and has no such arguments."""
     model_config = section("tts")
-    enabled: bool = Field(True, title="Stream speech",
-                          description="Start speaking before a sentence is fully rendered: first audio in about "
-                                      "0.3 s instead of up to 2 s for a long sentence, with a join between chunks "
-                                      "that can sound a little choppy. Off renders whole sentences. For the "
-                                      "Chatterbox server.")
-    chunk_secs: float = Field(1.6, ge=0.8, le=6.0, title="Chunk length (s)",
+    enabled: bool = Field(True, title="Stream speech", description="Off renders whole sentences.",
+                          json_schema_extra=ui(help="First sound in about 0.3 s instead of up to 2 s. Joins between "
+                                                    "chunks can sound a little choppy."))
+    chunk_secs: float = Field(1.6, ge=0.8, le=6.0, title="Chunk length",
                               description="Audio per chunk after the first. Longer means fewer joins and smoother "
-                                          "speech; how soon he starts talking depends only on the first chunk.")
-    first_secs: float = Field(0.96, ge=0.4, le=3.0, title="First chunk (s)",
+                                          "speech; how soon he starts talking depends only on the first chunk.",
+                              json_schema_extra=ui(unit="s"))
+    first_secs: float = Field(0.96, ge=0.4, le=3.0, title="First chunk",
                               description="Audio rendered before anything is sent. Shorter starts sooner; below "
                                           "about 0.9 s the second chunk can arrive late and leave a short gap.",
-                              json_schema_extra=ui("advanced"))
-    lookahead_secs: float = Field(0.32, ge=0.08, le=1.0, title="Look-ahead (s)",
+                              json_schema_extra=ui(hidden=True, unit="s"))
+    lookahead_secs: float = Field(0.32, ge=0.08, le=1.0, title="Look-ahead",
                                   description="Audio held back at the end of each chunk until the sounds after it "
                                               "are known. More smooths the joins but makes the first chunk shorter.",
-                                  json_schema_extra=ui("advanced"))
+                                  json_schema_extra=ui(hidden=True, unit="s"))
 
     @model_validator(mode="after")
     def _lookahead_inside_first(self):
@@ -283,82 +322,88 @@ class TTSStreamingConfig(Model):
 class TTSConfig(Model):
     model_config = section("voice", "satellite", slot="tts")
     provider: Literal["openai_speech"] = Field("openai_speech", description="Text-to-speech adapter.",
-                                              json_schema_extra=ui("advanced", hidden=True,
+                                              json_schema_extra=ui(hidden=True,
                                                                    labels={"openai_speech": "OpenAI speech protocol"}))
-    base_url: str = Field("http://127.0.0.1:8880/v1", title="Base URL",
-                          description="Where the speech server's OpenAI speech API answers, ending in /v1. Presets "
-                                      "set it.",
-                          json_schema_extra=ui("advanced"))
+    base_url: str = Field("http://127.0.0.1:8880/v1", title="API address",
+                          description="Where the speech server's OpenAI speech API answers. Runs on sets it.",
+                          json_schema_extra=ui(help="Where Winston sends its requests, ending in /v1."))
     api_key_env: str | None = Field(None, title="Key variable",
                                     description="The variable in data/.env that holds the API key. Unset for local "
                                                 "servers.",
-                                    json_schema_extra=ui("advanced", when=HOSTED,
-                                                         secret=secret("TTS_API_KEY", "API key")))
+                                    json_schema_extra=ui(hidden=True, when=HOSTED,
+                                                         secret=secret("TTS_API_KEY", "API key",
+                                                                       "From your provider's account page.")))
     voice: str = Field("onyx",
-                       description="Voice name sent to the server. OpenAI names map to the server's default clip.",
+                       description="The clip or built-in voice he speaks with. Server default is the clip in the "
+                                   "engine's command.",
                        json_schema_extra=ui(options="voices"))
-    sample_rate: int = Field(24000, title="Sample rate", description="Audio rate the speech server returns, in Hz.",
-                             json_schema_extra=ui("advanced"))
+    sample_rate: int = Field(24000, title="Sample rate", description="The audio rate the speech server returns.",
+                             json_schema_extra=ui(unit="Hz", help="Must match what the speech server sends, or "
+                                                                  "he sounds too fast or too slow."))
     streaming: TTSStreamingConfig = Field(default_factory=TTSStreamingConfig, title="Streaming",
-                                          description="How speech is cut into chunks so he starts talking "
-                                                      "before a sentence is fully rendered.",
+                                          description="Speech is cut into chunks: a short first one so he starts "
+                                                      "soon, then longer ones that join smoothly.",
                                           # the settings reach the server through its command (decisions, 09-23)
                                           json_schema_extra=ui(when={"cmd_uses": "tts.streaming."}))
 
 
 class VADConfig(Model):
-    model_config = section("voice")
+    model_config = section("voice", help="How long he waits in silence before answering. Shorter feels snappier; "
+                                         "too short cuts you off.")
     provider: Literal["silero"] = Field("silero",
                                         description="Voice activity detector that decides when you are speaking.",
-                                        json_schema_extra=ui("advanced", hidden=True, labels={"silero": "Silero"}))
-    stop_secs: float = Field(0.3, ge=0.1, le=2.0, title="End of speech (s)",
-                             description="Silence after speech before the utterance is sent.",
-                             json_schema_extra=ui("advanced"))
-    unfinished_stop_secs: float = Field(2.5, ge=0.2, le=5.0, title="Pause when unfinished (s)",
-                                        description="Extra wait after silence when the turn detector thinks the "
-                                                    "sentence is unfinished. One-word answers pay this in full.",
-                                        json_schema_extra=ui("advanced"))
+                                        json_schema_extra=ui(hidden=True, labels={"silero": "Silero"}))
+    stop_secs: float = Field(0.3, ge=0.1, le=2.0, title="Silence before he answers",
+                             json_schema_extra=ui(hidden=True, unit="s"))
+    unfinished_stop_secs: float = Field(2.5, ge=0.2, le=5.0, title="Extra wait mid-sentence",
+                                        description="Added when what you said sounds unfinished. A one-word answer "
+                                                    "waits it in full.",
+                                        json_schema_extra=ui(hidden=True, unit="s"))
 
 
 class VoiceChannel(Model):
     model_config = section("voice", enabled_by="enabled")
-    enabled: bool = Field(True, description="Talk to him by voice from the browser. Room satellites have "
-                                            "their own channel.")
-    host: str = Field("127.0.0.1",
-                      description="Address the voice channel listens on. 127.0.0.1 keeps it on this machine; "
-                                  "winstond passes the browser's offer to it.",
-                      json_schema_extra=ui("advanced"))
-    port: int = Field(7860,
-                      description="Port the voice channel listens on; Pipecat's own test page is served here too.",
-                      json_schema_extra=ui("advanced"))
+    enabled: bool = Field(True, title="Talk by voice",
+                          json_schema_extra=ui(help="Uses the browser's microphone with no wake word: he hears "
+                                                    "everything until you press it again. Typing works either way."))
+    host: str = Field("127.0.0.1", title="Address",
+                      description="Where the browser's voice is received. 127.0.0.1 keeps it on this computer; "
+                                  "Winston passes the browser's connection to it.",
+                      json_schema_extra=ui(hidden=True))
+    port: int = Field(7860, ge=1, le=65535, title="Port", description="Pipecat's own test page is served here too.",
+                      json_schema_extra=ui(hidden=True))
 
 
 class DiscordChannel(Model):
-    model_config = section("discord", enabled_by="enabled", icon="discord")
-    enabled: bool = Field(False, description="Talk to him in Discord DMs and get announcements there.")
+    model_config = section("discord", enabled_by="enabled", icon="discord",
+                           help="Talk to him in direct messages with your own Discord bot.")
+    enabled: bool = Field(False, title="Talk to him on Discord",
+                          json_schema_extra=ui(help="Messages he brings up can reach you there when you are away."))
     token_env: str = Field("DISCORD_BOT_TOKEN", title="Token variable",
                            description="The variable in data/.env that holds the Discord bot token.",
-                           json_schema_extra=ui("advanced", restarts=["{brains}"],
-                                                secret=secret("DISCORD_BOT_TOKEN", "Bot token")))
-    allowed_user: str = Field("", title="Your Discord user id", pattern=r"^(\d{17,20})?$",
-                              description="The one Discord user he answers and calls \"me\". In Discord: "
-                                          "Settings, Advanced, Developer Mode on, then right-click yourself, Copy "
-                                          "User ID. Empty reads the variable under Advanced.",
-                              json_schema_extra=ui(restarts=["{brains}"], options="discord_users"))
-    allowed_user_env: str = Field("DISCORD_ALLOWED_USER_ID", title="User id variable",
-                                  description="The variable in data/.env read for your user id while the field "
-                                              "above is empty; older configs kept it there.",
-                                  json_schema_extra=ui("advanced", restarts=["{brains}"], options="env",
+                           json_schema_extra=ui(hidden=True, restarts=["{brains}"],
+                                                secret=secret("DISCORD_BOT_TOKEN", "Bot token",
+                                                              "In the Discord Developer Portal: your app, Bot, Reset "
+                                                              "Token. Turn on Message Content Intent.")))
+    allowed_user: str = Field("", title="Your Discord user ID", pattern=r"^(\d{17,20})?$",
+                              description="The one Discord user he answers and calls \"me\".",
+                              json_schema_extra=ui(restarts=["{brains}"], options="discord_users",
+                                                   help="In Discord: Settings, Advanced, turn on Developer Mode, then "
+                                                        "right-click yourself and Copy User ID."))
+    allowed_user_env: str = Field("DISCORD_ALLOWED_USER_ID", title="Variable for your user ID (older setups)",
+                                  description="The variable in data/.env read for your user ID while the field "
+                                              "above is empty.",
+                                  json_schema_extra=ui(hidden=True, restarts=["{brains}"],
                                                        when={"channels.discord.allowed_user": ["", None]}))
-    session_idle_mins: int = Field(30, ge=1, title="Conversation resets after (min)",
-                                   description="Idle minutes before a DM conversation starts fresh (and re-reads memory).",
-                                   json_schema_extra=ui("advanced"))
+    session_idle_mins: int = Field(30, ge=1, title="New conversation after",
+                                   description="Quiet minutes before a direct-message conversation starts fresh and "
+                                               "reads memory again.",
+                                   json_schema_extra=ui(unit="min"))
     contacts: dict[str, Annotated[str, Field(pattern=DISCORD_ID, json_schema_extra=ui(options="discord_users"))]] = \
-        Field(default_factory=dict, title="Contacts",
-              description="People he may message, by the name you say and their Discord user. The bot can "
-                          "only reach people who share a server with it.",
-              json_schema_extra=ui(restarts=["{brains}"], key_title="Name", value_title="Discord user",
-                                   icon="discord"))
+        Field(default_factory=dict, title="People he can message",
+              description="By the name you say and their Discord user.",
+              json_schema_extra=ui(restarts=["{brains}"], key_title="Person", value_title="Discord user",
+                                   help="Only people who share a server with your bot."))
 
     def allowed_id(self) -> str:
         """The allowed user's id: the field, else the variable older configs name (data/.env)."""
@@ -367,160 +412,185 @@ class DiscordChannel(Model):
 
 class SatelliteDevice(Model):
     model_config = section("satellite")
-    host: str = Field(description="Address of the box on the LAN, an IP or its .local name.")
-    port: int = Field(6053, ge=1, le=65535, description="ESPHome API port.", json_schema_extra=ui("advanced"))
+    host: str = Field(title="Address",
+                      json_schema_extra=ui(help="The box's IP address or .local name on your network."))
+    port: int = Field(6053, ge=1, le=65535, description="ESPHome API port.", json_schema_extra=ui(hidden=True))
     key_env: str | None = Field(None, title="Key variable",
-                                description="The variable in data/.env that holds the box's API encryption key "
-                                            "(the one Home Assistant shows for it). Unset for a box without "
-                                            "encryption.",
-                                json_schema_extra=ui("advanced", secret=secret("VOICE_PE_KEY", "Encryption key")))
+                                description="The variable in data/.env that holds the box's API encryption key. "
+                                            "Unset for a box without encryption.",
+                                json_schema_extra=ui(hidden=True, secret=secret(
+                                    "VOICE_PE_KEY", "Encryption key", "The key Home Assistant shows for the box. "
+                                                                      "Leave it empty for a box without encryption.", optional=True)))
     wake_word: str | None = Field(None, title="Wake word",
-                                  description="On-device wake word to switch on, by id (okay_nabu, hey_jarvis, "
-                                              "hey_mycroft on a stock Voice PE; okay_winston with Winston's "
-                                              "firmware). Several, comma separated, if the box runs more than "
-                                              "one at a time. Unset keeps the box's choice. A long press on "
-                                              "the box's button switches it off and on again (button only).")
+                                  description="Several, comma separated, if the box runs more than one at a time. "
+                                              "A long press on the box's button "
+                                              "switches it off and on again (button only).",
+                                  json_schema_extra=ui(placeholder="The box's own",
+                                                       help="Okay Nabu, Hey Jarvis or Hey Mycroft on a stock box; "
+                                                            "Okay Winston with Winston's firmware."))
     wake_sensitivity: Literal["", "Slightly sensitive", "Moderately sensitive", "Very sensitive"] = Field(
         "", title="Wake word sensitivity",
         description="How readily the box wakes. More sensitive misses less and wakes by mistake more. On a stock "
-                    "Voice PE it covers its own wake words; Okay Winston needs Winston's firmware from "
-                    "2026-09-27 on (0.95, 0.85, 0.70). Empty keeps the box's setting.",
+                    "box it covers its own wake words; Okay Winston needs Winston's firmware. Empty keeps the "
+                    "box's setting.",
         json_schema_extra=ui(labels={"": "The box's setting", "Slightly sensitive": "Slightly (fewest false wakes)",
                                      "Moderately sensitive": "Moderately", "Very sensitive": "Very (fewest misses)"}))
     area: str | None = Field(None, title="Home Assistant area",
-                             description="The area this room is in Home Assistant, so \"turn off the lights\" "
-                                         "said here means its lights. Unset uses the room's name. Browser "
-                                         "sessions set to the same room use it too.",
-                             json_schema_extra=ui(restarts=["{brains}"], options="ha_areas"))
+                             description="Talk pages set to the same room use it too.",
+                             json_schema_extra=ui(restarts=["{brains}"], options="ha_areas",
+                                                  placeholder="Same as the room's name",
+                                                  help="So \"the lights\" said here means this room's lights."))
+
+    @field_validator("wake_word")
+    @classmethod
+    def _wake_ids(cls, value: str | None) -> str | None:
+        """The box's ids for what you type: "Okay Nabu" is okay_nabu."""
+        words = [w.strip().lower().replace(" ", "_") for w in (value or "").split(",")]
+        return ",".join(w for w in words if w) or None
+
+
+TURN_TAKING, TALKING_OVER = "Turn taking on the boxes", "Talking over him"     # groups of satellite settings
 
 
 class SatelliteChannel(Model):
-    model_config = section("satellite", enabled_by="enabled")
-    enabled: bool = Field(False, description="Talk to him through room satellites such as Home Assistant's "
-                                             "Voice Preview Edition. The box must not also be in Home Assistant's "
-                                             "voice pipeline: only one client can have its microphone.")
-    devices: dict[str, SatelliteDevice] = Field(default_factory=dict,
-                                                description="Satellites by room or name, e.g. \"living room\".",
+    model_config = section("satellite", enabled_by="enabled",
+                           help="Speakers with a microphone, such as Home Assistant Voice PE. Each box is a room, so "
+                                "\"the lights\" said there means that room's lights.")
+    enabled: bool = Field(False, title="Listen through room boxes",
+                          json_schema_extra=ui(help="Take a box out of Home Assistant's own voice assistant first: "
+                                                    "only one can use its microphone."))
+    devices: dict[str, SatelliteDevice] = Field(default_factory=dict, title="Room boxes",
+                                                description="Each box by its room, like \"living room\". What you "
+                                                            "say there shares one conversation.",
                                                 json_schema_extra=ui(key_title="Room", icon="satellite"))
+    follow_up_secs: float = Field(6.0, ge=0.0, le=20.0, title="Listen after a reply",
+                                  description="At least 8 s after a question.",
+                                  json_schema_extra=ui(unit="s", labels={"0": "Only after a question"},
+                                                       help="He keeps listening this long without the wake word."))
     http_port: int = Field(8702, ge=1, le=65535, title="Audio port",
                            description="Port the boxes fetch his spoken replies from, on every interface.",
-                           json_schema_extra=ui("advanced"))
+                           json_schema_extra=ui(hidden=True))
     public_host: str | None = Field(None, title="Address the boxes use",
-                                    description="This machine's address as the boxes reach it. Unset finds it from "
-                                                "the route to each box.",
-                                    json_schema_extra=ui("advanced"))
-    end_silence_secs: float = Field(0.8, ge=0.3, le=3.0, title="End of speech (s)",
-                                    description="Silence after speech that ends a request.",
-                                    json_schema_extra=ui("advanced"))
-    unfinished_silence_secs: float = Field(2.5, ge=0.5, le=5.0, title="Pause when unfinished (s)",
-                                           description="Silence that ends a request when the turn detector "
-                                                       "thinks the sentence is unfinished, so a pause to think "
-                                                       "does not cut you off.",
-                                           json_schema_extra=ui("advanced"))
-    chat_silence_secs: float = Field(1.5, ge=0.3, le=5.0, title="Pause in a conversation (s)",
+                                    description="This computer's address as the boxes reach it. Unset finds it "
+                                                "from the route to each box.",
+                                    json_schema_extra=ui(hidden=True))
+    session_idle_mins: int = Field(10, ge=1, title="New conversation after",
+                                   description="Quiet minutes before a room's conversation starts fresh: its box "
+                                               "and the Talk pages set to that room share one.",
+                                   json_schema_extra=ui(unit="min"))
+    end_silence_secs: float = Field(0.8, ge=0.3, le=3.0, title="Silence before he answers",
+                                    json_schema_extra=ui(hidden=True, unit="s", group=TURN_TAKING))
+    unfinished_silence_secs: float = Field(2.5, ge=0.5, le=5.0, title="Silence mid-sentence",
+                                           description="Used instead when what you said sounds unfinished, so a "
+                                                       "pause to think does not cut you off.",
+                                           json_schema_extra=ui(hidden=True, unit="s", group=TURN_TAKING))
+    chat_silence_secs: float = Field(1.5, ge=0.3, le=5.0, title="Pause in a conversation",
                                      description="Silence that ends a finished-sounding sentence when you "
                                                  "answer him after a reply that did nothing in the house, so "
                                                  "you can stop to think between sentences.",
-                                     json_schema_extra=ui("advanced"))
-    follow_up_secs: float = Field(6.0, ge=0.0, le=20.0, title="Listen after a reply (s)",
-                                  description="After every reply the box listens this long for more, without the "
-                                              "wake word (at least 8 s after a question). 0: only after a question.")
-    barge_in_secs: float = Field(0.3, ge=0.0, le=2.0, title="Speech that interrupts him (s)",
-                                 description="Talking over a reply this long stops him, and what you say is the "
-                                             "next request. Needs Winston's firmware on the box. Longer if his own "
-                                             "voice or the room stops him; 0: never.",
-                                 json_schema_extra=ui("advanced"))
-    barge_in_volume: float = Field(0.6, ge=0.0, le=1.0, title="Loudness that interrupts him",
-                                   description="How loud talking over a reply must be to count. Lower if "
-                                               "speaking across the room does not stop him, higher if his own "
-                                               "voice does.",
-                                   json_schema_extra=ui("advanced"))
-    barge_in_gain_db: float = Field(30.0, ge=0.0, le=60.0, title="Gain on the quiet microphone (dB)",
+                                     json_schema_extra=ui(hidden=True, unit="s", group=TURN_TAKING))
+    barge_in_secs: float = Field(0.0, ge=0.0, le=2.0, title="Talk over him for at least",
+                                 description="Longer if his own voice or the room stops him.",
+                                 json_schema_extra=ui(hidden=True, unit="s", labels={"0": "Off"}, group=TALKING_OVER,
+                                                      help="Talking over a reply stops him, and what you say becomes "
+                                                           "the next request. Needs Winston's firmware on the box."))
+    barge_in_volume: float = Field(0.6, ge=0.0, le=1.0, title="How loud you must be",
+                                   description="Lower if speaking across the room does not stop him, higher if his "
+                                               "own voice does.",
+                                   json_schema_extra=ui(hidden=True, widget="slider", group=TALKING_OVER))
+    barge_in_gain_db: float = Field(30.0, ge=0.0, le=60.0, title="Boost on the second microphone",
                                     description="A box with a second microphone channel (the Voice PE's carries "
                                                 "little of his voice) is listened to there for talking over him, "
                                                 "this much louder: you read -55 to -65 dBFS on it.",
-                                    json_schema_extra=ui("advanced"))
-    barge_in_grace_secs: float = Field(3.0, ge=0.0, le=10.0, title="No interrupting at first (s)",
+                                    json_schema_extra=ui(hidden=True, unit="dB", group=TALKING_OVER))
+    barge_in_grace_secs: float = Field(3.0, ge=0.0, le=10.0, title="Not at the start of a reply",
                                        description="The start of a reply that talking over does not stop: the "
                                                    "box's echo cancelling lets his voice through while it settles.",
-                                       json_schema_extra=ui("advanced"))
-    session_idle_mins: int = Field(10, ge=1, title="Conversation resets after (min)",
-                                   description="Idle minutes before a room's conversation starts fresh: its box "
-                                               "and the browser sessions set to that room share one.",
-                                   json_schema_extra=ui("advanced"))
+                                       json_schema_extra=ui(hidden=True, unit="s", group=TALKING_OVER))
 
 
 class WebChannel(Model):
-    session_idle_mins: int = Field(30, ge=1, title="Conversation resets after (min)",
-                                   description="Idle minutes before the Talk page's typed conversation starts fresh "
-                                               "(and re-reads memory).",
-                                   json_schema_extra=ui("advanced"))
+    session_idle_mins: int = Field(30, ge=1, title="New conversation after",
+                                   description="Quiet minutes before the Talk page's typed conversation starts fresh "
+                                               "and reads memory again.",
+                                   json_schema_extra=ui(unit="min"))
 
 
 class Channels(Model):
-    voice: VoiceChannel = VoiceChannel()
+    voice: VoiceChannel = Field(VoiceChannel(), title="Talk page")
     discord: DiscordChannel = DiscordChannel()
-    satellite: SatelliteChannel = SatelliteChannel()
+    satellite: SatelliteChannel = Field(SatelliteChannel(), title="Room boxes")
     web: WebChannel = WebChannel()
 
 
 class ExposedEntity(Model):
     model_config = section("{brains}")
-    name: str | None = Field(None, description="What you call it. Saved to Home Assistant as an alias; "
-                                               "Home Assistant's own name is never changed.")
-    aliases: list[str] = Field(default_factory=list, description="Other names people say for it, saved to Home "
-                                                                 "Assistant as aliases.")
-    say_first: str | None = Field(None, title="Said first",
-                                  description="What he says as soon as a spoken request names it (by name or alias), "
-                                              "in place of \"One moment.\", before he acts. For a script that sets a "
-                                              "scene: \"Movie night it is.\"")
-    quiet_after: bool = Field(False, title="Quiet after",
-                              description="Once a spoken request that names it has worked, he says nothing more and "
-                                          "the box does not listen on: for a scene with music that speaks for itself. "
-                                          "A failure is still reported.")
-    shortcut: bool = Field(False, title="Run when named",
-                           description="For a script: saying just one of its names (\"Winston, movie night\") runs it "
-                                       "straight away without asking the model, so it does the same every time, even "
-                                       "twice in a row. Anything longer goes to the model as usual.")
+    name: str | None = Field(None, title="Main name",
+                             json_schema_extra=ui(help="Added to Home Assistant as one more name. Its own name there "
+                                                       "stays."))
+    aliases: list[str] = Field(default_factory=list, title="Other names",
+                               description="Other names people say for it, added to Home Assistant too.")
+    say_first: str | None = Field(None, title="Say first",
+                                  description="By name or another name, before he acts. For a script that sets a "
+                                              "scene: \"Movie night it is.\"",
+                                  json_schema_extra=ui(help="Said the moment you name it, instead of \"One "
+                                                            "moment.\""))
+    quiet_after: bool = Field(False, title="Stay quiet when it works",
+                              description="A room box does not listen on either. A failure is still reported.",
+                              json_schema_extra=ui(help="For a scene with music that speaks for itself: once it has "
+                                                        "worked, he says nothing more."))
+    shortcut: bool = Field(False, title="Run it as soon as you say its name",
+                           description="Even twice in a row. Anything longer goes to the brain as usual.",
+                           json_schema_extra=ui(help="For a script: saying just one of its names runs it without "
+                                                     "asking the brain, the same every time."))
 
 
 class VerifyConfig(Model):
     model_config = section("{brains}")
-    enabled: bool = Field(True, title="Check after an action",
+    enabled: bool = Field(True, title="Check the device after he acts",
                           description="After he turns something on or off or sets a light, he reads its state from "
-                                      "Home Assistant and says so when it did not change (\"The shelf lamp did not "
-                                      "respond.\"). His answer is not delayed; the correction follows it.")
-    wait_secs: float = Field(3.0, ge=0.5, le=15, title="Give up after (s)",
-                             description="Seconds a device has to show the change before he says it did not. He "
+                                      "Home Assistant (\"The shelf lamp did not respond.\").",
+                          json_schema_extra=ui(help="He answers right away, then tells you if the device did not "
+                                                    "change."))
+    wait_secs: float = Field(3.0, ge=0.5, le=15, title="Give up after",
+                             description="How long a device has to show the change before he says it did not. He "
                                          "reads it at 0.5 s, 1.5 s and this, and stops as soon as it matches.",
-                             json_schema_extra=ui("advanced"))
+                             json_schema_extra=ui(unit="s", help="Raise it if he says a slow device did not respond "
+                                                                 "when it did."))
 
 
 class HomeAssistantConfig(Model):
     model_config = section("{brains}", enabled_by="enabled", icon="homeassistant")
     # winstond listens for announcement events with these at start, so they also restart control
-    enabled: bool = Field(True, description="Connect Winston to Home Assistant: its devices as tools, sensors, "
-                                            "units and announcement events. Off keeps the settings without using "
-                                            "them.",
-                          json_schema_extra=ui(restarts=["{brains}", "control"]))
-    url: str = Field(title="URL", description="Home Assistant base URL on the LAN.",
-                     json_schema_extra=ui(restarts=["{brains}", "control"]))
+    enabled: bool = Field(True, title="Use Home Assistant",
+                          description="Its devices as his actions, its sensors and units, and automations that make "
+                                      "him speak.",
+                          json_schema_extra=ui(restarts=["{brains}", "control"],
+                                               help="Off keeps these settings without using them."))
+    url: str = Field(title="Address",
+                     json_schema_extra=ui(restarts=["{brains}", "control"],
+                                          placeholder="http://homeassistant.local:8123"))
     token_env: str = Field("HA_TOKEN", title="Token variable",
                            description="The variable in data/.env that holds the long-lived access token.",
-                           json_schema_extra=ui("advanced", restarts=["{brains}", "control"],
-                                                secret=secret("HA_TOKEN", "Access token")))
-    mcp_path: str = Field("/api/mcp", title="MCP path", description="Path of Home Assistant's MCP server integration.",
-                          json_schema_extra=ui("advanced"))
-    expose: dict[str, ExposedEntity] = Field(default_factory=dict, title="Entities",
-                                             description="Entities he may see and control, with the names people say for them. Nothing else in "
-                                                         "Home Assistant is visible to him. Saving applies the list to Home "
-                                                         "Assistant: exposes it, un-exposes the rest and adds the "
-                                                         "aliases.",
+                           json_schema_extra=ui(hidden=True, restarts=["{brains}", "control"],
+                                                secret=secret("HA_TOKEN", "Access token",
+                                                              "In Home Assistant: your profile, Security, Long-lived "
+                                                              "access tokens. Use an administrator account.")))
+    mcp_path: str = Field("/api/mcp", title="MCP server path",
+                          description="Path of Home Assistant's Model Context Protocol Server integration.",
+                          json_schema_extra=ui(hidden=True))
+    expose: dict[str, ExposedEntity] = Field(default_factory=dict, title="Devices he can use",
+                                             description="With the names people say for them. Nothing else in Home "
+                                                         "Assistant is visible to him. Saving applies the list to "
+                                                         "Home Assistant: it exposes these, stops exposing the rest "
+                                                         "and adds their names.",
                                              json_schema_extra=ui(key_title="Entity", key_options="ha_entities"))
-    expose_domains: list[str] = Field(default_factory=lambda: ["person", "weather", "todo"], title="Domains",
-                                      description="Whole domains to expose, without aliases.",
-                                      json_schema_extra=ui("advanced", options="ha_domains"))
-    verify: VerifyConfig = Field(VerifyConfig(), title="After an action",
+    expose_domains: list[str] = Field(default_factory=lambda: ["person", "weather", "todo"],
+                                      title="Kinds",
+                                      description="Kinds of things exposed whole, without names of their own, like "
+                                                  "people and weather.",
+                                      json_schema_extra=ui(options="ha_domains"))
+    verify: VerifyConfig = Field(VerifyConfig(), title="Check it worked",
                                  description="Home Assistant says done before a device has acted. He answers "
                                              "straight away, then checks and corrects himself if it did not happen.")
 
@@ -539,150 +609,170 @@ class Providers(Model):
 
 class MemoryConfig(Model):
     model_config = section("{brains}", enabled_by="enabled")
-    enabled: bool = Field(True,
-                          description="Load remembered facts into every new conversation and offer the remember tool.")
-    dir: str = Field("memory", title="Directory",
-                     description="Where the fact files live, relative to the data directory.",
-                     json_schema_extra=ui("advanced"))
-    commit_on_write: bool = Field(True, title="Commit on write",
-                                  description="Commit every remembered fact to the vault's git repository, so "
-                                              "changes can be reviewed and undone.",
-                                  json_schema_extra=ui("advanced"))
+    enabled: bool = Field(True, title="Remember what you tell him",
+                          description="Off also takes away his way to remember something new.",
+                          json_schema_extra=ui(help="He reads it at the start of every conversation. Off keeps it all "
+                                                    "but stops using it."))
+    dir: str = Field("memory", title="Memory folder",
+                     description="Where the fact files live, relative to the data folder.",
+                     json_schema_extra=ui(hidden=True))
+    commit_on_write: bool = Field(True, title="Keep a history of every change",
+                                  json_schema_extra=ui(help="Every change stays in the memory folder's history, "
+                                                            "forgotten facts too."))
 
 
 class AnnounceConfig(Model):
     model_config = section("control", enabled_by="enabled")
-    enabled: bool = Field(True, description="Let him speak on his own: Home Assistant automations, the API and "
-                                            "`winston announce` send him something to say.")
-    chime: str = Field("{repo}/assets/sounds/chime.wav", description="Sound played before an announcement, so it "
-                       "is clearly a notification. Empty for none.",
-                       json_schema_extra=ui("advanced", restarts=["voice"], options="sounds", empty_means_off=True))
-    quiet_hours: str | None = Field("22:00-07:00", title="Quiet hours",
-                                    description="HH:MM-HH:MM when announcements are not spoken, only sent to Discord. "
-                                                "Empty for never quiet.",
-                                    json_schema_extra=ui(widget="time_range", empty_means_off=True))
+    enabled: bool = Field(True, title="Let automations make him speak",
+                          description="Through a Home Assistant event, Winston's API or the winston announce command.",
+                          json_schema_extra=ui(help="Home Assistant automations and other apps can send him "
+                                                    "something to say aloud."))
+    chime: str = Field("{repo}/assets/sounds/chime.wav", title="Sound before an announcement",
+                       description="So it is clearly an announcement. Empty for none.",
+                       json_schema_extra=ui(restarts=["voice"], options="sounds", empty_means_off=True))
+    quiet_hours: str | None = Field("22:00-07:00", title="Quiet hours", description="Empty is never quiet.",
+                                    json_schema_extra=ui(widget="time_range", empty_means_off=True,
+                                                         help="Nothing is spoken then, except what you asked for, "
+                                                              "like reminders, and urgent alerts."))
     discord: Literal["always", "fallback", "never"] = Field(
-        "fallback", title="Also to Discord",
-        description="always: every announcement; fallback: when nothing can speak it (quiet hours, no speaker "
-                    "connected); never.",
+        "fallback", title="Also send to Discord",
+        description="It cannot be spoken in quiet hours, or with no speaker connected.",
         json_schema_extra=ui(labels={"always": "Always", "fallback": "When it cannot be spoken", "never": "Never"}))
-    ha_event: str = Field("winston_announce", title="Home Assistant event",
-                          description="Event type an automation fires with data {text, context} to announce.",
-                          json_schema_extra=ui("advanced"))
+    ha_event: str = Field("winston_announce", title="Home Assistant event name",
+                          description="The event type an automation fires with data {text, context} to announce.",
+                          json_schema_extra=ui(hidden=True))
 
 
 class ExtensionKind(Model):
-    enabled: bool = Field(True, description="Let him speak up with this kind at all.")
-    deliver: str | dict[str, str] | None = Field(None, description="When it is said, over the extension's own "
-                                                                   "choice; one per level if you like.")
-    where: str | dict[str, str] | None = Field(None, description="Where it is said, over the extension's own choice.")
+    enabled: bool = Field(True, title="Let him bring this up",
+                          json_schema_extra=ui(help="Off keeps him quiet about it."))
+    deliver: str | dict[str, str] | None = Field(None, title="When",
+                                                 description="When it is said, over the extension's own choice; one "
+                                                             "per level if you like.")
+    where: str | dict[str, str] | None = Field(None, title="Where",
+                                               description="Where it is said, over the extension's own choice.")
 
 
 class ExtensionTool(Model):
-    enabled: bool = Field(True, description="Offer the tool to the brain.")
+    enabled: bool = Field(True, title="Let him use it",
+                          json_schema_extra=ui(help="Off takes the action away from him."))
     tier: Literal["read", "act", "restricted"] | None = Field(
-        None, description="Your tier for it, over what the extension says: read runs, act runs and is logged as "
-                          "an action, restricted waits for you to confirm it outside the voice.")
-    offer: bool = Field(False, title="Offer to other apps",
-                        description="List it at winstond's /mcp, for Claude Code and other MCP clients.")
+        None, title="Permission",
+        description="Over the extension's own choice: read and act run on their own, restricted asks you first, "
+                    "outside the voice.")
+    offer: bool = Field(False, title="Shared with other apps",
+                        description="Listed at Winston's /mcp address, for Claude Code and other MCP clients.",
+                        json_schema_extra=ui(help="AI apps on this computer that speak MCP can use it."))
 
 
 class McpServer(Model):
-    command: list[str] | None = Field(None, description="How to start it, for a server that talks over stdio.")
-    url: str | None = Field(None, description="Where it listens, for a server that talks over HTTP.")
-    env: list[str] = Field(default_factory=list, description="Variables from data/.env it gets; no others.")
+    title: str | None = Field(None, title="Name")
+    command: list[str] | None = Field(None, title="Start command",
+                                      description="For a server that talks over stdio.",
+                                      json_schema_extra=ui(widget="args",
+                                                           help="The command and its arguments, one per line."))
+    url: str | None = Field(None, title="Address", description="Where it listens, for a server that talks over HTTP.")
+    env: list[str] = Field(default_factory=list, title="Keys it needs",
+                           description="The keys it gets from this computer, by the name it reads each one by; it "
+                                       "gets no others.")
     token_env: str | None = Field(None, title="Token variable",
                                   description="For a server over HTTP: the variable in data/.env that holds its "
                                               "token, sent as Authorization: Bearer on every request.",
-                                  json_schema_extra=ui("advanced", secret=secret("MCP_TOKEN", "Token")))
+                                  json_schema_extra=ui(hidden=True, secret=secret(
+                                      "MCP_TOKEN", "Token", "Only for a server that asks for one: the token it gave "
+                                                            "you.", optional=True)))
 
 
 class ExtensionConfig(Model):
     model_config = section()
-    enabled: bool = Field(False, description="Run it. Off until switched on; its card shows what it may reach "
-                                             "first.")
+    enabled: bool = Field(False, title="Use this extension",
+                          json_schema_extra=ui(help="Off until you switch it on; its page shows what it can reach "
+                                                    "first."))
     settings: dict[str, Any] = Field(default_factory=dict, description="Its own settings, drawn from what it "
                                                                          "describes.")
     kinds: dict[str, ExtensionKind] = Field(default_factory=dict, title="Speaking up",
-                                            description="Your choices for each kind of nudge, by kind.")
-    tools: dict[str, ExtensionTool] = Field(default_factory=dict,
-                                            description="Your choices for each tool, by the tool's own name. For an "
-                                                        "MCP server, only the tools listed here are offered.")
-    memory_mb: int = Field(500, ge=50, le=16000, title="Memory limit (MB)",
-                           description="Past this much memory it is stopped, with the reason on its card.",
-                           json_schema_extra=ui("advanced"))
+                                            description="Your choices for each kind of message it brings up.")
+    tools: dict[str, ExtensionTool] = Field(default_factory=dict, title="Actions",
+                                            description="Your choices for each action, by its own name. For an MCP "
+                                                        "server, only the actions listed here are offered.")
+    memory_mb: int = Field(500, ge=50, le=16000, title="Memory limit",
+                           json_schema_extra=ui(unit="MB", help="Past this, it is stopped and this page says why."))
     mcp: McpServer | None = Field(None, title="MCP server", description="Set for an MCP server added as a "
-                                                                          "tools-only extension.",
-                                  json_schema_extra=ui("advanced"))
+                                                                          "tools-only extension.")
+
+
+PUT_OFF = "When you put something off"     # the times a put-off message is said at, apart from the rules
 
 
 class SpeakUpConfig(Model):
     model_config = section()
-    home: str | None = Field(None, title="You", description="The person entity that says whether you are home: "
-                                                            "for nudges held until you get home, spoken at home "
-                                                            "and sent to your phone away, and extensions allowed "
-                                                            "to know.",
-                             json_schema_extra=ui(options="ha_entities", options_query={"domain": "person"}))
+    home: str | None = Field(None, title="Your person in Home Assistant",
+                             description="For messages held until you get home, spoken at home and sent to your "
+                                         "phone away, and for extensions allowed to know.",
+                             json_schema_extra=ui(options="ha_entities", options_query={"domain": "person"},
+                                                  placeholder="Not set", help="So he knows whether you are home."))
     phone: str | None = Field(None, title="Your phone",
                               description="The Home Assistant notify service that reaches your phone (the companion "
-                                          "app's): nudges while you are away, and confirming restricted calls. "
-                                          "Empty: Discord, when it is set up.",
+                                          "app's). Empty: Discord, when it is set up.",
                               json_schema_extra=ui(options="ha_notify", empty_means_off=True,
-                                                   placeholder="None: Discord, when it is set up"))
-    max_per_day: int = Field(4, ge=0, le=50, title="Spoken nudges a day",
-                             description="Past this many spoken nudges in a day, the rest wait for the next "
-                                         "morning's briefing. What you asked for (reminders, a time you gave) "
-                                         "does not count.")
-    briefing_from: str = Field("06:00", title="Briefing from",
-                               description="The morning briefing is given at your first conversation after this "
-                                           "time, or when you ask what's new.",
-                               json_schema_extra=ui(widget="time"))
-    fallback_time: str = Field("18:00", title="After work",
+                                                   placeholder="Not set: Discord instead, if it is on",
+                                                   help="Gets messages while you are away, and asks you to confirm "
+                                                        "actions that need your OK."))
+    max_per_day: int = Field(4, ge=0, le=50, title="Spoken messages a day",
+                             json_schema_extra=ui(help="Past this, the rest wait for the morning briefing. What you "
+                                                       "asked for does not count."))
+    briefing_from: str = Field("06:00", title="Morning briefing from",
+                               json_schema_extra=ui(widget="time",
+                                                    help="Given at your first conversation after this time, or when "
+                                                         "you ask what's new."))
+    fallback_time: str = Field("18:00", title="When after work is",
                                description="\"Remind me after work\" when he does not know when you finish: "
                                            "when you get home that day, or at this time if you are home already.",
-                               json_schema_extra=ui("advanced", widget="time"))
-    day_parts: dict[str, str] = Field(
+                               json_schema_extra=ui(widget="time", group=PUT_OFF))
+    day_parts: dict[str, Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]] = Field(
         default_factory=lambda: {"morning": "08:00", "afternoon": "15:00", "evening": "19:00", "tonight": "20:00"},
         title="Parts of the day", description="What \"tomorrow morning\" and \"this evening\" mean when you put "
                                               "something off.",
-        json_schema_extra=ui("advanced", key_title="Part", value_title="Time"))
+        json_schema_extra=ui(key_title="Part of the day", value_title="Time", group=PUT_OFF,
+                             help="A 24-hour time, like 19:00."))
 
 
 class TurnsConfig(Model):
     """The turn record (core/turns.py, docs/understanding.md)."""
     model_config = section("voice", "satellite")
-    enabled: bool = Field(False, title="Keep turns",
-                          description="Keep each spoken turn: the audio of what you said, what he heard, what he did "
-                                      "and said, and how long each step took. Used to find and mark his mistakes and "
-                                      "to test changes on them. Stays on this machine.")
-    keep_days: int = Field(14, ge=1, le=365, title="Keep for (days)",
-                           description="Days a turn is kept; older days are removed.")
-    dir: str = Field("turns", title="Folder",
-                     description="Where turns are kept, relative to the data directory.",
-                     json_schema_extra=ui("advanced"))
+    enabled: bool = Field(False, title="Keep recordings of what you say",
+                          description="Also how long each step took, to find and mark his mistakes and test changes "
+                                      "on them.",
+                          json_schema_extra=ui(help="Your audio, what he heard, did and said, kept on this computer. "
+                                                    "History's details, the diary and marking mistakes need it."))
+    keep_days: int = Field(14, ge=1, le=365, title="Delete recordings after", json_schema_extra=ui(unit="days"))
+    dir: str = Field("turns", title="Recordings folder",
+                     description="Where recordings are kept, relative to the data folder.",
+                     json_schema_extra=ui(hidden=True))
 
 
 class LoggingConfig(Model):
     model_config = section("{brains}")
-    turns: TurnsConfig = Field(default_factory=TurnsConfig, title="Turns",
-                               description="Each spoken turn kept with its audio, to find his mistakes and test changes.")
-    tool_calls: str = Field("logs/tool_calls.jsonl", title="Tool calls",
-                            description="Every tool call with its arguments and result, one JSON line each, "
-                                        "relative to the data directory.",
-                            json_schema_extra=ui("advanced"))
-    latency: str = Field("logs/latency.jsonl",
-                         description="Per-turn timings (speech end, first token, first audio), one JSON line each.",
-                         json_schema_extra=ui("advanced"))
+    turns: TurnsConfig = Field(default_factory=TurnsConfig, title="Recordings",
+                               description="Each spoken request kept with its audio, to find his mistakes and test "
+                                           "changes.")
+    tool_calls: str = Field("logs/tool_calls.jsonl", title="Action log file",
+                            description="Every action with its arguments and result, one JSON line each, "
+                                        "relative to the data folder.",
+                            json_schema_extra=ui(hidden=True))
+    latency: str = Field("logs/latency.jsonl", title="Timing log file",
+                         description="Each request's timings (speech end, first token, first audio), one JSON line "
+                                     "each.",
+                         json_schema_extra=ui(hidden=True))
 
 
 class ControlConfig(Model):
-    model_config = section("control")
-    host: str = Field("127.0.0.1",
-                      description="Address winstond listens on. 127.0.0.1 keeps the API and web UI on this machine; "
-                                  "it has no login.",
-                      json_schema_extra=ui("advanced"))
-    port: int = Field(8700, description="Port for the API and the web UI.",
-                      json_schema_extra=ui("advanced"))
+    model_config = section("control", help="Where this page and Winston's API are served. There is no login.")
+    host: str = Field("127.0.0.1", title="Who can open this page",
+                      description="0.0.0.0 opens it to your whole network.",
+                      json_schema_extra=ui(options="control_hosts", help="Every device on your network lets a phone "
+                                                                         "or a wall display open it."))
+    port: int = Field(8700, ge=1, le=65535, title="Port", json_schema_extra=ui(hidden=True))
 
     @property
     def url(self) -> str:
@@ -703,14 +793,14 @@ class Shortcut(Model):
                                   "(\"start_over\"). The tool must be available to the brain.")
     args: dict[str, Any] = Field(default_factory=dict, title="Arguments",
                                  description="Fixed arguments passed to the tool every time, e.g. which track a party "
-                                             "plays and which light scene it runs.",
-                                 json_schema_extra=ui("advanced"))
+                                             "plays and which light scene it runs.")
     say_first: str | None = Field(None, title="Said first",
                                   description="What he says the instant you say it, before it runs, in place of "
                                               "\"One moment.\". For a party: \"Here we go, sir.\"")
-    quiet_after: bool = Field(False, title="Quiet after",
-                              description="Once it has worked he says nothing more and the box does not listen on: for "
-                                          "a scene with music that speaks for itself. A failure is still reported.")
+    quiet_after: bool = Field(False, title="Stay quiet when it works",
+                              description="A room box does not listen on either. A failure is still reported.",
+                              json_schema_extra=ui(help="For a scene with music that speaks for itself: once it has "
+                                                        "worked, he says nothing more."))
 
 
 def _tools_to_extensions(data: dict[str, Any]) -> dict[str, Any]:
@@ -733,7 +823,7 @@ def _tools_to_extensions(data: dict[str, Any]) -> dict[str, Any]:
 
 class WinstonConfig(Model):
     version: int = Field(2, description="Config file format version. Winston sets it.",
-                         json_schema_extra=ui("advanced"))
+                         json_schema_extra=ui(hidden=True))
     assistant: AssistantConfig = AssistantConfig()
     region: RegionConfig = Field(default_factory=RegionConfig, title="Region")
     engines: dict[str, EngineConfig] = Field(default_factory=dict, title="Engines",
@@ -741,16 +831,17 @@ class WinstonConfig(Model):
                                                          "the brain's server, tts for the speech server.",
                                              json_schema_extra=ui(key_title="Name"))
     llm: LLMConfig = Field(title="Brain")
-    stt: STTConfig = Field(STTConfig(), title="Speech to text")
-    tts: TTSConfig = Field(TTSConfig(), title="Text to speech")
-    vad: VADConfig = Field(VADConfig(), title="Voice activity")
-    channels: Channels = Channels()
-    providers: Providers = Providers()
+    stt: STTConfig = Field(STTConfig(), title="Hearing")
+    tts: TTSConfig = Field(TTSConfig(), title="Speaking")
+    vad: VADConfig = Field(VADConfig(), title="Turn taking in the browser")
+    channels: Channels = Field(Channels(), title="Ways to talk")
+    providers: Providers = Field(Providers(), title="Home Assistant")
     memory: MemoryConfig = MemoryConfig()
-    announce: AnnounceConfig = AnnounceConfig()
+    announce: AnnounceConfig = Field(AnnounceConfig(), title="Announcements")
     extensions: dict[str, ExtensionConfig] = Field(default_factory=dict, title="Extensions",
                                                    description="Each extension by its id: whether it runs, its "
-                                                               "settings, and your choices for its tools and nudges.",
+                                                               "settings, and your choices for its actions and "
+                                                               "messages.",
                                                    json_schema_extra=ui(key_title="Extension"))
     speak_up: SpeakUpConfig = Field(SpeakUpConfig(), title="Speaking up")
     shortcuts: list[Shortcut] = Field(default_factory=list, title="Shortcuts",
@@ -759,7 +850,7 @@ class WinstonConfig(Model):
                                                   "with.",
                                       json_schema_extra=ui(restarts=["{brains}"]))   # a list: its items' section is not read
     logging: LoggingConfig = LoggingConfig()
-    control: ControlConfig = ControlConfig()
+    control: ControlConfig = Field(ControlConfig(), title="Web address")
 
     @model_validator(mode="before")
     @classmethod

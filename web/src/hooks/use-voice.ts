@@ -44,7 +44,10 @@ export function useVoice(onError: (message: string) => void, room = '') {
       if (client.current === c) setStatus('on')
     } catch (error) {
       await stop()
-      onError(error instanceof Error ? error.message : 'Could not connect to the voice channel')
+      // A refused offer keeps winstond's answer, unread, as its cause; its detail says why.
+      const cause = (error as { cause?: unknown }).cause
+      const body = cause instanceof Response ? ((await cause.json().catch(() => null)) as { detail?: unknown } | null) : null
+      onError(typeof body?.detail === 'string' ? body.detail : error instanceof Error ? error.message : 'Could not connect the Talk page microphone')
     }
   }, [onError, room, stop])
 

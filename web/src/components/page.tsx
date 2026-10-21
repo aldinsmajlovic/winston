@@ -1,24 +1,103 @@
-import { useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { useQueryClient, type Query } from '@tanstack/react-query'
-import { CircleAlert, LoaderCircle, RotateCw } from 'lucide-react'
-import { errorText } from '@/api/client'
+import { CircleAlert, EllipsisVertical, LoaderCircle, RotateCw, type LucideIcon } from 'lucide-react'
+import { Link } from 'react-router'
+import { $api, errorText } from '@/api/client'
+import { IconButton } from '@/components/icon-button'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
-type Props = { title: string; actions?: ReactNode; children: ReactNode }
+/** The tab's title: "<page> · <his name>", or his name alone. */
+// eslint-disable-next-line react-refresh/only-export-components -- the hook every page sets its title with, beside Page
+export function useTitle(title?: string) {
+  const name = $api.useQuery('get', '/api/status').data?.assistant
+  useEffect(() => {
+    const text = [title, name].filter(Boolean).join(' · ')
+    if (text) document.title = text
+  }, [title, name])
+}
 
-export function Page({ title, actions, children }: Props) {
+/** Something the page does now (Start all, Add an MCP server), as opposed to a setting that waits for Save. */
+type Command = { label: string; icon?: LucideIcon; onClick: () => void; disabled?: boolean }
+
+/** Text buttons; in a narrow header two or more fold into one More menu, so the title keeps its room.
+ * One stays a button, since a menu of one saves no room. Its items are words, as in every menu. */
+function Commands({ commands }: { commands: Command[] }) {
+  const fold = commands.length > 1
   return (
     <>
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+      {commands.map(({ label, icon: Icon, onClick, disabled }) => (
+        <Button key={label} variant="outline" size="sm" className={cn(fold && '@max-4xl/header:hidden')} disabled={disabled} onClick={onClick}>
+          {Icon ? <Icon data-icon="inline-start" /> : null}
+          {label}
+        </Button>
+      ))}
+      {fold ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <IconButton label="More" className="@4xl/header:hidden">
+              <EllipsisVertical />
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {commands.map(({ label, onClick, disabled }) => (
+              <DropdownMenuItem key={label} disabled={disabled} onSelect={onClick}>
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+    </>
+  )
+}
+
+type Props = {
+  title: string
+  /** The page above this one, drawn as a breadcrumb before the title ("Extensions / Spotify"). */
+  back?: { to: string; label: string }
+  /** One sentence on what the page is for, first in it. */
+  intro?: ReactNode
+  commands?: Command[]
+  /** At the right of the header, after the commands: the save controls. */
+  actions?: ReactNode
+  /** A bar fixed along the bottom on a phone (unsaved changes); the page leaves room for it. */
+  footer?: ReactNode
+  children?: ReactNode
+}
+
+export function Page({ title, back, intro, commands, actions, footer, children }: Props) {
+  useTitle(title)
+  return (
+    <>
+      {/* Laid out by its own width, not the window's, since the sidebar takes part of it. As it narrows the
+          restart words shorten first, then the commands fold into More and the breadcrumb goes; in a phone's
+          width the words go and Restart becomes its icon, so the title keeps its room and nothing scrolls
+          sideways. */}
+      <header className="@container/header flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger />
-        <Separator orientation="vertical" className="mr-2 h-4" />
-        <h1 className="min-w-0 truncate text-base font-medium">{title}</h1>
-        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">{actions}</div>
+        <Separator orientation="vertical" className="mr-2 data-vertical:h-4 data-vertical:self-center" />
+        {back ? (
+          <span className="flex shrink-0 items-center gap-2 text-muted-foreground @max-2xl/header:hidden">
+            <Link to={back.to} className="hover:text-foreground">
+              {back.label}
+            </Link>
+            <span aria-hidden>/</span>
+          </span>
+        ) : null}
+        <h1 className="mr-auto min-w-0 truncate text-base font-medium">{title}</h1>
+        {commands?.length ? <Commands commands={commands} /> : null}
+        {actions}
       </header>
-      <main className="flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6">{children}</main>
+      <main className={cn('flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6', footer && 'max-sm:pb-20')}>
+        {intro ? <p className="text-muted-foreground">{intro}</p> : null}
+        {children}
+      </main>
+      {footer}
     </>
   )
 }

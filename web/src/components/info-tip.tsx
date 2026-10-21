@@ -2,16 +2,17 @@ import { useState } from 'react'
 import { Info } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
-/** An (i) beside a label: the explanation opens on hover, or on tap where there is no hover. */
-export function InfoTip({ text }: { text?: string | null }) {
+/** An (i) beside a label: the explanation opens on hover, or on tap where there is no hover. Its
+ * target reaches past the icon, and a screen reader hears what it is about (`label`). */
+export function InfoTip({ text, label }: { text?: string | null; label?: string }) {
   const [open, setOpen] = useState(false)
   if (!text) return null
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         type="button"
-        aria-label="More information"
-        className="inline-flex text-muted-foreground hover:text-foreground"
+        aria-label={label ? `About ${label}` : 'More information'}
+        className="relative inline-flex rounded-sm text-muted-foreground after:absolute after:-inset-2.5 hover:text-foreground"
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
       >

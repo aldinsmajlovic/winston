@@ -15,7 +15,8 @@ import asyncio
 import time
 import uuid
 from collections import deque
-from typing import Callable, Literal
+from collections.abc import Callable
+from typing import Literal
 
 import httpx
 from loguru import logger
@@ -30,6 +31,7 @@ from winston.config.schema import WinstonConfig
 from winston.core.common import Once, key
 from winston.core.guard import result_ok
 from winston.core.reply import ReplyFilter
+from winston.providers.home_assistant import tool_label as ha_tool_label
 
 State = Literal["idle", "listening", "thinking", "speaking"]
 
@@ -45,12 +47,15 @@ class LiveEvent(BaseModel):
     speakers, phone, discord, conversation, silent), links (title and url, if it has any): he spoke up,
     or would have.
     turn: call (the turn's id in the turn record), text (what was heard), room: a spoken turn was kept
-    (core/turns.py); the history gives its id to the channel's latest user line, so the page can mark it."""
+    (core/turns.py); the history gives its id to the channel's latest user line, so the page can mark it.
+    conversation: room, text (why, in words: "after 30 min of quiet", "his actions changed", "settings were
+    saved"): the next line starts a new typed conversation (channels/web.py). One you start is its start_over
+    tool line."""
     id: str = ""
     ts: float = 0
     channel: str
     type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm", "nudge",
-                  "turn"]
+                  "turn", "conversation"]
     state: State | None = None
     text: str | None = None
     reply: str | None = None
@@ -134,48 +139,58 @@ class Feed:
 
 # Tool labels: (running, done, failed) verb phrases; {t} is the target, {q} a quoted argument.
 _VERBS = {
-    "hassturnon": ("Turning on {t}", "Turned on {t}", "Could not turn on {t}"),
-    "hassturnoff": ("Turning off {t}", "Turned off {t}", "Could not turn off {t}"),
-    "hasslightset": ("Setting {t}", "Set {t}", "Could not set {t}"),
-    "getlivecontext": ("Checking the home", "Checked the home", "Could not check the home"),
-    "getdatetime": ("Checking the time", "Checked the time", "Could not check the time"),
-    "remember": ("Remembering {q}", "Remembered {q}", "Could not remember that"),
-    "forget": ("Forgetting {q}", "Forgot {q}", "Could not forget that"),
-    "send_message": ("Messaging {t}", "Messaged {t}", "Could not message {t}"),
-    "mark_mistake": ("Marking a mistake", "Marked a mistake", "Could not mark that"),
-    "start_over": ("Starting over", "Started a new conversation", "Could not start over"),
+    "hassturnon": ("Turning on {t}", "Turned on {t}", "Couldn't turn on {t}"),
+    "hassturnoff": ("Turning off {t}", "Turned off {t}", "Couldn't turn off {t}"),
+    "hasslightset": ("Setting {t}", "Set {t}", "Couldn't set {t}"),
+    "getlivecontext": ("Checking the home", "Checked the home", "Couldn't check the home"),
+    "getdatetime": ("Checking the time", "Checked the time", "Couldn't check the time"),
+    "remember": ("Remembering {q}", "Remembered {q}", "Couldn't remember that"),
+    "forget": ("Forgetting {q}", "Forgot {q}", "Couldn't forget that"),
+    "send_message": ("Messaging {t}", "Messaged {t}", "Couldn't message {t}"),
+    "mark_mistake": ("Marking a mistake", "Marked a mistake", "Couldn't mark that"),
+    "start_over": ("Starting over", "Started a new conversation", "Couldn't start over"),
 }
+PLURAL = {"switch": "switches"}                 # an area's devices of a domain: "Kitchen switches"
 
 
-# Extension tools by the name the brain sees: their extension's name and icon, as winstond lists them.
-EXTENSION_TOOLS: dict[str, tuple[str, str | None]] = {}
+# Extension tools by the name the brain sees: their extension's name and icon and their own title, as winstond
+# lists them.
+EXTENSION_TOOLS: dict[str, tuple[str, str | None, str]] = {}
 
 
 def know_extension_tools(tools: list[dict]) -> None:
     for t in tools:
-        EXTENSION_TOOLS[t["name"]] = (t.get("title") or t["extension"], t.get("icon"))
+        ext = t.get("title") or t["extension"]
+        EXTENSION_TOOLS[t["name"]] = (ext, t.get("icon"), t.get("tool_title") or ext)
 
 
 def tool_icon(name: str) -> str | None:
-    return EXTENSION_TOOLS.get(name, ("", None))[1]
+    return EXTENSION_TOOLS.get(name, ("", None, ""))[1]
+
+
+def _failed(label: str) -> str:
+    return f"Couldn't {label[:1].lower()}{label[1:]}"
 
 
 def tool_label(name: str, args: dict | None, status: str) -> str:
-    """"Turned on Kitchen lights"; an extension's tool by its extension and first text argument, "Web search:
-    population of Sarajevo"."""
+    """"Turned on Kitchen lights"; an extension's tool by its title and first text argument, "Play music: Daft
+    Punk", "Couldn't pause music"; another Home Assistant tool by its label and target, "Clean a room with
+    the vacuum: Kitchen"."""
     args = args if isinstance(args, dict) else {}
     if name in EXTENSION_TOOLS:
-        title = EXTENSION_TOOLS[name][0]
+        title = EXTENSION_TOOLS[name][2]
         detail = next((v.strip() for v in args.values() if isinstance(v, str) and v.strip()), "")
-        return f"{title} failed" if status == "error" else f"{title}: {detail}" if detail else title
+        return _failed(title) if status == "error" else f"{title}: {detail}" if detail else title
     base = name.split("__")[-1]
-    target = args.get("name") or args.get("to") or args.get("area") or "something"
+    target = args.get("name") or args.get("to") or args.get("area") or ""
     if not args.get("name") and args.get("area") and args.get("domain"):
         domain = args["domain"][0] if isinstance(args["domain"], list) else args["domain"]
-        target = f"{args['area']} {domain}s"
+        target = f"{args['area']} {PLURAL.get(domain, domain.replace('_', ' ') + 's')}"
+    if (forms := _VERBS.get(base.lower())) is None:
+        label = ha_tool_label(base)
+        return _failed(label) if status == "error" else f"{label}: {target}" if target else label
     detail = args.get("query") or args.get("fact") or args.get("question") or ""
-    forms = _VERBS.get(base.lower()) or (f"Using {base}", f"Used {base}", f"{base} failed")
-    return forms[("running", "ok", "error").index(status)].format(t=target, q=detail).strip()
+    return forms[("running", "ok", "error").index(status)].format(t=target or "something", q=detail).strip()
 
 
 class LiveObserver(BaseObserver):

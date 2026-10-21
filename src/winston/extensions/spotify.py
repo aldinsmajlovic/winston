@@ -12,7 +12,7 @@
 It runs go-librespot (github.com/devgianlu/go-librespot, pinned below and checked against its release
 checksum), an open Spotify Connect receiver: the speaker shows up in the Spotify app under
 `name`, and plays what you send it there or ask for by voice. It needs Spotify Premium, and signs in
-once with a code at spotify.com/pair (shown on the card). Spotify gives such receivers its 320 kbps
+once with a code at spotify.com/pair (shown in its status line). Spotify gives such receivers its 320 kbps
 stream; lossless stays in Spotify's own apps for now.
 
 go-librespot writes the audio as fast as it is read, so this relay reads it at playback speed, two
@@ -26,7 +26,8 @@ they start again, and the relay waits for the box before it reads on.
 Finding what to play: first your own library (playlists, saved albums, top and followed artists, top and
 liked songs), read hourly from Home Assistant's Spotify player when you pick it; then all of Spotify,
 with your own Spotify app's client ID and secret when you add them. A mix for a mood comes from
-ListenBrainz's LB Radio (a free account's token): two of your artists that fit it and artists like them. Not with the receiver's session
+ListenBrainz's LB Radio (a free account's token): two of your artists that fit it and artists like them;
+"something familiar" is your library's songs by them. Not with the receiver's session
 token: Spotify's Web API answered every call with it with 429, too many requests, on 2026-09-30 (it is
 the shared client of every librespot)."""
 from __future__ import annotations
@@ -45,9 +46,11 @@ import tarfile
 import time
 import unicodedata
 from collections import deque
+from datetime import datetime, timedelta
 from typing import Literal
 
-from winston_sdk import Entity, Extension, Field, Secret, Settings
+from pydantic import field_validator
+from winston_sdk import Account, Choice, Entity, Extension, Field, Nudge, Secret, Settings
 
 ext = Extension()
 
@@ -63,60 +66,91 @@ BOX_WAIT = 5.0                      # seconds the relay holds the music for a bo
 
 
 class SpotifySettings(Settings):
-    name: str = Field("Winston", description="The speaker's name in the Spotify app.")
-    library: str | None = Entity(domain="media_player", default=None, title="Your library from",
+    name: str = Field("Winston", title="Speaker name in Spotify")
+    library: str | None = Entity(domain="media_player", default=None, title="Your Spotify account in Home Assistant",
                                  description="Home Assistant's Spotify player: your playlists, albums, artists and "
                                              "songs by name, read hourly.")
-    client_id: str = Secret("SPOTIFY_CLIENT_ID", title="Client ID variable", label="Client ID",
-                            description="From your app at developer.spotify.com (the one Home Assistant's Spotify "
-                                        "integration uses will do), with the secret below: search all of Spotify.")
-    client_secret: str = Secret("SPOTIFY_CLIENT_SECRET", title="Client secret variable", label="Client secret")
+    client_id: str = Secret("SPOTIFY_CLIENT_ID", title="Client ID variable", label="Client ID", optional=True,
+                            group="Keys",
+                            help="From your app at developer.spotify.com; with its secret, he can search all of "
+                                 "Spotify, not only your library.",
+                            description="The app Home Assistant's Spotify integration uses will do.")
+    client_secret: str = Secret("SPOTIFY_CLIENT_SECRET", title="Client secret variable", label="Client secret",
+                                optional=True, group="Keys", help="From the same app as the client ID.")
+    account: bool = Account("SPOTIFY_ACCOUNT", authorize="https://accounts.spotify.com/authorize",
+                            token="https://accounts.spotify.com/api/token",
+                            scopes=["user-library-read", "user-top-read", "user-read-recently-played",
+                                    "playlist-read-private", "playlist-read-collaborative"],
+                            client_id="client_id", client_secret="client_secret", group="Keys",
+                            title="Your whole library", label="Spotify account",
+                            help="Signs in with the app above, so he knows every song you like, play and keep in "
+                                 "your playlists, not only the newest 48.",
+                            description="Home Assistant reads your newest 48 liked songs and top 48, without their "
+                                        "artists. Signed in, he reads all your liked songs, your top and recent ones "
+                                        "and your own playlists, with their artists, for songs you know.")
     listenbrainz_token: str = Secret("LISTENBRAINZ_TOKEN", title="ListenBrainz token variable",
-                                     label="ListenBrainz token",
-                                     description="From listenbrainz.org/settings (a free account), with the app above: "
-                                                 "a fresh mix for a mood, from your artists and ones like them.")
-    names: list[str] = Field(default_factory=list, title="Your names for them",
-                             description="What you call your playlists, albums or artists, one per line: the "
-                                         "name, =, then your words for it (🥁 = drum and bass, drums). An emoji "
-                                         "is already known by its own name (\"drum emoji\").")
-    mix_playlist: str = Field("", level="advanced", title="Mixes go to",
-                              description="A playlist of yours, by name, that mixes are added to and played from (make "
-                                          "an empty one in Spotify, Winston, say). A mix is then one list: what you ask "
-                                          "for next replaces it, and previous works. Empty: Spotify's queue, where a "
-                                          "mix's songs follow whatever you ask for next.")
-    not_now_hours: float = Field(24, ge=0, level="advanced", title="\"Not now\" lasts (hours)",
-                                 description="\"Not Elliott Smith\": how long an artist stays out of what plays, "
-                                             "unless the speakers have been quiet for the hours below first.")
-    quiet_resets_hours: float = Field(1, ge=0, level="advanced", title="Quiet ends \"not now\" after (hours)",
-                                      description="Speakers quiet this long end every \"not now\" (a new session).")
-    sleep_fade_minutes: float = Field(30, ge=1, le=120, level="advanced", title="Sleep fade (minutes)",
+                                     label="ListenBrainz token", optional=True, group="Keys",
+                                     help="From listenbrainz.org/settings (a free account); with the client ID, he "
+                                          "can make a mix for a mood.")
+    names: dict[str, str] = Field(default_factory=dict, title="Your names for playlists", key_title="Playlist",
+                                  value_title="What you call it", key_choices="playlists",
+                                  help="Several names separated by commas; albums and artists work too.",
+                                  description="An emoji is already known by its own name (\"drum emoji\").")
+    mix_playlist: str | None = Field(None, title="Playlist for mixes", choices="own_playlists",
+                                     placeholder="None: Spotify's queue",
+                                     description="A mix is then one list: what you ask for next replaces it, and "
+                                                 "previous works. In Spotify's queue, a mix's songs follow whatever "
+                                                 "you ask for next. Make an empty playlist in Spotify for it.")
+    not_now_hours: float = Field(24, ge=0, title="Keeps the artist out for", unit="h",
+                                 group="When you say not now")
+    quiet_resets_hours: float = Field(1, ge=0, title="Or until the music has been off for", unit="h",
+                                      group="When you say not now")
+    sleep_fade_minutes: float = Field(30, ge=1, le=120, title="Sleep fade", unit="min",
                                       description="A sleep timer fades the music out over this long, then pauses it "
                                                   "without a word; a longer timer plays as it was first.")
-    first_volume: int = Field(60, ge=0, le=100, level="advanced", title="First music of the day at",
-                              description="The volume the first music plays at after the speakers have been quiet "
-                                          "for the hours below (0: as it was left).")
-    first_after_hours: float = Field(6, ge=0, level="advanced", title="Quiet before \"first music\" (hours)")
+    first_volume: int = Field(60, ge=0, le=100, title="Volume", unit="%",
+                              group="First music of the day", help="0 leaves it as it was.")
+    first_after_hours: float = Field(6, ge=0, title="After the music has been off for", unit="h",
+                                     group="First music of the day")
     listens: bool = Field(False, title="Send what plays to ListenBrainz",
-                          description="Each song the speakers play for half its length or four minutes goes to your "
-                                      "ListenBrainz profile (public; the token above), so its statistics and "
-                                      "recommendations include it. Spotify itself never hears what this receiver plays.")
+                          help="Songs played here go to your public ListenBrainz profile, with your ListenBrainz token.",
+                          description="A song counts after half its length or four minutes, so ListenBrainz's "
+                                      "statistics and recommendations include it. Spotify itself never hears what "
+                                      "this speaker plays.")
     pause_on_leave: bool = Field(False, title="Pause when you leave",
-                                 description="The music pauses when you leave home (Home Assistant's person, under "
-                                             "Speaking up).")
+                                 help="Needs your person in Home Assistant, set under Speaking up.")
     mood_mixes: Literal["listenbrainz", "spotify_radio", "both_in_turn"] = Field(
-        "listenbrainz", level="advanced", title="A mood plays as",
-        description="listenbrainz: a list from two of your artists that fit and artists like them. spotify_radio: "
-                    "Spotify's own radio from one of them, shaped by your listening; no searches. both_in_turn: one "
-                    "then the other, said the same way, for a blind test (which was which is in its store).")
-    bitrate: Literal[320, 160, 96] = Field(320, level="advanced",
-                                           description="Spotify's stream: 320 kbps is its best for speakers.")
-    api_port: int = Field(3678, ge=1024, le=65535, level="advanced", title="Receiver port",
+        "listenbrainz", title="A mood plays as",
+        labels={"listenbrainz": "A ListenBrainz mix from your artists", "spotify_radio": "Spotify's radio",
+                "both_in_turn": "Both, taking turns"},
+        description="A ListenBrainz mix: two of your artists that fit and artists like them. Spotify's radio: from "
+                    "one of them, shaped by your listening; no searches. Both, taking turns: one then the other, said "
+                    "the same way, for a blind test.")
+    bitrate: Literal[320, 160, 96] = Field(320, title="Stream quality",
+                                           labels={"320": "320 kbps (best)", "160": "160 kbps", "96": "96 kbps"})
+    api_port: int = Field(3678, ge=1024, le=65535, hidden=True, title="Receiver port",
                           description="go-librespot's API, on 127.0.0.1 only.")
-    stream_port: int = Field(3679, ge=1024, le=65535, level="advanced", title="Stream port",
+    stream_port: int = Field(3679, ge=1024, le=65535, hidden=True, title="Stream port",
                              description="Where the speakers fetch the audio, on 127.0.0.1 only.")
+
+    @field_validator("names", mode="before")
+    @classmethod
+    def _lines(cls, value):
+        """Names were once lines of "name = words"; those still load, as the map."""
+        if not isinstance(value, list):
+            return value
+        out: dict[str, str] = {}
+        for name, _, words in (str(line).partition("=") for line in value):
+            name, words = name.strip(), words.strip()
+            if name and words:
+                out[name] = f"{out[name]}, {words}" if name in out else words
+        return out
 
 
 ext.settings(SpotifySettings)
+ext.kind("moved", title="Music moved to another device", deliver="when_home", where="speakers",
+         description="Says so when Spotify takes the music from the speakers to another device, such as your "
+                     "phone, and that he can bring it back.")
 
 
 class State:
@@ -134,6 +168,7 @@ class State:
         self.party: dict | None = None      # the running party's lights, to stop and restore when it ends
         self.deferred_stop: asyncio.Task | None = None
         self.listen: dict | None = None     # the song being heard, for ListenBrainz: when, how long, its timer
+        self.context: str | None = None     # what it plays from (a playlist, a station), to bring it back
 
 
 state = State()
@@ -205,6 +240,8 @@ async def receiver(ctx):
             line = raw.decode(errors="replace").strip()
             if re.search(r"level=(warn|error|fatal)|panic|spotify\.com/pair", line, re.IGNORECASE):
                 ctx.log.warning(line[:300])
+            elif m := re.search(r'playback was transferred to (.*?)"', line):
+                asyncio.create_task(moved(ctx, m.group(1)))
     finally:
         if proc.returncode is None:
             proc.kill()
@@ -216,10 +253,14 @@ async def receiver(ctx):
 async def settings_changed(ctx, event):
     """A new name or bitrate: the receiver starts again with them (its background task restarts it).
     A new library player: his library is read again now; a new playlist for mixes too, as it is likely one he
-    has just made, which the hourly read would miss for up to an hour."""
+    has just made, which the hourly read would miss for up to an hour; his account connected, all of it."""
     if event.old.library != ctx.settings.library:
         ctx.store["library"] = {}
-    if (event.old.library, event.old.mix_playlist) != (ctx.settings.library, ctx.settings.mix_playlist):
+    if event.old.account != ctx.settings.account:
+        ctx.store.pop("known", None)
+        ctx.store.pop("known_at", None)
+    if (event.old.library, event.old.mix_playlist, event.old.account) != \
+            (ctx.settings.library, ctx.settings.mix_playlist, ctx.settings.account):
         await library(ctx)
     pid = ctx.store.get("pid")
     if pid and (event.old.name, event.old.bitrate, event.old.api_port) != \
@@ -489,8 +530,32 @@ def going(ctx, how: str | None) -> None:
                 if song else None)
 
 
+async def moved(ctx, device: str) -> None:
+    """Spotify took the music to another device: picked in the app, or pulled there by the app itself (Spotify's
+    Android app takes it when a headset connects; on 2026-10-18 it took a radio a minute into a song, unasked, and
+    the box went silent with no word). The box stops on the receiver's inactive event; this keeps what played, so
+    "resume" brings it back, and says once where it went when the box was playing it."""
+    ctx.log.info(f"Spotify moved the music to {device}")
+    song = state.listen or {}
+    name = f"{song['name']} by {', '.join(song.get('artists') or [])}" if song.get("name") else None
+    ctx.store["moved"] = {"to": device, "context": state.context, "uri": song.get("uri"), "song": name}
+    if not state.on:
+        return
+    try:
+        await ctx.nudge("moved", Nudge(about=f"{device} {time.time():.0f}", expires=timedelta(minutes=2),
+                                       say=f"Spotify has moved the music to {device}. Ask me to bring it back, and "
+                                           f"it plays here again.",
+                                       facts={"what": "Spotify moved the music from the speakers to another device",
+                                              "device": device, **({"song": name} if name else {}),
+                                              "back": "Resume music brings it back to the speakers"}))
+    except Exception as e:                                              # noqa: BLE001
+        ctx.log.warning(f"could not say the music moved: {e}")
+
+
 async def handle_event(ctx, ev: dict) -> None:
     kind, data = ev.get("type"), ev.get("data") or {}
+    if data.get("context_uri"):
+        state.context = data["context_uri"]
     if kind == "metadata":
         state.now = {"name": data.get("name"), "artists": data.get("artist_names") or [], "album": data.get("album_name")}
         why = unwanted(ctx, data.get("uri"), data.get("artist_names") or [])
@@ -513,6 +578,7 @@ async def handle_event(ctx, ev: dict) -> None:
             await end_party(ctx)
     elif kind == "playing":
         ctx.store["last_music"] = time.time()
+        ctx.store.pop("moved", None)        # it plays here again
         if state.deferred_stop and not state.deferred_stop.done():
             state.deferred_stop.cancel()
             state.deferred_stop = None
@@ -682,21 +748,130 @@ async def library(ctx):
         listed = []
     if listed:
         found["playlist"] = [{"type": "playlist", "name": i["name"], "uri": i["uri"], "editable": bool(i.get("can_edit")),
-                              "aka": [w for host, w in _KNOWN.items() if host in (i.get("image_url") or "")]}
+                              "aka": [w for host, w in _KNOWN.items() if host in (i.get("image_url") or "")],
+                              "songs": i.get("length"), "cover": i.get("image_url") or None}
                              for i in listed if i.get("uri") and (i.get("length") or i.get("can_edit"))] + [LIKED]
     ctx.store["library"] = found
+    if not ctx.settings.account:
+        await track_artists(ctx, found.get("track", []))
+        return
+    try:
+        await known_songs(ctx)
+    except Exception as e:                                              # noqa: BLE001  (the rest of it stands)
+        ctx.log.warning(f"his songs from his account not read: {type(e).__name__}: {e}"[:200])
 
 
-_MINE = re.compile(r"\b(my|emoji)\b", re.IGNORECASE)
+KNOWN_PAGES = 40        # pages of 50 liked songs read: 2,000 at most (ponytail: more pages for a bigger library)
+
+
+async def his_web(ctx, path: str, **params) -> dict:
+    """Spotify's Web API as the user, through the Account setting."""
+    token = await ctx.token("account")
+    if token is None:
+        raise NotReady("the Spotify account is not connected")
+    r = await ctx.http.get(f"https://api.spotify.com/v1/{path}", params=params,
+                           headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    if r.status_code != 200:
+        raise NotReady(f"Spotify's {path} said {r.status_code}")
+    return r.json()
+
+
+async def _pages(ctx, path: str, most: int, **params) -> list[dict]:
+    """A paged list's items, `most` pages at most."""
+    items: list[dict] = []
+    for n in range(most):
+        page = await his_web(ctx, path, offset=n * params["limit"], **params)
+        items += page.get("items") or []
+        if not page.get("next"):
+            break
+    return items
+
+
+def _song(t: dict | None) -> dict | None:
+    if not t or t.get("type", "track") != "track" or not t.get("uri") or not t.get("name"):
+        return None
+    return {"type": "track", "uri": t["uri"], "name": t["name"], "artists": [{"name": a["name"]} for a in t.get("artists") or []]}
+
+
+async def known_songs(ctx) -> None:
+    """Every song he knows, from his own account (`known` in the store, with their artists): all his liked songs,
+    his top ones over six months and over years, and the songs of his own playlists, once a day; his newest
+    50 liked and last 50 played each hour. Not the playlist mixes go to: its songs are new to him."""
+    full = time.time() - (ctx.store.get("known_at") or 0) > 86400
+    found = [_song(i.get("track")) for i in await _pages(ctx, "me/tracks", KNOWN_PAGES if full else 1, limit=50)]
+    found += [_song(i.get("track")) for i in (await his_web(ctx, "me/player/recently-played", limit=50)).get("items") or []]
+    if full:
+        for span in ("medium_term", "long_term"):
+            found += [_song(t) for t in (await his_web(ctx, "me/top/tracks", limit=50, time_range=span)).get("items") or []]
+        mixes = mix_list(ctx)
+        for p in (ctx.store.get("library") or {}).get("playlist", []):
+            if p.get("editable") and p["uri"].startswith("spotify:playlist:") and p["uri"] != mixes:
+                # 2026: a playlist's songs are `items`, each its `item`, and only for his own playlists
+                found += [_song(i.get("item") or i.get("track"))
+                          for i in await _pages(ctx, f"playlists/{p['uri'].rpartition(':')[2]}/items", 10, limit=100)]
+    kept = {} if full else {s["uri"]: s for s in ctx.store.get("known") or []}
+    ctx.store["known"] = list((kept | {s["uri"]: s for s in found if s}).values())
+    if full:
+        ctx.store["known_at"] = time.time()
+
+
+def _playlists(ctx, own: bool) -> list[Choice]:
+    """His playlists for a picker on the card, by name (what the settings keep), with how many songs and the
+    cover when the receiver listed them; `own`: only those he can edit."""
+    out: dict[str, Choice] = {}
+    for p in (ctx.store.get("library") or {}).get("playlist", []):
+        if own and not p.get("editable"):
+            continue
+        n = p.get("songs")
+        out.setdefault(p["name"], Choice(value=p["name"], image=p.get("cover"),
+                                         hint=None if n is None else f"{n} song{'' if n == 1 else 's'}"))
+    return list(out.values())
+
+
+@ext.choices
+async def playlists(ctx) -> list[Choice]:
+    """For Your names for playlists."""
+    return _playlists(ctx, own=False)
+
+
+@ext.choices
+async def own_playlists(ctx) -> list[Choice]:
+    """For Playlist for mixes: a mix is written into it, so only his own."""
+    return _playlists(ctx, own=True)
+
+
+TRACK_LOOKUPS = 20      # library songs whose artists are looked up an hour, one call each
+
+
+async def track_artists(ctx, tracks: list[dict]) -> None:
+    """His library songs' artists, kept by address, for songs he knows by the artists of a mood: Home Assistant
+    names a song without them. A few an hour from the app, one call each: its batch lookup answers 403 since
+    2026, and the same small quota serves its searches."""
+    known = ctx.store.setdefault("track_artists", {})
+    missing = [t["uri"] for t in tracks if t["uri"] not in known][:TRACK_LOOKUPS]
+    try:
+        token = await app_token(ctx) if missing and refusing(ctx) is None else None
+    except NotReady:
+        return
+    for uri in missing if token else ():
+        r = await ctx.http.get(f"https://api.spotify.com/v1/tracks/{uri.rpartition(':')[2]}",
+                               headers={"Authorization": f"Bearer {token}"}, timeout=8)
+        if r.status_code == 429:
+            ctx.store["search_refused_until"] = time.time() + int(r.headers.get("retry-after") or 60)
+            return
+        if r.status_code in (200, 404):         # one Spotify no longer has is not asked about again
+            known[uri] = [a["name"] for a in r.json().get("artists") or []] if r.status_code == 200 else []
+
+
+_MINE =re.compile(r"\b(my|emoji)\b", re.IGNORECASE)
 _NOT_NAME = {"my", "the", "playlist", "album", "song", "songs", "emoji"}
 
 
 def _names(ctx, item: dict) -> list[str]:
     """What he may call item: its name, what it is (his daylist), and his own words for it (the `names` setting)."""
     out = [_key(item["name"])] + [_key(w) for w in item.get("aka") or []]
-    for line in ctx.settings.names or []:
-        name, _, words = line.partition("=")
-        if words and _key(name) == _key(item["name"]):
+    for name, words in ctx.settings.names.items():
+        if _key(name) == _key(item["name"]):
             out += [_key(w) for w in words.split(",") if _key(w)]
     return out
 
@@ -753,13 +928,14 @@ def _his(ctx, item: dict) -> bool:
     return any(_key(a["name"]) in names for a in item.get("artists") or [item])
 
 
-@ext.tool(tier="read")
+@ext.tool(tier="read", title="Read your music library",
+          summary="Reads your playlists, artists, albums and liked songs from your Spotify library.")
 async def my_music(ctx) -> dict:
     """The user's Spotify library: playlists, top artists, saved albums and liked songs. Call this when the user
     asks what they have, wants to browse their library, or asks for a mood or a vibe ("something chill", "play
     something energetic") so you can pick their artists that fit, for spotify_play(mood=..., artists=[...])."""
     lib = ctx.store.get("library") or {}
-    named = lambda n: n if _key(n) == _norm(n) else f"{n} ({_key(n)})"     # an emoji said by its name
+    named = lambda n: n if _key(n) == _norm(n) else f"{n} ({_key(n)})"     # noqa: E731  (an emoji said by its name)
     return {k: [named(item["name"]) for item in items] for k, items in lib.items()}
 
 
@@ -932,17 +1108,20 @@ async def start(ctx, mix: bool = False) -> None:
     await end_party(ctx)
 
 
-@ext.tool(tier="act", filler="One moment.", timeout=30)
+@ext.tool(tier="act", filler="One moment.", timeout=30, title="Play music",
+          summary="Plays a song, artist, album, playlist, genre or mood on your speakers.")
 async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "album", "playlist"] | None = None,
                by: str | None = None, genre: str | None = None, mood: str | None = None,
                artists: list[str] | None = None, like: list[str] | None = None, next: bool = False,
-               radio: bool = False, fresh: bool = False, latest: bool = False) -> str:
+               radio: bool = False, fresh: bool = False, familiar: bool = False, latest: bool = False) -> str:
     """Play music on the speakers, whatever the user asks for: something by name (a song, an artist, an album, a
     playlist; their own first), a genre, a mood or a vibe. Fill in only what they said; it works out how to play
     it. A request to play is music only: never lights or a scene unless they ask for those too. When they only
     say to change the music or play something else, without what: pause, ask what they would like, and suggest
-    a mix that fits. A name plays only when something is called that; otherwise it answers with the nearest
-    names, to ask the user about.
+    a mix that fits. When they say what plays is not right, call this again at once, never only say you will:
+    "not that", "that's not calm" with other artists that fit better; "not these new songs" with familiar.
+    A name plays only when something is called that; otherwise it answers with the nearest names, to ask the
+    user about.
 
     Args:
         what: A name, as said: "Daft Punk", "Get Lucky", "my running playlist", "drum emoji". Never a genre, a
@@ -955,13 +1134,17 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
         mood: A mood, a vibe, an activity, or a kind of music described rather than named, in the user's words:
             "chill", "something to fall asleep to", "poker night", "the songs everyone played in 2012". With it,
             pass artists.
-        artists: For a mood: three to six of the user's artists that fit it, from spotify_my_music, as listed there.
+        artists: For a mood: three to six of the user's artists that fit it, from spotify_my_music, as listed
+            there, the best fit first.
         like: Artists the user named as the kind of thing they want: "something like Frank Ocean" is like=["Frank Ocean"].
         next: Play it after the current song instead of now (a song): "add X to the queue". A song queued
             cannot be taken out again here; "clear the queue" is not possible, say so.
         radio: After a name, keep going with music like it (Spotify's radio from it).
         fresh: Music new to the user ("something new", "something I don't know", "surprise me"): artists like
             theirs that they have not played. With it, pass artists (or a genre).
+        familiar: Songs the user knows ("something familiar", "songs I know", "not these new songs"): their own
+            songs, never artists like them. With a mood, pass artists; without artists it keeps to the artists
+            of the mix playing, or plays all of their songs.
         latest: The newest release of the artist in what, instead of the artist: "the new Tame Impala album" is
             what="Tame Impala", kind="album", latest=true; "Fred again..'s latest" is latest=true.
     """
@@ -971,8 +1154,8 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
         what, genre = None, what.lower()        # a genre said as a name: Queen's album Jazz is not "some jazz"
     if latest and what:
         return await _newest(ctx, what, kind)
-    if genre or mood or artists or like or fresh:
-        return await _mix(ctx, artists or [], genre, like or [], mood, fresh)
+    if genre or mood or artists or like or fresh or familiar:
+        return await _mix(ctx, artists or [], genre, like or [], mood, fresh, familiar)
     if not what:
         return "Nothing to play was named: ask the user what they would like, and suggest a mix that fits."
     if next:
@@ -989,6 +1172,7 @@ async def play(ctx, what: str | None = None, kind: Literal["track", "artist", "a
                     + (f" Nearest: {'; '.join(_describe(i) for i in near)}." if near else "")
                     + " A mood or a genre is a mix.")
     lift(ctx, item)
+    ctx.store.pop("mix_artists", None)      # what plays now is no mix to keep to
     await start(ctx)
     uri = item.get("uri") or item.get("id", "")
     station = _radio_uri(uri) if radio else None
@@ -1027,10 +1211,21 @@ async def _newest(ctx, artist: str, kind: str | None) -> str:
 
 
 def known_artists(ctx) -> set[str]:
-    """The artists the user knows: their library's and every one that played here."""
+    """The artists the user knows: their library's, every one that played here, and those of their songs."""
     lib = ctx.store.get("library") or {}
     return ({_key(a["name"]) for a in lib.get("artist", [])}
-            | {_key(a) for p in played(ctx, 1000) for a in p.get("artists") or []})
+            | {_key(a) for p in played(ctx, 1000) for a in p.get("artists") or []}
+            | {_key(a["name"]) for s in songs_he_knows(ctx) for a in s["artists"]})
+
+
+def songs_he_knows(ctx) -> list[dict]:
+    """His songs with their artists: all of them from his account (`known_songs`), else his library's newest
+    48 liked and top 48 whose artists were looked up (`track_artists`)."""
+    if known := ctx.store.get("known"):
+        return known
+    names = ctx.store.get("track_artists") or {}
+    return [{**t, "artists": [{"name": a} for a in names[t["uri"]]]}
+            for t in (ctx.store.get("library") or {}).get("track", []) if t["uri"] in names]
 
 
 async def lb_radio(ctx, artists: list[str], genre: str | None) -> tuple[list[dict], list[str]]:
@@ -1103,40 +1298,50 @@ async def _radio(ctx, artist: str, mood: str | None, blind: bool, search: bool =
 
 
 async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood: str | None,
-               fresh: bool = False) -> str:
-    """A fresh mix: from two of his artists that fit (not the ones used last time) and artists like them, with the
-    artists he named as a reference always among the seeds; a genre from its tag alone, with those named artists
+               fresh: bool = False, familiar: bool = False) -> str:
+    """A fresh mix: from two of the three artists that fit best (not the ones used last time; with any of them
+    taking turns, a calm mix on 2026-10-18 started from Daft Punk, the brain's last pick) and artists like them,
+    with the artists he named as a reference always among the seeds; a genre from its tag alone, with those named artists
     only: the brain gave drum and bass Aphex Twin, Fatboy Slim, Avicii and Calvin Harris in 6 of 6 trials, and
     the mix came out mostly pop. Different every time. A mood plays as the `mood_mixes` setting says: ListenBrainz's
     list, Spotify's radio from one of the artists (Aldin: "Elliott Smith radio ... worked good"; ListenBrainz's
     artists like Fatboy Slim and Avicii were pop he called "basic"), or both in turn for a blind test, logged in
     the store. When ListenBrainz does not answer in 10 s, radio plays instead. Fresh, it is ListenBrainz's list
-    without the artists the user knows (Aldin's pick for a plain mood: "some new ones"; for "something new", new)."""
-    if not (artists or genre or like):
+    without the artists the user knows (Aldin's pick for a plain mood: "some new ones"; for "something new", new).
+    Familiar, it is the user's own songs by them (`_familiar`)."""
+    if familiar and not (artists or like):
+        # "something familiar" after a mix means its artists: the brain passed none 4 times in 5 (2026-10-18)
+        artists = (ctx.store.get("mix_artists") or []) if state.on else []
+    elif not (artists or genre or like):
         raise ValueError("a mood needs three to six of the user's artists that fit it (spotify_my_music), or artists they named")
     t = verdicts(ctx)
     out = {_key(a) for a in t["artists"]} | {_key(a["artist"]) for a in t["for_now"]}
     if artists and not like and not genre and not [a for a in artists if _key(a) not in out]:
         raise ValueError(f"all of {', '.join(artists)} are out for now (the user's verdict); pass others from spotify_my_music")
     artists = [a for a in artists if _key(a) not in out]
+    if artists and not genre:
+        ctx.store["mix_artists"] = artists
     recent = ctx.store.get("seeds") or []
-    # never used first, then the longest ago: the same chill artists take turns; named ones first of all
-    order = list(like) + ([] if genre else [a for a in sorted(random.sample(artists, len(artists)),
-                                                              key=lambda a: recent.index(a) if a in recent else -1)
-                                            if a not in like])
-    recipe, blind = "listenbrainz" if genre or fresh else ctx.settings.mood_mixes, False
-    if recipe == "both_in_turn":
-        log = ctx.store.get("mood_log") or [{}]
-        recipe, blind = ("spotify_radio" if log[-1].get("recipe") == "listenbrainz" else "listenbrainz"), True
-    said = None
-    if recipe == "spotify_radio":
-        said = await _radio(ctx, order[0], mood, blind)
-        seeds = order[:1]
-    if said is None:
-        said, seeds, recipe = await _lb_mix(ctx, order, genre, mood, blind, fresh)
+    # the best three take turns, never used first, then the longest ago (a stable sort keeps the brain's order
+    # among equals); named ones first of all
+    fit = sorted(artists[:3], key=lambda a: recent.index(a) if a in recent else -1) + artists[3:]
+    order = list(like) + ([] if genre else [a for a in fit if a not in like])
+    if familiar:
+        said, seeds = await _familiar(ctx, list(like) + [a for a in artists[:3] if a not in like], mood)
+    else:
+        recipe, blind = "listenbrainz" if genre or fresh else ctx.settings.mood_mixes, False
+        if recipe == "both_in_turn":
+            log = ctx.store.get("mood_log") or [{}]
+            recipe, blind = ("spotify_radio" if log[-1].get("recipe") == "listenbrainz" else "listenbrainz"), True
+        said = None
+        if recipe == "spotify_radio":
+            said = await _radio(ctx, order[0], mood, blind)
+            seeds = order[:1]
+        if said is None:
+            said, seeds, recipe = await _lb_mix(ctx, order, genre, mood, blind, fresh)
     if not genre:
         ctx.store["seeds"] = ([a for a in recent if a not in seeds] + seeds)[-8:]
-    if not (genre or fresh):
+    if not (genre or fresh or familiar):
         ctx.store["mood_log"] = ((ctx.store.get("mood_log") or []) + [
             {"at": ctx.now().isoformat(timespec="minutes"), "mood": mood, "recipe": recipe, "seeds": seeds}])[-50:]
     return said
@@ -1167,6 +1372,58 @@ async def trim(ctx, target: str, added: list[str]) -> None:
             await call(ctx, "POST", "/library/playlists/remove_track", playlist_uri=target, uri=uri)
         except NotReady as e:
             ctx.log.warning(f"the mix playlist kept an old song: {e}"[:200])
+
+
+def keep(ctx, songs: list[dict]) -> list[dict]:
+    """One song once, in their order, none he banned or put out for now."""
+    return list({(_title(s["name"]), _key((s.get("artists") or [{"name": ""}])[0]["name"])): s
+                 for s in reversed([s for s in songs if not unwanted(ctx, s["uri"], [a["name"] for a in
+                                                                                 s.get("artists") or []])])
+                 }.values())[::-1]
+
+
+async def play_list(ctx, songs: list[dict]) -> None:
+    """Songs played as one list: added to the mix playlist and played from the first, else the first plays and
+    the rest are queued."""
+    await start(ctx, mix=True)
+    if (target := mix_list(ctx)) is not None:
+        await call(ctx, "POST", "/library/playlists/add_tracks", playlist_uri=target, uris=[s["uri"] for s in songs][:50])
+        await call(ctx, "POST", "/player/play", uri=target, skip_to_uri=songs[0]["uri"])
+        asyncio.create_task(trim(ctx, target, [s["uri"] for s in songs][:50]))
+    else:
+        await call(ctx, "POST", "/player/play", uri=songs[0]["uri"])
+        for s in songs[1:]:
+            await call(ctx, "POST", "/player/add_to_queue", uri=s["uri"])
+
+
+FAMILIAR_MIN = 5        # fewer of his own songs than this fit: the best fit artist's popular songs instead
+
+
+async def _familiar(ctx, artists: list[str], mood: str | None) -> tuple[str, list[str]]:
+    """Songs he knows by the artists that fit, for "something familiar" (Aldin on 2026-10-18, after a calm mix of
+    artists like his: "not these new songs, something familiar"): his own songs by them (`songs_he_knows`; all of
+    them, with no artists), shuffled, as one list. When fewer than FAMILIAR_MIN are, the first of them in his
+    library plays as an artist, Spotify's own order of their popular songs (no search). Not Spotify's top songs
+    as a list (that call answers this app 403 since 2026) or LB Radio without similar artists (its songs were
+    demos, live tapes and dub mixes)."""
+    want = {_key(a) for a in artists}
+    mine = keep(ctx, [s for s in songs_he_knows(ctx) if not want or any(_key(a["name"]) in want for a in s["artists"])])
+    random.shuffle(mine)
+    mine = mine[:50]                # what one list takes (play_list)
+    if len(mine) >= FAMILIAR_MIN:
+        await play_list(ctx, mine)
+        by = [a for a in artists if any(_by(s, a) for s in mine)]
+        by_them = f" by {' and '.join(by)}" if by else ""
+        return (f"Playing {f'a {mood} mix of ' if mood and by else ''}the user's own songs{by_them}, {len(mine)} songs, "
+                f"starting with {_describe(mine[0])}."), by
+    item = next((i for a in artists if (i := in_library(ctx, a, "artist")) is not None), None)
+    if item is None:
+        raise ValueError(f"the user has {len(mine)} songs by {', '.join(artists)} and none of them as an artist; "
+                         "pass others from spotify_my_music, or play one of their playlists by name")
+    await start(ctx)
+    await call(ctx, "POST", "/player/play", uri=item["uri"])
+    return (f"Playing {item['name']}'s popular songs{f', for {mood}' if mood else ''}: few of the user's own "
+            f"songs ({len(mine)}) are by {' and '.join(artists)}."), [item["name"]]
 
 
 async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
@@ -1203,25 +1460,14 @@ async def _lb_mix(ctx, order: list[str], genre: str | None, mood: str | None,
     if len(found) > 3000:
         found = dict(list(found.items())[-3000:])
     (ctx.folder / SONGS).write_text(json.dumps(found, ensure_ascii=False))
-    songs = list({(_title(s["name"]), _key((s.get("artists") or [{"name": ""}])[0]["name"])): s
-                  for s in reversed([s for s in hits if s and not unwanted(ctx, s["uri"], [a["name"] for a in
-                                                                                    s.get("artists") or []])])
-                  }.values())[::-1]      # one song once, in LB's order, none he banned or put out for now
+    songs = keep(ctx, [s for s in hits if s])
     if not songs:
         if (why := refusing(ctx)) is not None:          # it began refusing while the songs were looked up
             raise NotReady(why + " Radio from one of the user's artists still plays.")
         raise ValueError(f"no mix from {', '.join(order + [genre] if genre else order)}: none of LB Radio's "
                          "songs were found on Spotify")
-    await start(ctx, mix=True)
-    if (target := mix_list(ctx)) is not None:
-        await call(ctx, "POST", "/library/playlists/add_tracks", playlist_uri=target, uris=[s["uri"] for s in songs][:50])
-        await call(ctx, "POST", "/player/play", uri=target, skip_to_uri=songs[0]["uri"])
-        asyncio.create_task(trim(ctx, target, [s["uri"] for s in songs][:50]))
-    else:
-        await call(ctx, "POST", "/player/play", uri=songs[0]["uri"])
-        for s in songs[1:]:
-            await call(ctx, "POST", "/player/add_to_queue", uri=s["uri"])
-    source = [f"artists like {' and '.join(seeds)}, new to the user" if fresh else
+    await play_list(ctx, songs)
+    source =[f"artists like {' and '.join(seeds)}, new to the user" if fresh else
               f"{' and '.join(seeds)} and artists like them"] if seeds else []
     source += [genre] if genre else []
     if blind:
@@ -1249,7 +1495,8 @@ async def _queue(ctx, what: str, by: str | None) -> str:
     return f"Queued {_describe(item)}." + (f" {note}." if note else "")
 
 
-@ext.tool(tier="act", timeout=15)
+@ext.tool(tier="act", timeout=15, title="Start a party",
+          summary="Plays music and starts a light show in Home Assistant with it, then puts the room back.")
 async def party(ctx, what: str, lights: str | None = None, restore: str | None = None,
                 volume: int | None = None, delay: float = 0.0) -> str:
     """Start a party scene: play something on the speakers and run a Home Assistant light show that begins
@@ -1298,7 +1545,7 @@ async def loaded(ctx) -> dict | None:
     return st if st.get("track") else None
 
 
-@ext.tool(tier="act")
+@ext.tool(tier="act", title="Pause music", summary="Pauses the music on your speakers.")
 async def pause(ctx) -> str:
     """Pause the music."""
     if (st := await loaded(ctx)) is None:
@@ -1309,18 +1556,54 @@ async def pause(ctx) -> str:
     return "Paused."
 
 
-@ext.tool(tier="act")
+async def take_back(ctx) -> str | None:
+    """The music Spotify moved to another device, played here again: the song that device plays now (Home
+    Assistant's Spotify player, `library`; else the one that moved), in the list it came from, from where that
+    device is while it is still the song that moved. Played afresh, not handed back: the app's hand-back of a radio
+    the phone took over names its context "-", which go-librespot cannot play ("unsupported context type: -", in
+    0.10.4 and 0.10.5). A radio, or anything else that is not a list of his or Spotify's (a playlist, an album, an
+    artist, Liked Songs), plays as its song alone, and Spotify's autoplay carries on from it. A list plays from its
+    top when the song is not in it (one the phone's autoplay came to after the list ran out)."""
+    if not (moved := ctx.store.get("moved")):
+        return None
+    uri, context, song, body = moved.get("uri"), moved.get("context") or "", moved.get("song"), {}
+    try:
+        p = await ctx.ha.state(ctx.settings.library) if ctx.settings.library else None
+    except Exception:                                                   # noqa: BLE001
+        p = None                            # Home Assistant away: the song that moved, from its start
+    a = p.attributes if p else {}
+    if (a.get("media_content_id") or "").startswith("spotify:track:"):
+        if a["media_content_id"] == uri and a.get("media_position") is not None:
+            at = a["media_position"]
+            if p.state == "playing" and a.get("media_position_updated_at"):
+                at += time.time() - datetime.fromisoformat(a["media_position_updated_at"]).timestamp()
+            if 0 < at < (a.get("media_duration") or 0):
+                body["position"] = round(at * 1000)
+        uri, song = a["media_content_id"], f"{a.get('media_title')} by {a.get('media_artist')}"
+    if not (uri or context):
+        return None
+    await start(ctx)
+    if uri and re.match(r"spotify:(user:[^:]+:)?(playlist|album|artist|collection)\b", context):
+        await call(ctx, "POST", "/player/play", uri=context, skip_to_uri=uri, **body)
+    else:
+        await call(ctx, "POST", "/player/play", uri=uri or context, **body)
+    return f"Back on the speakers: {song}." if song else "Back on the speakers."
+
+
+@ext.tool(tier="act", title="Resume music",
+          summary="Carries on playing the music after a pause, or brings it back from another device.")
 async def resume(ctx) -> str:
-    """Carry on playing the music after a pause."""
+    """Carry on playing the music after a pause, or bring it back to the speakers after Spotify moved it to another
+    device, such as a phone ("play it here", "bring the music back")."""
     if (st := await loaded(ctx)) is None:
-        return "Nothing is loaded to carry on with; something has to be asked for first."
+        return await take_back(ctx) or "Nothing is loaded to carry on with; something has to be asked for first."
     if not st.get("paused"):
         return "Already playing."
     await call(ctx, "POST", "/player/resume")
     return "Playing."
 
 
-@ext.tool(tier="act")
+@ext.tool(tier="act", title="Skip to the next song", summary="Skips the song playing on your speakers.")
 async def next_track(ctx) -> str:
     """Skip to the next song. Not for "clear the queue": a song queued cannot be taken out again here, say so."""
     if await loaded(ctx) is None:
@@ -1329,7 +1612,8 @@ async def next_track(ctx) -> str:
     return "Next song."
 
 
-@ext.tool(tier="act")
+@ext.tool(tier="act", title="Go back a song",
+          summary="Goes back to the previous song, or to the start of this one.")
 async def previous_track(ctx) -> str:
     """Go back to the previous song (or the start of this one)."""
     if await loaded(ctx) is None:
@@ -1338,7 +1622,8 @@ async def previous_track(ctx) -> str:
     return "Previous song."
 
 
-@ext.tool(tier="act")
+@ext.tool(tier="act", title="Shuffle the music",
+          summary="Shuffles what is playing, or plays it in order again.")
 async def shuffle(ctx, on: bool = True) -> str:
     """Shuffle what is playing (a playlist, an album, a mix), or stop shuffling ("shuffle", "shuffle off").
 
@@ -1351,7 +1636,8 @@ async def shuffle(ctx, on: bool = True) -> str:
     return "Shuffling." if on else "Playing in order."
 
 
-@ext.tool(tier="act")
+@ext.tool(tier="act", title="Set repeat",
+          summary="Repeats the song or everything playing, or stops repeating.")
 async def repeat(ctx, what: Literal["song", "all", "off"]) -> str:
     """Repeat the song playing ("put this on repeat", "loop this song"), everything that is playing (the playlist
     or album), or stop repeating.
@@ -1366,7 +1652,8 @@ async def repeat(ctx, what: Literal["song", "all", "off"]) -> str:
     return {"song": "Repeating this song.", "all": "Repeating all of it.", "off": "Not repeating."}[what]
 
 
-@ext.tool(tier="act")
+@ext.tool(tier="act", title="Move within the song",
+          summary="Jumps ahead or back in the song playing, or to a point in it.")
 async def seek(ctx, seconds: float, relative: bool = True) -> str:
     """Move within the song playing: forward or back by seconds ("skip ahead 30 seconds", "back ten seconds"), or
     to a point in it ("from the top", "play that again": 0, not relative; "go to two minutes": 120). Not for the
@@ -1384,7 +1671,8 @@ async def seek(ctx, seconds: float, relative: bool = True) -> str:
     return f"{'Ahead' if seconds > 0 else 'Back'} {abs(seconds):g} seconds."
 
 
-@ext.tool(tier="act")
+@ext.tool(tier="act", title="Set the volume",
+          summary="Sets the music's volume; past full, it turns up the speaker itself, his voice too.")
 async def volume(ctx, level: int | None = None, change: Literal["up", "down"] | None = None) -> str:
     """Set the music's volume: a level from 0 to 100, or up or down a step. Up past Spotify's full, it turns
     the speaker itself up (what its dial sets: the voice too).
@@ -1446,7 +1734,8 @@ async def feedback_like(ctx, uri: str, song: str) -> str:
     return f"Saved {song} to the user's Liked Songs."
 
 
-@ext.tool(tier="act", timeout=15)
+@ext.tool(tier="act", timeout=15, title="Rate the music",
+          summary="Saves songs you like, and keeps songs or artists you do not want out of what plays.")
 async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], artist: str | None = None,
                    playlist: str | None = None) -> str:
     """What the user thinks of the music, kept: "I like this" or "save this song" saves the song playing to their
@@ -1494,7 +1783,8 @@ async def feedback(ctx, verdict: Literal["like", "never", "not_now", "allow"], a
             f"No {who} for now ({ctx.settings.not_now_hours:g} hours, or until the music has been off a while).")
 
 
-@ext.tool(tier="act", timeout=15)
+@ext.tool(tier="act", timeout=15, title="Set a sleep timer",
+          summary="Fades the music out and pauses it after a while, without a word.")
 async def sleep(ctx, minutes: float | None = None) -> str:
     """A sleep timer: the music fades out and pauses, and nothing is said then ("stop the music in 30
     minutes", "turn it off in an hour", "a sleep timer"). For music to fall asleep to ("something to sleep
@@ -1550,7 +1840,8 @@ async def left_home(ctx):
         await call(ctx, "POST", "/player/pause")
 
 
-@ext.tool(tier="read", outside=False)
+@ext.tool(tier="read", outside=False, title="Check what is playing",
+          summary="Tells what is playing, what comes next and what played before.")
 async def now_playing(ctx) -> dict:
     """What Spotify is playing here now ("who is this?", "what's this song?"), what plays next ("what's next?") and
     what played before it ("what was the song before this?", "that song from earlier"): the song, its artists and
@@ -1579,7 +1870,7 @@ async def words(ctx) -> list[str]:
     was heard as "Dunk", and 4 of his requests that went wrong would have been heard right with them."""
     lib = ctx.store.get("library") or {}
     out = [i["name"] for i in lib.get("artist", [])] + [w for i in lib.get("playlist", []) for w in i.get("aka") or []]
-    out += [w.strip() for line in ctx.settings.names or [] for w in line.partition("=")[2].split(",") if w.strip()]
+    out += [w.strip() for words in ctx.settings.names.values() for w in words.split(",") if w.strip()]
     return [w for w in dict.fromkeys(out) if _key(w) == _norm(w)][:200]         # no emoji: they are not said
 
 

@@ -65,7 +65,7 @@ class Ear:
         while True:
             try:
                 f = await track.recv()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 return
             a = f.to_ndarray().astype(np.float32)
             a = a.reshape(-1, len(f.layout.channels)).mean(axis=1) if a.ndim > 1 or len(f.layout.channels) > 1 else a
@@ -120,8 +120,9 @@ async def main():
     print(f"greeting: {hear(ear.since(0))!r}")
 
     m = ear.mark()
-    d = httpx.post(f"{API}/api/announce", json={"text": "The washing machine is done.", "source": "test",
-                                                 "context": {"started": "12:58", "finished": "14:31"}}).json()
+    d = (await asyncio.to_thread(httpx.post, f"{API}/api/announce", json={
+        "text": "The washing machine is done.", "source": "test",
+        "context": {"started": "12:58", "finished": "14:31"}})).json()
     print(f"announce: {d}")
     await asyncio.sleep(7)
     heard = ear.since(m)

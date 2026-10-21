@@ -22,7 +22,8 @@ from typing import Literal
 from winston_sdk import Extension, Nudge, When
 
 ext = Extension()
-ext.kind("due", title="Reminders", requested=True, outside=False)
+ext.kind("due", title="Reminders", requested=True, outside=False,
+         description="Says each reminder and timer you set when its time comes.")
 next_one = ext.entity("next", kind="sensor", name="Next reminder", device_class="timestamp")
 
 Repeat = Literal["daily", "weekdays", "weekly"]
@@ -71,7 +72,8 @@ def _matching(ctx, which: str) -> list[str]:
     return [rid for rid, r in rems.items() if words and words <= set(re.findall(r"\w+", r["what"].lower()))]
 
 
-@ext.tool(tier="act", outside=False)
+@ext.tool(tier="act", outside=False, title="Add a reminder",
+          summary="Sets a reminder or a timer, once or repeating, said when it is due.")
 async def add(ctx, what: str, at: When, repeat: Repeat | None = None) -> str:
     """Set a reminder for the user, or a timer ("a timer for ten minutes" is a reminder in ten minutes): you
     say it at that time, wherever they are.
@@ -99,7 +101,8 @@ async def add(ctx, what: str, at: When, repeat: Repeat | None = None) -> str:
     return f"Set for {_when(at, now)}{', then ' + SAYS[repeat] if repeat else ''}: {what}."
 
 
-@ext.tool(tier="read", outside=False)
+@ext.tool(tier="read", outside=False, title="List reminders",
+          summary="Lists your reminders and timers still to come.")
 async def upcoming(ctx) -> list[dict] | str:
     """The user's reminders that have not come yet, soonest first, with any that were put off."""
     now = ctx.now()
@@ -117,7 +120,8 @@ async def upcoming(ctx) -> list[dict] | str:
     return out or "No reminders set."
 
 
-@ext.tool(tier="act", outside=False)
+@ext.tool(tier="act", outside=False, title="Cancel a reminder",
+          summary="Cancels a reminder or a timer, or only the next time of a repeating one.")
 async def cancel(ctx, which: str, all_times: bool = True) -> str:
     """Cancel one of the user's reminders or timers.
 
@@ -170,5 +174,5 @@ async def status(ctx) -> str:
     rems = ctx.store.get("reminders", {})
     if not rems:
         return "No reminders"
-    rid, r = min(rems.items(), key=lambda kv: kv[1]["at"])
+    r = min(rems.values(), key=lambda v: v["at"])
     return f"{len(rems)} set; next {_when(datetime.fromisoformat(r['at']), ctx.now())}: {r['what']}"

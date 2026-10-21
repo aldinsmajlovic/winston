@@ -25,8 +25,10 @@ from typing import Literal
 from winston_sdk import Extension, Nudge, When
 
 ext = Extension()
-ext.kind("done", title="Done as asked", requested=True, outside=True)
-ext.kind("failed", title="Could not do it", requested=True, outside=True)
+ext.kind("done", title="Done as asked", requested=True, outside=True,
+         description="Says that something you asked him to do later is done.")
+ext.kind("failed", title="Could not do it", requested=True, outside=True,
+         description="Says when something you asked him to do later could not be done, and why.")
 KEEP = timedelta(days=1)
 ON = {"leave": "when you leave", "arrive": "when you get home"}
 
@@ -59,7 +61,9 @@ async def _run(ctx, rid: str) -> None:
                                   facts={"what": item["what"], "tool": item["tool"], "result": text[:500]}))
 
 
-@ext.tool(tier="act", outside=False)
+@ext.tool(tier="act", outside=False, title="Do something later",
+          summary="Does one of his actions later: at a time, as you leave or get home, or when a device "
+                  "reaches a state.")
 async def add(ctx, what: str, tool: str, args: str = "{}", at: When | None = None,
               on: Literal["leave", "arrive"] | None = None, entity: str | None = None,
               state: str | None = None) -> str:
@@ -159,7 +163,8 @@ async def watch(ctx):
                 await _run(ctx, rid)
 
 
-@ext.tool(tier="read", outside=False)
+@ext.tool(tier="read", outside=False, title="List what is waiting",
+          summary="Lists what you asked him to do later that has not been done yet.")
 async def waiting(ctx) -> list[dict] | str:
     """What the user asked to have done later and is still waiting, soonest first."""
     now = ctx.now()
@@ -167,7 +172,8 @@ async def waiting(ctx) -> list[dict] | str:
     return [{"id": rid, "what": i["what"], "when": _when(i, now)} for rid, i in items] or "Nothing is waiting."
 
 
-@ext.tool(tier="act", outside=False)
+@ext.tool(tier="act", outside=False, title="Cancel something waiting",
+          summary="Cancels something you asked him to do later.")
 async def cancel(ctx, which: str) -> str:
     """Cancel something waiting to be done later.
 

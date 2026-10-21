@@ -30,10 +30,10 @@ from pipecat.processors.frame_processor import FrameDirection
 
 scratch_data("winston-turns-")     # logging.latency and the other relative paths land here, not in data/
 
-from winston.config.schema import WinstonConfig
-from winston.core import turns as turns_mod
-from winston.core.hints import Heard
-from winston.core.turns import SpokenTurns, TurnLog, TurnStore, make_mark_tool
+from winston.config.schema import WinstonConfig  # noqa: E402
+from winston.core import turns as turns_mod  # noqa: E402
+from winston.core.hints import Heard  # noqa: E402
+from winston.core.turns import SpokenTurns, TurnLog, TurnStore, make_mark_tool  # noqa: E402
 
 
 def cfg(folder: Path, enabled: bool = True) -> WinstonConfig:

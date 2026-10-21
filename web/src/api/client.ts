@@ -39,9 +39,14 @@ export function locPath(loc: (string | number)[]): (string | number)[] {
 export function errorText(error: unknown): string {
   const detail = (error as ValidationError | undefined)?.detail
   if (Array.isArray(detail)) {
-    return detail.map((d) => (locPath(d.loc).length ? `${locPath(d.loc).join('.')}: ${d.msg}` : d.msg)).join('\n')
+    // Only the reasons: a refused config save already shows each beside its field.
+    return detail.map((d) => d.msg).join('\n')
   }
   if (typeof detail === 'string') return detail
+  // fetch's own failure (Chrome, Firefox, Safari wording): the server did not answer at all.
+  if (error instanceof TypeError && /Failed to fetch|NetworkError|Load failed/.test(error.message)) {
+    return "Can't reach Winston. Check that it is running, then try again."
+  }
   if (error instanceof Error) return error.message
   return 'Request failed'
 }

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# The settings smoke test: a throwaway winstond on a copy of data/, driven by Playwright in the system
+# The UI smoke test: a throwaway winstond on a copy of data/, driven by Playwright in the system
 # Chromium. The copy has fake keys, every engine and channel switched off and Home Assistant pointed at
-# a fake one (tests/fake_ha.py, or nowhere when it does not start), so nothing real is started, stopped
-# or written. Needs a built UI (pnpm build).
+# a fake one (tests/fake_ha.py, or nowhere when it does not start), and every other address and port
+# in it moved off the running instance's, so nothing real is reached, started, stopped or written.
+# Needs a built UI (pnpm build).
 # Usage: pnpm smoke [playwright args]
 set -euo pipefail
 web="$(cd "$(dirname "$0")/.." && pwd)"
@@ -56,14 +57,37 @@ open(sys.argv[2], "w").write(next(b for b in blocks if "id = \"plants\"" in b))
 ' "$repo/docs/extensions.md" "$copy/extensions/plants.py"
 port="$(uv run --project "$repo" python - "$copy" "$src" "$fake_ha" <<'EOF'
 import os, re, socket, sys, yaml
+from urllib.parse import urlsplit
 copy, fake_ha = sys.argv[1], sys.argv[3]
 path = os.path.join(copy, "config.yaml")
 cfg = yaml.safe_load(open(path))
+held = []
+def free():
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); held.append(s)    # held, so no two get the same one
+    return s.getsockname()[1]
+def isolate(node):
+    """Every address under it points nowhere, every port is a free one and every host is this machine."""
+    for k, v in (node.items() if isinstance(node, dict) else enumerate(node) if isinstance(node, list) else ()):
+        if str(k).endswith("url") and isinstance(v, str) and v:
+            node[k] = "http://127.0.0.1:9" + urlsplit(v).path     # a base_url keeps its /v1, an MCP server its /mcp
+        elif str(k).endswith("port") and isinstance(v, int):
+            node[k] = free()
+        elif k == "host" and isinstance(v, str):
+            node[k] = "127.0.0.1"
+        else:
+            isolate(v)
 for e in cfg.get("engines", {}).values():
     e["enabled"] = False
 for c in ("voice", "discord", "satellite"):
     cfg.setdefault("channels", {}).setdefault(c, {})["enabled"] = False
 cfg.setdefault("announce", {})["enabled"] = False
+# Nothing in the copy reaches what the running instance serves on this machine: its brain, voice server,
+# voice channel, room box channel, MCP servers or Spotify receiver. A test that needs one mocks it.
+for key in ("llm", "tts", "stt", "channels", "extensions"):
+    isolate(cfg.get(key))
+spotify = (cfg.get("extensions") or {}).get("spotify")
+if isinstance(spotify, dict):       # its receiver's ports, left at their defaults: the running receiver's
+    spotify["settings"] = {**(spotify.get("settings") or {}), "api_port": free(), "stream_port": free()}
 ha = cfg.setdefault("providers", {}).setdefault("home_assistant", {})
 ha["url"] = fake_ha or "http://127.0.0.1:9"
 if fake_ha:
@@ -81,7 +105,9 @@ if isinstance(llm, dict):
     vols = {h: c for h, c in (llm.get("volumes") or {}).items() if not str(c).rstrip("/").endswith("huggingface")}
     llm["volumes"] = {hf: "/root/.cache/huggingface", **vols}
 # winstond listens on loopback here whatever the real config says: keys are written from the UI only then.
-cfg.setdefault("control", {})["host"] = "127.0.0.1"
+# Its port is in the copy too, as extensions and channels reach winstond at the config's address.
+port = free()
+cfg.setdefault("control", {}).update(host="127.0.0.1", port=port)
 # One engine the supervisor sees as running without starting anything: an external one nothing serves.
 cfg["engines"]["smoke"] = {"driver": "external", "port": 9, "url": "http://127.0.0.1:9", "health": "/health"}
 yaml.safe_dump(cfg, open(path, "w"), sort_keys=False)
@@ -95,7 +121,9 @@ with open(os.path.join(copy, ".env"), "w") as f:
     f.writelines(f"{n}=fake-{n.lower()}\n" for n in names if n not in ("DISCORD_BOT_TOKEN", token_env))
     f.write(f"{token_env}=fake-ha-token\n")      # the token tests/fake_ha.py takes
 os.chmod(os.path.join(copy, ".env"), 0o600)
-s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()
+for s in held:
+    s.close()
+print(port)
 EOF
 )"
 

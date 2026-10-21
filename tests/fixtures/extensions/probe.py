@@ -80,7 +80,7 @@ async def hog(ctx, mb: int) -> str:
 @ext.tool(tier="read", outside=False, timeout=2)
 async def block(ctx, seconds: int) -> str:
     """Blocks its own event loop, as a careless synchronous call would."""
-    time.sleep(seconds)
+    time.sleep(seconds)                     # noqa: ASYNC251  (on purpose)
     return "woke"
 
 

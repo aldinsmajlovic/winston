@@ -124,7 +124,7 @@ async def main():
         for case in CASES:
             res = await run_case(case); res["run"] = r; results.append(res)
             last = res["turns"][-1]
-            sec = lambda v: f"{v:.2f}s" if v else "  -  "
+            sec = lambda v: f"{v:.2f}s" if v else "  -  "  # noqa: E731
             why = ", ".join(filter(None, [f"missing {res['missing']}" if res["missing"] else "",
                                           f"forbidden {res['forbidden']}" if res["forbidden"] else ""]))
             print(f"{'PASS' if res['ok'] else 'FAIL'}  {res['name']:<28} first {sec(last['first_text_s'])}  done {sec(last['done_s'])}  "

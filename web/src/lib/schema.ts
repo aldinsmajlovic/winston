@@ -1,7 +1,7 @@
 import { ADDITIONAL_PROPERTY_FLAG } from '@rjsf/utils'
 
-// Helpers over the config's JSON Schema. Every field carries `level` (basic | advanced), the
-// engines a change `restarts`, and, on engine fields, the `drivers` it applies to.
+// Helpers over the config's JSON Schema. A field may be `hidden` (never drawn: config.yaml only), and
+// carries the engines a change `restarts` and, on engine fields, the `drivers` it applies to.
 
 export type JsonSchema = {
   type?: string | string[]
@@ -16,7 +16,6 @@ export type JsonSchema = {
   enum?: unknown[]
   $ref?: string
   $defs?: Record<string, JsonSchema>
-  level?: 'basic' | 'advanced'
   restarts?: string[]
   drivers?: string[]
   [key: string]: unknown
@@ -24,8 +23,15 @@ export type JsonSchema = {
 
 export type Path = (string | number)[]
 
-/** A field whose value is the NAME of a variable in data/.env; the form draws a value field for it. */
-export type SecretMeta = { default: string; label: string }
+/** A field whose value is the NAME of a variable in data/.env; the form draws a value field for it.
+ * `help` says where to get the key; an `optional` key never warns while it is not set. */
+export type SecretMeta = { default: string; label: string; help?: string; optional?: boolean }
+
+/** What an extension's `Account` setting says (the SDK's `account` hint). */
+export type AccountMeta = { var: string; label: string; help?: string }
+
+/** What prune puts in place of an `Account` setting: Connect, or Connected with Disconnect. */
+export type AccountField = { ext: string; field: string; name: string; label: string }
 
 /** What prune adds to a pasted-key field it puts beside a secret's name field. */
 export type SecretField = {
@@ -35,17 +41,20 @@ export type SecretField = {
   path: Path
   /** True while the name field is empty, so pasting a key also has to write the name. */
   unnamed: boolean
+  /** Not set is fine: the extension works without it. */
+  optional: boolean
+  /** Its section is switched off, so Not set is no warning yet. */
+  quiet: boolean
 }
 
 export type PruneOptions = {
-  advanced: boolean
   /** Top-level properties handled elsewhere on the page (a list, a switch). */
   omit?: string[]
   /** Keep only fields whose `drivers` include this one (engine forms). Without it the draft's own
    * `driver` beside the field decides. */
   driver?: string
-  /** The whole draft config. `when` is checked against it, a section's `enabled_by` switch greys the
-   * rest of the section while off, and secret fields read their variable name from it. */
+  /** The whole draft config. `when` is checked against it, the rest of a section waits while its
+   * `enabled_by` switch is off, and secret fields read their variable name from it. */
   config?: unknown
   /** Where the pruned schema sits in the config, e.g. ['channels', 'discord']. */
   path?: Path
@@ -119,10 +128,6 @@ export function isKeyedMap(schema: JsonSchema): boolean {
   )
 }
 
-function isAdvanced(schema: JsonSchema): boolean {
-  return schema.level === 'advanced'
-}
-
 /** Whether a section's feature switch (`enabled_by`) is off in the draft; a missing value is the default. */
 function switchedOff(s: JsonSchema, value: unknown, root: JsonSchema): string | undefined {
   const key = typeof s.enabled_by === 'string' ? s.enabled_by : undefined
@@ -132,9 +137,11 @@ function switchedOff(s: JsonSchema, value: unknown, root: JsonSchema): string | 
   return current === false ? key : undefined
 }
 
-/** A self-contained form schema: refs inlined, advanced fields dropped unless asked for, no root title.
- * With the draft config, a field whose `when` does not hold is left out, `hidden` never shows, fields
- * under a switched-off feature carry `dimmed`, and a `secret` name field gets a value field beside it. */
+/** A self-contained form schema: refs inlined, `hidden` fields dropped, no root title. With the draft
+ * config, a field whose `when` does not hold is left out, a section's `enabled_by` switch carries
+ * `section_switch`, the fields under it (and every setting of an extension that is off) carry `waits`
+ * while it is off, and a `secret` name field gets a value field in its place, drawn even when the name
+ * field itself is hidden. */
 export function prune(schema: JsonSchema, root: JsonSchema, options: PruneOptions, depth = 0): JsonSchema {
   return pruneAt(schema, root, options, depth, { path: options.path, slot: undefined })
 }
@@ -151,63 +158,100 @@ function pruneAt(schema: JsonSchema, root: JsonSchema, options: PruneOptions, de
   const value = at.path && config !== undefined ? getIn(config, at.path) : undefined
   if (s.properties) {
     const off = at.path && config !== undefined ? switchedOff(s, value, root) : undefined
+    // An extension that is off waits as a whole: its keys do not warn and its lists stay quiet.
+    const ext = at.path?.length === 3 && at.path[0] === 'extensions' && at.path[2] === 'settings' ? at.path[1] : undefined
+    const extensionOff = ext !== undefined && config !== undefined && getIn(config, ['extensions', ext, 'enabled']) !== true
     const driver = options.driver ?? (typeof getIn(value, ['driver']) === 'string' ? (getIn(value, ['driver']) as string) : undefined)
     const properties: Record<string, JsonSchema> = {}
     for (const [key, child] of Object.entries(s.properties)) {
       const field = deref(child, root)
       if (depth === 0 && options.omit?.includes(key)) continue
-      if (field.hidden === true) continue
       if (config !== undefined && isRecord(field.when) && !holds(field.when, config, slot)) continue
       if (driver && field.drivers && !field.drivers.includes(driver)) continue
-      const dimmed = off !== undefined && key !== off
-      const secret = isSecret(field.secret) && at.path ? secretField(field.secret, [...at.path, key], config, dimmed) : null
+      const waits = (off !== undefined && key !== off) || extensionOff
+      if (ext !== undefined && isAccount(field.account)) {
+        properties[key] = accountField(field, field.account, String(ext), key)
+        continue
+      }
+      const secret = isSecret(field.secret) && at.path ? secretField(field, field.secret, [...at.path, key], config, waits) : null
       if (secret) properties[key + SECRET_SUFFIX] = secret
-      if (!options.advanced && isAdvanced(field)) continue
+      // After the pasted key: a secret's name field is hidden, its key is not.
+      if (field.hidden === true) continue
       const childPath = at.path ? [...at.path, key] : undefined
       const pruned = pruneAt(field, root, options, depth + 1, { path: childPath, slot })
       if (pruned.properties && Object.keys(pruned.properties).length === 0 && !pruned.additionalProperties) continue
-      properties[key] = dimmed ? { ...pruned, dimmed: true } : pruned
+      if (key === s.enabled_by) pruned.section_switch = true
+      properties[key] = waits ? { ...pruned, waits: true } : pruned
     }
+    // A switch with nothing else shown keeps its own help: nothing visible waits for it.
+    const own = typeof s.enabled_by === 'string' ? properties[s.enabled_by] : undefined
+    if (own && Object.keys(properties).length === 1) delete own.section_switch
     out.properties = properties
     out.required = s.required?.filter((k) => k in properties)
   }
   if (typeof s.additionalProperties === 'object') {
-    // Map entries have no fixed path, so `when` is still checked but secrets keep their name field.
+    // Map entries have no fixed path, so `when` is still checked but a secret gets no pasted-key field.
     out.additionalProperties = pruneAt(s.additionalProperties, root, options, depth + 1, { slot })
   }
   if (s.items) {
     // A list whose schema names a live list (options) picks each item from it.
-    const items = s.options && !s.items.options ? { ...s.items, options: s.options } : s.items
+    const items = s.options && !s.items.options ? { ...s.items, options: s.options, options_query: s.options_query } : s.items
     out.items = pruneAt(items, root, options, depth + 1, { slot })
   }
   return out
+}
+
+function isAccount(value: unknown): value is AccountMeta {
+  return isRecord(value) && typeof value.var === 'string' && typeof value.label === 'string'
+}
+
+/** An `Account` setting as one row, never part of the config: whether it is connected comes from the
+ * secrets' status, and Connect or Disconnect acts at once. */
+function accountField(field: JsonSchema, meta: AccountMeta, ext: string, key: string): JsonSchema {
+  return {
+    type: 'string',
+    title: field.title ?? meta.label,
+    description: field.description,
+    help: meta.help ?? field.help,
+    group: field.group,
+    widget: 'account',
+    virtual: true,
+    account_field: { ext, field: key, name: meta.var, label: meta.label } satisfies AccountField,
+  }
 }
 
 function isSecret(value: unknown): value is SecretMeta {
   return isRecord(value) && typeof value.default === 'string' && typeof value.label === 'string'
 }
 
-/** The basic value field drawn for a secret's name field: never part of the config, see SecretField. */
-function secretField(meta: SecretMeta, path: Path, config: unknown, dimmed: boolean): JsonSchema {
+/** The value field drawn for a secret's name field: never part of the config, see SecretField.
+ * Its help says where to get the key (the secret's own, else the name field's); it sits in the name
+ * field's group. */
+function secretField(field: JsonSchema, meta: SecretMeta, path: Path, config: unknown, waits: boolean): JsonSchema {
   const current = getIn(config, path)
   const unnamed = typeof current !== 'string' || current.trim() === ''
   const name = unnamed ? meta.default : (current as string).trim()
-  const secret: SecretField = { name, path, unnamed }
+  const secret: SecretField = { name, path, unnamed, optional: meta.optional === true, quiet: waits }
   return {
     type: 'string',
     title: meta.label,
-    description: `Kept in data/.env on this machine as ${name}. Once saved it is never shown again; paste a new one to replace it.`,
-    level: 'basic',
+    description: 'Kept on this computer and never shown again.',
+    help: meta.help ?? field.help,
+    group: field.group,
     widget: 'secret',
     virtual: true,
     secret_field: secret,
-    ...(dimmed ? { dimmed: true } : {}),
   }
 }
 
-/** True when a section has nothing to show at the basic level. */
-export function hasBasicFields(schema: JsonSchema, root: JsonSchema): boolean {
-  return Object.keys(prune(schema, root, { advanced: false }).properties ?? {}).length > 0
+/** Whether a section's form would draw anything, pruned as its SectionForm prunes it. */
+export function hasFields(schema: JsonSchema, root: JsonSchema, options: PruneOptions = {}): boolean {
+  return Object.keys(prune(schema, root, options).properties ?? {}).length > 0
+}
+
+/** A section's other keys, so a form omitting them shows only `keep`; the rest is drawn elsewhere. */
+export function allBut(root: JsonSchema, path: string[], keep: string[]): string[] {
+  return Object.keys(section(root, path).properties ?? {}).filter((k) => !keep.includes(k))
 }
 
 /** A field marked `empty_means_off` (quiet hours, chime, health path, quantization): cleared, it saves

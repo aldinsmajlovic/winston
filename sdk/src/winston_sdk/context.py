@@ -17,13 +17,13 @@ import httpx
 from pydantic import BaseModel
 
 from winston_sdk.errors import NotPermitted
-
-ONGOING = "ongoing.txt"     # ctx.ongoing's line, in the extension's folder; Winston's channels read it each message
 from winston_sdk.nudge import Nudge, NudgeState
 from winston_sdk.when import parse_when
 
 if TYPE_CHECKING:
     from winston_sdk.runtime import Runtime
+
+ONGOING = "ongoing.txt"     # ctx.ongoing's line, in the extension's folder; Winston's channels read it each message
 
 
 def local_zone() -> ZoneInfo:
@@ -40,7 +40,7 @@ def local_zone() -> ZoneInfo:
         name = Path("/etc/timezone").read_text().strip()
     try:
         return ZoneInfo(name or "UTC")
-    except Exception:                          # an odd TZ value should not stop an extension
+    except Exception:                          # noqa: BLE001  (an odd TZ value should not stop an extension)
         return ZoneInfo("UTC")
 
 
@@ -292,6 +292,11 @@ class Ctx:
         if self._http is None:
             self._http = self._rt.make_http(self)
         return self._http
+
+    async def token(self, field: str) -> str | None:
+        """An access token for the `Account` setting `field`, fresh for a while yet; None while it is not
+        connected (or the service took the sign-in back)."""
+        return await self._call("account.token", field=field)
 
     async def devices(self) -> list[Device]:
         """Every device Home Assistant knows, exposed or not (needs `devices`)."""

@@ -3,12 +3,15 @@ one per room a page is set to (shared with that room's box, core/rooms.py), with
 tools and reply filter as every other channel. Everything it says goes to the live feed;
 `POST /api/chat` only queues the message.
 
-A conversation starts fresh after channels.web.session_idle_mins, and after a config save."""
+A conversation starts fresh after channels.web.session_idle_mins, and after a config save; the feed
+gets a `conversation` event saying why before the message that starts it."""
 import asyncio
 import time
 import uuid
 from collections import deque
 
+import httpx
+import openai
 from loguru import logger
 
 from winston.channels.text import TextSession, stale
@@ -18,10 +21,28 @@ from winston.core.live import Feed, LiveEvent, LiveObserver
 from winston.core.rooms import RoomLink, Rooms, area, key, local_sync
 
 
+UNREACHABLE = "He could not reach his brain. It may be stopped or still starting."
+FAILED = "Something went wrong while he answered. The log has the details."
+
+
+def error_text(e: BaseException) -> str:
+    """What the Talk page says when he could not answer: the brain unreachable anywhere in the chain of
+    causes, or that something failed. The exception itself goes to the log."""
+    seen: set[int] = set()
+    cur: BaseException | None = e
+    while cur is not None and id(cur) not in seen:
+        if isinstance(cur, (openai.APIConnectionError, openai.APITimeoutError, httpx.ConnectError)):
+            return UNREACHABLE
+        seen.add(id(cur))
+        cur = cur.__cause__ or cur.__context__
+    return FAILED
+
+
 class WebChat:
     def __init__(self, cfg: WinstonConfig, feed: Feed, rooms: Rooms | None = None):
         self.cfg, self.feed, self.rooms = cfg, feed, rooms
         self.sessions: dict[str | None, TextSession] = {}       # by room key; None is the household's
+        self._why: dict[str | None, str] = {}                   # by room key: why the next one is new
         self._lock = asyncio.Lock()
         self._recent: deque[tuple[float, str, str]] = deque(maxlen=10)     # (at, note, said), for a new conversation
 
@@ -30,13 +51,23 @@ class WebChat:
         """The household conversation, the one without a room."""
         return self.sessions.get(None)
 
+    def _key(self, room: str | None) -> str | None:
+        return key(room) if room and self.rooms else None
+
+    async def _end_stale(self, k: str | None) -> None:
+        """Ends a conversation gone stale (channels/text.py), noting why for the next message."""
+        s, mins = self.sessions.get(k), self.cfg.channels.web.session_idle_mins
+        if s is not None and await stale(s, mins * 60):
+            quiet = time.monotonic() - s.last_used > mins * 60
+            self._why[k] = f"after {mins:g} min of quiet" if quiet else "his actions changed"
+            await self.sessions.pop(k).close()
+
     async def current(self, room: str | None = None) -> TextSession:
-        k = key(room) if room and self.rooms else None
+        """The room's conversation (the household's without one), started if there is none; ask() ends a stale
+        one first."""
+        k = self._key(room)
         async with self._lock:
             s = self.sessions.get(k)
-            if s is not None and await stale(s, self.cfg.channels.web.session_idle_mins * 60):
-                await self.sessions.pop(k).close()
-                s = None
             if s is None:
                 obs = LiveObserver("web", self.feed.publish)
                 link = RoomLink(room, f"web:{uuid.uuid4().hex[:8]}", local_sync(self.rooms)) if k else None
@@ -51,13 +82,23 @@ class WebChat:
             return s
 
     async def ask(self, text: str, room: str | None = None):
+        k = self._key(room)
+        try:
+            async with self._lock:
+                await self._end_stale(k)
+        except Exception:                                               # noqa: BLE001  (it starts afresh)
+            logger.exception("web chat: ending a stale conversation failed")
+        if (why := self._why.pop(k, None)) is not None:
+            self.feed.publish(LiveEvent(channel="web", type="conversation", room=room, text=why))
         self.feed.publish(LiveEvent(channel="web", type="user", text=text))
         self.feed.publish(LiveEvent(channel="web", type="state", state="thinking"))
         try:
-            await (await self.current(room)).ask(text)
+            s = await self.current(room)
+            if not await s.ask(text) and s.error:
+                raise s.error
         except Exception as e:                                          # noqa: BLE001
             logger.exception("web chat failed")
-            self.feed.publish(LiveEvent(channel="web", type="error", text=f"{type(e).__name__}: {e}"))
+            self.feed.publish(LiveEvent(channel="web", type="error", text=error_text(e)))
             self.feed.publish(LiveEvent(channel="web", type="state", state="idle"))
 
     async def _correction(self, text: str):
@@ -92,6 +133,7 @@ class WebChat:
         """Close the conversations; the next message starts one with the current config and memory."""
         async with self._lock:
             self.cfg = cfg or self.cfg
+            self._why.update(dict.fromkeys(self.sessions, "settings were saved"))
             closing, self.sessions = list(self.sessions.values()), {}
         for s in closing:
             await s.close()

@@ -1,135 +1,105 @@
-import { CircleAlert, CircleCheck, CircleDashed, CircleHelp, Trash2 } from 'lucide-react'
-import { StatusTip } from '@/components/status-tip'
-import { IconButton } from '@/components/icon-button'
 import { KindIcon } from '@/components/kind-icon'
+import { RowMenu } from '@/components/row-menu'
+import { DataTable, type Column } from '@/components/templates/list-page'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { aliasesOf, haName, heardName, type EntityRow, type Group, type HAEntity, type RowStatus } from '@/hooks/use-home-assistant'
+import { useRegion } from '@/hooks/use-region'
+import { haName, heardName, otherNames, type EntityRow, type Group, type HAEntity } from '@/hooks/use-home-assistant'
 
-const SHOWN_ALIASES = 2
-
-function Aliases({ row }: { row: EntityRow }) {
-  const all = aliasesOf(row)
-  const rest = all.slice(SHOWN_ALIASES)
+function Names({ own, ha }: { own: string[]; ha: string[] }) {
   return (
     <div className="flex flex-wrap gap-1">
-      {all.slice(0, SHOWN_ALIASES).map((a) => (
+      {own.map((a) => (
         <Badge key={a} variant="secondary">
           {a}
         </Badge>
       ))}
-      {rest.length ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Badge variant="outline" tabIndex={0} aria-label={`${rest.length} more aliases`}>
-              +{rest.length}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>{rest.join(', ')}</TooltipContent>
-        </Tooltip>
-      ) : null}
+      {ha.map((a) => (
+        <Badge key={a} variant="outline">
+          {a}
+        </Badge>
+      ))}
     </div>
   )
 }
 
-function State({ ha }: { ha?: HAEntity }) {
-  if (!ha?.in_ha) return null
+function State({ ha }: { ha: HAEntity }) {
+  const { date } = useRegion()
   if (ha.state === 'unavailable') return <span className="text-destructive">Unavailable</span>
-  const text = ha.state_text ?? ha.state ?? undefined
-  return (
-    <span className="text-muted-foreground" title={text}>
-      {text}
-    </span>
-  )
-}
-
-export function StatusIcon({ status }: { status: RowStatus }) {
-  switch (status.kind) {
-    case 'applied':
-      return <StatusTip icon={CircleCheck} className="text-success" label="Applied" />
-    case 'pending':
-      return <StatusTip icon={CircleDashed} className="text-warning" label="Not applied yet" lines={status.why} />
-    case 'missing':
-      return (
-        <StatusTip
-          icon={CircleAlert}
-          className="text-destructive"
-          label="Not in Home Assistant"
-          lines={['Home Assistant has no entity with this id; a save skips it']}
-        />
-      )
-    case 'unknown':
-      return <StatusTip icon={CircleHelp} className="text-muted-foreground" label="Unknown" lines={[status.why]} />
-  }
+  if (ha.last_run) return <span className="text-muted-foreground">Last run {date(new Date(ha.last_run))}</span>
+  return <span className="text-muted-foreground">{ha.state_text ?? ha.state}</span>
 }
 
 type Props = {
   groups: Group[]
   onEdit: (row: EntityRow) => void
   onRemove: (row: EntityRow) => void
-  /** Shown as the one row when there are no groups. */
-  empty: string
 }
 
-/** One table per room: domain icon, the name he hears over Home Assistant's own, aliases, state and
- * whether Home Assistant has it as the list does. A row opens the edit dialog. */
-export function HAEntityTables({ groups, onEdit, onRemove, empty }: Props) {
-  const tables = groups.length ? groups : [{ name: 'Entities', rows: [] }]
+/** One table per room: the name he hears over Home Assistant's own, the other names (the list's solid,
+ * Home Assistant's outlined), the state, and a word only when Home Assistant does not have it as listed. */
+export function HAEntityTables({ groups, onEdit, onRemove }: Props) {
+  const columns: Column<EntityRow>[] = [
+    {
+      key: 'name',
+      title: 'Name',
+      // Every room's table is its own, so the widths are fixed to line their columns up: State fits its words,
+      // the other names take the rest. On a phone the lines under the name start where it does, past its icon.
+      className: 'w-9/20 whitespace-normal',
+      render: (r) => {
+        const muted = haName(r)
+        return (
+          <div className="flex items-start gap-2">
+            <KindIcon name={r.id.split('.')[0]} className="mt-0.5 text-muted-foreground" />
+            <div className="flex min-w-0 flex-col items-start gap-0.5">
+              <button type="button" className="text-left font-medium break-words hover:underline focus-visible:underline" onClick={() => onEdit(r)}>
+                {heardName(r)}
+              </button>
+              {muted ? <span className="text-sm break-words text-muted-foreground">{muted}</span> : null}
+              {r.badge ? (
+                <Badge variant={r.badge === 'Not in Home Assistant' ? 'destructive' : 'outline'}>{r.badge}</Badge>
+              ) : null}
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      key: 'names',
+      title: 'Names he answers to',
+      className: 'whitespace-normal max-sm:pl-6',
+      render: (r) => {
+        // An empty cell is null, so its phone label hides with it.
+        const { own, ha } = otherNames(r)
+        return own.length + ha.length > 0 ? <Names own={own} ha={ha} /> : null
+      },
+    },
+    {
+      key: 'state',
+      title: 'State',
+      className: 'w-28 whitespace-normal max-sm:pl-6',
+      render: (r) => (r.ha?.in_ha ? <State ha={r.ha} /> : null),
+    },
+  ]
   return (
     <div className="flex flex-col gap-4">
-      {tables.map((g) => (
-        <Table key={g.name} aria-label={g.name} className="table-fixed">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-8" />
-              <TableHead>{g.name}</TableHead>
-              <TableHead className="hidden w-2/5 sm:table-cell">Aliases</TableHead>
-              <TableHead className="w-28">State</TableHead>
-              <TableHead className="w-8" />
-              <TableHead className="w-10" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {g.rows.length === 0 ? (
-              <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={6} className="text-muted-foreground">
-                  {empty}
-                </TableCell>
-              </TableRow>
-            ) : null}
-            {g.rows.map((r) => {
-              const muted = haName(r)
-              return (
-                <TableRow key={r.id} className="cursor-pointer" onClick={() => onEdit(r)}>
-                  <TableCell>
-                    <KindIcon name={r.id.split('.')[0]} className="text-muted-foreground" />
-                  </TableCell>
-                  <TableCell className="whitespace-normal">
-                    <div className="flex min-w-0 flex-col">
-                      <span className="font-medium break-words">{heardName(r)}</span>
-                      {muted ? <span className="text-xs break-words text-muted-foreground">{muted}</span> : null}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden whitespace-normal sm:table-cell">
-                    <Aliases row={r} />
-                  </TableCell>
-                  <TableCell className="truncate">
-                    <State ha={r.ha} />
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <StatusIcon status={r.status} />
-                  </TableCell>
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <IconButton label="Remove" onClick={() => onRemove(r)}>
-                      <Trash2 />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
+      {groups.map((g) => (
+        <div key={g.name} role="group" aria-label={g.name} className="flex flex-col gap-1">
+          <h3 className="text-sm font-semibold">{g.name}</h3>
+          <DataTable
+            columns={columns}
+            rows={g.rows}
+            rowKey={(r) => r.id}
+            actions={(r) => (
+              <RowMenu
+                name={heardName(r)}
+                items={[
+                  { label: 'Edit', onSelect: () => onEdit(r) },
+                  { label: 'Remove', onSelect: () => onRemove(r), destructive: true },
+                ]}
+              />
+            )}
+          />
+        </div>
       ))}
     </div>
   )

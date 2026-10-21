@@ -6,8 +6,8 @@ voice, on the page and from the command line, `winston check turns`), part 2's m
 part 3's hearing slot. Each part becomes the reference for itself as it is built.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/turns-dark.png">
-  <img src="images/turns-light.png" alt="The Turns page: his diary entry for the day, then that day's spoken turns, two of them marked" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="images/history-dark.png">
+  <img src="images/history-light.png" alt="The History page: his diary entry for the day, then that day's spoken requests, each with a header in words and Play; one heard first as something else, one marked as not for him" width="720">
 </picture>
 
 ## Why
@@ -63,17 +63,29 @@ Every turn is kept, so mistakes can be found, marked and used to test the next c
 - **How long.** `logging.turns.keep_days`, 14 by default; a marked turn is kept until unmarked. The
   week above had 798 s of request audio, about 15 MB as FLAC.
 - **Off by default.** Recording a home is personal: `logging.turns.enabled` is off unless switched on
-  (Settings, System). Nothing leaves the machine either way.
+  (Keep recordings of what you say, under Recordings on the Assistant page). Nothing leaves the
+  machine either way. While it is off, History says what recordings would keep and links there.
 - **Marking a mistake** (built). By voice: "that's not what I said", "I wasn't talking
   to you", "that was the wrong thing", "that took too long" mark his previous turn (`mark_mistake`), with
   what you actually said or wanted when you say it, and he says it is noted in his own words. From the
   command line: `winston turns mark ID KIND`, with `--said`, `--wanted`, and the tools it should and must
   not call as `--expect` and `--forbid` (the brain trials' substrings). The kinds are `misheard`,
   `not_addressed`, `wrong_action` and `too_slow`. A marked turn is copied with its audio into
-  `data/turns/marked/`, kept until unmarked. On the page: a flag on the hover of any line you said
-  aloud, on Talk (the box's words show there too now) and on Turns, the turn record a day at a time (under his diary
-  entry for that day) with what he heard played back and a Marked view across days. Still to come: a turn you corrected in the
-  next breath ("no, the living room, not the main room") offered for marking on its own.
+  `data/turns/marked/`, kept until unmarked. On the page: a flag on any line you said aloud once its
+  recording is kept, on hover and always on a touch screen, on Talk (the box's words show there too)
+  and on History (`/history`; `/turns` leads there). Its menu, Mark a mistake ("Kept so later changes
+  can be tested on it. He does not learn from it by himself."), offers He misheard me (which asks what
+  you actually said), I wasn't talking to him, He did the wrong thing and He was too slow, and Remove
+  mark once it is marked; the toast has Undo. A marked line keeps a filled flag, with the mark in words
+  ('He misheard you. You said "Warm, please."') in its tooltip and on History; what you wanted is quoted
+  after Wanted:, or after He noted: when he made the mark by voice, and he fills it in only with what
+  you told him. Still to come: a turn
+  you corrected in the next breath ("no, the living room, not the main room") offered for marking on
+  its own.
+- **History** (built). The record a day at a time, under his diary entry for that day, or Marked, the
+  marked requests across days. Each spoken request has a header in words ("14:25, Kitchen, after the
+  wake word, answered in 1.5 s"), Play what he heard on your line, "Heard first as ..." when the
+  hint-word fix changed it, and how it ended from your side ("You talked over him").
 - **The test** (built). `winston check turns` replays the marked turns through the current setup, or a
   candidate with `--with FILE` (a config file laid over yours: another speech engine, another model,
   another prompt). Each turn's audio goes through the speech engine, then its words through a fresh
@@ -152,7 +164,7 @@ language back into the turn, capabilities, and `winston check stt`. As designed:
 - **Run by the supervisor.** An `engines.stt` entry (Docker, process or external), started by
   `winston up` and shown with the others.
 - **Presets and dropdowns.** Picked on the settings page the way the brain is: a preset per kind of
-  machine, the model from a dropdown filled from the server, raw arguments behind Advanced. Presets to
+  machine, the model from a dropdown filled from the server, raw arguments in How it runs. Presets to
   start: speech models on vLLM (NVIDIA), Parakeet built in (CPU, no server, the default for a machine
   without a GPU), and Hosted (a URL and a key).
 - **Capabilities, not names.** An engine declares whether it takes context, reports the language, and

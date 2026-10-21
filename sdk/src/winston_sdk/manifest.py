@@ -105,7 +105,7 @@ def _script_block(text: str) -> dict | None:
 
 def _extra_deps(deps: list[str]) -> list[str]:
     """Dependencies other than the SDK itself, which is always there."""
-    return [d for d in deps if not re.match(rf"^{re.escape(SDK_PACKAGE)}\b", d.strip(), re.I)]
+    return [d for d in deps if not re.match(rf"^{re.escape(SDK_PACKAGE)}\b", d.strip(), re.IGNORECASE)]
 
 
 def read(path: str | Path) -> Manifest:

@@ -1,10 +1,11 @@
-import { Circle, CircleAlert, CircleCheck, CircleX, LoaderCircle, RefreshCw } from 'lucide-react'
+import { Circle, CircleAlert, CircleCheck, CircleX, LoaderCircle } from 'lucide-react'
 import type { EngineState } from '@/api/client'
+import { STATE_WORDS } from '@/api/status'
 import { KindIcon } from '@/components/kind-icon'
 import { StatusTip } from '@/components/status-tip'
 import type { DriverChoice } from '@/hooks/use-drivers'
 
-// A status is an icon plus a colour (docs/ui-guide.md).
+// A status is an icon plus a colour, and its word wherever it is not Running (docs/ui-guide.md).
 const states: Record<EngineState, { Icon: typeof Circle; className: string }> = {
   healthy: { Icon: CircleCheck, className: 'text-success' },
   starting: { Icon: LoaderCircle, className: 'animate-spin text-muted-foreground' },
@@ -13,13 +14,25 @@ const states: Record<EngineState, { Icon: typeof Circle; className: string }> = 
   error: { Icon: CircleX, className: 'text-destructive' },
 }
 
-export function StateIcon({ state, detail }: { state: EngineState; detail?: string }) {
-  const { Icon, className } = states[state]
-  return <StatusTip icon={Icon} className={className} label={detail || state} />
+type Props = {
+  state: EngineState
+  detail?: string
+  /** When its word shows beside the icon: never, whenever it is not Running (the default), or always. */
+  words?: 'never' | 'problems' | 'always'
+  /** Its own word in place of the state's ("Connected" for a service that answers). */
+  word?: string
 }
 
-export function ChangedIcon({ text = 'Saved config waits for a restart' }: { text?: string }) {
-  return <StatusTip icon={RefreshCw} className="text-warning" label={text} />
+/** A state as its icon, and its word beside it unless the place says otherwise; the detail opens on tap. */
+export function StateIcon({ state, detail, words = 'problems', word = STATE_WORDS[state] }: Props) {
+  const { Icon, className } = states[state]
+  const shown = words === 'always' || (words === 'problems' && state !== 'healthy')
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <StatusTip icon={Icon} className={className} label={detail ? `${word}: ${detail}` : word} />
+      {shown ? <span className="text-sm font-normal">{word}</span> : null}
+    </span>
+  )
 }
 
 /** How an engine is run, with the icon and label the config schema gives it. */

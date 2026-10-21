@@ -44,6 +44,8 @@ ENTITIES = [
     ("light.hylla", "Hyllan", "unavailable", {}, {"device_id": "dev_shelf", "name": None, "aliases": []}, True),
     ("light.kok", "Köksspotlights", "off", {}, {"device_id": "dev_kitchen", "name": "Köksspotlights",
                                                 "aliases": [], "area_id": "kitchen"}, False),
+    ("sensor.taklampa_signal", "Taklampa signal", "-62", {"unit_of_measurement": "dBm"},
+     {"device_id": "dev_ceiling", "name": None, "aliases": [], "entity_category": "diagnostic"}, False),
     ("sensor.phone_battery", "Phone battery", "81", {"unit_of_measurement": "%"},
      {"device_id": "dev_phone", "name": None, "aliases": []}, False),
     ("media_player.plex_1", "Plex client", "unavailable", {}, {"device_id": "dev_plex", "name": None, "aliases": []}, True),
@@ -74,6 +76,8 @@ HOME_ENTITIES = [
      {"brightness": 128, "entity_id": ["light.taklampa", "light.golvlampa", "light.hylla_kajplats"]},
      {**_no, "area_id": "main_room", "aliases": ["vardagsrummet"]}, True),
     ("light.taklampa", "Taklampa", "on", {"brightness": 128}, {**_no, "device_id": "dev_tak"}, True),
+    ("sensor.taklampa_signal", "Taklampa signal", "-62", {"unit_of_measurement": "dBm"},
+     {**_no, "device_id": "dev_tak", "entity_category": "diagnostic"}, False),
     ("light.golvlampa", "Golvlampa", "on", {"brightness": 128, "color_temp_kelvin": 2700},
      {**_no, "device_id": "dev_golv"}, True),
     ("light.hylla_kajplats", "HYLLA KAJPLATS E27 WS G95 clear 806lm", "unavailable", {},
@@ -176,7 +180,7 @@ class FakeHA:
         return web.json_response(s) if s else web.json_response({"message": "Entity not found."}, status=404)
 
     # Services: a few that change things, and the response-only ones Home Assistant has for reading.
-    SERVICES = {"light": {"turn_on": {}, "turn_off": {}}, "switch": {"turn_on": {}, "turn_off": {}},
+    SERVICES = {"light": {"turn_on": {}, "turn_off": {}}, "switch": {"turn_on": {}, "turn_off": {}},  # noqa: RUF012  (a test may shadow it)
                 "weather": {"get_forecasts": {"response": {"optional": False}}},
                 "calendar": {"get_events": {"response": {"optional": False}}},
                 "todo": {"get_items": {"response": {"optional": False}}, "add_item": {}},

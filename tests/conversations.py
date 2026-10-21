@@ -25,11 +25,11 @@ from pipecat.processors.aggregators.llm_response_universal import LLMContextAggr
 from pipecat.workers.runner import WorkerRunner
 
 sys.path.insert(0, str(Path(__file__).parent))
-from m2_headless_roundtrip import SR, Heard, Mic, Speaker, synth_user_audio  # noqa: E402
-from winston.channels import voice as vp  # noqa: E402
-from winston.channels.clone import MicTap, make_voice_tools  # noqa: E402
-from winston.core.brain import Brain  # noqa: E402
-from winston.core.reply import ReplyFilter  # noqa: E402
+from m2_headless_roundtrip import SR, Heard, Mic, Speaker, synth_user_audio
+from winston.channels import voice as vp
+from winston.channels.clone import MicTap, make_voice_tools
+from winston.core.brain import Brain
+from winston.core.reply import ReplyFilter
 
 logger.remove(); logger.add(sys.stderr, level=os.environ.get("LOG", "WARNING"))
 USER = "vctk/p226_023"

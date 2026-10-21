@@ -1,7 +1,5 @@
 import { toast } from 'sonner'
-import { CircleAlert, CircleCheck, X } from 'lucide-react'
-import { IconButton } from '@/components/icon-button'
-import { StatusTip } from '@/components/status-tip'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
@@ -13,19 +11,29 @@ type Props = {
   names: string[]
   /** Which of `names` a pasted value belongs to (e.g. by its prefix); the first name otherwise. */
   resolve?: (value: string) => string | undefined
-  /** What the key is, for the Remove confirmation ("API key"). */
+  /** What the key is ("Bot token"), for the placeholder and the Remove confirmation. */
   label: string
+  /** What the empty field says while no key is saved, in place of "Paste the bot token". */
   placeholder?: string
   disabled?: boolean
   /** Called with the name a value was pasted under, e.g. to write that name into the config. */
   onPaste?: (name: string) => void
-  /** Not set is fine (another sign-in works), so only Set shows an icon. */
+  /** Not set is fine (another sign-in works), so it never says Not set. */
   optional?: boolean
+  /** Its section is switched off, so Not set is no warning yet. */
+  quiet?: boolean
+}
+
+/** "Bot token" to "bot token" for use mid-sentence, leaving names and acronyms ("API key",
+ * "ListenBrainz token") as written. */
+function inSentence(label: string): string {
+  const rest = label.split(' ')[0].slice(1)
+  return rest === rest.toLowerCase() ? label.charAt(0).toLowerCase() + label.slice(1) : label
 }
 
 /** A key pasted into the settings: kept in the secrets draft until Save writes it to data/.env, then
- * never shown again. Beside it an icon says whether the variable is set; Remove deletes it at once. */
-export function SecretField({ id, names, resolve, label, placeholder = 'Paste a key', disabled, onPaste, optional }: Props) {
+ * never shown again. Beside it a word says whether it is saved; Remove deletes it at once. */
+export function SecretField({ id, names, resolve, label, placeholder, disabled, onPaste, optional, quiet }: Props) {
   const ask = useConfirm()
   const status = useSecretStatus()
   const draft = useSecretsDraft()
@@ -44,12 +52,10 @@ export function SecretField({ id, names, resolve, label, placeholder = 'Paste a 
   const remove = async () => {
     const restarts = [...new Set(stored.flatMap((n) => status.byName.get(n)?.restarts ?? []))].filter((r) => r !== 'control')
     const choice = await ask({
-      title: `Remove the ${label.toLowerCase()}?`,
+      title: `Remove the saved ${inSentence(label)}?`,
       lines: [
-        `Deletes ${stored.join(' and ')} from data/.env.`,
-        ...(restarts.length
-          ? [`Running ${restarts.join(', ')} ${restarts.length === 1 ? 'keeps' : 'keep'} the old one until restarted.`]
-          : []),
+        'It is deleted from this computer now, without waiting for Save.',
+        ...(restarts.length ? ['What is running keeps using it until it restarts.'] : []),
       ],
       choices: [{ label: 'Remove', value: 'yes', destructive: true }],
     })
@@ -61,9 +67,10 @@ export function SecretField({ id, names, resolve, label, placeholder = 'Paste a 
         return
       }
     }
-    toast.success(`Removed the ${label.toLowerCase()}`)
+    toast.success(`Removed the ${inSentence(label)}`)
   }
 
+  const empty = isSet ? 'Paste to replace it' : (placeholder ?? (optional ? 'Optional' : `Paste the ${inSentence(label)}`))
   return (
     <div className="flex items-center gap-2">
       <Input
@@ -71,27 +78,21 @@ export function SecretField({ id, names, resolve, label, placeholder = 'Paste a 
         type="password"
         autoComplete="new-password"
         spellCheck={false}
-        placeholder={placeholder}
+        placeholder={empty}
         value={typed}
         disabled={disabled}
         onChange={(e) => change(e.target.value.trim())}
       />
-      {isSet || !optional ? <SecretState set={isSet} loading={status.isLoading} /> : null}
+      {status.isLoading ? null : isSet ? (
+        <span className="text-sm whitespace-nowrap text-success">Saved</span>
+      ) : optional || quiet || typed ? null : (
+        <span className="text-sm whitespace-nowrap text-warning">Not set</span>
+      )}
       {isSet ? (
-        <IconButton type="button" label="Remove" disabled={disabled} onClick={() => void remove()}>
-          <X />
-        </IconButton>
+        <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => void remove()}>
+          Remove
+        </Button>
       ) : null}
     </div>
-  )
-}
-
-/** Set or not set: an icon plus a colour, the words in its tooltip. */
-function SecretState({ set, loading }: { set: boolean; loading: boolean }) {
-  if (loading) return null
-  return set ? (
-    <StatusTip icon={CircleCheck} className="text-success" label="Set" />
-  ) : (
-    <StatusTip icon={CircleAlert} className="text-warning" label="Not set" />
   )
 }

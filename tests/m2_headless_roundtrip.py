@@ -29,9 +29,9 @@ from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 
-from winston.channels import voice as vp  # noqa: E402  (loads config)
-from winston.core.brain import Brain, ToolCallLogObserver  # noqa: E402
-from winston.core.live import FeedPoster, LiveObserver  # noqa: E402
+from winston.channels import voice as vp  # loads config
+from winston.core.brain import Brain, ToolCallLogObserver
+from winston.core.live import FeedPoster, LiveObserver
 
 FEED = FeedPoster(vp.CFG)       # as the voice channel posts its turns to winstond, when one is there
 
@@ -229,10 +229,10 @@ async def one_turn(utterance: str) -> dict:
     run = asyncio.create_task(runner.run(task))
     try:
         await asyncio.wait_for(done.wait(), timeout=len(audio) / SR + 30)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error("timed out waiting for the bot to finish speaking")
     await task.cancel(); await run; await brain.close()
-    r = lambda t: None if (t is None or speaker.t_stop is None) else round((t - speaker.t_stop) * 1000)
+    r = lambda t: None if (t is None or speaker.t_stop is None) else round((t - speaker.t_stop) * 1000)  # noqa: E731
     return {"utterance": utterance, "heard": " ".join(stt_tap.text), "reply": "".join(llm_tap.text).strip(),
             "stt_ms": r(stt_tap.t_first), "first_text_ms": r(llm_tap.t_first),
             "first_audio_ms": r(listener.t_first_audio), "reply_audio_secs": round(listener.audio_secs, 2),

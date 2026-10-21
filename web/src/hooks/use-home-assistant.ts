@@ -3,9 +3,12 @@ import { toast } from 'sonner'
 import { $api } from '@/api/client'
 import type { ExposedEntity } from '@/api/client'
 import type { components } from '@/api/schema'
+import type { ActionItem } from '@/components/action-list'
+import { humanize, joinNames } from '@/lib/format'
 
 export type HAEntity = components['schemas']['HAEntity']
 export type HAExposure = components['schemas']['HAExposure']
+export type HARegistry = components['schemas']['HARegistry']
 export type HAApply = components['schemas']['HAApply']
 export type HATool = components['schemas']['HATool']
 export type ExposurePlan = components['schemas']['ExposurePlan']
@@ -32,27 +35,42 @@ export function refreshHomeAssistant(client: QueryClient) {
   for (const queryKey of [exposureKey, registryKey, toolsKey]) void client.invalidateQueries({ queryKey })
 }
 
+/** An entity's name in Home Assistant, from what it said last (the exposure and the registry), else its id. */
+export function haNames(client: QueryClient): (id: string) => string {
+  const exposure = client.getQueryData<HAExposure>(exposureKey)
+  const registry = client.getQueryData<HARegistry>(registryKey)
+  const names = new Map<string, string>()
+  const known = [...(exposure?.entities ?? []), ...(exposure?.drift ?? []), ...(registry?.groups ?? []).flatMap((g) => g.entities)]
+  for (const e of known) if (e.friendly_name && !names.has(e.entity_id)) names.set(e.entity_id, e.friendly_name)
+  return (id) => names.get(id) ?? id
+}
+
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 const total = (m: Record<string, string[]> | undefined) => Object.values(m ?? {}).reduce((n, a) => n + a.length, 0)
 
-/** What an apply did, in a few words: "3 exposed, 1 alias removed". */
+/** What an apply did, as the Save confirm said it would: "exposed 3", "stopped exposing 41 to Assist",
+ * "added 2 names". */
 export function applySummary(a: HAApply): string[] {
-  const parts: string[] = []
-  if (a.exposed?.length) parts.push(`${a.exposed.length} exposed`)
-  if (a.unexposed?.length) parts.push(`${a.unexposed.length} un-exposed`)
+  const exposure = [
+    a.exposed?.length ? `exposed ${a.exposed.length}` : null,
+    a.unexposed?.length ? `stopped exposing ${a.unexposed.length}` : null,
+  ].filter((p) => p !== null)
+  if (exposure.length) exposure[exposure.length - 1] += ' to Assist'
   const added = total(a.aliases_added)
   const removed = total(a.aliases_removed)
-  if (added) parts.push(`${count(added, 'alias', 'aliases')} added`)
-  if (removed) parts.push(`${count(removed, 'alias', 'aliases')} removed`)
-  return parts
+  return [
+    ...exposure,
+    added ? `added ${count(added, 'name')}` : null,
+    removed ? `removed ${count(removed, 'name')}` : null,
+  ].filter((p) => p !== null)
 }
 
 /** Lines under the toast: what could not be applied, and a setting Winston changed in Home Assistant. */
 function applyNotes(a: HAApply): string[] {
   const notes: string[] = []
   if (a.skipped?.length) notes.push(`Not in Home Assistant: ${a.skipped.join(', ')}`)
-  if (a.no_registry?.length) notes.push(`Cannot take aliases: ${a.no_registry.join(', ')}`)
-  if (a.auto_expose_turned_off) notes.push('New entities are no longer exposed automatically')
+  if (a.no_registry?.length) notes.push(`Could not add other names to: ${a.no_registry.join(', ')}`)
+  if (a.auto_expose_turned_off) notes.push('New devices are no longer exposed to Assist')
   return notes
 }
 
@@ -90,21 +108,53 @@ export function useApplyNow() {
   })
 }
 
-// The rows of the page's list: an entity of the draft list with Home Assistant's side of it.
+/** What applying a plan does in Home Assistant, as the Save confirm says it: "exposes 3", "stops exposing
+ * 4 to Assist (Front door, Forecast and 2 more)", "adds 2 names", "turns off exposing new devices". With
+ * `name` (haNames) it names up to three of what stops being exposed. */
+export function planParts(plan: ExposurePlan, name?: (id: string) => string): string[] {
+  const off = plan.unexpose ?? []
+  const named = name && off.length ? ` (${joinNames(off.length > 3 ? [...off.slice(0, 2).map(name), `${off.length - 2} more`] : off.map(name))})` : ''
+  const exposure = [
+    plan.expose?.length ? `exposes ${plan.expose.length}` : null,
+    off.length ? `stops exposing ${off.length}` : null,
+  ].filter((p) => p !== null)
+  if (exposure.length) exposure[exposure.length - 1] += ` to Assist${named}`
+  const added = total(plan.aliases_add)
+  const removed = total(plan.aliases_remove)
+  return [
+    ...exposure,
+    added ? `adds ${count(added, 'name')}` : null,
+    removed ? `removes ${count(removed, 'name')}` : null,
+    plan.auto_expose_off ? 'turns off exposing new devices' : null,
+  ].filter((p) => p !== null)
+}
 
-/** Whether a listed entity is in Home Assistant as the list has it. */
-export type RowStatus =
-  | { kind: 'applied' }
-  | { kind: 'pending'; why: string[] }
-  | { kind: 'missing' }
-  | { kind: 'unknown'; why: string }
+/** Home Assistant's tools as action rows: they run on their own, and only look when every one of them
+ * does. Only a script's description, the household's own words, shows on the row; Home Assistant's text
+ * for the model is under Details. A script with no description says why he may not pick it. */
+export function haActionItems(tools: HATool[]): ActionItem[] {
+  return tools.map((t) => ({
+    name: t.names.join(' '),
+    title: t.label,
+    summary: t.domain === 'script' ? t.description || 'No description in Home Assistant, so he may not know when to use it.' : '',
+    brainName: t.names.join(', '),
+    description: t.description,
+    declared: t.tier,
+    tier: t.tier,
+    enabled: true,
+    thirdParty: false,
+  }))
+}
+
+// The rows of the page's list: an entity of the draft list with Home Assistant's side of it.
 
 export type EntityRow = {
   id: string
   entry: ExposedEntity
   /** Home Assistant's side: name, aliases, room, device and state; absent when it is not known. */
   ha?: HAEntity
-  status: RowStatus
+  /** What is not right yet, in words ("Waiting for Save"); null when it is as the list has it, or unknown. */
+  badge: string | null
 }
 
 const fold = (s: string) => s.trim().toLocaleLowerCase()
@@ -112,67 +162,56 @@ const fold = (s: string) => s.trim().toLocaleLowerCase()
 /** The name he hears: the list's, else Home Assistant's, else the id. */
 export const heardName = (r: EntityRow) => r.entry.name || r.ha?.friendly_name || r.id
 
-/** Every alias he can be called by: the list's, then the ones Home Assistant has besides, without the
- * name itself. */
-export function aliasesOf(r: EntityRow): string[] {
+/** The other names he answers to: the list's own, then the ones only Home Assistant has, without the
+ * name itself or repeats. */
+export function otherNames(r: EntityRow): { own: string[]; ha: string[] } {
   const seen = new Set([fold(heardName(r))])
-  const out: string[] = []
-  for (const a of [...(r.entry.aliases ?? []), ...(r.ha?.aliases ?? [])]) {
-    if (!a.trim() || seen.has(fold(a))) continue
-    seen.add(fold(a))
-    out.push(a)
-  }
-  return out
+  const keep = (names: string[]) =>
+    names.filter((a) => {
+      if (typeof a !== 'string' || !a.trim() || seen.has(fold(a))) return false
+      seen.add(fold(a))
+      return true
+    })
+  return { own: keep(r.entry.aliases ?? []), ha: keep(r.ha?.aliases ?? []) }
 }
 
 /** Home Assistant's own name for it, muted under the name he hears, when that differs. */
 export function haName(r: EntityRow): string | null {
   const shown = fold(heardName(r))
   const friendly = r.ha?.friendly_name
-  if (friendly && fold(friendly) !== shown) return `${friendly} in Home Assistant`
+  if (friendly && fold(friendly) !== shown) return `In Home Assistant: ${friendly}`
   const device = r.ha?.device
-  if (device && fold(device) !== shown) return device
+  if (device && fold(device) !== shown) return `Device: ${device}`
   return null
 }
 
-/** Whether a row matches a search: names, aliases, room and id. */
+/** Whether a row matches a search: names, room and id. */
 export function matches(r: EntityRow, query: string): boolean {
   const q = fold(query)
   if (!q) return true
-  const hay = [heardName(r), r.id, r.ha?.friendly_name, r.ha?.device, r.ha?.area, ...aliasesOf(r)]
+  const { own, ha } = otherNames(r)
+  const hay = [heardName(r), r.id, r.ha?.friendly_name, r.ha?.device, r.ha?.area, ...own, ...ha]
   return hay.some((h) => h != null && fold(h).includes(q))
 }
 
 export type Group = { name: string; rows: EntityRow[] }
 
-/** The listed entities by Home Assistant's rooms, sorted by name, the ones without a room last. */
+/** The listed entities by Home Assistant's rooms, each sorted by name, the ones without a room last. */
 export function groupByArea(rows: EntityRow[], areasKnown: boolean): Group[] {
-  const noRoom = areasKnown ? 'No room' : 'Entities'
+  const noRoom = areasKnown ? 'No room' : 'Devices'
   const groups = new Map<string, EntityRow[]>()
   for (const r of rows) {
     const name = r.ha?.area ?? noRoom
     groups.set(name, [...(groups.get(name) ?? []), r])
   }
   return [...groups]
-    .map(([name, rs]) => ({ name, rows: rs }))
+    .map(([name, rs]) => ({ name, rows: rs.sort((a, b) => heardName(a).localeCompare(heardName(b))) }))
     .sort((a, b) => (a.name === noRoom ? 1 : b.name === noRoom ? -1 : a.name.localeCompare(b.name)))
 }
 
-// Types the picker hides until asked for: there are many of them in a typical home (26 Plex players,
-// 17 updates) and he rarely needs them. "All types" or picking the type shows them; nothing is removed.
-export const NOISY_DOMAINS = [
-  'update',
-  'media_player',
-  'device_tracker',
-  'event',
-  'image',
-  'number',
-  'select',
-  'text',
-  'tts',
-  'stt',
-  'wake_word',
-  'conversation',
-  'zone',
-  'sun',
-]
+// Home Assistant's kinds as a person names them, for the ones usually shared whole; the rest read as
+// their id does ("Calendar").
+const KINDS: Record<string, string> = { person: 'People', todo: 'To-do lists', zone: 'Zones' }
+
+/** "People", "To-do lists", "Weather". */
+export const kindName = (domain: string) => KINDS[domain] ?? humanize(domain)

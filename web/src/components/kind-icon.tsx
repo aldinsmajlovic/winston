@@ -30,6 +30,7 @@ import {
   Palette,
   Puzzle,
   RadioTower,
+  RobotVacuum,
   ScrollText,
   Smartphone,
   Speaker,
@@ -130,6 +131,7 @@ const kinds: Record<string, LucideIcon> = {
   assist_satellite: Speaker,
   event: Zap,
   timer: Timer,
+  vacuum: RobotVacuum,
 }
 
 // Env variables: a status is an icon plus a colour.
@@ -138,20 +140,25 @@ const states: Record<string, { Icon: LucideIcon; className: string }> = {
   missing: { Icon: CircleAlert, className: 'text-warning' },
 }
 
-/** A maker's logo from its Simple Icons path, in the text colour. */
-export function Logo({ title, path, className }: { title: string; path: string; className?: string }) {
+/** A maker's logo from its Simple Icons path, in the text colour. Hidden from screen readers, since
+ * every caller prints the name beside it. */
+export function Logo({ path, className }: { path: string; className?: string }) {
   return (
-    <svg role="img" viewBox="0 0 24 24" aria-label={title} className={cn('size-4 shrink-0 fill-current', className)}>
+    <svg aria-hidden viewBox="0 0 24 24" className={cn('size-4 shrink-0 fill-current', className)}>
       <path d={path} />
     </svg>
   )
 }
 
+/** Whether a key has a kind icon of its own: an engine kind, a channel or an HA domain. */
+// eslint-disable-next-line react-refresh/only-export-components -- the tool line asks it before drawing one
+export const isKind = (name: string) => Object.hasOwn(kinds, name)
+
 /** The logo or kind icon for a key: a brand, an engine kind, an HA domain or an env state. */
 export function KindIcon({ name, className }: { name?: string | null; className?: string }) {
   if (!name) return null
   const brand = brands[name]
-  if (brand) return <Logo title={brand.title} path={brand.path} className={className} />
+  if (brand) return <Logo path={brand.path} className={className} />
   const state = states[name]
   if (state) return <state.Icon aria-label={name} className={cn('size-4 shrink-0', state.className, className)} />
   const Icon = kinds[name] ?? Circle

@@ -18,12 +18,14 @@ type Props = {
   onKeyChange?: (key: string) => void
   /** Replaces the key's text field, e.g. with a picker. */
   keyInput?: ReactNode
+  /** One line under the key's field: why its list is missing. */
+  keyHelp?: string
   schema?: JsonSchema
   value?: unknown
   onChange?: (next: unknown) => void
   onSubmit: () => void
   canSubmit?: boolean
-  /** Keys already in the map; Done stays off while the key matches one other than `original`. */
+  /** Keys already in the map; Add or Done stays off while the key matches one other than `original`. */
   existing?: Iterable<string>
   /** The key being edited, which may keep its own name. */
   original?: string
@@ -46,7 +48,7 @@ export function ItemDialog(props: Props) {
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-1.5">
               <Label htmlFor="item-key">{keyLabel}</Label>
-              <InfoTip text={props.keyInfo} />
+              <InfoTip text={props.keyInfo} label={keyLabel} />
             </div>
             {props.keyInput ?? (
               <Input
@@ -58,6 +60,7 @@ export function ItemDialog(props: Props) {
                 autoFocus={Boolean(onKeyChange)}
               />
             )}
+            {props.keyHelp ? <p className="text-sm text-muted-foreground">{props.keyHelp}</p> : null}
             {duplicate ? <span className="text-sm text-destructive">Already in the list</span> : null}
           </div>
           {props.children}
@@ -68,7 +71,7 @@ export function ItemDialog(props: Props) {
             Cancel
           </Button>
           <Button disabled={!canSubmit} onClick={onSubmit}>
-            Done
+            {props.original === undefined ? 'Add' : 'Done'}
           </Button>
         </DialogFooter>
       </DialogContent>

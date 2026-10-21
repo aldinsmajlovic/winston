@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { DynamicIcon, iconNames, type IconName } from 'lucide-react/dynamic'
-import { Logo } from '@/components/kind-icon'
+import { isKind, KindIcon, Logo } from '@/components/kind-icon'
 import { cn } from '@/lib/utils'
 
 const TOOL_ICONS: [(base: string) => boolean, LucideIcon][] = [
@@ -60,7 +60,7 @@ function ExtensionLogo({ slug }: { slug: string }) {
     }
   }, [slug])
   if (logo === undefined) return <span className="size-4 shrink-0" />
-  return logo ? <Logo title={logo.title} path={logo.path} /> : <DynamicIcon name="puzzle" className="size-4 shrink-0" />
+  return logo ? <Logo path={logo.path} /> : <DynamicIcon name="puzzle" className="size-4 shrink-0" />
 }
 
 /** An extension's own icon: a lucide name, a maker's logo (`simple-icons:spotify`), or the puzzle piece. */
@@ -72,6 +72,9 @@ export function ExtensionIcon({ name }: { name?: string | null }) {
 export function ToolIcon({ name, running, icon }: { name: string; running: boolean; icon?: string | null }) {
   if (running) return <LoaderCircle className="size-4 shrink-0 animate-spin" />
   if (isIcon(icon) || isLogo(icon)) return <ExtensionIcon name={icon} />
+  // Home Assistant's tools by the domain they come from ("vacuum__HassVacuumStart"); Assist's own by their name.
+  const domain = name.includes('__') ? name.split('__')[0] : ''
+  if (isKind(domain)) return <KindIcon name={domain} />
   const base = name.split('__').pop()?.toLowerCase() ?? ''
   const Icon = TOOL_ICONS.find(([match]) => match(base))?.[1] ?? Wrench
   return <Icon className="size-4 shrink-0" />

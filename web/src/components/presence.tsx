@@ -1,10 +1,12 @@
 import { useEffect, useId, useRef } from 'react'
 import { $api } from '@/api/client'
+import { STATE_LABEL } from '@/api/live'
 import { MARK, REST, ease, paths, target, type Frame, type MarkState } from '@/lib/mark'
 import { cn } from '@/lib/utils'
 
 const AT_REST = paths(REST)
 const RIM = MARK.radius - 1.5 * MARK.ring
+const LABEL: Record<MarkState, string> = { ...STATE_LABEL, announcing: 'Announcing' }
 
 const settled = (a: Frame, b: Frame) =>
   (Object.keys(a) as (keyof Frame)[]).every((key) => Math.abs(a[key] - b[key]) < 0.002)
@@ -46,7 +48,7 @@ export function Presence({ state, className }: { state: MarkState; className?: s
   }, [state])
 
   return (
-    <svg viewBox="0 0 100 100" role="img" aria-label={`${name} is ${state}`} className={cn('shrink-0', className)}>
+    <svg viewBox="0 0 100 100" role="img" aria-label={`${name} is ${LABEL[state].toLowerCase()}`} className={cn('shrink-0', className)}>
       <defs>
         <clipPath id={`${id}-disc`}>
           <circle cx="50" cy="50" r={MARK.radius} />

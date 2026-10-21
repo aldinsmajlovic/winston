@@ -1,36 +1,33 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CircleAlert, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { FieldProps } from '@rjsf/utils'
-import { Combobox, type Choice } from '@/components/combobox'
+import type { Options } from '@/api/client'
+import { ChoiceName, ChoicePicture, Combobox, type Choice } from '@/components/combobox'
 import { IconButton } from '@/components/icon-button'
 import { InfoTip } from '@/components/info-tip'
 import { ItemDialog } from '@/components/item-dialog'
 import { KindIcon } from '@/components/kind-icon'
 import { StatusTip } from '@/components/status-tip'
 import { DataTable, type Column } from '@/components/templates/list-page'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useOptions } from '@/hooks/use-options'
+import { useOptions, type OptionsQuery } from '@/hooks/use-options'
 import { isRecord, type JsonSchema } from '@/lib/schema'
 
 type MapSchema = JsonSchema & {
+  help?: string
   key_title?: string
   key_description?: string
   value_title?: string
   key_options?: string
+  key_options_query?: OptionsQuery
   icon?: string
 }
 
 type Row = { key: string; value: unknown }
 type Editing = { key: string; original?: string; value: unknown }
-
-/** "Contacts" -> "contact", for "New contact"; otherwise the key's title ("New variable"). */
-function newTitle(schema: MapSchema, keyTitle: string): string {
-  const title = schema.title ?? ''
-  const one = /[^s]s$/.test(title) ? title.slice(0, -1) : keyTitle
-  return `New ${one.toLowerCase()}`
-}
 
 function valueSchemaOf(schema: MapSchema): JsonSchema {
   return (typeof schema.additionalProperties === 'object' ? schema.additionalProperties : {}) as JsonSchema
@@ -45,17 +42,17 @@ function matches(schema: JsonSchema, value: unknown): boolean {
   return new RegExp(schema.pattern).test(value)
 }
 
-/** A primitive value in a row: its choice from the live list (icon, label, the raw value muted) when
- * known, else the value itself. */
+/** A primitive value in a row: its choice from the live list (cover or icon, label, the raw value muted)
+ * when known, else the value itself. */
 function ValueCell({ value, choice }: { value: unknown; choice?: Choice }) {
   const text = value === undefined || value === null ? '' : String(value)
-  if (!choice) return <span className="break-all">{text}</span>
+  if (!choice) return <span className="break-words">{text}</span>
   return (
     <div className="flex items-center gap-2">
-      <KindIcon name={choice.icon} className="text-muted-foreground" />
+      <ChoicePicture choice={choice} className="size-8" />
       <div className="flex flex-col">
-        <span>{choice.hint ?? choice.label}</span>
-        <span className="text-xs break-all text-muted-foreground">{text}</span>
+        <ChoiceName text={choice.hint ?? choice.label} />
+        <span className="text-xs break-words text-muted-foreground">{text}</span>
       </div>
     </div>
   )
@@ -69,44 +66,68 @@ function LookedUp({ name, value }: { name: string; value: string }) {
   if (choice || found.loading) return <ValueCell value={value} choice={choice} />
   return (
     <div className="flex items-center gap-2">
-      <span className="break-all">{value}</span>
+      <span className="break-words">{value}</span>
       <StatusTip icon={CircleAlert} className="text-warning" label={found.problem ?? 'Not found'} />
     </div>
   )
 }
 
-/** An object value in a row: its first few simple fields, joined. */
-function summary(value: unknown): string {
-  if (!isRecord(value)) return ''
-  return Object.values(value)
-    .filter((v) => ['string', 'number', 'boolean'].includes(typeof v) && v !== '')
-    .slice(0, 3)
-    .join(', ')
+/** A field's value picked from a live list, by the list's label: a sensor's name rather than its id. */
+function PickedLabel({ schema, value }: { schema: JsonSchema; value: string }) {
+  const { choices } = useOptions(String(schema.options), schema.options_query as OptionsQuery | undefined)
+  return <>{choices.find((c) => c.value === value)?.label ?? value}</>
 }
 
-type Listed = { choices: Choice[]; loading: boolean; problem?: string }
+/** An object value in a row: its first few simple fields, joined; a picked one by its label. */
+function Summary({ value, schema }: { value: unknown; schema: JsonSchema }) {
+  if (!isRecord(value)) return null
+  const shown = Object.entries(value)
+    .filter(([, v]) => ['string', 'number', 'boolean'].includes(typeof v) && v !== '')
+    .slice(0, 3)
+  return (
+    <span className="break-words">
+      {shown.map(([k, v], i) => (
+        <Fragment key={k}>
+          {i > 0 ? ', ' : null}
+          {typeof schema.properties?.[k]?.options === 'string' && typeof v === 'string' ? (
+            <PickedLabel schema={schema.properties[k]} value={v} />
+          ) : (
+            String(v)
+          )}
+        </Fragment>
+      ))}
+    </span>
+  )
+}
+
+type Listed = { choices: Options['choices']; loading: boolean; problem?: string }
 const NONE: Listed = { choices: [], loading: false }
 
-function Loaded({ name, children }: { name: string; children: (list: Listed) => ReactNode }) {
-  return children(useOptions(name))
+function Loaded({ name, query, children }: { name: string; query?: OptionsQuery; children: (list: Listed) => ReactNode }) {
+  return children(useOptions(name, query))
 }
 
 /** A live list when the schema names one; nothing is fetched otherwise. */
-function OptionsFor({ name, children }: { name?: unknown; children: (list: Listed) => ReactNode }) {
+function OptionsFor({ name, query, children }: { name?: unknown; query?: OptionsQuery; children: (list: Listed) => ReactNode }) {
   if (typeof name !== 'string' || name === '') return children(NONE)
-  return <Loaded name={name}>{children}</Loaded>
+  return (
+    <Loaded name={name} query={query}>
+      {children}
+    </Loaded>
+  )
 }
 
 /** Every object of entries in a settings form (contacts, engine environment, volumes): a table with
- * one row per entry, a dialog to add or edit one, trash with Undo. Titles, key list and icon come from
- * the schema (`key_title`, `value_title`, `key_options`, `icon`; value `options` and `pattern` on
- * additionalProperties). */
+ * one row per entry, its name a button opening the entry's dialog, Add for a new one, trash with Undo.
+ * Titles, help, key list and icon come from the schema (`key_title`, `value_title`, `key_options` with
+ * `key_options_query`, `icon`; value `options` and `pattern` on additionalProperties). */
 export function KeyedMapField(props: FieldProps) {
   const schema = props.schema as MapSchema
+  const valueSchema = valueSchemaOf(schema)
   return (
-    <OptionsFor name={schema.key_options}>
+    <OptionsFor name={schema.key_options} query={schema.key_options_query}>
       {(keys) => (
-        <OptionsFor name={valueSchemaOf(schema).options}>
+        <OptionsFor name={valueSchema.options} query={valueSchema.options_query as OptionsQuery | undefined}>
           {(values) => <MapTable {...props} keyOptions={keys} valueOptions={values} />}
         </OptionsFor>
       )}
@@ -124,6 +145,7 @@ function MapTable({
   const valueTitle = schema.value_title ?? valueSchema.title ?? 'Value'
   const entries: Record<string, unknown> = isRecord(formData) ? formData : {}
   const keyChoices = keyOptions.choices
+  const knownKeys = new Map(keyChoices.map((c) => [c.value, c]))
   const valueChoices = valueOptions.choices
   const known = new Map(valueChoices.map((c) => [c.value, c]))
   const [editing, setEditing] = useState<Editing | null>(null)
@@ -131,6 +153,9 @@ function MapTable({
   const listed = typeof valueSchema.options === 'string' ? valueSchema.options : undefined
   // A list that could not be fetched (no bot token yet) leaves a plain text box for the value.
   const pickable = listed !== undefined && !(valueOptions.problem && !valueOptions.loading && valueChoices.length === 0)
+  // So does a key list (an extension that is not running), saying why unless the whole extension is off.
+  const keysPickable = Boolean(schema.key_options) && !(keyOptions.problem && !keyOptions.loading && keyChoices.length === 0)
+  const keyHelp = schema.key_options && !keysPickable && !schema.waits ? keyOptions.problem : undefined
 
   // Undo restores into the entries as they are when it is clicked, not as they were when removed.
   const latest = useRef(entries)
@@ -141,13 +166,41 @@ function MapTable({
 
   const rows: Row[] = Object.entries(entries).map(([key, value]) => ({ key, value }))
   const columns: Column<Row>[] = [
-    { key: 'key', title: keyTitle, className: 'whitespace-normal', render: (r) => <span className="font-medium break-all">{r.key}</span> },
+    {
+      key: 'key',
+      title: keyTitle,
+      className: 'whitespace-normal',
+      render: (r) => {
+        const choice = knownKeys.get(r.key)
+        const name = (
+          <Button
+            type="button"
+            variant="link"
+            className="h-auto p-0 text-left break-words whitespace-normal text-foreground"
+            disabled={locked}
+            onClick={() => setEditing({ key: r.key, original: r.key, value: r.value })}
+          >
+            <ChoiceName text={choice?.label ?? r.key} />
+          </Button>
+        )
+        if (!choice) return name
+        return (
+          <div className="flex items-center gap-2">
+            <ChoicePicture choice={choice} className="size-8" />
+            <div className="flex flex-col items-start">
+              {name}
+              {choice.hint ? <span className="text-xs text-muted-foreground">{choice.hint}</span> : null}
+            </div>
+          </div>
+        )
+      },
+    },
     {
       key: 'value',
       title: valueTitle,
       className: 'whitespace-normal',
       render: (r) => {
-        if (!primitive) return <span>{summary(r.value)}</span>
+        if (!primitive) return <Summary value={r.value} schema={valueSchema} />
         const choice = known.get(String(r.value))
         // Only look a value up while the list itself works; without a token only the value shows.
         if (!choice && listed && !valueOptions.problem && !valueOptions.loading && typeof r.value === 'string')
@@ -189,28 +242,22 @@ function MapTable({
 
   return (
     <div id={idBase} className="flex flex-col gap-2">
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
         <KindIcon name={schema.icon} />
         <span className="text-sm leading-none font-medium">{schema.title}</span>
-        <InfoTip text={schema.description} />
-        <span className="flex-1" />
-        <IconButton
-          label={newTitle(schema, keyTitle).replace(/^New/, 'Add')}
-          type="button"
-          variant="outline"
-          disabled={locked}
-          onClick={() => setEditing({ key: '', value: primitive ? '' : {} })}
-        >
+        <InfoTip text={schema.description} label={schema.title} />
+        <Button type="button" variant="outline" size="sm" className="ml-auto" disabled={locked} onClick={() => setEditing({ key: '', value: primitive ? '' : {} })}>
           <Plus />
-        </IconButton>
+          {`Add ${keyTitle.toLowerCase()}`}
+        </Button>
       </div>
+      {schema.help ? <p className="text-sm text-muted-foreground">{schema.help}</p> : null}
       <DataTable
         columns={columns}
         rows={rows}
         rowKey={(r) => r.key}
-        onRowClick={locked ? undefined : (r) => setEditing({ key: r.key, original: r.key, value: r.value })}
         actions={(r) => (
-          <IconButton type="button" label="Remove" disabled={locked} onClick={() => remove(r.key)}>
+          <IconButton type="button" label={`Remove ${r.key}`} disabled={locked} onClick={() => remove(r.key)}>
             <Trash2 />
           </IconButton>
         )}
@@ -218,13 +265,14 @@ function MapTable({
       <ItemDialog
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
-        title={editing?.original ?? newTitle(schema, keyTitle)}
+        title={editing?.original ?? `Add ${keyTitle.toLowerCase()}`}
         keyLabel={keyTitle}
         keyInfo={schema.key_description ?? schema.description}
         keyValue={editing?.key ?? ''}
         onKeyChange={(key) => setEditing((e) => e && { ...e, key })}
+        keyHelp={keyHelp}
         keyInput={
-          schema.key_options ? (
+          keysPickable ? (
             <Combobox
               id="item-key"
               value={editing?.key}
@@ -248,7 +296,7 @@ function MapTable({
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-1.5">
               <Label htmlFor="item-value">{valueTitle}</Label>
-              <InfoTip text={valueSchema.description ?? schema.description} />
+              <InfoTip text={valueSchema.description ?? schema.description} label={valueTitle} />
             </div>
             {pickable ? (
               <Combobox
@@ -261,14 +309,14 @@ function MapTable({
                 onChange={pickValue}
               />
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2">
                 <Input
                   id="item-value"
                   value={value === undefined || value === null ? '' : String(value)}
                   aria-invalid={badValue}
                   onChange={(e) => setEditing((x) => x && { ...x, value: e.target.value })}
                 />
-                {listed && valueOptions.problem ? <StatusTip icon={CircleAlert} className="text-warning" label={valueOptions.problem} /> : null}
+                {listed && valueOptions.problem ? <p className="text-sm text-muted-foreground">{valueOptions.problem}</p> : null}
               </div>
             )}
             {badValue ? <span className="text-sm text-destructive">Not a valid {valueTitle.toLowerCase()}</span> : null}

@@ -1,24 +1,23 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps } from 'react'
 import { Page } from '@/components/page'
-import { AdvancedToggle, SaveControls } from '@/components/save-controls'
+import { SaveBar, SaveControls } from '@/components/save-controls'
 import type { SettingsState } from '@/hooks/use-settings'
 
-type Props = { title: string; page: SettingsState; actions?: ReactNode; children: ReactNode }
+type Props = Omit<ComponentProps<typeof Page>, 'footer'> & { page: SettingsState }
 
-/** Template: settings page. Basic fields first, Advanced behind a toggle, one Save. */
-export function SettingsPage({ title, page, actions, children }: Props) {
+/** Template: settings page. Its commands, then one Save (along the bottom on a phone while there is
+ * something to save). */
+export function SettingsPage({ page, actions, ...props }: Props) {
   return (
     <Page
-      title={title}
+      {...props}
       actions={
         <>
           {actions}
-          <AdvancedToggle checked={page.advanced} onChange={page.setAdvanced} />
-          <SaveControls dirty={page.dirty} saving={page.saving} onSave={page.save} onReset={page.reset} />
+          <SaveControls page={page} />
         </>
       }
-    >
-      {children}
-    </Page>
+      footer={page.dirty && <SaveBar page={page} />}
+    />
   )
 }

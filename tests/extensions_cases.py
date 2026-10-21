@@ -14,6 +14,7 @@ import shutil
 import sys
 import time
 from pathlib import Path
+from typing import ClassVar
 
 import harness
 from harness import REPO, expect, finish, free_port, scratch_data, serve, until, winstond_data
@@ -45,7 +46,7 @@ def scheduling():
     from winston.extension_host.scheduler import at_next, cron_next, every_aligned
     z = ZoneInfo("Europe/Stockholm")
     now = datetime(2026, 9, 29, 10, 23, tzinfo=z)                     # a Tuesday
-    f = lambda d: d.strftime("%a %d %b %H:%M")
+    f = lambda d: d.strftime("%a %d %b %H:%M")  # noqa: E731
     cases = [(cron_next("0 7 * * 1", now), "Mon 05 Oct 07:00"), (cron_next("*/15 * * * *", now), "Tue 29 Sep 10:30"),
              (cron_next("30 18 * * 1-5", now), "Tue 29 Sep 18:30"), (cron_next("0 0 1 * *", now), "Thu 01 Oct 00:00"),
              (cron_next("0 9 * * 0,6", now), "Sat 03 Oct 09:00"),
@@ -58,7 +59,7 @@ def scheduling():
 
     class Stub:
         cfg = None
-        described = {"x": {"settings": {"schema": {"properties": {"t": {"default": "07:30"}}}}}}
+        described: ClassVar[dict] = {"x": {"settings": {"schema": {"properties": {"t": {"default": "07:30"}}}}}}
 
         def config(self, _):
             from winston.config.schema import ExtensionConfig
@@ -97,7 +98,7 @@ def setup(ha_port: int, api_port: int, llm_port: int, remote_port: int):
     winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py", "clock.py", "inventory.py", "caller.py"),
                   env='PROBE_KEY="secret-one"\nOTHER_KEY="not-yours"\nECHO_KEY="for-echo"\n')
     doc = (REPO / "docs" / "extensions.md").read_text()
-    coin = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.S) if 'id = "coin"' in b)
+    coin = next(b for b in re.findall(r"```python\n(# /// script.*?)```", doc, re.DOTALL) if 'id = "coin"' in b)
     (DATA / "extensions" / "coin.py").write_text(coin)
     from datetime import date, timedelta
     (DATA / "memory" / "diary").mkdir(parents=True, exist_ok=True)
@@ -164,7 +165,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         async def stopped_because(ext_id, text):
             return any(text in r["why"] for r in (await states())[ext_id]["exits"])
 
-        ok = all([await until(lambda: running(i), 30) for i in ("coin", "probe", "friend", "clock", "echo", "inventory")])
+        ok = all([await until(lambda i=i: running(i), 30) for i in ("coin", "probe", "friend", "clock", "echo", "inventory")])
         expect(f"six extensions run, one a plain MCP server ({time.perf_counter() - t0:.1f} s from start)", ok, await states())
 
         tools = (await api.get("/api/extensions/tools")).json()
@@ -222,7 +223,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         seen = (await api.post("/api/extensions/probe/tools/seen", json={})).json()["result"]
         expect("and reaches it without a restart", seen["key"] == "secret-two", seen)
 
-        call = lambda name_, **args: api.post(f"/api/extensions/friend/tools/{name_}", json=args)
+        call = lambda name_, **args: api.post(f"/api/extensions/friend/tools/{name_}", json=args)  # noqa: E731
         r = (await call("note", text="The bins go out on Mondays.")).json()
         facts = (await call("notes")).json()
         expect("memory: written through remember's checks, and read back", r["ok"] and "Remembered" in r["result"]
@@ -252,7 +253,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         r = (await call("gear")).json()
         expect("no devices permission: refused", not r["ok"] and "devices permission" in r["error"], r)
 
-        inv = lambda name_, **args: api.post(f"/api/extensions/inventory/tools/{name_}", json=args)
+        inv = lambda name_, **args: api.post(f"/api/extensions/inventory/tools/{name_}", json=args)  # noqa: E731
         r = (await inv("devices")).json()
         rows = {d["id"]: d for d in r.get("result") or []}
         expect("devices: every device, exposed or not, with name, maker, model, firmware and area",
@@ -263,7 +264,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         expect("and no addresses, serial numbers or integration ids", not any(
             w in json.dumps(r) for w in ("02:00:00:00:00:01", "GL-SERIAL", "entry_glimt", "identifiers")), r)
 
-        use = lambda name_, **args: api.post("/api/extensions/caller/tools/use",
+        use = lambda name_, **args: api.post("/api/extensions/caller/tools/use",  # noqa: E731
                                              json={"name": name_, "args": json.dumps(args)})
         r = (await api.post("/api/extensions/caller/tools/listing", json={})).json()
         tiers = {t["name"]: t["tier"] for t in r.get("result") or []}
@@ -413,7 +414,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         expect("switched on again", await until(lambda: running("coin"), 20))
 
         host.scheduler.start()
-        stored = lambda: api.post("/api/extensions/clock/tools/store", json={})
+        stored = lambda: api.post("/api/extensions/clock/tools/store", json={})  # noqa: E731
 
         async def has(key, value=None):
             got = (await stored()).json().get("result") or {}          # nothing while it restarts

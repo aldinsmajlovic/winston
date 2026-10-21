@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronsUpDown, CircleAlert, LoaderCircle } from 'lucide-react'
+import { ChevronDown, CircleAlert, LoaderCircle } from 'lucide-react'
 import { KindIcon } from '@/components/kind-icon'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
@@ -12,6 +12,8 @@ export type Choice = {
   label: string
   hint?: string | null
   icon?: string | null
+  /** A cover, shown in place of the icon. */
+  image?: string | null
   group?: string | null
   /** Listed but not pickable (greyed); the hint says why. */
   disabled?: boolean
@@ -50,6 +52,18 @@ function groups(choices: Choice[]): [string, Choice[]][] {
   return [...out.entries()]
 }
 
+/** A choice's cover when it has one, else its kind's icon; nothing in its place when it has neither. */
+export function ChoicePicture({ choice, className }: { choice?: Choice; className: string }) {
+  if (choice?.image) return <img src={choice.image} alt="" className={cn('shrink-0 rounded-sm object-cover', className)} />
+  return <KindIcon name={choice?.icon} />
+}
+
+/** A choice's name; one made only of emoji (a playlist named with one) is drawn larger, so it reads like a word. */
+export function ChoiceName({ text, className }: { text: string; className?: string }) {
+  const emoji = /\p{Extended_Pictographic}/u.test(text) && !/[\p{L}\p{N}]/u.test(text)
+  return <span className={cn(emoji && 'text-xl leading-6', className)}>{text}</span>
+}
+
 /** A dropdown of choices fetched from somewhere, searchable when long; with `custom` a typed
  * value that is not listed can be used as is. */
 export function Combobox({ id, value, choices, onChange, custom, loading, problem, disabled, placeholder, onClear }: Props) {
@@ -76,8 +90,8 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
           className="w-full justify-between font-normal"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <KindIcon name={current?.icon} />
-            <span className={cn('truncate', !current && !value && 'text-muted-foreground')}>{current?.label ?? (value || placeholder || '')}</span>
+            <ChoicePicture choice={current} className="size-5" />
+            <ChoiceName text={current?.label ?? (value || placeholder || 'Not set')} className={cn('truncate', !current && !value && 'text-muted-foreground')} />
           </span>
           <span className="flex items-center gap-2">
             {loading ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" /> : null}
@@ -91,7 +105,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
                 <TooltipContent>{problem}</TooltipContent>
               </Tooltip>
             ) : null}
-            <ChevronsUpDown className="size-4 text-muted-foreground" />
+            <ChevronDown className="size-4 text-muted-foreground" />
           </span>
         </Button>
       </PopoverTrigger>
@@ -125,8 +139,8 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
                     disabled={c.disabled}
                     onSelect={() => pick(c.value)}
                   >
-                    <KindIcon name={c.icon} />
-                    <span className="flex-1 truncate">{c.label}</span>
+                    <ChoicePicture choice={c} className="size-6" />
+                    <ChoiceName text={c.label} className="flex-1 truncate" />
                     {c.hint ? <span className="max-w-1/3 truncate text-xs text-muted-foreground">{c.hint}</span> : null}
                   </CommandItem>
                 ))}

@@ -1,33 +1,45 @@
-import { RefreshCw, RotateCcw, Save, Undo2 } from 'lucide-react'
-import { $api, type EngineStatus } from '@/api/client'
+import { RefreshCw, RotateCcw, Save } from 'lucide-react'
+import { $api, type EngineStatus, type SecretStatus } from '@/api/client'
 import { useConfig, useSchema } from '@/api/config'
-import { engineLabel, pendingRestarts, restartCost, useEngineActions, useStatus } from '@/api/status'
+import { engineLabel, partName, pendingRestarts, restartCost, useEngineActions, useStatus } from '@/api/status'
 import { IconButton } from '@/components/icon-button'
+import { StatusTip } from '@/components/status-tip'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useConfirm } from '@/hooks/use-confirm'
 import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
+import { useSecretStatus } from '@/hooks/use-secrets'
+import { keyLabel, type SettingsState } from '@/hooks/use-settings'
 import { capitalize, humanize, joinNames } from '@/lib/format'
 import { type JsonSchema } from '@/lib/schema'
+import { cn } from '@/lib/utils'
 
-/** "Announce", "Home assistant" or a variable name: what only the next winston up applies. */
-function controlLabel(name: string, root: JsonSchema | undefined): string {
-  if (/^[A-Z0-9_]+$/.test(name)) return name
+/** What only Winston itself reads (its web address, a variable): applied when it restarts. */
+const WINSTON_RESTART = 'Takes effect when Winston restarts'
+
+/** "Announcements", "Home Assistant" or a key by its field ("Access token"): what only Winston's own restart
+ * applies. A variable nothing names is shown by its name. */
+function controlLabel(name: string, root: JsonSchema | undefined, byName: Map<string, SecretStatus>): string {
+  if (/^[A-Z0-9_]+$/.test(name)) {
+    const path = byName.get(name)?.used_by?.[0]
+    return root && path ? keyLabel(root, path, name) : name
+  }
   // A section's own title only; its model's title is a class name ("AnnounceConfig").
   const title = root?.properties?.[name]?.title
   return typeof title === 'string' ? title : humanize(name)
 }
 
-/** Saved settings that wait for a restart: the changed icon, its tooltip naming each process and its
- * cost, and Restart for the running ones. What only winstond reads waits for the next winston up. */
+/** Saved settings that wait for a restart, in a few words beside Save ("Waiting for a restart: the brain",
+ * or "2 parts") with one Restart for the running ones, whose confirm names each part and its cost; the
+ * icon opens them all. What only Winston itself reads waits for its own restart. The words shorten as the
+ * header narrows; in a phone's width the icon alone stands for it, as the Restart button while something
+ * can restart. */
 function PendingRestart() {
   const status = useStatus()
   const schema = useSchema()
   const actions = useEngineActions()
   const ask = useConfirm()
   const config = useConfig()
+  const { byName } = useSecretStatus()
   const { running, stopped, control } = pendingRestarts(status.data)
   // The saved brain model, when its restart waits: does the restart download it first.
   const brain = running.some((e) => e.name === 'llm') && config.data
@@ -40,18 +52,23 @@ function PendingRestart() {
   if (!running.length && !stopped.length && !control.length) return null
 
   const lines = [
-    ...running.map((e) => `${capitalize(engineLabel(e))}: ${cost(e)}`),
-    ...stopped.map((e) => `${capitalize(engineLabel(e))}: when it starts`),
-    ...(control.length
-      ? ['Applies on the next winston up', control.map((c) => controlLabel(c, schema.data)).join(', ')]
-      : []),
+    ...running.map((e) => `${partName(e.name)}: ${cost(e)}`),
+    ...stopped.map((e) => `${partName(e.name)}: when it starts`),
+    ...(control.length ? [`${WINSTON_RESTART}: ${control.map((c) => controlLabel(c, schema.data, byName)).join(', ')}`] : []),
   ]
+  // "the brain" or "2 parts", so the line stays short however many wait.
+  const named = (list: EngineStatus[]) => (list.length === 1 ? engineLabel(list[0]) : `${list.length} parts`)
+  const text = running.length
+    ? `Waiting for a restart: ${named(running)}`
+    : stopped.length
+      ? `Waiting for ${named(stopped)} to start`
+      : WINSTON_RESTART
 
   const restart = async () => {
     const one = running.length === 1
     const choice = await ask({
       title: `Restart ${joinNames(running.map(engineLabel))}?`,
-      lines: one ? [capitalize(cost(running[0]))] : running.map((e) => `${capitalize(engineLabel(e))}: ${cost(e)}`),
+      lines: one ? [capitalize(cost(running[0]))] : running.map((e) => `${partName(e.name)}: ${cost(e)}`),
       choices: [{ label: 'Restart', value: 'yes' }],
     })
     if (!choice) return
@@ -60,38 +77,40 @@ function PendingRestart() {
 
   return (
     <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="inline-flex" tabIndex={0}>
-            <RefreshCw className="size-4 text-warning" aria-label="Saved changes wait for a restart" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="flex-col items-start gap-0.5">
-          {lines.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-        </TooltipContent>
-      </Tooltip>
+      <span className={cn('flex', running.length > 0 && '@max-xl/header:hidden')}>
+        <StatusTip icon={RefreshCw} className="text-warning" label="Saved changes wait for a restart" lines={lines} />
+      </span>
+      {/* The room left over, up to its own width: the words shorten to nothing before the title gives up any,
+          since even a fraction of a pixel cuts the title to "...". */}
+      <span className="min-w-0 max-w-max flex-1 truncate text-sm text-muted-foreground @max-xl/header:hidden">{text}</span>
       {running.length ? (
-        <Button variant="outline" size="sm" disabled={actions.restart.isPending} onClick={() => void restart()}>
-          <RotateCcw data-icon="inline-start" />
-          Restart
-        </Button>
+        <>
+          <Button variant="outline" size="sm" className="@max-xl/header:hidden" disabled={actions.restart.isPending} onClick={() => void restart()}>
+            <RotateCcw data-icon="inline-start" />
+            Restart
+          </Button>
+          <IconButton label="Restart" variant="outline" className="@xl/header:hidden" disabled={actions.restart.isPending} onClick={() => void restart()}>
+            <RefreshCw className="text-warning" />
+          </IconButton>
+        </>
       ) : null}
     </>
   )
 }
 
-type SaveProps = { dirty: boolean; saving: boolean; onSave: () => void; onReset: () => void }
+const changeCount = (n: number) => (n === 1 ? '1 unsaved change' : `${n} unsaved changes`)
 
-export function SaveControls({ dirty, saving, onSave, onReset }: SaveProps) {
+/** Discard and Save in the header. On a phone they move to the SaveBar. */
+export function SaveControls({ page }: { page: SettingsState }) {
   return (
     <>
       <PendingRestart />
-      <IconButton label="Discard changes" disabled={!dirty || saving} onClick={onReset}>
-        <Undo2 />
-      </IconButton>
-      <Button size="sm" disabled={!dirty || saving} onClick={onSave}>
+      {page.dirty ? (
+        <Button variant="ghost" size="sm" className="max-sm:hidden" disabled={page.saving} onClick={page.reset}>
+          Discard
+        </Button>
+      ) : null}
+      <Button size="sm" className="max-sm:hidden" disabled={!page.dirty || page.saving} onClick={() => void page.save()}>
         <Save data-icon="inline-start" />
         Save
       </Button>
@@ -99,13 +118,18 @@ export function SaveControls({ dirty, saving, onSave, onReset }: SaveProps) {
   )
 }
 
-type AdvancedProps = { checked: boolean; onChange: (checked: boolean) => void }
-
-export function AdvancedToggle({ checked, onChange }: AdvancedProps) {
+/** On a phone, Discard and Save along the bottom of the screen while there is something to save. */
+export function SaveBar({ page }: { page: SettingsState }) {
   return (
-    <div className="flex items-center gap-2">
-      <Switch id="advanced" checked={checked} onCheckedChange={onChange} />
-      <Label htmlFor="advanced">Advanced</Label>
+    <div className="fixed inset-x-0 bottom-0 z-10 flex items-center gap-2 border-t bg-background px-4 py-3 sm:hidden">
+      <span className="mr-auto text-sm text-muted-foreground">{changeCount(page.changes)}</span>
+      <Button variant="ghost" size="sm" disabled={page.saving} onClick={page.reset}>
+        Discard
+      </Button>
+      <Button size="sm" disabled={page.saving} onClick={() => void page.save()}>
+        <Save data-icon="inline-start" />
+        Save
+      </Button>
     </div>
   )
 }

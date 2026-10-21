@@ -99,7 +99,7 @@ def cron_next(expr: str, after: datetime) -> datetime:
 
 
 def at_next(when: dtime, days: list[int] | None, after: datetime) -> datetime:
-    for d in range(0, 9):
+    for d in range(9):
         candidate = datetime.combine(after.date() + timedelta(days=d), when, tzinfo=after.tzinfo)
         if candidate > after and (days is None or candidate.weekday() in days):
             return candidate
@@ -242,7 +242,7 @@ class Scheduler:
             wait = max(0.2, min(soonest - time.time(), 30))
             try:
                 await asyncio.wait_for(self._wake.wait(), wait)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             self._wake.clear()
 
@@ -336,7 +336,7 @@ class Scheduler:
                     while self._wants() == wants:
                         try:
                             raw = await asyncio.wait_for(ws.recv(), 3)
-                        except asyncio.TimeoutError:
+                        except TimeoutError:
                             continue
                         msg = json.loads(raw)
                         if msg.get("type") == "result" and not msg.get("success"):

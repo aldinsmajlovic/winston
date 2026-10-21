@@ -11,15 +11,18 @@ An entity id Home Assistant does not know is skipped and reported, never an erro
 import asyncio
 import os
 import re
+import textwrap
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Literal
 
 import aiohttp
 from pydantic import BaseModel
 
 from winston.config.schema import ExposedEntity, HomeAssistantConfig, WinstonConfig
 from winston.core.common import key
+from winston.core.guard import READ, tool_tier
 
 TIMEOUT = 5             # seconds for one read; a save waits at most APPLY_TIMEOUT for the whole apply
 APPLY_TIMEOUT = 5
@@ -90,6 +93,19 @@ def state_text(s: dict | None) -> str | None:
         return f"on, {round(b / 255 * 100)}%"
     unit = attrs.get("unit_of_measurement")
     return f"{state} {unit}" if unit else state
+
+
+def last_run(eid: str, s: dict | None) -> str | None:
+    """When a script or automation last ran (its last_triggered), or a button or scene (its state is that
+    time), as ISO time; None for anything else or when it never ran."""
+    domain = eid.split(".")[0]
+    if not s or domain not in {"script", "automation", "button", "input_button", "scene"}:
+        return None
+    t = s.get("attributes", {}).get("last_triggered") if domain in {"script", "automation"} else s.get("state")
+    try:
+        return datetime.fromisoformat(t).isoformat() if isinstance(t, str) and t[:1].isdigit() else None
+    except ValueError:
+        return None
 
 
 # ---------------------------------------------------------------- the plan (pure)
@@ -211,7 +227,7 @@ TOOL_LABELS = {
     "HassListCompleteItem": "Read, add and tick off the to-do list",
     "HassListRemoveItem": "Read, add and tick off the to-do list",
     "HassShoppingListAddItem": "Add to the shopping list",
-    "HassBroadcast": "Broadcast on a satellite",
+    "HassBroadcast": "Announce on Home Assistant's speakers",
     "HassStartTimer": "Set and manage timers", "HassCancelTimer": "Set and manage timers",
     "HassCancelAllTimers": "Set and manage timers", "HassIncreaseTimer": "Set and manage timers",
     "HassDecreaseTimer": "Set and manage timers", "HassPauseTimer": "Set and manage timers",
@@ -223,6 +239,7 @@ TOOL_LABELS = {
     "HassMediaNext": "Play and pause media", "HassMediaPrevious": "Play and pause media",
     "HassSetVolume": "Set the volume", "HassMediaSearchAndPlay": "Find and play media",
     "HassVacuumStart": "Start and dock the vacuum", "HassVacuumReturnToBase": "Start and dock the vacuum",
+    "HassVacuumCleanArea": "Clean a room with the vacuum",
     "HassFanSetSpeed": "Set a fan's speed", "HassLawnMowerStartMowing": "Start and dock the mower",
     "HassLawnMowerDock": "Start and dock the mower",
 }
@@ -239,6 +256,15 @@ def tool_label(name: str) -> str:
         return TOOL_LABELS[bare]
     words = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", bare.removeprefix("Hass")).replace("_", " ").strip()
     return words[:1].upper() + words[1:].lower()
+
+
+def tool_description(text: str | None) -> str:
+    """Home Assistant's description of a tool as a person reads it: its first line, cut at a word, without the
+    aliases it appends to a script's as a Python list (". Aliases: ['movie night', ...]"). Its ". " ends the sentence
+    unless the description already did ("said.. Aliases", "ready?. Aliases"). The brain gets the whole description
+    from Home Assistant's MCP server, aliases and all."""
+    first = re.sub(r"(?:(?<=[.!?])\.)? ?Aliases: \[.*$", "", (text or "").split("\n")[0])
+    return textwrap.shorten(first, 200, placeholder="…")
 
 
 # Its tools that act only through one of its own voice satellites: an announcement, a timer that rings on one.
@@ -260,7 +286,8 @@ class HATool(BaseModel):
     names: list[str]        # the MCP tool names, "domain__Name"
     domain: str             # the prefix: the domain the tool comes from ("intent" is Assist itself)
     source: str             # that domain in words: Assist, Lights, To-do...
-    description: str        # Home Assistant's own description of the first tool
+    description: str        # Home Assistant's own description of the first tool (tool_description)
+    tier: Literal["read", "act"]  # read when every one of them only looks (guard.tool_tier)
 
 
 _tools_cache: dict[tuple[str, str], tuple[float, list[HATool]]] = {}
@@ -268,16 +295,16 @@ _tools_cache: dict[tuple[str, str], tuple[float, list[HATool]]] = {}
 
 class HomeAssistant:
     """Home Assistant as Winston reaches it: REST reads, the websocket API and the MCP server's tools, with
-    the token from the variable config names. `url` is an address to try instead of the saved one (a
-    draft on the settings page); it is tried with Home Assistant switched off too."""
+    the token from the variable config names. `url` and `token` are ones to try instead of the saved ones (a
+    draft on the settings page); they are tried with Home Assistant switched off too."""
 
-    def __init__(self, cfg: WinstonConfig, url: str | None = None):
+    def __init__(self, cfg: WinstonConfig, url: str | None = None, token: str | None = None):
         ha, saved = cfg.providers.ha, cfg.providers.home_assistant
         if ha is None and not url:
             raise RuntimeError("providers.home_assistant is not configured or is switched off")
         env = saved.token_env if saved else "HA_TOKEN"
         self.cfg, self.ha = cfg, ha
-        self.url, self.token = (url or ha.url).rstrip("/"), os.environ.get(env, "")
+        self.url, self.token = (url or ha.url).rstrip("/"), token or os.environ.get(env, "")
         if not self.token:
             raise RuntimeError(f"{env} is not set")
 
@@ -413,10 +440,12 @@ class HomeAssistant:
             label = tool_label(t.name)
             if label in rows:
                 rows[label].names.append(t.name)
+                if tool_tier(t.name) != READ:
+                    rows[label].tier = "act"
             else:
                 rows[label] = HATool(label=label, names=[t.name], domain=domain,
                                      source=TOOL_SOURCES.get(domain, domain.replace("_", " ").capitalize() or "Assist"),
-                                     description=(t.description or "").split("\n")[0][:200])
+                                     description=tool_description(t.description), tier=tool_tier(t.name))
         out = list(rows.values())
         _tools_cache[cached] = (time.monotonic(), out)
         return out
@@ -440,9 +469,13 @@ class HomeAssistant:
 
 
 def ha_changed(old: WinstonConfig, new: WinstonConfig) -> bool:
-    """Does a save change what Home Assistant should expose: the list, the domains or the switch."""
+    """Does a save change what Home Assistant should expose: the list, the domains or the switch. Never on a
+    first connect (no Home Assistant or no address before): its list is chosen after, from what it exposes,
+    so connecting un-exposes nothing."""
     a, b = old.providers.home_assistant, new.providers.home_assistant
-    pick = (lambda h: None if h is None else h.model_dump(include={"expose", "expose_domains", "enabled"}))
+    if a is None or not a.url:
+        return False
+    pick = (lambda h: None if h is None else h.model_dump(include={"expose", "expose_domains", "enabled"}))  # noqa: E731
     return pick(a) != pick(b)
 
 
@@ -457,7 +490,7 @@ async def apply_saved(old: WinstonConfig, new: WinstonConfig, timeout: float = A
     out = HAApply(applied=False)
     try:
         return await asyncio.wait_for(ha.apply(old.providers.home_assistant, out), timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         out.applied, out.error = False, f"Home Assistant did not answer within {timeout:g} s"
         return out
 
@@ -477,6 +510,9 @@ class HAEntity(BaseModel):
     device: str | None
     state: str | None                   # raw state
     state_text: str | None              # "on, 50%", "81 %"
+    last_run: str | None = None         # buttons, scenes and scripts: when it last ran (ISO time)
+    category: str | None = None         # the registry's entity_category: "config" or "diagnostic" for settings
+    hidden: bool = False                # hidden in Home Assistant (hidden_by set)
     listed: bool                        # on Winston's list (providers.home_assistant.expose)
     applied: bool | None = None         # listed only: exposed, with every alias config asks for
     missing_aliases: list[str] = []     # listed only: aliases config asks for that Home Assistant lacks
@@ -510,12 +546,13 @@ class HARegistry(BaseModel):
 
 
 def _entity(snap: Snapshot, eid: str, listed: bool) -> HAEntity:
-    s = snap.states.get(eid)
+    s, r = snap.states.get(eid), (snap.registry or {}).get(eid) or {}
     aid, area = snap.area(eid)
     return HAEntity(entity_id=eid, domain=eid.split(".")[0], in_ha=snap.known(eid),
                     exposed=None if snap.exposed is None else eid in snap.exposed,
                     friendly_name=snap.display_name(eid), aliases=snap.aliases(eid), area=area, area_id=aid,
                     device=snap.device(eid), state=s.get("state") if s else None, state_text=state_text(s),
+                    last_run=last_run(eid, s), category=r.get("entity_category"), hidden=bool(r.get("hidden_by")),
                     listed=listed)
 
 
@@ -524,7 +561,7 @@ def exposure_view(ha: HomeAssistantConfig, snap: Snapshot) -> HAExposure:
     out = HAExposure(ok=True, detail="; ".join(snap.errors), version=snap.version, mcp_server=snap.mcp_server,
                      registry=snap.registry is not None, auto_expose=snap.expose_new, pending=p,
                      in_sync=p.empty and snap.exposed is not None and snap.registry is not None)
-    for eid, ent in ha.expose.items():
+    for eid in ha.expose:
         e = _entity(snap, eid, True)
         if e.in_ha and snap.registry is not None:
             e.missing_aliases = p.aliases_add.get(eid, [])
@@ -539,10 +576,14 @@ def exposure_view(ha: HomeAssistantConfig, snap: Snapshot) -> HAExposure:
 
 
 def registry_view(ha: HomeAssistantConfig, snap: Snapshot) -> HARegistry:
+    """Every entity by room, each room by name: the ones Home Assistant cannot reach now after the others, a room
+    where none can be reached after the rooms with one that can, and the entities with no room last."""
     groups: dict[str | None, HAArea] = {}
-    for eid in sorted(snap.states):
+    away = (lambda eid: (snap.states.get(eid) or {}).get("state") == "unavailable")  # noqa: E731
+    for eid in sorted(snap.states, key=lambda eid: (away(eid), (snap.display_name(eid) or eid).casefold(), eid)):
         e = _entity(snap, eid, eid in ha.expose)
         g = groups.setdefault(e.area_id, HAArea(area_id=e.area_id, name=e.area, entities=[]))
         g.entities.append(e)
-    ordered = sorted(groups.values(), key=lambda g: (g.area_id is None, (g.name or "").casefold()))
+    ordered = sorted(groups.values(), key=lambda g: (g.area_id is None, all(away(e.entity_id) for e in g.entities),
+                                                     (g.name or "").casefold()))
     return HARegistry(ok=True, detail="; ".join(snap.errors), areas_known=snap.registry is not None, groups=ordered)

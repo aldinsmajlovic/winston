@@ -12,7 +12,7 @@ import httpx
 import numpy as np
 import onnx_asr
 
-from winston.config import load  # noqa: E402
+from winston.config import load
 ROOT = Path(__file__).resolve().parents[1]
 TTS = load().tts.base_url.removesuffix("/v1")
 OUT = ROOT / "tests/latency/results"; OUT.mkdir(parents=True, exist_ok=True)

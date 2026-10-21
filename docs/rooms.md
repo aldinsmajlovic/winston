@@ -1,12 +1,15 @@
 # Rooms
 
-A room is where a Voice PE box and a screen (the dashboard on a wall panel, the Talk page on a laptop)
+A room is where a Voice PE box and a screen (the wall display on a tablet, the Talk page on a laptop)
 are together. In a room they are one Winston: one conversation, one microphone at a time, and "the
 lights" means that room's lights. A screen with no room works as before.
 
 ## Setting a room
 
-- **A box** is in the room its key in `config.yaml` names:
+- **A box** is added in Settings, Ways to talk, Room boxes: Add a box asks for its room and address,
+  its encryption key for a box Home Assistant adopted (kept on this computer under a variable of the
+  room's own, `VOICE_PE_KEY_MAIN_ROOM`, so two boxes never share one), its wake word and its Home
+  Assistant area ([Voice PE](voice-pe.md) has the setup). The room is the box's key in `config.yaml`:
 
   ```yaml
   channels:
@@ -16,25 +19,41 @@ lights" means that room's lights. A screen with no room works as before.
   ```
 
   `area` is the room's name in Home Assistant, for "turn off the lights". Unset, the room's own name is
-  used. The settings pages list Home Assistant's areas for it (`/api/options/ha_areas`).
-- **A screen** gets its room from the address, `/dashboard?room=main room` (a wall panel's bookmark), or
-  from the room picker at the top of the Talk page. The browser remembers it. Names match without regard
-  to case or spacing; the picker offers the boxes' rooms.
+  used. The field lists Home Assistant's areas (`/api/options/ha_areas`).
+- **A screen** gets its room from the address, `/wall?room=main room` (a wall tablet's bookmark), or
+  from the room picker on the line above the Talk page's message field. The browser remembers it. Names
+  match without regard to case or spacing; the picker offers the boxes' rooms and Home Assistant's areas,
+  and says what each choice shares. A screen can be in a room with no box (a wall tablet in a room of its
+  own): "the lights" there means the Home Assistant area of the room's name.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/ways-to-talk-dark.png">
+  <img src="images/ways-to-talk-light.png" alt="Ways to talk: the Talk page card with the wall display link, the room boxes with their state, and Discord" width="720">
+</picture>
+
+Each box on Room boxes says whether it is there now, with the same icons as Status: Connected,
+Offline since 14:02, Never connected (not since Winston started), or Off while Listen through room
+boxes is off. The satellite channel
+reports each connect and disconnect (`PUT /api/rooms/{room}/box`), and when the channel stops its
+boxes count as gone. A box's menu has Edit, Open wall display, Copy wall display link and Remove;
+removing one asks first, and he stops listening there when you save. The Wall display row on the
+Talk page card does the same for any room, a box's or a Home Assistant area: pick it, then Open, or
+Copy link for the tablet.
 
 ## What a room does
 
 - **One conversation.** A request started at the box can be continued at the screen and the other way
   round: "Okay Winston, what's the capital of Norway?" at the box, then "How many people live there?"
-  at the dashboard. Typed messages on the Talk page join the room's conversation too. It starts fresh
+  at the wall display. Typed messages on the Talk page join the room's conversation too. It starts fresh
   after `channels.satellite.session_idle_mins` (10) without a new message, or when you start over:
   say "start over" or "new conversation" anywhere in the room, or press New conversation (left of the
   Talk page's text field). Either ends it for the box and every screen in the room; what he remembers
   stays. Without a room, saying it starts over that one conversation, and the button the household's
   typed one.
 - **One mic at a time.** When the box wakes, a screen in the room stops listening until the box's reply
-  has played (plus 4 s while the box listens again without the wake word, then for as long as it does). The screen shows
-  "Mic paused while the box has it". So the screen neither answers the request said to the box nor
-  takes his voice from the box's speaker for a turn.
+  has played (plus 4 s while the box listens again without the wake word, then for as long as it does).
+  The screen shows "Microphone paused while the main room box has it". So the screen neither answers the
+  request said to the box nor takes his voice from the box's speaker for a turn.
 - **A wake word on its own is the box's.** People pause after "Okay Winston" to see the box light up;
   a screen in a room ignores a bare wake word ("okay", "ok", "hey" or "hi" and his name, or a box's own
   wake word), because it often hears it before the box has said it woke. A screen needs no wake word, so
@@ -49,7 +68,7 @@ lights" means that room's lights. A screen with no room works as before.
 sequenceDiagram
   participant You
   participant Box as Voice PE
-  participant Screen as Dashboard
+  participant Screen as Wall display
   participant W as winstond
   You->>Box: "Okay Winston, ..."
   Box->>W: holds the room's mic
@@ -85,7 +104,8 @@ session with them, and the room's conversation carries over.
 
 | Endpoint | What |
 | --- | --- |
-| `GET /api/rooms` | The boxes' rooms and any room a screen is in: who has the mic, screens, messages |
+| `GET /api/rooms` | The boxes' rooms and any room a screen is in: who has the mic, screens, messages, whether its box is connected and since when |
+| `PUT /api/rooms/{room}/box` | `{connected}`: the satellite channel reports a box connecting or going away |
 | `POST /api/rooms/{room}/sync` | A session hands over its new messages and takes in the others' |
 | `POST /api/rooms/{room}/mic` | `{by, secs}`: hold the mic for secs; 0 lets go |
 | `GET /api/rooms/{room}/mic` | Who has the mic, now and on every change (server-sent events) |
@@ -108,4 +128,4 @@ The live feed carries the mic too, as `mic` events with `room` and `held_by`.
   saying to leave the room out for a named device, 1 of 4, and that one is now caught in code
   (`rooms.scoped_by_name`, cases in `tests/rooms_cases.py`).
 
-Not yet checked: a real box and a real wall panel in the same room.
+Not yet checked: a real box and a real wall tablet in the same room.

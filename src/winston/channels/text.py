@@ -3,10 +3,10 @@ the Discord channel and the web chat; a satellite box runs the same session with
 after it (channels/satellite.py)."""
 import asyncio
 import time
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from loguru import logger
-from pipecat.frames.frames import (Frame, FunctionCallResultFrame, FunctionCallsStartedFrame,
+from pipecat.frames.frames import (ErrorFrame, Frame, FunctionCallResultFrame, FunctionCallsStartedFrame,
                                    LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.pipeline.pipeline import Pipeline
@@ -32,6 +32,7 @@ class TurnTracker(BaseObserver):
     downstream past the LLM."""
     def __init__(self):
         super().__init__(); self.last_end = None; self.pending: set[str] = set()
+        self.error: BaseException | None = None
 
     @property
     def over(self) -> bool:
@@ -46,6 +47,8 @@ class TurnTracker(BaseObserver):
             self.last_end = None            # the LLM runs again on the result; a new response is coming
         elif isinstance(f, LLMFullResponseEndFrame):
             self.last_end = time.perf_counter()
+        elif isinstance(f, ErrorFrame):     # the LLM's failure travels upstream, past no printer
+            self.error = f.exception or RuntimeError(f.error)
 
 
 class Printer(FrameProcessor):
@@ -66,7 +69,7 @@ class Printer(FrameProcessor):
         t0 = time.perf_counter(); self.buf = []; self._t.last_end = None
         while time.perf_counter() - t0 < timeout:
             await asyncio.sleep(0.1)
-            if self._t.over:
+            if self._t.over or (self._t.error and not self.buf):
                 break
         if self._echo:
             print()
@@ -135,9 +138,15 @@ class TextSession:
     def busy(self) -> bool:
         return self._lock.locked()
 
+    @property
+    def error(self) -> BaseException | None:
+        """Why the last question got no answer, if the pipeline said (the brain unreachable)."""
+        return self._tracker.error
+
     async def ask(self, m: str, timeout: float = 90) -> str:
         async with self._lock:
             self.last_used = time.monotonic()
+            self._tracker.error = None
             await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}],
                                                                     run_llm=True)])
             reply = await self.printer.wait_reply(timeout)

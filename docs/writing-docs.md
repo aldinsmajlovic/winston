@@ -27,13 +27,15 @@ links to it.
 | --- | --- |
 | `README.md` | Pitch, one screenshot, about eight features, status in two lines, quickstart, links |
 | `docs/running.md` | Commands, web UI, engines, logs, exposure |
-| `docs/architecture.md` | How the parts fit, the repository, plugin contracts |
+| `docs/architecture.md` | How the parts fit, the config API and its metadata, which settings page owns what, the repository, plugin contracts |
+| `docs/ui-guide.md` | How the web UI looks and reads: its rules, words and templates |
+| `docs/identity.md` | His name, his personality and his logo |
 | `docs/hardware.md` | Profiles, GPUs, measured budgets |
 | `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md` | Their one subject |
 | `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
 | `docs/computer.md` | The computer server: opening things, status, logs and updates on each computer |
-| `docs/announcements.md`, `docs/discord.md` | Their one subject |
+| `docs/home-assistant.md`, `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
 | `docs/built-in-extensions.md` | The extensions that come with Winston |
 | `docs/plan.md` | Milestones and their status |
@@ -53,16 +55,21 @@ short pages over one long one.
 
 ## Pictures
 
-- **Screenshots over descriptions.** When the web UI changes visibly, retake the affected shot. Shots live
-  in `docs/images/`, taken at 1400x860 in both themes and cropped to the content, and are shown with a
-  `<picture>` element so GitHub picks light or dark:
-
+- **Screenshots over descriptions.** When the web UI changes visibly, retake the affected shot. Shots
+  live in `docs/images/`, taken at 1400x860 in both themes and cropped to the content, and are shown with
+  a `<picture>` element so GitHub picks light or dark. A shot of part of a page (an MCP server's actions)
+  may be cut from a full-page capture at 1400 wide and shown at its own width. Paths are relative to the
+  page: `images/...` from a page in `docs/`, `docs/images/...` from the README. The alt text says what
+  the shot shows.
   ```html
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/brain-dark.png">
-    <img src="docs/images/brain-light.png" alt="The Brain page" width="720">
+    <source media="(prefers-color-scheme: dark)" srcset="images/brain-dark.png">
+    <img src="images/brain-light.png" alt="The Brain page: what runs his brain, the model, and whether he thinks before answering" width="720">
   </picture>
   ```
+
+  A shot is named for its page in lower case with dashes (`status`, `ways-to-talk`, `wall`), and
+  `extensions-news` for an extension's page.
 
   Take them against a running `winstond` with Playwright and the system Chromium. Never capture
   anything from `data/` that is personal: entity names, phone numbers, memory facts, tokens.

@@ -20,9 +20,10 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import aiohttp
 from loguru import logger
@@ -152,9 +153,9 @@ def mismatch(e: Expect, s: dict | None) -> str | None:
 # ---------------------------------------------------------------- what he says (pure)
 
 
-_ONES = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
-         "seventeen eighteen nineteen").split()
-_TENS = "_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()
+_ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+         "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = ["_", "_", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"]
 
 
 def number_words(n: int) -> str:

@@ -34,10 +34,10 @@ from winston.extension_host.sources import read_json, write_json
 KEEP_SECS = 7 * 86400           # ended nudges stay listed this long (`ctx.nudges()`)
 EVERY = 5.0
 CHECK_SECS = 8                  # the check's own 5 s, and the trip there and back
-WHATS_NEW = re.compile(r"\b(what'?s new|anything new|what did i miss|briefing|brief me)\b", re.I)
-HOME = re.compile(r"\bhome\b", re.I)
+WHATS_NEW = re.compile(r"\b(what'?s new|anything new|what did i miss|briefing|brief me)\b", re.IGNORECASE)
+HOME = re.compile(r"\bhome\b", re.IGNORECASE)
 DAY = re.compile(r"\b(day after tomorrow|today|tonight|tomorrow|(?:this |next )?(?:monday|tuesday|wednesday|"
-                 r"thursday|friday|saturday|sunday))\b", re.I)
+                 r"thursday|friday|saturday|sunday))\b", re.IGNORECASE)
 DELIVERED = {"now": "as soon as allowed", "when_home": "when you are home", "when_leaving": "as you leave",
              "next_talk": "at your next conversation", "briefing": "in the morning briefing", "silent": "silently"}
 _DURATION = TypeAdapter(timedelta)
@@ -159,7 +159,7 @@ class Nudges:
                 logger.exception(f"nudges: {e}")
             try:
                 await asyncio.wait_for(self._wake.wait(), EVERY)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
             self._wake.clear()
 
@@ -293,6 +293,7 @@ class Nudges:
                 continue
             spec = self.kind(r["ext"], r["kind"]) or {"title": r["kind"]}
             out.append({**self.view(r), "id": r["id"], "extension": r["ext"], "title": spec["title"],
+                        "seen_at": datetime.fromtimestamp(r["first_seen"], local_zone()).isoformat(),
                         "say": r.get("say"), "source": r["source"], "why": r.get("held_why"), "via": r.get("via"),
                         "put_off": (r.get("later") or {}).get("text"), "reason": r.get("reason")})
         return out
@@ -345,11 +346,11 @@ class Nudges:
         """(what, why). what: skip, hold, end, silent, next_talk, briefing, speakers or phone."""
         now = self.clock()
         if not spec["enabled"]:
-            return "skip", "its kind is switched off"
+            return "skip", "this message is switched off"
         if rec.get("expires") and now >= rec["expires"]:
             return "end", "expired"
         if self.muted_until(rec["ext"], rec["kind"]) is not None:
-            return "hold", "its kind is muted"
+            return "hold", "this message is muted"
         if rec["dismissed_level"] and rec["level"] <= rec["dismissed_level"]:
             return "skip", "dismissed"
         later = rec.get("later")
@@ -380,7 +381,7 @@ class Nudges:
             if in_quiet_hours(self.host.cfg.announce.quiet_hours, self.now().time()):
                 return "hold", "quiet hours"
             if self.spoken_today() >= self.host.cfg.speak_up.max_per_day:
-                return "briefing", "past today's limit of spoken nudges"
+                return "briefing", "past today's limit of spoken messages"
         if self.busy():
             return "hold", "a conversation is running"
         where = per_level(spec["where"], rec["level"], "auto")

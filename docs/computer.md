@@ -14,12 +14,12 @@ computers are not that machine. On the one Winston runs on, it is the same serve
 
 ## What he can do
 
-| Tool | Tier | Does | Never |
+| Tool | Says it | Does | Never |
 | --- | --- | --- | --- |
-| `open` | act | Opens an installed app from the computer's own list, a web address (http or https) in the default browser, or a file from a folder you allow, in its default app | Passes arguments to an app; opens any other kind of address; opens a file outside the allowed folders, or anything that runs as a program (executables, scripts, installers, shortcuts, `.desktop` files) |
-| `status` | read | Name, OS, uptime, load, memory, disks, and temperatures and battery where the OS gives them; on Linux, failed services; how many updates are waiting and whether a restart is needed | |
-| `logs` | read | The last lines of a log source you allow (at most 200), since a time, optionally only lines with a word | Reads a source that is not in its settings |
-| `security_updates` | read | One plain line ("485 updates waiting; this system does not say which are for security."), every CVE id the waiting updates fix where the tool names them, and the 30 updates that matter most, security first; or only those with a name in them ("is there an update for Firefox?") | Installs anything |
+| `open` | changes things (act) | Opens an installed app from the computer's own list, a web address (http or https) in the default browser, or a file from a folder you allow, in its default app | Passes arguments to an app; opens any other kind of address; opens a file outside the allowed folders, or anything that runs as a program (executables, scripts, installers, shortcuts, `.desktop` files) |
+| `status` | only looks (read) | Name, OS, uptime, load, memory, disks, and temperatures and battery where the OS gives them; on Linux, failed services; how many updates are waiting and whether a restart is needed | |
+| `logs` | only looks (read) | The last lines of a log source you allow (at most 200), since a time, optionally only lines with a word | Reads a source that is not in its settings |
+| `security_updates` | only looks (read) | One plain line ("485 updates waiting; this system does not say which are for security."), every CVE id the waiting updates fix where the tool names them, and the 30 updates that matter most, security first; or only those with a name in them ("is there an update for Firefox?") | Installs anything |
 
 Each tool reaches the brain as `<id>_<tool>`, where the id is the name you give the computer when you
 add it: `desk_open`, `laptop_status`. The server also says what it is, as its MCP `instructions`, which
@@ -130,23 +130,25 @@ systemd, which a bare compositor needs `dbus-update-activation-environment --sys
 DISPLAY XDG_CURRENT_DESKTOP` for. `service remove` takes it out. The LaunchAgent (macOS) and logon task
 (Windows) come with those systems.
 
-In Winston, on the Extensions page: + adds an MCP server. Give the computer's name as the id
-(`desk`), the address (`http://<computer>:8711/mcp`) and paste the token into its key field. After
-Save, its tile opens its card, which lists the four tools; switch on the ones the brain gets and confirm their tiers (the server
-suggests act for `open` and read for the rest, and a server that is not built in is never trusted on
-its own word). The page writes:
+In Winston, on the Extensions page: Add an MCP server. Name it after the computer (`Desk`, so its
+actions are `desk_...`), choose An address under How it starts, give `http://<computer>:8711/mcp` and
+paste the token. It goes into the draft switched on with no action on yet, and its page opens: under
+What he can do with it, give each of the four actions a Permission (On its own, Asks you first or
+Off). A server that is not built in is never trusted on its own word, so the rows say what it claims
+("Says it changes things" for `open`, "Says it only looks" for the rest) and nothing runs until you
+choose. Save starts it. The page writes:
 
 ```yaml
 extensions:
   desk:
     enabled: true
-    mcp: {url: "http://192.0.2.10:8711/mcp", token_env: DESK_MCP_TOKEN}
-    tools: {open: {tier: act}, status: {tier: read}, logs: {tier: read}, security_updates: {tier: read}}
+    mcp: {title: Desk, url: "http://192.0.2.10:8711/mcp", token_env: DESK_MCP_TOKEN}
+    tools: {open: {enabled: true}, status: {enabled: true}, logs: {enabled: true}, security_updates: {enabled: true}}
 ```
 
 When winstond listens beyond this machine (`control.host` other than loopback), the page cannot save
-keys, this token included; put it in `data/.env` under the variable the card names
-(`DESK_MCP_TOKEN=...`), then press Restart on its card.
+keys, this token included; put it in `data/.env` under the variable its page names
+(`DESK_MCP_TOKEN=...`), then press Restart on its page.
 
 The computer Winston runs on is added the same way, at `http://127.0.0.1:8711/mcp`, so every
 computer is set up alike. `winston-computer serve` speaks stdio too, for other MCP clients; Winston
@@ -163,8 +165,8 @@ your desktop session's, and `open` could not open a window.
   network you do not trust, reach the computer through a VPN (WireGuard, Tailscale) or a reverse proxy
   with HTTPS.
 - **Addresses** are http and https only, opened by the default browser. A web page or a log line can
-  try to talk him into opening a link; to confirm each `open` with a button, set it to restricted on
-  its card.
+  try to talk him into opening a link; to confirm each `open` with a button, set its Permission to
+  Asks you first.
 - **Files** are resolved to their real path (through symlinks) and refused outside the allowed
   folders. Nothing that runs as a program is opened, even from inside them.
 - **Every call** is in Winston's tool log, and the server keeps its own, `calls.log` in
@@ -178,8 +180,9 @@ One change to the standard, for every HTTP MCP server: **a token** (built 2026-1
 to sign in, so only servers open to anyone worked over HTTP. `token_env` names a
 variable in `data/.env`, as `providers.home_assistant.token_env` does, and winstond sends its value as
 `Authorization: Bearer` on every request (the Home Assistant provider already connects to Home
-Assistant's MCP server this way). The + dialog and the card get a key field for it, saved through the
-secrets API like every other key, so the token is never in `config.yaml` and never shown back.
+Assistant's MCP server this way). The Add an MCP server dialog and the server's page get a Token
+field for it, saved through the secrets API like every other key, so the token is never in
+`config.yaml` and never shown back.
 
 It belongs in the standard because it is not about computers: Home Assistant's own MCP server and most
 self-hosted ones take a bearer token the same way. MCP's OAuth sign-in is for servers with an

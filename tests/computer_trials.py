@@ -19,9 +19,9 @@ import httpx
 from loguru import logger
 
 os.environ["WINSTON_THINKING"] = "0"
-from winston.channels.text import TextSession  # noqa: E402
-from winston.config import load  # noqa: E402
-from winston.extension_host.client import make_handler  # noqa: E402
+from winston.channels.text import TextSession
+from winston.config import load
+from winston.extension_host.client import make_handler
 
 logger.remove(); logger.add(sys.stderr, level="WARNING")
 

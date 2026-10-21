@@ -1,10 +1,11 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import type { ErrorSchema } from '@rjsf/utils'
 import { locPath, type ValidationError } from './client'
-import { deref, getIn, isRecord, type JsonSchema, type Path } from '@/lib/schema'
+import { deref, getIn, isRecord, SECRET_SUFFIX, type JsonSchema, type Path } from '@/lib/schema'
 
 // Errors from a refused save (422), shown beside the fields they belong to. The save flow calls
-// showFieldErrors; every SectionForm reads the ones under its own path; editing a field clears its own.
+// showFieldErrors; every SectionForm reads the ones under its own path, and a How it runs fold opens
+// while one is under it; editing a field clears its own.
 
 export type FieldError = { loc: Path; msg: string }
 
@@ -38,35 +39,43 @@ export function fieldId(loc: Path): string {
   return ['cfg', ...loc].join('_')
 }
 
-/** Whether the field at `loc` (or a section on the way to it) is advanced in the schema. */
-function isAdvancedAt(root: JsonSchema, loc: Path): boolean {
-  let current: JsonSchema | undefined = deref(root, root)
+/** The schemas on the way to `loc`, one per key, as far as the schema goes. */
+function nodesAt(root: JsonSchema, loc: Path): JsonSchema[] {
+  const nodes: JsonSchema[] = []
+  let current: JsonSchema = deref(root, root)
   for (const key of loc) {
-    const next: unknown = current?.properties?.[String(key)] ?? current?.additionalProperties ?? current?.items
-    if (!isRecord(next)) return false
+    const next: unknown = current.properties?.[String(key)] ?? current.additionalProperties ?? current.items
+    if (!isRecord(next)) break
     current = deref(next as JsonSchema, root)
-    if (current.level === 'advanced') return true
+    nodes.push(current)
   }
-  return false
+  return nodes
 }
 
-type ShowOptions = {
-  /** The config schema, to tell whether a failing field is advanced. */
-  schema: JsonSchema
-  /** Turns the page's Advanced toggle on, when a failing field is only shown there. */
-  setAdvanced?: (advanced: boolean) => void
+/** Whether no page draws the field at `loc`: it, or a section on the way to it, is hidden (config.yaml only). */
+export function hiddenAt(root: JsonSchema, loc: Path): boolean {
+  return nodesAt(root, loc).some((n) => n.hidden === true)
 }
 
-/** Show a 422's errors on the forms: each beside its field, a section's own (a model validator)
- * beside the section title. Turns Advanced on when a failing field is advanced and scrolls to the
- * first one. Returns the errors it read, so the caller can still toast a summary. */
-export function showFieldErrors(error: unknown, { schema, setAdvanced }: ShowOptions): FieldError[] {
-  const found = fieldErrorsFrom(error)
+/** An error on a key's variable field (an extension's check refused the key) belongs on the field the
+ * key is pasted into: the variable field is hidden, the pasted-key one beside it is drawn. */
+function onDrawnField(root: JsonSchema, e: FieldError): FieldError {
+  const nodes = nodesAt(root, e.loc)
+  const last = e.loc.length - 1
+  if (last < 0 || nodes.length !== e.loc.length || !isRecord(nodes[last].secret)) return e
+  return { ...e, loc: [...e.loc.slice(0, -1), `${String(e.loc[last])}${SECRET_SUFFIX}`] }
+}
+
+/** Show a 422's errors on the forms: each beside its field (a key's beside where it is pasted), a
+ * section's own (a model validator) beside the section title, and scroll to the first one. A How it runs
+ * fold with one under it opens on the publish, before the scroll. Returns the errors as shown, so the
+ * caller can still toast a summary. */
+export function showFieldErrors(error: unknown, root: JsonSchema): FieldError[] {
+  const found = fieldErrorsFrom(error).map((e) => onDrawnField(root, e))
   publish(found)
   if (found.length === 0) return found
-  if (setAdvanced && found.some((e) => isAdvancedAt(schema, e.loc))) setAdvanced(true)
-  // After the forms re-render with the errors (and the advanced fields), scroll to the first one that
-  // is on this page: the field itself, else the closest section above it.
+  // After the forms re-render with the errors (and the folds open), scroll to the first one that is on
+  // this page: the field itself, else the closest section above it.
   window.setTimeout(() => {
     for (const e of found) {
       for (let n = e.loc.length; n > 0; n--) {
@@ -95,6 +104,12 @@ export function clearChangedFieldErrors(before: unknown, after: unknown) {
 
 function startsWith(loc: Path, path: Path): boolean {
   return path.every((k, i) => String(loc[i]) === String(k))
+}
+
+/** Whether a refused save left an error at or under any of these config paths. */
+export function useErrorsUnder(paths: Path[]): boolean {
+  const all = useSyncExternalStore(subscribe, snapshot, snapshot)
+  return all.some((e) => paths.some((p) => startsWith(e.loc, p)))
 }
 
 export type SectionErrors = {

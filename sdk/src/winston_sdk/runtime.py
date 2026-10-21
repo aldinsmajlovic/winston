@@ -26,7 +26,7 @@ from winston_sdk._version import __version__
 from winston_sdk.context import Clock, Ctx, State, make_http
 from winston_sdk.errors import SettingsError
 from winston_sdk.extension import Extension, JobSpec, ToolSpec
-from winston_sdk.fields import When, secret_fields, to_json
+from winston_sdk.fields import Choice, Status, When, own_choices, secret_fields, to_json
 from winston_sdk.nudge import Nudge, NudgeInfo
 from winston_sdk.when import parse_when
 
@@ -113,7 +113,7 @@ class Runtime:
             if timeout is None:
                 return await fn(*args)
             return await asyncio.wait_for(fn(*args), timeout)
-        except asyncio.TimeoutError as e:
+        except TimeoutError as e:
             raise TimeoutError(f"{where or fn.__name__} took longer than {timeout:g} s") from e
         finally:
             self.save_store()
@@ -132,7 +132,7 @@ class Runtime:
     def _secret_names(self) -> dict[str, str]:
         return secret_fields(self.ext.settings_model)
 
-    async def configure(self, settings: dict[str, Any] | None = None, secrets: dict[str, str] | None = None,
+    async def configure(self, settings: dict[str, Any] | None = None, secrets: dict[str, Any] | None = None,
                         validate_only: bool = False, validate_first: bool = False,
                         day_parts: dict[str, str] | None = None, time_zone: str | None = None) -> dict[str, Any]:
         """New settings. With `validate_first` the extension's own check runs before they take effect
@@ -150,7 +150,7 @@ class Runtime:
                 await self.invoke(self.ext.validate_fn, Event(settings=new), timeout=10, where="validate")
             except SettingsError as e:
                 return {"ok": False, "errors": [{"field": e.field, "message": e.message}]}
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 return {"ok": False, "errors": [{"field": None, "message": self._error("validate", e)}]}
         if not apply:
             return {"ok": True}
@@ -184,7 +184,7 @@ class Runtime:
                 return                                   # it finished on its own: not restarted
             except asyncio.CancelledError:
                 raise
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 self._error(spec.name, e)
                 await asyncio.sleep(5)
 
@@ -205,7 +205,7 @@ class Runtime:
         try:
             await self.invoke(spec.fn, event, timeout=spec.timeout, where=spec.name)
             return {"ok": True}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": self._error(spec.name, e)}
 
     async def run(self, job: str, data: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -222,7 +222,7 @@ class Runtime:
             result = await self.invoke(spec.fn, Event(json=body, headers=headers or {}), timeout=spec.timeout,
                                        where=f"hook {name}")
             return {"ok": True, "result": result}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": self._error(f"hook {name}", e)}
 
     # tools
@@ -275,8 +275,8 @@ class Runtime:
         from mcp.types import ToolAnnotations
         annotations = ToolAnnotations(read_only_hint=spec.tier == "read", destructive_hint=spec.tier == "restricted",
                                       open_world_hint=spec.outside)
-        return MCPTool.from_function(self.tool_wrapper(spec), name=spec.name, description=spec.description,
-                                     annotations=annotations)
+        return MCPTool.from_function(self.tool_wrapper(spec), name=spec.name, title=spec.title,
+                                     description=spec.description, annotations=annotations)
 
     async def call_tool(self, name: str, args: dict[str, Any]) -> Any:
         """A tool called directly (the harness); over MCP the same wrapper runs."""
@@ -311,7 +311,7 @@ class Runtime:
                     raise TypeError(f"a check returns None, a Nudge or a list of them, not {type(n).__name__}")
                 self.check_actions(kind, n)
             return {"ok": True, "nudges": [n.model_dump(mode="json") for n in nudges]}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": self._error(f"check {kind}", e)}
 
     async def act(self, action: str, nudge: dict[str, Any]) -> dict[str, Any]:
@@ -322,7 +322,7 @@ class Runtime:
             result = await self.invoke(spec.fn, Event(nudge=NudgeInfo.model_validate(nudge)), timeout=30,
                                        where=f"action {action}")
             return {"ok": True, "result": result}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": self._error(f"action {action}", e)}
 
     async def nudge_event(self, what: str, nudge: dict[str, Any], until: str | None = None,
@@ -333,7 +333,7 @@ class Runtime:
             if kinds is None or info.kind in kinds:
                 try:
                     await self.invoke(fn, event, timeout=30, where="on_nudge")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     self._error("on_nudge", e)
         return {"ok": True}
 
@@ -356,7 +356,7 @@ class Runtime:
         try:
             await self.invoke(fn, event, timeout=30, where=f"entity {key}")
             return {"ok": True}
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             return {"ok": False, "error": self._error(f"entity {key}", e)}
 
     # the rest
@@ -366,13 +366,17 @@ class Runtime:
             return None
         try:
             return await self.invoke(fn, timeout=5, where=where)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self._error(where, e)
             return None
 
     async def status(self) -> dict[str, str | None]:
-        text = await self._optional(self.ext.status_fn, "status")
-        return {"text": str(text)[:200] if text is not None else None}
+        """Its line, and a `Status`'s warning and note."""
+        out = await self._optional(self.ext.status_fn, "status")
+        if out is None:
+            return {"text": None, "warning": None, "note": None}
+        s = out if isinstance(out, Status) else Status(text=str(out))
+        return {"text": s.text[:200], "warning": (s.warning or "")[:200] or None, "note": (s.note or "")[:200] or None}
 
     async def context(self) -> dict[str, str | None]:
         text = await self._optional(self.ext.context_fn, "context")
@@ -382,17 +386,33 @@ class Runtime:
         words = await self._optional(self.ext.hint_words_fn, "hint_words")
         return {"words": [str(w) for w in (words or [])][:200]}
 
+    async def choices(self, name: str) -> dict[str, Any]:
+        """What its `@ext.choices` function `name` offers a picker in its settings."""
+        fn = self.ext.choice_fns.get(name)
+        if fn is None:
+            return {"ok": False, "error": f"no choices named {name!r}"}
+        if not self.ready_to_run():
+            return {"ok": False, "error": "its settings have not arrived yet"}
+        try:
+            items = await self.invoke(fn, timeout=5, where=f"choices {name}")
+            listed = [Choice(value=c) if isinstance(c, str) else Choice.model_validate(c) for c in items or []]
+            return {"ok": True, "choices": [{**c.model_dump(), "label": c.label or c.value} for c in listed]}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "error": self._error(f"choices {name}", e)}
+
     async def info(self) -> dict[str, Any]:
         """Its process id, for winstond's watch on crashes and memory."""
         return {"pid": os.getpid(), "sdk": __version__, "id": self.ext.manifest.id}
 
     def describe(self) -> dict[str, Any]:
         ext = self.ext
-        schema = ext.settings_model.model_json_schema()
+        schema = own_choices(ext.settings_model.model_json_schema(), ext.manifest.id)
         tools = []
         for spec in ext.tools.values():
             t = self.mcp_tool(spec)
             tools.append({"name": spec.name, "description": spec.description, "tier": spec.tier,
+                          "title": spec.title or spec.name.replace("_", " ").capitalize(),
+                          "summary": spec.summary or "",
                           "outside": spec.outside, "timeout": spec.timeout, "filler": spec.filler,
                           "filler_after": spec.filler_after,
                           "input_schema": t.parameters})
@@ -403,7 +423,8 @@ class Runtime:
             "tools": tools,
             "jobs": [{"name": j.name, "trigger": j.trigger, "timeout": j.timeout, "catch_up": j.catch_up}
                      for j in ext.jobs.values()],
-            "kinds": [{"kind": k.kind, "title": k.title, "checked": k.check is not None,
+            "kinds": [{"kind": k.kind, "title": k.title, "description": k.description or "",
+                       "checked": k.check is not None,
                        "deliver": to_json(k.deliver), "where": to_json(k.where),
                        "repeat": k.repeat.total_seconds() if k.repeat else None,
                        "may_be_urgent": k.may_be_urgent, "requested": k.requested, "outside": k.outside,

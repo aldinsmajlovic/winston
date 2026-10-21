@@ -1,7 +1,6 @@
 """The winston command. Everything here goes through config and the control API, nothing
 touches processes directly."""
 import asyncio
-import os
 import shutil
 import subprocess
 import sys
@@ -324,7 +323,7 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     for n in names:
         print(f"\n=== {n}")
         for step, cmd in (plan[n] if n == "unit" else {n: plan[n]}).items():
-            if subprocess.run(cmd, cwd=repo_root()).returncode != 0:
+            if subprocess.run(cmd, cwd=repo_root(), check=False).returncode != 0:
                 failed.append(step)
     if failed:
         print(f"\nFAILED: {failed}"); raise typer.Exit(1)

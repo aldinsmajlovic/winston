@@ -158,8 +158,8 @@ async def scenarios(ha: FakeHA):
     ha.reset(); s = Session(c)
     s.v.after("intent__HassTurnOn", "c2", {"name": "shelf lamp"}, ha_result({"id": "light.hylla", "name": "Hyllan"}))
     said = await s.done()
-    expect("unavailable: corrected", said == ["The shelf lamp did not respond. Home Assistant shows it as "
-                                              "unavailable."], said)
+    expect("unavailable: corrected", said == [("The shelf lamp did not respond. Home Assistant shows it as "
+                                               "unavailable.")], said)
 
     # 3. A group with one dead member: the others reach 50 % a moment later.
     ha.reset(); s = Session(c)
@@ -170,8 +170,8 @@ async def scenarios(ha: FakeHA):
     s.v.after("light__HassLightSet", "c3", {"name": "main room lights", "brightness": 50},
               ha_result({"id": "light.alla", "name": "Alla"}))
     said = await s.done()
-    expect("group with a dead member: partial", said == ["Two of the lights are at fifty percent; the shelf lamp "
-                                                         "did not respond."], said)
+    expect("group with a dead member: partial", said == [("Two of the lights are at fifty percent; the shelf lamp "
+                                                          "did not respond.")], said)
     members = {r["entity"] for r in log_lines("verify") if r.get("id") == "c3"}
     expect("group: each member checked and logged", members == {"light.taklampa", "light.hylla", "light.kok"}, members)
 

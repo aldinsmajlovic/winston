@@ -51,6 +51,7 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from urllib.parse import quote
 
 import httpx
 import numpy as np
@@ -319,6 +320,7 @@ class Satellite:
         info = await self.client.device_info()
         logger.info(f"{self.room}: connected to {info.friendly_name or info.name} ({info.model}, ESPHome "
                     f"{info.esphome_version})")
+        asyncio.create_task(self._report_box(True))
         if self.conversation is None:            # ready before the first wake word, prompt already read
             await asyncio.shield(self._build(warm=True))
         self._prerender = asyncio.create_task(prerender(self.cfg))     # the lines he says while he thinks
@@ -398,6 +400,15 @@ class Satellite:
                  ).raise_for_status()
         except httpx.HTTPError as e:
             logger.warning(f"{self.room}: its volume could not be reported: {e}")
+
+    async def _report_box(self, connected: bool):
+        """Whether the box is connected, to winstond, for its row in settings."""
+        try:
+            async with httpx.AsyncClient(base_url=self.cfg.control.url, timeout=5) as h:
+                (await h.put(f"/api/rooms/{quote(self.room, safe='')}/box", json={"connected": connected})
+                 ).raise_for_status()
+        except httpx.HTTPError as e:
+            logger.warning(f"{self.room}: its connection could not be reported: {e}")
 
     async def switch_listening(self):
         """A double press: the wake word off (button only) or back on, and a line on the box to say which."""
@@ -526,6 +537,7 @@ class Satellite:
 
     async def _on_disconnect(self, expected: bool):
         logger.info(f"{self.room}: disconnected{'' if expected else ' unexpectedly'}")
+        asyncio.create_task(self._report_box(False))
         self._unsub = None
         if self._listener:
             self._listener.cancel()
@@ -946,7 +958,7 @@ class Satellite:
                 run.out.put_nowait(None)
                 # A reply that acted invites a quick tweak ("even warmer"); one that only talked, a conversation.
                 self._chatting = not (turn and any(guard.tool_tier(t["name"]) == guard.ACT for t in turn.tools))
-                question = said.rstrip().endswith("?")
+                question = "?" in said      # anywhere: "How about Elliott Smith? Those are soothing." asked one
                 wait = max(START_TIMEOUT_SECS, self.cfg.channels.satellite.follow_up_secs) if question \
                     else self.cfg.channels.satellite.follow_up_secs
                 ended = conv.brain.llm.ended            # a scene that speaks for itself (quiet_after)

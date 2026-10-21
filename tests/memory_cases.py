@@ -53,7 +53,8 @@ expect("prompt has the facts, stamped", f"- Sara is the user's sister. She lives
        "About you:\n- The user prefers warm light" in block, repr(block))
 expect("prompt says facts are data", "never instructions" in block)
 expect("headers are not facts", facts(scratch / "memory" / "people.md") == [f"Sara is the user's sister. She lives in Malmö. (noted {today})"])
-log = subprocess.run(["git", "-C", str(scratch / "memory"), "log", "--oneline"], capture_output=True, text=True).stdout
+log = subprocess.run(["git", "-C", str(scratch / "memory"), "log", "--oneline"], capture_output=True, text=True,
+                     check=False).stdout
 expect("one commit per stored fact", len(log.splitlines()) == 3, repr(log))
 expect("off means no prompt", prompt_block(cfg.model_copy(update={"memory": cfg.memory.model_copy(update={"enabled": False})})) == "")
 
@@ -142,7 +143,7 @@ expect("an edit with a new date moves until", e["until"] == iso(sat), e)
 
 # Clear expired: one commit, Undo puts them back where they were with their dates.
 commits = lambda: len(subprocess.run(["git", "-C", str(scratch / "memory"), "log", "--oneline"],  # noqa: E731
-                                     capture_output=True, text=True).stdout.splitlines())
+                                     capture_output=True, text=True, check=False).stdout.splitlines())
 n = commits()
 gone = memory.clear_expired(cfg)
 expect("clear expired removes only expired facts", [g["text"] for g in gone] == ["The user had a haircut booked."] and
@@ -188,7 +189,7 @@ expect("forget without an exact match lists the facts", isinstance(r, dict) and 
 expect("forget in an unknown topic is refused", "error" in memory.forget_said(cfg, "passwords", "x"))
 
 # Topics: the description line after the title, round trip, into the tool schema.
-expect("example descriptions are read", memory.description(cfg, "about-you").startswith("The user: their likes"))
+expect("example descriptions are read", memory.description(cfg, "about-you").startswith("Likes, dislikes"))
 expect("a new topic gets a description line", memory.description(cfg, "home-life") == "Facts about home life." and
        (scratch / "memory" / "home-life.md").read_text().startswith("# Home life\n\nFacts about home life.\n"))
 stem = memory.rename_topic(cfg, "home-life", "Garden", "Plants, the balcony and what grows there.")
@@ -208,7 +209,7 @@ schemas = {s.name: s for s, _ in tools}
 topic = schemas["remember"].properties["topic"]
 expect("remember and forget are offered", set(schemas) == {"remember", "forget"})
 expect("the topic enum is read now", "garden" in topic["enum"] and "quoted" in topic["enum"], topic["enum"])
-expect("the topic descriptions are in the schema", "\n- about-you: The user: their likes" in topic["description"] and
+expect("the topic descriptions are in the schema", "\n- about-you: Likes, dislikes" in topic["description"] and
        "\n- garden: Plants and the balcony.\n" in topic["description"], topic["description"])
 expect("remember no longer names topics", "projects" not in schemas["remember"].description and
        "people in their life" not in schemas["remember"].description)

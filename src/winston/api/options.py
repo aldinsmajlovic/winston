@@ -1,26 +1,26 @@
 """Live choices for the web UI's dropdowns. A config field names its list in the schema
 (`options: "<name>"`) and the UI asks `/api/options/<name>`; every list is fetched from where the
 truth lives (the brain's server, Home Assistant, the data directory, a provider's model list), so
-nothing is typed by hand that a machine already knows. Secrets never leave: the env list names
-variables and says whether they hold a value, nothing more. Every provider answers with a reason in
-`source` rather than an error, so a dropdown still takes a typed value when its source is down."""
+nothing is typed by hand that a machine already knows. Secrets never leave: no list holds a key's
+value. Every provider answers with a reason in `source` rather than an error, so a dropdown still takes
+a typed value when its source is down."""
 import inspect
 import json
 import os
 import re
+import unicodedata
 from collections import Counter
 from pathlib import Path
 from typing import get_args
 
 import httpx
-from dotenv import dotenv_values
 from pydantic import BaseModel
 
-from winston.api.secrets import env_file
 from winston.config import data_dir, repo_root
-from winston.config.registry import available
+from winston.config.presets import LLM
 from winston.config.schema import WinstonConfig
 from winston.core import memory
+from winston.core.common import failure_words
 from winston.core.voices import clones
 from winston.providers.home_assistant import HomeAssistant, state_text
 
@@ -30,9 +30,10 @@ class Choice(BaseModel):
     value: str
     label: str
     hint: str | None = None
-    icon: str | None = None     # a brand or kind the UI draws: an HA domain, "set" or "missing" for env
+    icon: str | None = None     # a brand or kind the UI draws, such as an HA domain
     group: str | None = None
     disabled: bool = False      # listed for the record but not pickable, the hint says why
+    image: str | None = None    # a picture's address (an extension's own list: a playlist's cover)
 
 
 class Options(BaseModel):
@@ -54,19 +55,10 @@ def _secret(name: str | None) -> str:
     return os.environ.get(name, "") if name else ""
 
 
-def _env(cfg: WinstonConfig, params: dict) -> Options:
-    values = dotenv_values(env_file()) if env_file().is_file() else {}
-    choices = []
-    for name, value in values.items():
-        has = bool(value or os.environ.get(name))
-        choices.append(Choice(value=name, label=name, icon="set" if has else "missing"))
-    return Options(name="env", choices=choices, source=str(env_file()))
-
-
-def _personas(cfg: WinstonConfig, params: dict) -> Options:
-    d = data_dir()
-    files = sorted(p.name for p in d.glob("*.md"))
-    return Options(name="personas", choices=[Choice(value=f, label=f.removesuffix(".md")) for f in files], source=str(d))
+def _control_hosts(cfg: WinstonConfig, params: dict) -> Options:
+    """Who can open the web UI, in his words; the field still takes a typed address."""
+    return Options(name="control_hosts", choices=[Choice(value="127.0.0.1", label="This computer only"),
+                                                  Choice(value="0.0.0.0", label="Every device on your network")])
 
 
 def _sounds(cfg: WinstonConfig, params: dict) -> Options:
@@ -76,12 +68,6 @@ def _sounds(cfg: WinstonConfig, params: dict) -> Options:
             choices.append(Choice(value=f"{token}/{f.name}", label=f.stem.capitalize(),
                                   group="Bundled" if token.startswith("{repo}") else "Yours"))
     return Options(name="sounds", choices=choices, source="assets/sounds and the data directory's sounds/")
-
-
-def _stt_adapters(cfg: WinstonConfig, params: dict) -> Options:
-    return Options(name="stt_adapters", source="registry",
-                   choices=[Choice(value=n, label=n.capitalize(), hint=path, icon=n)
-                            for n, path in sorted(available("stt").items())])
 
 
 async def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
@@ -97,7 +83,7 @@ async def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
             return Options(name="stt_models", source=url,
                            choices=[Choice(value=i, label=i, group="Running") for i in ids])
         except Exception as e:                                          # noqa: BLE001
-            return Options(name="stt_models", source=f"{url}: {type(e).__name__}", ok=False,
+            return Options(name="stt_models", source=f"Can't reach the hearing server: {failure_words(e)}", ok=False,
                            choices=[Choice(value=cfg.stt.model, label=cfg.stt.model)])
     try:
         from onnx_asr.loader import AsrNames
@@ -120,27 +106,28 @@ HINT_ICONS = {"assistant": "assistant", "voice": "voice", "contact": "discord", 
 
 
 def _hint_words(cfg: WinstonConfig, params: dict) -> Options:
-    """The hint words Winston adds by himself (core/hints.py), each with where it comes from. `source`
-    says what the current engine does with hint words."""
+    """The hint words Winston adds by himself (core/hints.py), grouped by where they come from: an
+    extension's words under `extension:<id>`, with its name as the hint and its icon. Common words are
+    left out, since the correction never touches them. `source` says what hearing does with the words."""
     from winston.config.registry import get as get_adapter
-    from winston.core.hints import SOURCES, automatic
+    from winston.core.hints import SOURCES, automatic, is_common
     try:
         takes = bool(getattr(get_adapter("stt", cfg.stt.provider), "supports_hints", False))
     except Exception:                                                   # noqa: BLE001
         takes = False
-    name = cfg.stt.provider.capitalize()
-    note = (f"{name} is given these words before it listens." if takes else
-            f"{name} cannot be told words in advance; {cfg.assistant.name} corrects close misspellings "
-            "afterwards.")
-    if not cfg.stt.fix_misspellings and not takes:
-        note = f"{name} cannot be told words in advance, and Fix close misspellings is off, so they are not used."
+    note = ("Hearing is given these words before it listens." if takes else
+            "" if cfg.stt.fix_misspellings else "Correct misheard names is off, so these names are not used.")
+    host = params.get("extensions")
     seen: set[str] = set()
     choices = []
     for h in automatic(cfg):
-        if h.word.lower() not in seen:
-            seen.add(h.word.lower())
-            choices.append(Choice(value=h.word, label=h.word, icon=HINT_ICONS[h.source], hint=SOURCES[h.source],
-                                  group=h.source))
+        if h.word.lower() in seen or is_common(h.word):
+            continue
+        seen.add(h.word.lower())
+        manifest = host.described.get(h.origin, {}).get("manifest", {}) if host and h.origin else {}
+        choices.append(Choice(value=h.word, label=h.word, icon=manifest.get("icon") or HINT_ICONS[h.source],
+                              hint=manifest.get("name") or h.origin or SOURCES[h.source],
+                              group=f"extension:{h.origin}" if h.origin else h.source))
     return Options(name="hint_words", choices=choices, source=note)
 
 
@@ -285,9 +272,10 @@ def _downloaded_choices(kind: str, cache: Path) -> list[Choice]:
 
 
 async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
-    """What the brain's server serves now (Running) and what the engine could load from the Hugging
-    Face cache without a download (Downloaded). `engine` is the draft engine block as JSON, else the
-    saved one. `served_by` names the engine the downloads were read for; None when the engine is
+    """What the brain's server serves now (Running), what the engine could load from the Hugging
+    Face cache without a download (Downloaded), and the presets' models for that engine (Suggested), so a
+    stopped engine with nothing downloaded still offers a pick. `engine` is the draft engine block as JSON,
+    else the saved one. `served_by` names the engine the downloads were read for; None when the engine is
     hosted or unknown, so nothing can be said about downloads."""
     url = (params.get("base_url") or cfg.llm.base_url).rstrip("/")
     try:
@@ -316,10 +304,15 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
         running = [Choice(value=i, label=i, hint=sizes.get(i), group="Running") for i in ids]
         source, ok = url, True
     except Exception as e:                                              # noqa: BLE001
-        source, ok = f"{url}: {type(e).__name__}", False
+        source, ok = f"Can't reach the brain's server: {failure_words(e)}", False
     here = {c.value for c in running}
     choices = running + [c for c in local if c.value not in here]
-    if kind:
+    have = {c.value for c in choices}
+    for p in LLM:
+        m = p["settings"]["llm"]["model"]
+        if kind and llm_engine(p.get("engine")) == kind and m not in have:
+            choices.append(Choice(value=m, label=m, hint="not downloaded yet", group="Suggested"))
+    if kind and ok:
         source += f"; {ENGINE_NAMES[kind]} models in {cache}"
     return Options(name="llm_models", source=source, choices=choices, ok=ok, served_by=kind)
 
@@ -328,13 +321,13 @@ async def _voices(cfg: WinstonConfig, params: dict) -> Options:
     url = (params.get("base_url") or cfg.tts.base_url).rstrip("/").removesuffix("/v1")
     local = url.startswith(("http://127.", "http://localhost"))
     health: dict = {}
-    ok = True
+    trouble = None
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(url + "/health")
         health = r.json() if r.status_code == 200 else {}
-    except Exception:                                                   # noqa: BLE001
-        ok = False
+    except Exception as e:                                              # noqa: BLE001
+        trouble = f"Can't reach the voice server: {failure_words(e)}"
     default = health.get("default_voice") if local else None
     voices = data_dir() / "voices"
     # A clone is listed by the friend's name; its consent recording is a record, never a voice.
@@ -345,22 +338,23 @@ async def _voices(cfg: WinstonConfig, params: dict) -> Options:
         rel = wav.relative_to(voices).with_suffix("").as_posix()
         if rel in consent or rel in cloned or (rel.startswith("friends/") and rel.endswith(".consent")):
             continue
-        choices.append(Choice(value=rel, label=rel, group="Your clips",
+        # A clip in a folder is listed by its file name under the folder's name.
+        folder, _, stem = rel.rpartition("/")
+        choices.append(Choice(value=rel, label=stem, group=folder or "Your clips",
                               hint="server default" if rel == default else None))
     for v, c in cloned.items():
-        choices.append(Choice(value=v, label=c.name, group="Cloned voices",
-                              hint="cloned, server default" if v == default else "cloned"))
+        choices.append(Choice(value=v, label=c.name, group="Your voices",
+                              hint="server default" if v == default else None))
     if local:
         # Local servers map OpenAI's voice names to their default clip.
         builtin = health.get("builtin_voices", [])
         name = cloned[default].name if default in cloned else \
-            default.capitalize() if default in builtin else default
-        choices.insert(0, Choice(value="onyx", label=f"Server default: {name}" if name else "Server default",
-                                 hint="onyx"))
+            default.capitalize() if default in builtin else default and default.rpartition("/")[2]
+        choices.insert(0, Choice(value="onyx", label=f"Server default: {name}" if name else "Server default"))
     for v in health.get("builtin_voices", []):
         choices.append(Choice(value=v, label=v.capitalize(), group="Built in",
                               hint="server default" if v == default else None))
-    return Options(name="voices", choices=choices, source=f"{voices} and {url}", ok=ok)
+    return Options(name="voices", choices=choices, source=trouble or f"{voices} and {url}", ok=trouble is None)
 
 
 def _ha(cfg: WinstonConfig):
@@ -372,11 +366,30 @@ def _ha_off(cfg: WinstonConfig) -> bool:
     return cfg.providers.home_assistant is not None and cfg.providers.ha is None
 
 
+def _ha_unset(cfg: WinstonConfig) -> str:
+    return "Home Assistant is switched off" if _ha_off(cfg) else "Connect Home Assistant on its page first."
+
+
+class HAUnset(Exception):
+    """Home Assistant is switched off or not set up; the text says which."""
+
+
+def _ha_trouble(e: Exception) -> str:
+    """Why a Home Assistant list could not be read, as what to do about it."""
+    if isinstance(e, HAUnset):
+        return str(e)
+    if str(e).endswith(" is not set"):                                  # HomeAssistant(): no token
+        return "Paste the access token on the Home Assistant page first."
+    if str(e) == "Token rejected":
+        return "Home Assistant refused the access token. Make a new one and paste it on the Home Assistant page."
+    return f"Can't reach Home Assistant: {failure_words(e)}"
+
+
 async def _ha_states(cfg: WinstonConfig, params: dict) -> tuple[list[dict], str]:
     # Switched off, the saved URL is not used; a URL the UI passes for a draft still is.
     url = params.get("base_url") or (cfg.providers.ha.url if _ha(cfg) else "")
     if not url:
-        raise RuntimeError("Home Assistant is turned off" if _ha_off(cfg) else "Home Assistant is not configured")
+        raise HAUnset(_ha_unset(cfg))
     ha = HomeAssistant(cfg, url)
     return await ha.get("/api/states"), ha.url
 
@@ -386,7 +399,7 @@ async def _ha_entities(cfg: WinstonConfig, params: dict) -> Options:
     try:
         states, url = await _ha_states(cfg, params)
     except Exception as e:                                              # noqa: BLE001
-        return Options(name="ha_entities", choices=[], source=str(e) or type(e).__name__, ok=False)
+        return Options(name="ha_entities", choices=[], source=_ha_trouble(e), ok=False)
     choices = []
     for s in sorted(states, key=lambda s: s["entity_id"]):
         domain = s["entity_id"].split(".")[0]
@@ -397,44 +410,64 @@ async def _ha_entities(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="ha_entities", choices=choices, source=url)
 
 
+def _ha_slug(name: str) -> str:
+    """Home Assistant's slugify: "Galaxy S24" is "galaxy_s24", as in the companion app's notify service."""
+    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "_", plain).strip("_")
+
+
 async def _ha_notify(cfg: WinstonConfig, params: dict) -> Options:
-    """Home Assistant's notify services (the companion app's is the phone), from its service list."""
+    """Home Assistant's notify services (the companion app's is the phone), from its service list. A phone is
+    named as its device is in Home Assistant ("Galaxy S24") when the token may read the device registry, else
+    by its service's name in words."""
     ha = _ha(cfg)
     if ha is None:
-        return Options(name="ha_notify", choices=[], source="Home Assistant is switched off", ok=False)
+        return Options(name="ha_notify", choices=[], source=_ha_unset(cfg), ok=False)
     try:
         listing = await HomeAssistant(cfg).get("/api/services")
     except Exception as e:                                              # noqa: BLE001
-        return Options(name="ha_notify", choices=[], source=str(e) or type(e).__name__, ok=False)
-    names = sorted(s for d in listing if d.get("domain") == "notify" for s in d.get("services", {}))
+        return Options(name="ha_notify", choices=[], source=_ha_trouble(e), ok=False)
+    try:
+        devices, _ = await HomeAssistant(cfg).devices()
+    except Exception:                                                   # noqa: BLE001  (not an admin token)
+        devices = []
+    # The app's service is named after the device as it registered (`name`); a rename in HA is `name_by_user`.
+    phones = {f"mobile_app_{_ha_slug(d['name'])}": d.get("name_by_user") or d["name"] for d in devices
+              if d.get("name") and any(i[0] == "mobile_app" for i in d.get("identifiers") or [])}
+    # Home Assistant's own notifications panel is no way to reach a person.
+    names = sorted(s for d in listing if d.get("domain") == "notify" for s in d.get("services", {})
+                   if s != "persistent_notification")
     return Options(name="ha_notify", source=ha.url, choices=[
-        Choice(value=f"notify.{n}", label=n.removeprefix("mobile_app_").replace("_", " ").capitalize(),
+        Choice(value=f"notify.{n}", label=phones.get(n) or n.removeprefix("mobile_app_").replace("_", " ").capitalize(),
                hint=f"notify.{n}", icon="phone" if n.startswith("mobile_app_") else "notify") for n in names])
+
+
+# Domains as a person names them where the id in words is not that, as the Home Assistant page (kindName) does.
+DOMAIN_NAMES = {"person": "People", "todo": "To-do lists", "zone": "Zones"}
 
 
 async def _ha_domains(cfg: WinstonConfig, params: dict) -> Options:
     try:
         states, url = await _ha_states(cfg, params)
     except Exception as e:                                              # noqa: BLE001
-        return Options(name="ha_domains", choices=[], source=str(e) or type(e).__name__, ok=False)
+        return Options(name="ha_domains", choices=[], source=_ha_trouble(e), ok=False)
     counts = Counter(s["entity_id"].split(".")[0] for s in states)
     return Options(name="ha_domains", source=url,
-                   choices=[Choice(value=d, label=d.replace("_", " ").capitalize(), hint=str(n), icon=d)
-                            for d, n in sorted(counts.items())])
+                   choices=[Choice(value=d, label=DOMAIN_NAMES.get(d) or d.replace("_", " ").capitalize(),
+                                   hint=str(n), icon=d) for d, n in sorted(counts.items())])
 
 
 async def _ha_areas(cfg: WinstonConfig, params: dict) -> Options:
     """Home Assistant's areas, from its registry (needs an admin token), with how many exposed entities each has."""
     ha = _ha(cfg)
     if ha is None:
-        return Options(name="ha_areas", choices=[], ok=False,
-                       source="Home Assistant is turned off" if _ha_off(cfg) else "Home Assistant is not configured")
+        return Options(name="ha_areas", choices=[], ok=False, source=_ha_unset(cfg))
     try:
         snap = await HomeAssistant(cfg).snapshot()
     except Exception as e:                                              # noqa: BLE001
-        return Options(name="ha_areas", choices=[], source=str(e) or type(e).__name__, ok=False)
+        return Options(name="ha_areas", choices=[], source=_ha_trouble(e), ok=False)
     if snap.registry is None:
-        return Options(name="ha_areas", choices=[], source="; ".join(snap.errors) or "no registry", ok=False)
+        return Options(name="ha_areas", choices=[], source="Needs an administrator's token to read rooms.", ok=False)
     exposed = Counter(aid for eid in snap.exposed or () if (aid := snap.area(eid)[0]))
     return Options(name="ha_areas", source=ha.url, choices=[
         Choice(value=name, label=name, hint=f"{exposed[aid]} exposed")
@@ -443,6 +476,7 @@ async def _ha_areas(cfg: WinstonConfig, params: dict) -> Options:
 
 DISCORD_API = "https://discord.com/api/v10"
 DISCORD_TIMEOUT = 3
+REFUSED = "Discord refused the bot token. Reset it in the Developer Portal and paste it again."
 
 
 def _discord_user_choice(u: dict, nick: str | None = None, group: str | None = None) -> Choice:
@@ -457,24 +491,26 @@ async def _discord_users(cfg: WinstonConfig, params: dict) -> Options:
     name = "discord_users"
     env = cfg.channels.discord.token_env
     if not (token := _secret(env).strip()):
-        return Options(name=name, choices=[], ok=False, source=f"{env} is not set, so Discord cannot be asked")
+        return Options(name=name, choices=[], ok=False, source="Paste the bot token first, so Discord can list people.")
     headers = {"Authorization": f"Bot {token}"}
     q = (params.get("q") or "").strip()
     try:
         async with httpx.AsyncClient(base_url=DISCORD_API, timeout=DISCORD_TIMEOUT, headers=headers) as c:
             if q:
                 if not (q.isascii() and q.isdigit()):
-                    return Options(name=name, choices=[], ok=False, source="A Discord user id is a number")
+                    return Options(name=name, choices=[], ok=False,
+                                   source="A Discord user ID is a number. Copy it from their profile.")
                 r = await c.get(f"/users/{q}")
                 if r.status_code == 404:
-                    return Options(name=name, choices=[], ok=False, source=f"Discord knows no user {q}")
+                    return Options(name=name, choices=[], ok=False,
+                                   source=f"Discord knows no user {q}. Copy the id from their profile again.")
                 if r.status_code == 401:
-                    return Options(name=name, choices=[], ok=False, source=f"Discord refused the bot token ({env})")
+                    return Options(name=name, choices=[], ok=False, source=REFUSED)
                 r.raise_for_status()
                 return Options(name=name, choices=[_discord_user_choice(r.json())], source="Discord")
             r = await c.get("/users/@me/guilds")
             if r.status_code == 401:
-                return Options(name=name, choices=[], ok=False, source=f"Discord refused the bot token ({env})")
+                return Options(name=name, choices=[], ok=False, source=REFUSED)
             r.raise_for_status()
             guilds = r.json()
             choices: dict[str, Choice] = {}
@@ -490,15 +526,14 @@ async def _discord_users(cfg: WinstonConfig, params: dict) -> Options:
                     if u.get("bot") or not u.get("id"):
                         continue
                     choices.setdefault(str(u["id"]), _discord_user_choice(u, member.get("nick"), g.get("name")))
-    except httpx.TimeoutException:
-        return Options(name=name, choices=[], ok=False, source="Discord did not answer in time")
-    except Exception as e:                                              # noqa: BLE001
-        return Options(name=name, choices=[], ok=False, source=f"Discord: {type(e).__name__}")
+    except Exception:                                                   # noqa: BLE001
+        return Options(name=name, choices=[], ok=False, source="Discord did not answer. Try again in a moment.")
     if not guilds:
-        return Options(name=name, choices=[], ok=False, source="The bot is in no server yet; invite it to one")
+        return Options(name=name, choices=[], ok=False, source="Invite the bot to a server first, so Discord can list people.")
     source = "Discord servers: " + ", ".join(g.get("name", g["id"]) for g in guilds)
     if closed:
-        source = (f"Turn on Server Members Intent for the bot to list people in {', '.join(closed)}"
+        source = (f"Turn on Server Members Intent in the Developer Portal, so the bot can list people in "
+                  f"{', '.join(closed)}."
                   if not choices else source + f" (no member list from {', '.join(closed)}: Server Members Intent)")
     return Options(name=name, choices=sorted(choices.values(), key=lambda c: (c.group or "", c.label.lower())),
                    source=source, ok=not closed or bool(choices))
@@ -525,9 +560,22 @@ def _extension_tools(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="extension_tools", choices=choices, source=f"switched on, with a read tool {tool}")
 
 
+async def _extension_choices(cfg: WinstonConfig, params: dict) -> Options:
+    """An extension's own list for one of its settings (`Field(choices=...)`), from its `@ext.choices` function
+    while it runs. Stopped or failing, `source` says so and the field takes a typed value."""
+    host, ext_id, name = params.get("extensions"), params.get("extension") or "", params.get("choices") or ""
+    if host is None or not ext_id or not name:
+        return Options(name="extension_choices", choices=[], source="no extension or list named", ok=False)
+    r = await host.choices(ext_id, name)
+    if not r["ok"]:
+        return Options(name="extension_choices", choices=[], source=r["error"], ok=False)
+    return Options(name="extension_choices", source=ext_id, choices=[Choice.model_validate(c) for c in r["choices"]])
+
+
 PROVIDERS = {
-    "env": _env, "personas": _personas, "sounds": _sounds, "stt_adapters": _stt_adapters, "stt_models": _stt_models,
+    "control_hosts": _control_hosts, "sounds": _sounds, "stt_models": _stt_models,
     "hint_words": _hint_words, "memory_topics": _memory_topics, "extension_tools": _extension_tools,
+    "extension_choices": _extension_choices,
     "llm_models": _llm_models, "voices": _voices,
     "ha_entities": _ha_entities, "ha_domains": _ha_domains, "ha_notify": _ha_notify, "ha_areas": _ha_areas, "discord_users": _discord_users,
 }
@@ -541,16 +589,18 @@ async def options(name: str, cfg: WinstonConfig, params: dict) -> Options | None
     return await out if inspect.isawaitable(out) else out
 
 
-async def check_home_assistant(cfg: WinstonConfig, url: str | None) -> HomeAssistantCheck:
-    """Can Winston reach Home Assistant with its token, and which one is it."""
+async def check_home_assistant(cfg: WinstonConfig, url: str | None,
+                               token: str | None = None) -> HomeAssistantCheck:
+    """Can Winston reach Home Assistant with its token (or `token`, pasted and not saved yet), and which one
+    is it."""
     url = url or (cfg.providers.ha.url if _ha(cfg) else "")
     if not url:
         return HomeAssistantCheck(ok=False, detail="Turned off" if _ha_off(cfg) else "No URL")
     try:
-        j = await HomeAssistant(cfg, url).ping()
+        j = await HomeAssistant(cfg, url, token).ping()
     except RuntimeError as e:                                           # the token: not set, or rejected
         return HomeAssistantCheck(ok=False, detail=str(e))
     except Exception as e:                                              # noqa: BLE001
-        return HomeAssistantCheck(ok=False, detail=f"Not reachable ({type(e).__name__})")
+        return HomeAssistantCheck(ok=False, detail=f"Not reachable: {failure_words(e)}")
     return HomeAssistantCheck(ok=True, version=j["version"], location=j["location"],
                               detail=f"{j['location']}, Home Assistant {j['version']}")

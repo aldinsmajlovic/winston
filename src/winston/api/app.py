@@ -2,6 +2,7 @@
 and the CLI use, and serves the built UI from web/dist. Bound to localhost by default; put it
 behind auth before exposing it."""
 import asyncio
+import html
 import json
 import re
 import uuid
@@ -12,14 +13,14 @@ from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 from loguru import logger
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Route as StarletteRoute
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
@@ -34,20 +35,22 @@ from winston.config.restarts import BRAIN_CHANNELS, control_sections, restarts_f
 from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
-from winston.core.common import key
+from winston.core.common import failure_words, key
 from winston.core.brain import api_key
-from winston.core import memory, persona, region, speaker, turns, voices
+from winston.core import memory, persona, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
-from winston.core.rooms import MicHold, Rooms, RoomState, SyncRequest, SyncResult
+from winston.core.rooms import BoxState, MicHold, Rooms, RoomState, SyncRequest, SyncResult
 from winston.engines.supervisor import Supervisor
-from winston.extension_host.api import router as extensions_router
+from winston.extension_host import accounts
+from winston.extension_host.api import LogLines, router as extensions_router
 from winston.extension_host.host import Host, Pending
 from winston.extension_host.nudges import Nudges
 from winston.extension_host.scheduler import Scheduler
 from winston.extension_host.outward import build as outward_mcp
 from winston.extension_host.services import Services as ExtensionServices
-from winston.providers.home_assistant import (HAApply, HAExposure, HARegistry, HATool, HomeAssistant,
-                                              apply_saved, exposure_view, ha_changed, registry_view)
+from winston.providers.home_assistant import (APPLY_TIMEOUT, ExposurePlan, HAApply, HAExposure, HARegistry,
+                                              HATool, HomeAssistant, apply_saved, exposure_view, ha_changed,
+                                              registry_view)
 
 
 class EngineStatus(BaseModel):
@@ -60,7 +63,7 @@ class EngineStatus(BaseModel):
     port: int
     startup_timeout: int
     started_in: float | None = None     # seconds the last start took, for "about N minutes"
-    config_changed: bool = False        # saved settings or secrets wait for a restart (pending, retired or stale)
+    config_changed: bool = False        # saved settings or secrets wait for a restart (pending or stale)
 
 
 class GpuStatus(BaseModel):
@@ -97,6 +100,12 @@ class ChatMessage(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     room: str | None = Field(None, max_length=60, description="The room the page is set to; its conversation is "
                                                                "shared with the room's box. None: the household's.")
+
+
+class HomeAssistantTry(BaseModel):
+    url: str | None = Field(None, max_length=500, description="Address to try instead of the saved one")
+    token: str | None = Field(None, max_length=4000, description="Token to try instead of the saved one; "
+                                                                 "used for this check only, never kept")
 
 
 class SpeakerVolume(BaseModel):
@@ -238,7 +247,6 @@ class MemoryView(BaseModel):
     topics: list[MemoryTopic]
     chars: int              # of facts in every conversation's prompt
     limit: int              # past this, memory costs latency on every turn
-    day_first: bool         # dates as the region setting says ("24 Sep" or "Sep 24")
 
 
 class NewFact(BaseModel):
@@ -309,6 +317,9 @@ class ConfigResult(BaseModel):
     # Set when the save changed the Home Assistant list, domains or switch and Home Assistant is on: what
     # applying it there did. A Home Assistant that is away never fails the save; applied says false.
     ha_apply: HAApply | None = None
+    # The same, on a dry run: what the save would do there, or why that could not be read.
+    ha_plan: ExposurePlan | None = None
+    ha_plan_error: str | None = None
     # Set when the change renames him and his persona file says the old name: what a rename would
     # rewrite there (dry run), or what it did (a save with rename_persona).
     persona_rename: PersonaRename | None = None
@@ -346,6 +357,19 @@ class SecretResult(BaseModel):
     restarts: list[str]             # marked as waiting for a restart (config_changed in status)
 
 
+def _page(text: str) -> HTMLResponse:
+    """The page the browser lands on after a sign-in: one line, light or dark as the system is."""
+    return HTMLResponse('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">'
+                        '<title>Winston</title><style>body{font:16px system-ui,sans-serif;margin:3rem 1rem;color:#222;'
+                        'background:#fff}@media (prefers-color-scheme:dark){body{color:#ddd;background:#111}}</style>'
+                        f'<p>{html.escape(text)}</p>')
+
+
+class AccountStart(BaseModel):
+    url: str                        # the service's sign-in page, to open
+    redirect: str                   # where the service sends the browser back: its app must list this address
+
+
 class Preset(BaseModel):
     id: str
     title: str
@@ -373,9 +397,9 @@ class Presets(BaseModel):
 def gpu_status() -> GpuStatus | None:
     try:
         out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=3).stdout.strip().split(", ")
+                             capture_output=True, text=True, timeout=3, check=False).stdout.strip().split(", ")
         return GpuStatus(name=out[0], used_mb=int(out[1]), total_mb=int(out[2]))
-    except Exception:
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -487,10 +511,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             return False
 
     async def deliver_nudge(ev: dict, where: str) -> str | None:
-        if where == "speakers":
-            if n := hub.publish_nudge(ev, rooms.recent()):
-                spawn(web.noted(nudge_note(ev), ev["say"]))
-                return f"speakers:{n}"
+        if where == "speakers" and (n := hub.publish_nudge(ev, rooms.recent())):
+            spawn(web.noted(nudge_note(ev), ev["say"]))
+            return f"speakers:{n}"
         links = ev.get("links") or []
         if links:           # its links are its buttons; a tap opens the first
             buttons = [{"action": "URI", "title": link["title"][:30], "uri": link["url"]} for link in links[:3]]
@@ -544,7 +567,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     extensions.nudges = nudges
 
     def confirm_on_phone(p: Pending):
-        spawn(to_phone(f"{p.label}? Asked for in {p.channel}.", f"confirm-{p.id}",
+        where = {"web": "on the Talk page", "voice": "on the Talk page", "satellite": "on a room box",
+                 "discord": "on Discord", "text": "in a terminal"}.get(p.channel, "here")
+        spawn(to_phone(f"{p.label}? Asked for {where}.", f"confirm-{p.id}",
                        [{"action": f"WINSTON_CONFIRM_{p.id}", "title": "Confirm"},
                         {"action": f"WINSTON_DECLINE_{p.id}", "title": "Decline"}]))
     extensions.on_pending = confirm_on_phone
@@ -650,7 +675,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def invalid(request: Request, exc: RequestValidationError):
         """FastAPI's 422, without the refused input for a secret."""
         errors = jsonable_encoder(exc.errors())
-        if request.url.path.startswith("/api/secrets"):
+        if request.url.path.startswith(("/api/secrets", "/api/providers/home_assistant/check")):
             # never echo a pasted key back (FastAPI puts the refused body in `input`)
             errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in errors]
         return JSONResponse({"detail": errors}, status_code=422)
@@ -661,7 +686,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             engines=[EngineStatus(name=m.name, kind=m.kind, driver=m.cfg.driver, state=m.state, detail=m.detail,
                                   since=m.since, port=m.cfg.port, startup_timeout=m.cfg.startup_timeout,
                                   started_in=m.started_in,
-                                  config_changed=bool(m.pending or m.retired or m.stale)) for m in sup.items.values()],
+                                  config_changed=bool(m.pending or m.stale)) for m in sup.items.values()],
             gpu=gpu_status(),
             extensions=[ExtensionBrief(id=i, name=extensions.described.get(i, {}).get("manifest", {}).get("name", i),
                                        state=p.state, detail=p.detail)
@@ -751,12 +776,22 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     @app.get("/api/rooms", response_model=list[RoomState],
              summary="Rooms: the satellite boxes' and any a browser session named, with who has each mic")
     async def list_rooms():
+        sat = sup.items.get("satellite")
+        if sat is None or sat.state in ("stopped", "error"):     # the boxes' channel is down, so they are too
+            for name in rooms.cfg.channels.satellite.devices:
+                rooms.box(name, False)
         return rooms.states()
 
     @app.post("/api/rooms/{room}/sync", response_model=SyncResult,
               summary="A session in a room hands over its new messages and takes in the others' (core/rooms.py)")
     async def room_sync(room: str, req: SyncRequest):
         return rooms.sync(room, req)
+
+    @app.put("/api/rooms/{room}/box", response_model=Ok,
+             summary="A room's box connected or went away (the satellite channel reports each change)")
+    async def room_box(room: str, b: BoxState):
+        rooms.box(room, b.connected)
+        return Ok()
 
     @app.post("/api/rooms/{room}/mic", response_model=Ok,
               summary="Hold the room's mic for secs (a box that woke up); secs 0 lets go")
@@ -816,7 +851,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             r = await c.send(req, stream=True)
         except httpx.HTTPError as e:
             await c.aclose()
-            raise HTTPException(503, f"speech server not reachable: {type(e).__name__}")
+            raise HTTPException(503, f"Can't reach the voice server: {failure_words(e)}")
         if r.status_code != 200:
             detail = (await r.aread()).decode(errors="replace")[:200]
             await r.aclose(); await c.aclose()
@@ -947,7 +982,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def get_memory():
         cfg = app.state.cfg
         return MemoryView(enabled=cfg.memory.enabled, topics=memory.view(cfg), chars=memory.size(cfg),
-                          limit=memory.PROMPT_WARN, day_first=region.resolve(cfg)["date_format"] == "day_month")
+                          limit=memory.PROMPT_WARN)
 
     @app.post("/api/memory/topics", response_model=MemoryTopic, summary="A new topic (a new file in the vault)")
     async def add_topic(t: NewTopic):
@@ -1011,6 +1046,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         """The browser's WebRTC offer and ICE candidates, passed to the voice channel, so the page
         needs only winstond's origin."""
         v = app.state.cfg.channels.voice
+        if not v.enabled:
+            raise HTTPException(409, "The Talk page microphone is off. Switch it on in Ways to talk.")
         body = await request.body()
         if request.method == "POST":
             # The browser client sends its data (the room) as requestData; Pipecat's /api/offer reads only
@@ -1027,8 +1064,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                 r = await c.request(request.method, f"http://{v.host}:{v.port}/api/offer",
                                     params=request.query_params, content=body,
                                     headers={"content-type": "application/json"})
-        except httpx.HTTPError as e:
-            raise HTTPException(503, f"voice channel not reachable: {type(e).__name__}")
+        except httpx.HTTPError:
+            raise HTTPException(503, "The Talk page microphone is not running. Status shows why.")
         return JSONResponse(r.json(), status_code=r.status_code)
 
     @app.post("/api/engines/{name}/start", response_model=Ok)
@@ -1047,9 +1084,14 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def restart(name: str):
         managed(name)
         await sup.stop(name)
-        if name in sup.items:           # a retired engine is gone after its stop
-            asyncio.create_task(sup.start(name))
+        asyncio.create_task(sup.start(name))
         return Ok()
+
+    @app.get("/api/engines/{name}/log", response_model=LogLines,
+             summary="The end of an engine's or channel's log; none for an external server")
+    async def engine_log(name: str, lines: int = Query(200, ge=1, le=5000)):
+        managed(name)
+        return LogLines(lines=await asyncio.to_thread(sup.items[name].driver.tail, lines))
 
     @app.post("/api/engines/start_all", response_model=Ok)
     async def start_all():
@@ -1088,7 +1130,10 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         rename = persona_rename(cur, new)
         if dry_run:
             response.headers["ETag"] = _etag(v)
-            return ConfigResult(saved=False, restarts=restarts, version=v, persona_rename=rename)
+            result = ConfigResult(saved=False, restarts=restarts, version=v, persona_rename=rename)
+            if ha_changed(cur, new) and new.providers.ha is not None:
+                result.ha_plan, result.ha_plan_error = await preview_ha(cur, new)
+            return result
         save(new)
         app.state.cfg, app.state.version = new, file_version()
         remember(app.state.version, new)
@@ -1147,7 +1192,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                 return JSONResponse({"detail": errors}, status_code=422)
             return await commit(cur, v, new, dry_run, applied, response, rename_persona)
 
-    @app.get("/api/config/schema", summary="JSON Schema of the config, with level and restarts per field")
+    @app.get("/api/config/schema", summary="JSON Schema of the config, with restarts and what the form draws per field")
     async def get_schema() -> dict:
         return full_schema()
 
@@ -1168,7 +1213,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
              summary="Variables in data/.env the config and the extensions name: set or not, never values")
     async def list_secrets():
         dump = _dump(app.state.cfg)
-        ext_vars = [v for i in extensions.described for v in extensions.secret_fields(i).values()]
+        ext_vars = [v for i in extensions.described
+                    for v in (*extensions.secret_fields(i).values(), *extensions.account_vars(i).values())]
         return [secret_status(n, dump) for n in sorted({*secrets.references(dump, full_schema()), *ext_vars})]
 
     async def secret_changed(name: str) -> SecretResult:
@@ -1184,10 +1230,12 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     def writable(request: Request, name: str):
         """Checked before the body is read, so a refused request says why rather than how its body was wrong."""
-        secrets.guard(request, [started["control"]["host"], app.state.cfg.control.host], request.method == "PUT")
+        secrets.guard(request, [started["control"]["host"], app.state.cfg.control.host], request.method == "PUT",
+                      None if secrets.denied(name) else name)
         if secrets.denied(name):
             raise HTTPException(403, f"{name} is not a variable Winston sets")
-        ext_vars = {v for i in extensions.described for v in extensions.secret_fields(i).values()}
+        ext_vars = {v for i in extensions.described
+                    for v in (*extensions.secret_fields(i).values(), *extensions.account_vars(i).values())}
         if name not in ext_vars and not secrets.allowed(name, _dump(app.state.cfg), full_schema()):
             raise HTTPException(403, f"no setting names {name}; save the setting first")
 
@@ -1204,6 +1252,38 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         secrets.remove(name)
         return await secret_changed(name)
 
+    @app.post("/api/extensions/{ext_id}/accounts/{field}", response_model=AccountStart,
+              summary="Start signing in to an extension's account (localhost only): the service's sign-in page")
+    async def start_account(ext_id: str, field: str, request: Request):
+        try:
+            secrets.guard(request, [started["control"]["host"], app.state.cfg.control.host], False)
+        except HTTPException as e:
+            raise HTTPException(e.status_code, f"{e.detail.split(';')[0]}; run winston ext connect {ext_id} in a "
+                                               "terminal on this machine instead") from e
+        port = urlsplit("//" + request.headers.get("host", "")).port or request.url.port or 80
+        redirect = f"http://127.0.0.1:{port}{accounts.CALLBACK}"
+        try:
+            return AccountStart(url=accounts.start(extensions, ext_id, field, redirect), redirect=redirect)
+        except accounts.AccountError as e:
+            raise HTTPException(409, str(e)) from e
+
+    @app.get(accounts.CALLBACK, include_in_schema=False)
+    async def account_callback(request: Request, state: str = "", code: str = "", error: str = ""):
+        """Where the service sends the browser back after its sign-in: the code becomes a refresh token in
+        data/.env. Only a sign-in started on this machine (its state, a file in data/) finishes, and only in a
+        browser on it: winstond may listen beyond it (`winston ext connect` starts one then)."""
+        local = request.client is not None and secrets.loopback(request.client.host)
+        if not local or (why := secrets.cross_site(request)):
+            raise HTTPException(403, why if local else "a sign-in comes back to this machine only")
+        if error or not code:
+            return _page(f"Not connected: {error or 'no code came back'}.")
+        try:
+            ext_id, var = await accounts.finish(extensions, state, code)
+        except accounts.AccountError as e:
+            return _page(f"Not connected: {e}.")
+        await secret_changed(var)
+        return _page(f"{extensions.sources[ext_id].manifest.name} is connected. You can close this tab.")
+
     @app.get("/api/presets", response_model=Presets,
              summary="Engine and model presets the UI offers per slot, and the hardware profiles")
     async def get_presets():
@@ -1217,17 +1297,21 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                           q: str | None = Query(None, description="discord_users: a user id to look up"),
                           engine: str | None = Query(None, description="llm_models: the draft brain engine block as JSON, "
                                                                        "to list the downloads it can load"),
-                          tool: str | None = Query(None, description="extension_tools: the read tool they must have")):
+                          tool: str | None = Query(None, description="extension_tools: the read tool they must have"),
+                          extension: str | None = Query(None, description="extension_choices: the extension to ask"),
+                          choices: str | None = Query(None, description="extension_choices: its @ext.choices list")):
         out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q, "engine": engine,
-                                                  "tool": tool, "extensions": extensions})
+                                                  "tool": tool, "extension": extension, "choices": choices,
+                                                  "extensions": extensions})
         if out is None:
             raise HTTPException(404, f"no options named {name}")
         return out
 
-    @app.get("/api/providers/home_assistant/check", response_model=HomeAssistantCheck,
-             summary="Whether Home Assistant answers at the URL with the configured token")
-    async def ha_check(url: str | None = Query(None, description="URL to try instead of the saved one")):
-        return await check_home_assistant(app.state.cfg, url)
+    # A POST only: it may send the saved token to another address, so it sits behind the same-site write guard.
+    @app.post("/api/providers/home_assistant/check", response_model=HomeAssistantCheck,
+              summary="Whether Home Assistant answers at an address with a token, both before they are saved")
+    async def ha_check(t: HomeAssistantTry):
+        return await check_home_assistant(app.state.cfg, t.url, t.token)
 
     def ha_client() -> HomeAssistant:
         try:
@@ -1240,20 +1324,25 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         exception groups, so the first leaf is the one that says what happened."""
         while isinstance(e, BaseExceptionGroup) and e.exceptions:
             e = e.exceptions[0]
-        text = str(e)
-        if text.startswith("Token"):
-            return text
-        if isinstance(e, (TimeoutError, asyncio.TimeoutError)):
-            return "Not reachable: it did not answer in time"
+        if str(e).startswith("Token"):
+            return str(e)
         status = getattr(getattr(e, "response", None), "status_code", None)
         if status == 404:
             return "Not found: is the MCP server integration loaded?"
         if status in (401, 403):
             return "Refused: the token was not accepted"
-        if status:
-            return f"Not reachable: it answered {status}"
-        name = type(e).__name__
-        return "Not reachable: nothing answered at that address" if "Connect" in name else f"Not reachable ({name})"
+        return f"Not reachable: {failure_words(e)}"
+
+    async def preview_ha(old: WinstonConfig, new: WinstonConfig) -> tuple[ExposurePlan | None, str | None]:
+        """What saving new would do in Home Assistant, or why that could not be read."""
+        try:
+            ha = HomeAssistant(new)
+        except RuntimeError as e:                                       # its token is not set
+            return None, str(e)
+        try:
+            return (await asyncio.wait_for(ha.plan(old.providers.home_assistant), APPLY_TIMEOUT))[0], None
+        except Exception as e:                                          # noqa: BLE001
+            return None, ha_away(e)
 
     @app.get("/api/providers/home_assistant/exposure", response_model=HAExposure,
              summary="His list as Home Assistant has it: exposed or not, aliases, area, device and state per "
