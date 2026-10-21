@@ -144,17 +144,18 @@ the program ("Start with Winston", "Takes effect when Winston restarts").
   from another place say where on the first line of a run ("Kitchen box", "Discord"). What he brings
   up on his own is one line with a bell: the time, what he said, from whom and where it went. An error
   line gives the server's sentence and a Status link. A restricted action waiting for you is a line
-  with Confirm and Decline, replaced by its outcome. The view follows new lines only while it is at the
-  bottom; otherwise New messages jumps down.
+  with Confirm and Decline, replaced by its outcome. While he thinks, a small `Presence` and Thinking
+  sit where his reply will appear, until his words or a running action take over. The view follows new
+  lines only while it is at the bottom; otherwise New messages jumps down.
 - His presence is his logo, one component, `Presence`, driven by his state; see
   [identity](identity.md). Pages never draw their own version of it. The line under his name says
   whether he can answer (`notReady` in `api/live.ts`): Ready, Listening, Thinking, Speaking, "Starting:
   his brain is loading (about 2 min)", or "Can't answer: his brain is stopped" (or "Can't reach
   Winston") with a Status link.
-- Voice and typing sit side by side at the bottom: New conversation as a quiet round icon button, the
-  text field with Read typed replies aloud at its end, and one round talk button that becomes Send once
-  something is typed. Toggles keep their icon and show their state with a pressed style
-  (`aria-pressed`). One muted line above the field holds the room picker at the left once a room exists
+- Voice and typing sit side by side at the bottom: New conversation as a quiet round icon button (it
+  asks first), the text field with Read typed replies aloud at its end, and one round talk button that
+  becomes Send once something is typed. Toggles keep their icon and show their state with a pressed
+  style (`aria-pressed`); Read aloud also crosses its speaker out while off. One muted line above the field holds the room picker at the left once a room exists
   (each option says what choosing it does; it is locked while you talk) and the one fact that matters
   now at the right: the Talk page microphone is off, a box holds the microphone, "Listening. He hears
   everything until you press the microphone again.", or read aloud is on.

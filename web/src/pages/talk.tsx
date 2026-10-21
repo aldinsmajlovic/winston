@@ -11,6 +11,7 @@ import {
   Mic,
   ShieldQuestion,
   Volume2,
+  VolumeX,
 } from 'lucide-react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -20,6 +21,7 @@ import { micHolder, presence, useChat, useLive, useStartOver, type Item } from '
 import { partName, useStatus } from '@/api/status'
 import { IconButton } from '@/components/icon-button'
 import { useTitle } from '@/components/page'
+import { Presence } from '@/components/presence'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
@@ -27,6 +29,7 @@ import { ToolLine } from '@/components/tool-line'
 import { TurnMarkControl } from '@/components/turn-mark'
 import { WinstonHeader } from '@/components/winston-header'
 import { Input } from '@/components/ui/input'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useMarks } from '@/hooks/use-marks'
 import { useNow } from '@/hooks/use-now'
 import { useRegion } from '@/hooks/use-region'
@@ -258,6 +261,7 @@ export default function TalkPage() {
   const marks = useMarks(feed.items.filter((i) => i.kind === 'tool' && i.name === 'mark_mistake' && i.status === 'ok').length)
   const chat = useChat()
   const startOver = useStartOver()
+  const ask = useConfirm()
   const status = useStatus()
   const config = useConfig()
   const rooms = useRoomChoices()
@@ -275,10 +279,14 @@ export default function TalkPage() {
   const heard = presence(feed, now)
   const state = speech.playing && heard === 'idle' ? 'speaking' : heard
   const name = status.data?.assistant ?? ''
+  // Thinking shows where his reply will appear, until his words or a running action show it themselves.
+  const last = feed.items.at(-1)
+  const thinking =
+    heard === 'thinking' && !(last?.kind === 'reply' && !last.done && last.text.trim()) && !(last?.kind === 'tool' && last.status === 'running')
 
   useEffect(() => {
     if (following) end.current?.scrollIntoView({ block: 'end' })
-  }, [feed.items, following])
+  }, [feed.items, following, thinking])
 
   const { on: readAloud, speak } = speech
   useEffect(() => {
@@ -364,6 +372,12 @@ export default function TalkPage() {
                 )}
               </Fragment>
             ))}
+            {thinking ? (
+              <div className="flex items-center gap-2.5 text-muted-foreground">
+                <Presence state="thinking" className="size-7" />
+                Thinking
+              </div>
+            ) : null}
             <div ref={end} />
           </div>
         </main>
@@ -388,9 +402,17 @@ export default function TalkPage() {
           size="icon"
           label={room ? `New conversation for ${room}${boxRoom ? ' and its box' : ''}` : 'New conversation'}
           disabled={startOver.isPending}
-          onClick={() =>
-            startOver.mutate({ body: { room: room || null } }, { onError: () => toast.error('Could not start a new conversation') })
-          }
+          onClick={async () => {
+            const sure = await ask({
+              title: 'Start a new conversation?',
+              lines: [
+                'He forgets what was said so far. What he remembers in Memory stays.',
+                ...(room ? [`Every screen in the ${room}${boxRoom ? ' and its box' : ''} starts over too.`] : []),
+              ],
+              choices: [{ label: 'New conversation', value: 'yes' }],
+            })
+            if (sure) startOver.mutate({ body: { room: room || null } }, { onError: () => toast.error('Could not start a new conversation') })
+          }}
           className="size-14 rounded-full text-muted-foreground hover:text-foreground"
         >
           <MessageSquarePlus className="size-6" />
@@ -409,9 +431,9 @@ export default function TalkPage() {
             label="Read typed replies aloud"
             aria-pressed={readAloud}
             onClick={speech.toggle}
-            className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
+            className="absolute inset-y-0 right-2 my-auto rounded-full text-muted-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
           >
-            <Volume2 className="size-5" />
+            {readAloud ? <Volume2 className="size-5" /> : <VolumeX className="size-5" />}
           </IconButton>
         </div>
         {text.trim() ? (
