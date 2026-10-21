@@ -39,7 +39,7 @@ test('the History page shows a day and marks a spoken request from it', async ({
   await page.getByRole('menuitem', { name: 'He misheard me' }).click()
   await page.getByRole('textbox', { name: 'What you said' }).fill('Turn on the lamp.')
   await page.getByRole('button', { name: 'Mark', exact: true }).click()
-  await expect(page.getByText('He misheard me. You said "Turn on the lamp."')).toBeVisible()
+  await expect(page.getByText('He misheard you. You said "Turn on the lamp."')).toBeVisible()
   expect(existsSync(join(data, 'turns', 'marked', `${id}.json`))).toBe(true)  // kept past its day
 
   await page.getByRole('button', { name: 'Marked (1)' }).click()
