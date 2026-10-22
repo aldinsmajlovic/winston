@@ -304,6 +304,8 @@ async def switched_off():
     return waiting, "voice" in sup.items, driver.stops
 
 check("off means off", asyncio.run(switched_off()), ([], False, 1))
+check("Discord on builds", "discord" in Supervisor(WinstonConfig.model_validate(
+    {**base, "channels": {"discord": {"enabled": True}}})).items, True)
 
 finish_checks("ui data: reach, tool lines, errors, new conversations, first connect, optional and MCP keys, phones, "
               "extensions' own lists, settings that did not load, boxes and stops ok")

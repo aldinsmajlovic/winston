@@ -135,7 +135,8 @@ class Supervisor:
             items["voice"] = Managed("voice", vcfg, SubprocessDriver("voice", vcfg, voice_channel_cmd(v.host, v.port)),
                                      kind="channel")
         if cfg.channels.discord.enabled:            # no port and no health path: up while the process runs
-            dcfg = EngineConfig(driver="subprocess", port=0, health="", startup_timeout=60)
+            # port 0 is "no port": constructed, since a configured engine's port must be 1 or more
+            dcfg = EngineConfig.model_construct(driver="subprocess", port=0, health="", startup_timeout=60)
             d = cfg.channels.discord            # the checks discord.py makes on start
             items["discord"] = Managed("discord", dcfg, SubprocessDriver("discord", dcfg, discord_channel_cmd()),
                                        kind="channel",
