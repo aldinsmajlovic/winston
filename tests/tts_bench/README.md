@@ -2,7 +2,7 @@
 
 Which voice engine should replace or stay beside Chatterbox-Turbo: the most human-sounding one that
 starts talking quickly and fits on the card next to the 27B brain. Machines measure speed, memory
-and whether the words come out right; Aldin's ears decide what sounds human, blind.
+and whether the words come out right; the owner's ears decide what sounds human, blind.
 
 | File | What it is |
 | --- | --- |
@@ -44,7 +44,7 @@ For three reference clips (`librivox/clifton_fatherbrown`, the voice Winston use
 - peak GPU memory of the server's process and of the whole card, sampled every 0.2 s by nvidia-smi
 
 The clips are copied out of `data/voices` into `work/voices` (read only), with Parakeet's
-transcript beside each for the engines that clone from the words. Aldin's own clone is not used.
+transcript beside each for the engines that clone from the words. The owner's own clone is not used.
 
 ## The session
 

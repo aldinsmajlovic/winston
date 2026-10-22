@@ -83,7 +83,7 @@ expect("an extension the host has not described is named by its id", bare["Radio
 texts.clear("music")
 
 # corrections
-W = words + ["Aldin", "Sara", "Omar"]
+W = words + ["Lukas", "Sara", "Omar"]
 for heard, want in [
     ("Hey Winson.", "Hey Winston."),
     ("Windsun can copy my voice", "Winston can copy my voice"),

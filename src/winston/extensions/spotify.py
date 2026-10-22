@@ -1005,7 +1005,7 @@ async def find_track(ctx, title: str, by: str, thorough: bool = True) -> tuple[d
     asks twice more and allows what speech-to-text and memory get wrong: the artist a letter off ("Fugazis"),
     then the artist's song with every word said ("I'm Tired by Fugazi" is I'm So Tired, not Labrinth's I'm
     Tired); else, when Spotify's first song of that title is by someone else, plays that one and says whose it
-    is ("Big Bad John" is Jimmy Dean's, not Johnny Horton's; Aldin's pick)."""
+    is ("Big Bad John" is Jimmy Dean's, not Johnny Horton's; the owner's pick)."""
     want = _title(title)
     found: dict[str, list[dict]] = {}
     for q in [f"track:{title} artist:{by}"] + ([f"{title} {by}", title] if thorough else []):
@@ -1304,10 +1304,10 @@ async def _mix(ctx, artists: list[str], genre: str | None, like: list[str], mood
     with the artists he named as a reference always among the seeds; a genre from its tag alone, with those named artists
     only: the brain gave drum and bass Aphex Twin, Fatboy Slim, Avicii and Calvin Harris in 6 of 6 trials, and
     the mix came out mostly pop. Different every time. A mood plays as the `mood_mixes` setting says: ListenBrainz's
-    list, Spotify's radio from one of the artists (Aldin: "Elliott Smith radio ... worked good"; ListenBrainz's
+    list, Spotify's radio from one of the artists (the owner: "Elliott Smith radio ... worked good"; ListenBrainz's
     artists like Fatboy Slim and Avicii were pop he called "basic"), or both in turn for a blind test, logged in
     the store. When ListenBrainz does not answer in 10 s, radio plays instead. Fresh, it is ListenBrainz's list
-    without the artists the user knows (Aldin's pick for a plain mood: "some new ones"; for "something new", new).
+    without the artists the user knows (the owner's pick for a plain mood: "some new ones"; for "something new", new).
     Familiar, it is the user's own songs by them (`_familiar`)."""
     if familiar and not (artists or like):
         # "something familiar" after a mix means its artists: the brain passed none 4 times in 5 (2026-10-18)
@@ -1400,7 +1400,7 @@ FAMILIAR_MIN = 5        # fewer of his own songs than this fit: the best fit art
 
 
 async def _familiar(ctx, artists: list[str], mood: str | None) -> tuple[str, list[str]]:
-    """Songs he knows by the artists that fit, for "something familiar" (Aldin on 2026-10-18, after a calm mix of
+    """Songs he knows by the artists that fit, for "something familiar" (the owner on 2026-10-18, after a calm mix of
     artists like his: "not these new songs, something familiar"): his own songs by them (`songs_he_knows`; all of
     them, with no artists), shuffled, as one list. When fewer than FAMILIAR_MIN are, the first of them in his
     library plays as an artist, Spotify's own order of their popular songs (no search). Not Spotify's top songs
@@ -1810,7 +1810,7 @@ async def sleep(ctx, minutes: float | None = None) -> str:
 async def fade_step(ctx, now: float) -> None:
     """One step of the sleep timer's fade (the store says when it ends and the volume before it, so a restart
     carries on): the volume falls with the time left, then the music pauses and the volume goes back for the next
-    time, without a word (Aldin: "say good night before, no talking after")."""
+    time, without a word (the owner: "say good night before, no talking after")."""
     if (sl := ctx.store.get("sleep")) is None:
         return
     left = sl["end"] - now

@@ -11,7 +11,7 @@ Face cache the first time. It is optional: when it cannot load, compare() return
 is stored as not checked rather than refused.
 
 SAME_VOICE was set on the clips in data/voices: a consent-length piece (3 or 5 s) of one recording
-against a different recording of the same reader scored 0.61 to 0.91 (52 pairs, Aldin's real consent
+against a different recording of the same reader scored 0.61 to 0.91 (52 pairs, the owner's real consent
 and sample 0.79); different speakers scored -0.09 to 0.54 (370 pairs, the highest two older English
 audiobook readers). A one-person home cannot measure how close a real second voice comes."""
 import threading
