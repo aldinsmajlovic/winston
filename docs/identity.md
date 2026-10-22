@@ -49,21 +49,18 @@ kept as `persona.md.bak`. Which file it is (`assistant.persona`) is set in confi
 
 ## The mark
 
-A disc split in two by a soft W: sky above, charcoal below. The W takes the middle 70% of the width
-and the line runs flat to the edge on both sides. An inset rim, as wide as the band outside it, is cut
-out of the disc, so the mark sits on any background. Each field shades from top to bottom.
+A ring, and inside it a disc cut by a soft W: filled below the W, open above it. The W takes the
+middle 70% of the width and the line runs flat to the edge on both sides. The ring and the gap
+inside it are equally wide.
 
-| Part | Light background | Dark background |
-| --- | --- | --- |
-| Sky, top to horizon | `#97BAD8` to `#C9DDEE` | same |
-| Charcoal, horizon to bottom | `#40454F` to `#2A2E35` | `#6C7380` to `#59606C` |
+The mark is one colour, the page's text colour (`currentColor` under `text-foreground` in
+`web/src/components/presence.tsx`): near-black on the light theme, near-white on the dark one, so it
+reads the same on either. The geometry lives in `web/src/lib/mark.ts` (100 by 100 viewBox: outer
+radius 46, ring 7, W depth 11, softness 0.85).
 
-On dark backgrounds the charcoal lifts to slate so the lower half does not disappear. The colours
-are theme tokens (`--mark-*` in `web/src/index.css`); the geometry lives in `web/src/lib/mark.ts`
-(100 by 100 viewBox: disc radius 46, rim 7, W depth 11, softness 0.85).
-
-`web/public/favicon.svg` and `docs/images/logo.svg` are the mark at rest in full colour, generated
-from the same geometry by `node scripts/mark-svg.ts` in `web/`; rerun it after changing the shape.
+`web/public/favicon.svg` and `docs/images/logo.svg` are the mark at rest (`#191816`, `#EFEEEB` on a
+dark system theme), generated from the same geometry by `node scripts/mark-svg.ts` in `web/`; rerun
+it after changing the shape.
 
 ## How it moves
 
@@ -71,10 +68,10 @@ The drawing never changes; motion and brightness carry the state.
 
 | State | What the mark does |
 | --- | --- |
-| Ready (idle) | Still, just under full colour. |
-| Listening | Full colour; the W settles almost flat and a gentle wave runs through the line, left to right. |
-| Thinking | Dims; a light runs along the line. |
-| Speaking | The shape holds and the charcoal glows lighter in a slow swell, about every 1.5 s. |
+| Ready (idle) | Still, at full strength. |
+| Listening | The W settles almost flat and a gentle wave runs through the line, left to right. |
+| Thinking | Dims; a gap runs along the W through the filled part. |
+| Speaking | The shape holds and the filled part fades and returns in a slow swell, about every 1.5 s. |
 | Announcing | The W at its deepest, the whole mark pulsing. Built into the mark; the live feed has no announcing state yet. |
 
 The line under his name says the same in words: Ready, Listening, Thinking or Speaking. While his
@@ -92,5 +89,5 @@ a still. Once Winston is idle and settled the animation stops, so an idle page c
 - The wall display (`/wall`), large, as the talk button.
 - The browser tab (favicon) and the README.
 - Planned: a Home Assistant card through the planned integration (`docs/plan.md`); the Voice PE's 12
-  lights, upper lights sky and lower lights charcoal, the lower ones brightening when he speaks
+  lights, the lower lights on and the upper ones dim, the lower ones swelling when he speaks
   (`docs/voice-pe.md`).

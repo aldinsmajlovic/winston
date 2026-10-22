@@ -1,12 +1,12 @@
-// Winston's mark (docs/identity.md): a disc split into two colours by a soft W, with an inset rim.
+// Winston's mark (docs/identity.md): a ring, and inside it a disc filled below a soft W and open above.
 // Pure geometry and motion in a 100 by 100 viewBox, shared by Presence and the favicon script.
 
 export type MarkState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'announcing'
 
 /** The chosen shape. Depth and lift are in viewBox units. */
 export const MARK = {
-  radius: 46, // the disc
-  ring: 7, // rim width; the band outside it is as wide
+  radius: 46, // the ring's outer edge
+  ring: 7, // the ring's width; the gap inside it is as wide
   depth: 11, // how far the W reaches
   span: 0.7, // share of the width the W takes; the line runs flat beyond it
   soft: 0.85, // 0 is straight segments, 1 is full curves
@@ -16,7 +16,7 @@ export const MARK = {
  * (listening), the running light (thinking) and the lower field's glow (speaking). */
 export type Frame = { depth: number; level: number; lift: number; wave: number; phase: number; glint: number; pos: number; glow: number }
 
-export const REST: Frame = { depth: MARK.depth, level: 0.82, lift: 0, wave: 0, phase: 0, glint: 0, pos: 0, glow: 0 }
+export const REST: Frame = { depth: MARK.depth, level: 1, lift: 0, wave: 0, phase: 0, glint: 0, pos: 0, glow: 0 }
 
 // Outer arms high, two valleys, a lower middle peak. Softness blends straight segments into curves.
 const KNOTS = [-0.9, 0.84, 0.2, 0.84, -0.9]
@@ -73,11 +73,11 @@ export function target(state: MarkState, t: number, still: boolean): Frame {
     case 'idle':
       return REST
     case 'listening': // the W settles and a gentle wave runs through the line, left to right
-      return { ...REST, depth: d * 0.15, level: 1, lift: -6, wave: 4, phase: still ? 0 : t * 0.45 }
+      return { ...REST, depth: d * 0.15, lift: -6, wave: 4, phase: still ? 0 : t * 0.45 }
     case 'thinking': // dimmed, a light runs along the line
       return { ...REST, level: 0.45, glint: 1, pos: still ? 0.5 : (t / 1.4) % 1 }
     case 'speaking': // the shape holds, the lower field glows
-      return { ...REST, level: 1, glow: 0.45 * (still ? 0.6 : swell(t)) }
+      return { ...REST, glow: 0.45 * (still ? 0.6 : swell(t)) }
     case 'announcing': // the W at its deepest, the whole mark pulsing
       return { ...REST, depth: d + 10, lift: -6, level: 0.6 + 0.4 * Math.cos(2 * Math.PI * (still ? 0 : (t % 1.6) / 1.6)) ** 2 }
   }

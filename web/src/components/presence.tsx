@@ -5,7 +5,8 @@ import { MARK, REST, ease, paths, target, type Frame, type MarkState } from '@/l
 import { cn } from '@/lib/utils'
 
 const AT_REST = paths(REST)
-const RIM = MARK.radius - 1.5 * MARK.ring
+const INNER = MARK.radius - 2 * MARK.ring
+const BAND = MARK.radius - MARK.ring / 2
 const LABEL: Record<MarkState, string> = { ...STATE_LABEL, announcing: 'Announcing' }
 
 const settled = (a: Frame, b: Frame) =>
@@ -19,7 +20,7 @@ export function Presence({ state, className }: { state: MarkState; className?: s
   const fields = useRef<SVGGElement>(null)
   const upper = useRef<SVGPathElement>(null)
   const glint = useRef<SVGPathElement>(null)
-  const glow = useRef<SVGRectElement>(null)
+  const lower = useRef<SVGCircleElement>(null)
   const live = useRef({ state, since: 0, frame: REST, raf: 0 })
   const name = $api.useQuery('get', '/api/status').data?.assistant ?? ''
 
@@ -36,7 +37,7 @@ export function Presence({ state, className }: { state: MarkState; className?: s
       glint.current?.setAttribute('d', d.line)
       glint.current?.setAttribute('stroke-dashoffset', (18 - run.frame.pos * 118).toFixed(2))
       glint.current?.setAttribute('opacity', (0.9 * run.frame.glint).toFixed(3))
-      glow.current?.setAttribute('opacity', run.frame.glow.toFixed(3))
+      lower.current?.setAttribute('opacity', (1 - run.frame.glow).toFixed(3))
       fields.current?.setAttribute('opacity', run.frame.level.toFixed(3))
       run.raf = run.state === 'idle' && settled(run.frame, REST) ? 0 : requestAnimationFrame(draw)
     }
@@ -47,42 +48,30 @@ export function Presence({ state, className }: { state: MarkState; className?: s
     }
   }, [state])
 
+  // One colour, the page's text: a ring, and inside it a disc filled below the W and open above it.
+  // The running light is a gap cut along the W; the speaking glow fades the fill.
   return (
-    <svg viewBox="0 0 100 100" role="img" aria-label={`${name} is ${LABEL[state].toLowerCase()}`} className={cn('shrink-0', className)}>
+    <svg viewBox="0 0 100 100" role="img" aria-label={`${name} is ${LABEL[state].toLowerCase()}`} className={cn('shrink-0 text-foreground', className)}>
       <defs>
-        <clipPath id={`${id}-disc`}>
-          <circle cx="50" cy="50" r={MARK.radius} />
-        </clipPath>
-        <mask id={`${id}-rim`}>
+        <mask id={`${id}-open`}>
           <rect width="100" height="100" fill="white" />
-          <circle cx="50" cy="50" r={RIM} fill="none" stroke="black" strokeWidth={MARK.ring} />
-        </mask>
-        <linearGradient id={`${id}-sky`} gradientUnits="userSpaceOnUse" x1="50" y1="4" x2="50" y2="96">
-          <stop offset="0" stopColor="currentColor" className="text-mark-sky-high" />
-          <stop offset="0.6" stopColor="currentColor" className="text-mark-sky-low" />
-        </linearGradient>
-        <linearGradient id={`${id}-coal`} gradientUnits="userSpaceOnUse" x1="50" y1="4" x2="50" y2="96">
-          <stop offset="0.4" stopColor="currentColor" className="text-mark-coal-high" />
-          <stop offset="1" stopColor="currentColor" className="text-mark-coal-low" />
-        </linearGradient>
-      </defs>
-      <g mask={`url(#${id}-rim)`}>
-        <g ref={fields} clipPath={`url(#${id}-disc)`} opacity={REST.level}>
-          <rect width="100" height="100" fill={`url(#${id}-coal)`} />
-          <rect ref={glow} width="100" height="100" className="fill-white" opacity="0" />
-          <path ref={upper} d={AT_REST.upper} fill={`url(#${id}-sky)`} />
+          <path ref={upper} d={AT_REST.upper} fill="black" />
           <path
             ref={glint}
             d={AT_REST.line}
             fill="none"
-            className="stroke-white"
-            strokeWidth="5"
+            stroke="black"
+            strokeWidth={MARK.ring}
             strokeLinecap="round"
             pathLength={100}
             strokeDasharray="18 82"
             opacity="0"
           />
-        </g>
+        </mask>
+      </defs>
+      <g ref={fields} opacity={REST.level}>
+        <circle ref={lower} cx="50" cy="50" r={INNER} fill="currentColor" mask={`url(#${id}-open)`} />
+        <circle cx="50" cy="50" r={BAND} fill="none" stroke="currentColor" strokeWidth={MARK.ring} />
       </g>
     </svg>
   )
