@@ -13,7 +13,7 @@ conv-attention head, 158 KB). Input is 16 kHz mono PCM in about 2 second chunks;
 score. `hey_winston_eval.json` holds the synthetic validation numbers: 0 false positives per hour
 over 20 h, recall 84% at threshold 0.5 and 95% at 0.22. Tune the threshold per room on a real mic;
 "hey winter" and bare "winston" are the known near misses. The trainer, with its configs, a scorer
-and a live mic listener, is in git history at commit 746e994 (`services/wakeword/`).
+and a live mic listener, is in git history at commit 1aa216d (`services/wakeword/`).
 
 The model is Apache-2.0 like the rest of Winston. It was trained on synthetic speech only, no
 recordings of anyone: positives from Piper VITS voices built on LibriTTS-R (CC BY 4.0), negatives

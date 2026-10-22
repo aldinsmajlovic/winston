@@ -292,7 +292,7 @@ calibration, is `okay_winston_eval.json`.
    models.
 3. **Fallback** if step two is blocked: the plan's original satellite (Pi plus a speakerphone), where
    barge-in is the same as the browser path. Its wake word is ready: `assets/wake/hey_winston.onnx`,
-   "Hey Winston" for openWakeWord. The trainer that made it is in git history at commit 746e994
+   "Hey Winston" for openWakeWord. The trainer that made it is in git history at commit 1aa216d
    (`services/wakeword/`).
 
 Expected cost over the browser path: a tenth to a fifth of a second of latency from chunked audio
