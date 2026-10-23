@@ -16,6 +16,7 @@ from loguru import logger
 
 from winston.config import data_dir
 from winston.config.schema import EngineConfig, WinstonConfig
+from winston.engines import install
 from winston.engines.drivers import (DockerDriver, Driver, ExternalDriver, SubprocessDriver, discord_channel_cmd,
                                      satellite_channel_cmd, voice_channel_cmd)
 
@@ -26,7 +27,7 @@ class Managed:
     cfg: EngineConfig
     driver: Driver
     kind: str = "engine"            # engine | channel
-    state: str = "stopped"          # stopped | starting | healthy | unhealthy | error
+    state: str = "stopped"          # stopped | installing | starting | healthy | unhealthy | error
     detail: str = ""
     since: float = field(default_factory=time.time)
     started_in: float | None = None     # seconds the last successful start took
@@ -62,6 +63,7 @@ def _setting(cfg: WinstonConfig, path: str) -> str:
 
 
 GRACE_SECS = 2.0        # a process with no health check must live this long before it counts as up
+DOWNLOAD_GRACE_SECS = 120   # a start whose download grew in the last check waits at least this much longer
 
 
 def _missing_env(names: list[str]) -> str:
@@ -221,7 +223,7 @@ class Supervisor:
 
     async def refresh(self) -> list[Managed]:
         for m in self.items.values():
-            if m.state == "starting":
+            if m.state in ("installing", "starting"):
                 continue
             keep = m.detail if m.pending or m.stale else ""
             if await self.healthy(m):
@@ -254,6 +256,16 @@ class Supervisor:
                 missing = f"{rest}; {unset}" if rest else unset
             m.expected = False
             self._set(m, "error", missing); logger.error(f"{name}: not started, {missing}"); return m
+        if m.kind == "engine" and m.cfg.driver != "external":
+            needs = await install.parts(name, self.cfg)
+            if any(not p.installed for p in needs):
+                self._set(m, "installing")
+                why = await install.ensure(needs, lambda text: m.state == "installing" and self._set(m, "installing", text))
+                if m.state != "installing":         # stopped meanwhile; the install itself goes on
+                    return m
+                if why:
+                    self._set(m, "error", f"not installed: {why}"); logger.error(f"{name}: not installed, {why}")
+                    return m
         self._set(m, "starting")
         m.owned = True
         m.log_start = _log_size(m.driver)
@@ -267,20 +279,29 @@ class Supervisor:
         t0 = time.time()
         if not m.cfg.health and m.driver.log_path():     # health-less process: up means it survived startup
             await asyncio.sleep(GRACE_SECS)
-        while time.time() - t0 < m.cfg.startup_timeout:
+        # A first start downloads its model into the Hugging Face cache: while that grows it is not stuck.
+        from winston.api.options import hf_cache      # lazy: the API's module, as the Docker driver's
+        hub = None if m.cfg.driver == "external" else hf_cache(m.cfg.model_dump())
+        first = seen = await asyncio.to_thread(install.hub_bytes, hub)
+        deadline = t0 + m.cfg.startup_timeout
+        while time.time() < deadline:
             if await self.healthy(m):
-                m.started_in = time.time() - t0
-                self._set(m, "healthy"); logger.info(f"{name}: healthy after {m.started_in:.0f} s"); return m
+                took = time.time() - t0
+                if seen == first:                   # a start that downloaded is not the usual restart time
+                    m.started_in = took
+                self._set(m, "healthy"); logger.info(f"{name}: healthy after {took:.0f} s"); return m
             if not await m.driver.running():
                 m.expected = False
                 detail = _exited(m) if _exit_code(m.driver) is not None else "exited during startup; see docker logs"
                 self._set(m, "error", detail); logger.error(f"{name}: {detail}")
                 return m
             await asyncio.sleep(3)
-        # Only an engine Winston runs downloads, and only an engine has Startup time limit to raise.
+            if hub and (now := await asyncio.to_thread(install.hub_bytes, hub)) > seen:
+                seen, deadline = now, max(deadline, time.time() + DOWNLOAD_GRACE_SECS)
+                m.detail = f"downloading, {install.gb(now - first)} so far"
         hint = ("; nothing answered at its Address, check that it runs" if m.cfg.driver == "external"
-                else "; a first start may still be downloading: raise Startup time limit under How it runs"
-                if m.kind == "engine" else "")
+                else f"; its download stopped at {install.gb(seen - first)}" if seen > first
+                else "; raise Startup time limit under How it runs if it is slow to load" if m.kind == "engine" else "")
         self._set(m, "error", f"not ready after {m.cfg.startup_timeout} s{hint}")
         return m
 

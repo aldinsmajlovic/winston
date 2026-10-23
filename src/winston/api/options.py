@@ -134,8 +134,9 @@ def _hint_words(cfg: WinstonConfig, params: dict) -> Options:
 # The brain's engines by what they load: llama.cpp and Ollama serve GGUF files, vLLM safetensors repos.
 GGUF_ENGINES = {"llamacpp", "ollama"}
 ENGINE_NAMES = {"llamacpp": "llama.cpp", "ollama": "Ollama", "vllm": "vLLM"}
-# A GGUF file's quant: the last part of its name, after the model's name (Qwen3.8-27B-UD-Q4_K_S, x.Q4_K_M).
-QUANT = re.compile(r"[-._]((?:UD-)?(?:[IT]?Q\d+(?:_[A-Z0-9]+)*|B?F16|F32|MXFP4(?:_MOE)?))$", re.IGNORECASE)
+# A GGUF file's quant: the last part of its name, after the model's name (Qwen3.8-27B-UD-Q4_K_S, x.Q4_K_M,
+# huihui's UD-DW-Q4_K_S).
+QUANT = re.compile(r"[-._]((?:(?:UD|DW)-)*(?:[IT]?Q\d+(?:_[A-Z0-9]+)*|B?F16|F32|MXFP4(?:_MOE)?))$", re.IGNORECASE)
 SPLIT = re.compile(r"-\d{5}-of-(\d{5})$")                 # model-Q4_K_M-00001-of-00003.gguf is one quant
 LLM_ARCH = ("ForCausalLM", "ForConditionalGeneration", "LMHeadModel")
 # Speech models built on an LLM (a TTS on Qwen) have an LLM config; their model card says what they are.

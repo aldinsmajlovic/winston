@@ -40,6 +40,7 @@ from winston.core.brain import Brain, api_key
 from winston.core import memory, persona, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
 from winston.core.rooms import BoxState, MicHold, Rooms, RoomState, SyncRequest, SyncResult
+from winston.engines import install
 from winston.engines.supervisor import Supervisor
 from winston.extension_host import accounts
 from winston.extension_host.api import LogLines, router as extensions_router
@@ -57,13 +58,35 @@ class EngineStatus(BaseModel):
     name: str
     kind: Literal["engine", "channel"]
     driver: str
-    state: Literal["stopped", "starting", "healthy", "unhealthy", "error"]
+    state: Literal["stopped", "installing", "starting", "healthy", "unhealthy", "error"]
     detail: str
     since: float
     port: int
     startup_timeout: int
     started_in: float | None = None     # seconds the last start took, for "about N minutes"
     config_changed: bool = False        # saved settings or secrets wait for a restart (pending or stale)
+
+
+class InstallRequest(BaseModel):
+    engine: str = Field(description="The engine: llm, tts, stt or a custom one")
+    block: dict | None = Field(None, description="The draft's engine block; none for the saved one")
+    model: str | None = Field(None, description="The draft's brain model; none for the saved one")
+
+
+class InstallPart(BaseModel):
+    key: str
+    title: str = Field(description='How a sentence names it: "its Docker image", "the model"')
+    size: int | None = Field(description="Bytes still to download; none when that cannot be known first")
+    installed: bool
+    state: Literal["running", "done", "error"] | None = Field(None, description="Its install, once one ran")
+    done: int = Field(0, description="Bytes so far")
+    error: str = ""
+
+
+class InstallPlan(BaseModel):
+    parts: list[InstallPart]
+    free: int | None = Field(None, description="Bytes free where the first missing part lands")
+    short: str = Field("", description='What does not fit: "needs 19.4 GB on /home, 12.1 GB free"')
 
 
 class GpuStatus(BaseModel):
@@ -1299,6 +1322,49 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             return _page(f"Not connected: {e}.")
         await secret_changed(var)
         return _page(f"{extensions.sources[ext_id].manifest.name} is connected. You can close this tab.")
+
+    async def install_parts(req: InstallRequest) -> list[install.Part]:
+        """What an engine needs, for the saved config with the draft's engine block and brain model in place."""
+        cfg = app.state.cfg
+        data = cfg.model_dump(mode="json")
+        if req.block is not None:
+            data["engines"][req.engine] = req.block
+        if req.model is not None:
+            data["llm"]["model"] = req.model
+        try:
+            draft = WinstonConfig.model_validate(data)
+        except ValidationError as e:
+            raise HTTPException(422, f"not a valid engine: {e.errors()[0].get('msg')}")
+        return await install.parts(req.engine, draft)
+
+    def install_plan(found: list[install.Part]) -> InstallPlan:
+        out = []
+        for p in found:
+            job = install.JOBS.get(p.key)
+            out.append(InstallPart(key=p.key, title=p.title, size=p.size, installed=p.installed or bool(job and job.state == "done"),
+                                   state=job.state if job else None, done=job.done if job else 0,
+                                   error=job.error if job else ""))
+        missing = [p for p, v in zip(found, out) if not v.installed]
+        where = next((p.where for p in missing if p.where), None)
+        return InstallPlan(parts=out, free=install.free_bytes(where) if where else None,
+                           short=install.short_of_space(missing))
+
+    @app.post("/api/install/plan", response_model=InstallPlan,
+              summary="What an engine needs on this computer before it can run, with sizes, free space and any "
+                      "install under way")
+    async def get_install_plan(req: InstallRequest):
+        return install_plan(await install_parts(req))
+
+    @app.post("/api/install", response_model=InstallPlan,
+              summary="Install what an engine needs, in the background; the config is not saved")
+    async def start_install(req: InstallRequest):
+        found = await install_parts(req)
+        missing = [p for p in found if not p.installed]
+        if short := install.short_of_space(missing):
+            raise HTTPException(409, f"Not enough space: {short}")
+        for p in missing:
+            install.start(p)
+        return install_plan(found)
 
     @app.get("/api/presets", response_model=Presets,
              summary="Engine and model presets the UI offers per slot, and the hardware profiles")

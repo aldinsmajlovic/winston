@@ -1,7 +1,6 @@
 """The winston command. Everything here goes through config and the control API, nothing
 touches processes directly."""
 import asyncio
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -37,37 +36,24 @@ def init(force: bool = typer.Option(False, help="Overwrite existing files."),
          profile: str = typer.Option("nvidia-24gb", help="Hardware profile for the config; see --list."),
          list_profiles: bool = typer.Option(False, "--list", help="Show the profiles and exit.")):
     """Create the data directory from the examples (config for your hardware, persona, bundled voices)."""
-    from winston.config.presets import PROFILES, apply_profile, profile as get_profile
+    from winston.config.presets import PROFILES, profile as get_profile
+    from winston.setup import make_data_dir
     if list_profiles:
         for p in PROFILES:
             print(f"{p['id']:<16} {p['title']}: {p['hint']}")
         return
     get_profile(profile)                           # fail early on a typo
-    d = data_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    ex = repo_root() / "examples"
-    for name in ("config.yaml", "persona.md", ".env"):
-        src, dst = ex / (name if name != ".env" else "env.example"), d / name
-        if dst.exists() and not force:
-            print(f"keep   {dst}")
-        elif name == "config.yaml" and profile != "nvidia-24gb":
-            import yaml
-            from winston.config.schema import WinstonConfig
-            cfg = WinstonConfig.model_validate(apply_profile(yaml.safe_load(src.read_text()), profile))
-            dst.write_text(yaml.safe_dump(cfg.model_dump(mode="json", exclude_none=True), sort_keys=False,
-                                          allow_unicode=True))
-            print(f"create {dst} (profile {profile})")
-        else:
-            shutil.copy(src, dst); print(f"create {dst}")
-    for sub in ("memory", "logs", "voices"):
-        (d / sub).mkdir(exist_ok=True)
-    for tmpl in (ex / "memory").glob("*.md"):
-        if not (d / "memory" / tmpl.name).exists():
-            shutil.copy(tmpl, d / "memory" / tmpl.name); print(f"create {d / 'memory' / tmpl.name}")
-    bundled = repo_root() / "assets/voices/vctk"
-    if bundled.is_dir() and not (d / "voices/vctk").exists():
-        shutil.copytree(bundled, d / "voices/vctk"); print(f"create {d / 'voices/vctk'} (CC BY 4.0 VCTK samples)")
+    d = make_data_dir(profile, force)
     print(f"\ndata directory: {d}\nnext: edit {d / 'config.yaml'} and {d / '.env'}, then `winston up`")
+
+
+@app.command()
+def setup(yes: bool = typer.Option(False, "--yes", help="Yes to everything, the root steps too."),
+          profile: str = typer.Option(None, help="Skip the pick; see `winston init --list`.")):
+    """Set up this computer: what needs root (shown first), the profile, the data directory, the service."""
+    from winston.setup import run
+    _quiet()
+    run(yes, profile)
 
 
 @app.command()
@@ -98,7 +84,7 @@ def up(host: str = typer.Option(None), port: int = typer.Option(None),
 def status():
     """Engines, channel and GPU, from the running winstond."""
     s = _ok(_call("GET", "/api/status", timeout=10))
-    icons = {"healthy": "●", "starting": "◐", "unhealthy": "◑", "stopped": "○", "error": "✕"}
+    icons = {"healthy": "●", "starting": "◐", "installing": "◐", "unhealthy": "◑", "stopped": "○", "error": "✕"}
     for e in s["engines"]:
         port = f":{e['port']}" if e["port"] else ""
         if e["state"] == "error":           # the reason is the point: on its own line, never cut

@@ -45,7 +45,9 @@ flowchart TB
 
 - **Engines** (`winston/engines`): heavy processes declared in config with a driver. `docker` runs the
   LLM server, `subprocess` runs the TTS venv service and the voice channel, `external` points at
-  something you already run. The supervisor owns start, stop, health and restart-on-change.
+  something you already run. The supervisor owns start, stop, health and restart-on-change. Before a
+  start, `engines/install.py` gets what the engine lacks here (its image, its service venv, the brain's
+  model), sized before the first byte and shared between engines that need the same part.
 - **Brain** (`winston/core`): one Pipecat LLM service plus its tools, shared by every channel. Tools
   come from MCP servers and local plugins. The persona is the system instruction, flattened to one list
   of rules (the file's sections are for the Personality page), under a title and an identity line made
@@ -119,6 +121,8 @@ flowchart TB
   names, what was said: case and spacing do not count), the tool-call log line, acting on a frame once
   in an observer, and reading winstond's event streams. Clients reach winstond at `control.url`.
 - **Control** (`winston/api`, `winston/cli`): `winstond` and the `winston` command.
+- **Setup** (`winston/setup.py`): `winston setup`, which reads the computer, runs what needs root on yes,
+  makes the data directory and the systemd user service ([setup](setup.md)).
 
 ## Config API
 

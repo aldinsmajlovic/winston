@@ -20,6 +20,11 @@ export function humanize(key: string): string {
   return capitalize(key.replaceAll('_', ' '))
 }
 
+/** "16.4 GB", or "120 MB" under a tenth of a gigabyte (at least 1 MB unless nothing), as the server words sizes. */
+export function size(bytes: number): string {
+  return bytes >= 1e8 ? `${(bytes / 1e9).toFixed(1)} GB` : `${bytes ? Math.max(1, Math.round(bytes / 1e6)) : 0} MB`
+}
+
 /** "Brain, Voice and Hearing". */
 export function joinNames(names: string[]): string {
   return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`

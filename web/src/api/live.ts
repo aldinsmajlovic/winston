@@ -23,7 +23,8 @@ export function notReady(status: Status | undefined, config?: Config, failed = f
   const brain = status?.engines.find((e) => e.name === 'llm')
   if (!brain && config?.engines?.llm?.enabled === false) return { text: "Can't answer: his brain is off", starting: false }
   if (!brain || brain.state === 'healthy') return undefined
-  if (brain.state === 'starting') return { text: `Starting: his brain is loading (${restartCost(brain)})`, starting: true }
+  if (brain.state === 'installing') return { text: `Installing his brain${brain.detail ? `: ${brain.detail}` : ''}`, starting: true }
+  if (brain.state === 'starting') return { text: brain.detail ? `Starting: his brain is ${brain.detail}` : `Starting: his brain is loading (${restartCost(brain)})`, starting: true }
   const why = { stopped: 'is stopped', error: 'has failed', unhealthy: 'is not responding' }[brain.state]
   return { text: `Can't answer: his brain ${why}`, starting: false }
 }

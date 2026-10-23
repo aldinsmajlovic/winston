@@ -27,6 +27,7 @@ links to it.
 | --- | --- |
 | `README.md` | Pitch, one screenshot, about eight features, status in two lines, quickstart, links |
 | `docs/running.md` | Commands, web UI, engines, logs, exposure |
+| `docs/setup.md` | Installing, what needs root, the first-run wizard, updating and removing, releases |
 | `docs/architecture.md` | How the parts fit, the config API and its metadata, which settings page owns what, the repository, plugin contracts |
 | `docs/ui-guide.md` | How the web UI looks and reads: its rules, words and templates |
 | `docs/identity.md` | His name, his personality and his logo |

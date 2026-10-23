@@ -25,3 +25,7 @@ torchaudio = { index = "pytorch-cu128" }
 name = "pytorch-cu128"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
+
+[tool.winston]
+# The venv on disk, measured 2026-10-23 (du); measure again when uv.lock changes.
+installed-gb = 8.1

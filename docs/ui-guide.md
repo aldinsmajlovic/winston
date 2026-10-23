@@ -234,8 +234,10 @@ the program ("Start with Winston", "Takes effect when Winston restarts").
   environment, ports, paths) lives in one closed How it runs fold at the bottom of its slot card, its
   driver beside the title; a custom engine's page is itself its How it runs and draws it open. The fold
   starts closed on every load and is never remembered. Above it the card keeps Runs on with the
-  preset's line, the slot's own fields, "Off, so he cannot answer." with Turn on, and, while the engine
-  is on but not Running, its state with Log and Restart or Start, so a problem is never folded away.
+  preset's line, the slot's own fields, "Off, so he cannot answer." with Turn on, what the pick still
+  needs downloaded with its size against the free space and Download (then its progress, or why it
+  failed with Try again), and, while the engine is on but not Running, its state with Log and Restart
+  or Start, so a problem is never folded away.
   Nothing else is folded to hide settings; a fold elsewhere only shortens a long list.
 - Destructive, slow or outside-reaching actions confirm once (`useConfirm`, worded as in Copy). The
   Save confirm also lists what starts, restarts and stops ("Discord: stops now"), a model download, and

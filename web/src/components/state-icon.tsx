@@ -8,6 +8,7 @@ import type { DriverChoice } from '@/hooks/use-drivers'
 // A status is an icon plus a colour, and its word wherever it is not Running (docs/ui-guide.md).
 const states: Record<EngineState, { Icon: typeof Circle; className: string }> = {
   healthy: { Icon: CircleCheck, className: 'text-success' },
+  installing: { Icon: LoaderCircle, className: 'animate-spin text-muted-foreground' },
   starting: { Icon: LoaderCircle, className: 'animate-spin text-muted-foreground' },
   unhealthy: { Icon: CircleAlert, className: 'text-warning' },
   stopped: { Icon: Circle, className: 'text-muted-foreground' },

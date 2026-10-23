@@ -54,7 +54,7 @@ type Part = {
   setUp?: boolean
 }
 
-const TONES: Record<EngineState, Tone> = { healthy: 'ok', starting: 'muted', unhealthy: 'warning', stopped: 'muted', error: 'error' }
+const TONES: Record<EngineState, Tone> = { healthy: 'ok', installing: 'muted', starting: 'muted', unhealthy: 'warning', stopped: 'muted', error: 'error' }
 
 // What stops while a part is down, and how its return reads, for its Stop and Restart confirms.
 const DOWN: Record<string, [string, string]> = {
@@ -67,11 +67,13 @@ const DOWN: Record<string, [string, string]> = {
 }
 const downOf = (name: string) => DOWN[name] ?? ['What uses it stops working', 'it starts']
 
-/** ", up 15 min", ", 40 s of about 2 min" or " for 3 h": how long it has been in its state. */
+/** ", up 15 min", ", 40 s of about 2 min", ": the model, 6.2 of 16.4 GB" or " for 3 h": how long it has been in
+ * its state, or how far an install or a first download has got. */
 function stateTime(e: EngineStatus): string {
   const t = since(e.since)
   if (e.state === 'healthy') return `, up ${t}`
-  if (e.state === 'starting') return `, ${t} of ${restartCost(e)}`
+  if (e.state === 'installing') return e.detail ? `: ${e.detail}` : ` for ${t}`
+  if (e.state === 'starting') return e.detail ? `: ${e.detail}` : `, ${t} of ${restartCost(e)}`
   return ` for ${t}`
 }
 

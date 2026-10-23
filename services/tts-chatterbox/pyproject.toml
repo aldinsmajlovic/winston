@@ -13,3 +13,7 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[tool.winston]
+# The venv on disk, measured 2026-10-23 (du); measure again when uv.lock changes.
+installed-gb = 6.3

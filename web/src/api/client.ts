@@ -29,6 +29,7 @@ export type ExtensionView = components['schemas']['ExtensionView']
 export type TurnRecord = components['schemas']['TurnRecord']
 export type TurnMark = components['schemas']['TurnMark']
 export type TurnDay = components['schemas']['TurnDay']
+export type InstallPlan = components['schemas']['InstallPlan']
 
 /** A 422 `loc` without FastAPI's leading 'body', 'query' or 'path'; the config routes already start
  * at the config root. */

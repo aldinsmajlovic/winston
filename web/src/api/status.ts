@@ -63,6 +63,7 @@ export function engineLabel(part: string | { name: string }): string {
 /** The one word for each state, beside its icon. */
 export const STATE_WORDS: Record<EngineState, string> = {
   healthy: 'Running',
+  installing: 'Installing',
   starting: 'Starting',
   unhealthy: 'Not responding',
   stopped: 'Stopped',

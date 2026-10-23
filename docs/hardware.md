@@ -32,8 +32,9 @@ the first sound: 1.28 s median for a plain question (20 turns), 2.4 s when he us
 and 2.3 s to confirm a home request.
 
 No profile sets this up, since Breeze's weights are for research and non-commercial use only. Start
-from `nvidia-24gb-27b`, run `uv sync` in `services/tts-breeze2`, and pick Breeze TTS 2 on the Voice
-page. The reference box also swaps in huihui-ai's abliterated build of the same 27B (refusals
+from `nvidia-24gb-27b`, clone its inference code with the command at the top of
+`services/tts-breeze2/server.py`, and pick Breeze TTS 2 on the Voice page, which installs its
+packages. The reference box also swaps in huihui-ai's abliterated build of the same 27B (refusals
 removed, MTP layer kept): the same brain trials and speed, 0.25 GB more.
 
 **With 2 GB more** (a 32 GB card, or a second GPU for hearing), add Qwen3-ASR 0.6B. Against
@@ -106,13 +107,13 @@ page and the Pocket preset on the Voice page.
 
 **vLLM.** Fastest tool calls and the only path with vision. The tool-call and reasoning parser
 flags in the preset are for Qwen models; another family needs its own parser (`vllm serve --help`
-lists them). The container downloads weights into `~/.cache/huggingface` on first start, which is
-why the default profile takes minutes the first time and about 3 minutes after that.
+lists them). Winston downloads the weights into `~/.cache/huggingface` before the first start, with
+progress on the Brain page and Status; a start then takes about 3 minutes.
 
 **llama.cpp.** The official `server-cuda` image, pinned to a build, reading GGUF files from
 `~/.cache/huggingface` (the same cache as vLLM). `llm.model` is a Hugging Face repo and quant
-(`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`); the preset passes it as `-hf` and as the served name, and
-downloads on first start. It runs two conversations at once with 16K of context each and a q8 cache,
+(`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`); the preset passes it as `-hf` and as the served name. Winston
+downloads that quant's files into the cache before the first start, where llama.cpp finds them. It runs two conversations at once with 16K of context each and a q8 cache,
 and drafts with the model's own MTP layer (`--spec-type draft-mtp`), which needs a GGUF that keeps
 that layer; remove those two arguments for one that does not. Thinking is switched with the same
 `enable_thinking` template flag as vLLM. The system prompt with its tools is about 9.4k tokens, and

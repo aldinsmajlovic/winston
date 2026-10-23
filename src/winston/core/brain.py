@@ -543,6 +543,9 @@ class Brain:
     async def start(self):
         self.slot = await server_slot(self.cfg, self.spoken)
         ha = self.cfg.providers.ha
+        if ha is not None and not os.environ.get(ha.token_env):     # a new install, Home Assistant not connected yet
+            logger.warning(f"Home Assistant: {ha.token_env} is not set (data/.env), so he answers without the home")
+            ha = None
         if ha is None:
             self.llm = build_llm(self.cfg, self.channel, slot=self.slot)
         else:
@@ -550,9 +553,7 @@ class Brain:
             snap = await directory.home(self.cfg)
             self.llm = build_llm(self.cfg, self.channel, directory.house_map(self.cfg, snap), self.slot)
             self._areas = directory.device_areas(self.cfg, snap)
-            token = os.environ.get(ha.token_env)
-            if not token:
-                raise RuntimeError(f"{ha.token_env} is not set (data/.env)")
+            token = os.environ[ha.token_env]
             self._mcp = MCPClient(server_params=StreamableHttpParameters(
                 url=ha.url.rstrip("/") + ha.mcp_path, headers={"Authorization": f"Bearer {token}"}))
             t0 = time.perf_counter()

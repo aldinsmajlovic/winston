@@ -127,7 +127,8 @@ uv run winston ha expose          # apply the saved list (adds and exposes; remo
 Access token. Under them two checks run against what you typed, before anything is saved
 (`POST /api/providers/home_assistant/check` with the address and the pasted token, which is used for
 the check only and never kept): "Reachable: Home Assistant 2026.9.3" and "Token accepted", or "Token
-refused" or "Can't reach Home Assistant at this address".
+refused" or "Can't reach Home Assistant at this address". Until a token is saved he answers without
+the home, and his log says why.
 
 **Connection.** Use Home Assistant (off keeps the settings without using them), Address and Access
 token; the MCP server path (`mcp_path`) and the token's variable (`token_env`) are config.yaml only

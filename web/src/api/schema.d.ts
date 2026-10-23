@@ -1033,6 +1033,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/install/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What an engine needs on this computer before it can run, with sizes, free space and any install under way */
+        post: operations["get_install_plan_api_install_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install what an engine needs, in the background; the config is not saved */
+        post: operations["start_install_api_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/presets": {
         parameters: {
             query?: never;
@@ -1702,7 +1736,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "stopped" | "starting" | "healthy" | "unhealthy" | "error";
+            state: "stopped" | "installing" | "starting" | "healthy" | "unhealthy" | "error";
             /** Detail */
             detail: string;
             /** Since */
@@ -2342,6 +2376,75 @@ export interface components {
              * @description Token to try instead of the saved one; used for this check only, never kept
              */
             token?: string | null;
+        };
+        /** InstallPart */
+        InstallPart: {
+            /** Key */
+            key: string;
+            /**
+             * Title
+             * @description How a sentence names it: "its Docker image", "the model"
+             */
+            title: string;
+            /**
+             * Size
+             * @description Bytes still to download; none when that cannot be known first
+             */
+            size: number | null;
+            /** Installed */
+            installed: boolean;
+            /**
+             * State
+             * @description Its install, once one ran
+             */
+            state?: ("running" | "done" | "error") | null;
+            /**
+             * Done
+             * @description Bytes so far
+             * @default 0
+             */
+            done?: number;
+            /**
+             * Error
+             * @default
+             */
+            error?: string;
+        };
+        /** InstallPlan */
+        InstallPlan: {
+            /** Parts */
+            parts: components["schemas"]["InstallPart"][];
+            /**
+             * Free
+             * @description Bytes free where the first missing part lands
+             */
+            free?: number | null;
+            /**
+             * Short
+             * @description What does not fit: "needs 19.4 GB on /home, 12.1 GB free"
+             * @default
+             */
+            short?: string;
+        };
+        /** InstallRequest */
+        InstallRequest: {
+            /**
+             * Engine
+             * @description The engine: llm, tts, stt or a custom one
+             */
+            engine: string;
+            /**
+             * Block
+             * @description The draft's engine block; none for the saved one
+             */
+            block?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Model
+             * @description The draft's brain model; none for the saved one
+             */
+            model?: string | null;
         };
         /** JobResult */
         JobResult: {
@@ -5999,6 +6102,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AccountStart"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_install_plan_api_install_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_install_api_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstallPlan"];
                 };
             };
             /** @description Validation Error */

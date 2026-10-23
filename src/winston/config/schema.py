@@ -240,8 +240,8 @@ class LLMConfig(Model):
     model: str = Field(title="Model",
                        description="Downloaded lists the models the engine can load from this computer.",
                        json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models",
-                                            help="One not on this computer downloads when the brain restarts, and he "
-                                                 "can't answer until it's done."))
+                                            help="One not on this computer is downloaded before the brain starts. Download "
+                                                 "gets it now, while he keeps answering."))
     warm_up: bool = Field(True, title="Ready before the first question",
                           description="He has the brain read his instructions and tools when it starts, when a box "
                                       "connects and when the Talk page microphone opens. Without it the first answer "

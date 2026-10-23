@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { $api, type Config, type EngineStatus, type Preset } from '@/api/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { $api, errorText, type Config, type EngineStatus, type InstallPlan, type Preset } from '@/api/client'
 import { useErrorsUnder } from '@/api/field-errors'
 import { engineLabel, isRunning, restartCost, STATE_WORDS, useEngineActions, useStatus } from '@/api/status'
 import { Fold } from '@/components/fold'
@@ -14,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useConfirm } from '@/hooks/use-confirm'
 import { useDrivers } from '@/hooks/use-drivers'
 import type { SettingsState } from '@/hooks/use-settings'
-import { capitalize, since } from '@/lib/format'
+import { capitalize, joinNames, since, size } from '@/lib/format'
 import { applyPreset, CUSTOM, matchPreset, presetFacts, type Kind } from '@/lib/presets'
 import { allBut, deepEqual, hasFields, isRecord, section, setIn } from '@/lib/schema'
 
@@ -138,18 +139,73 @@ export function SlotCard({ page, kind, title, presets, children }: Props) {
           ) : null}
         </div>
         {children}
+        <InstallLine page={page} kind={kind} />
         <HowItRuns page={page} kind={kind} presets={presets} />
       </CardContent>
     </Card>
   )
 }
 
-const TONES = { healthy: 'ok', starting: 'muted', unhealthy: 'warning', stopped: 'muted', error: 'error' } as const
+type Part = InstallPlan['parts'][number]
+// openapi-react-query keys a query [method, path, init]: this prefix is every draft's plan.
+const planKey = ['post', '/api/install/plan']
 
-/** "Running, up 15 min", "Starting, 40 s of about 2 min" or "Failed: exited with 1". */
+/** "the model (16.4 GB)" before a download, "the model, 6.2 of 16.4 GB" during it. */
+const before = (p: Part) => (p.size ? `${p.title} (${size(p.size)})` : p.title)
+const during = ({ title, size: n, done = 0 }: Part) => (n ? `${title}, ${size(Math.min(done, n))} of ${size(n)}` : done ? `${title}, ${size(done)} so far` : title)
+
+/** While the slot's pick lacks something on this computer: what it needs with its size against the free
+ * space and Download, the download as it goes, or why it failed. It downloads in the background, so the
+ * engine that runs now keeps running; a saved engine that still lacks something gets it when it starts. */
+function InstallLine({ page, kind }: { page: SettingsState; kind: Kind }) {
+  const client = useQueryClient()
+  const ask = useConfirm()
+  const block = page.value.engines?.[kind]
+  const body = { engine: kind, block: block ?? null, model: kind === 'llm' ? page.value.llm.model : null }
+  const plan = $api.useQuery('post', '/api/install/plan', { body }, {
+    enabled: !!block && block.enabled !== false,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.parts.some((p) => p.state === 'running') ? 2000 : false),
+  })
+  const download = $api.useMutation('post', '/api/install', { onSettled: () => client.invalidateQueries({ queryKey: planKey }) })
+  const missing = (plan.data?.parts ?? []).filter((p) => !p.installed)
+  if (!missing.length) return null
+  const running = missing.filter((p) => p.state === 'running')
+  const failed = missing.filter((p) => p.state === 'error')
+  const known = missing.reduce((n, p) => n + (p.size ?? 0), 0)
+  const amount = known ? `${size(known)}${missing.some((p) => p.size == null) ? ' and more' : ''} ` : ''
+  const go = async () => {
+    const choice = await ask({
+      title: `Download what ${engineLabel(kind)} needs?`,
+      lines: [`${capitalize(amount)}${amount ? 'of ' : ''}${joinNames(missing.map(before))}.`, 'It downloads in the background, and what runs now keeps running.'],
+      choices: [{ label: 'Download', value: 'yes' }],
+    })
+    if (choice) download.mutate({ body })
+  }
+  if (download.error) return <StatusLine tone="error">{errorText(download.error)}</StatusLine>
+  if (running.length) return <StatusLine tone="muted">{`Downloading ${joinNames(running.map(during))}.`}</StatusLine>
+  if (failed.length)
+    return (
+      <StatusLine tone="error" action={{ label: 'Try again', onClick: () => void go() }}>
+        {`Download failed: ${failed.map((p) => `${p.title}: ${p.error}`).join('; ')}.`}
+      </StatusLine>
+    )
+  if (plan.data?.short) return <StatusLine tone="warning">{`Not enough space: it ${plan.data.short}.`}</StatusLine>
+  const free = plan.data?.free != null ? ` ${size(plan.data.free)} free.` : ''
+  return (
+    <StatusLine tone="muted" action={{ label: 'Download', onClick: () => void go() }}>
+      {`Needs ${amount}downloaded before it can run: ${joinNames(missing.map(before))}.${free}`}
+    </StatusLine>
+  )
+}
+
+const TONES = { healthy: 'ok', installing: 'muted', starting: 'muted', unhealthy: 'warning', stopped: 'muted', error: 'error' } as const
+
+/** "Running, up 15 min", "Starting, 40 s of about 2 min", "Starting: downloading, 1.2 GB so far" or "Failed:
+ * exited with 1". */
 function stateText(e: EngineStatus): string {
   if (e.state === 'healthy') return `Running, up ${since(e.since)}`
-  if (e.state === 'starting') return `Starting, ${since(e.since)} of ${restartCost(e)}`
+  if (e.state === 'starting' && !e.detail) return `Starting, ${since(e.since)} of ${restartCost(e)}`
   return e.detail ? `${STATE_WORDS[e.state]}: ${e.detail}` : STATE_WORDS[e.state]
 }
 

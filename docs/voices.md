@@ -247,7 +247,7 @@ accuracy cost; empty is full precision. Its Hearing card has no How it runs, sin
 Winston; with Qwen3-ASR or a hosted server the card has one, holding the API address while Winston
 runs the engine.
 
-The Qwen3-ASR service has its own venv: run `uv sync` in `services/stt-qwen3-asr` once; the model
+The Qwen3-ASR service has its own venv, which Winston installs the first time it is picked; the model
 downloads on its first start. The presets after Parakeet use the `openai_transcription` adapter, which
 sends each utterance to `stt.base_url` with the hint words as the request's `prompt`. Any server that
 speaks the protocol works without code; vLLM's stock image lacks the audio libraries it needs for it.

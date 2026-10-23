@@ -4,7 +4,8 @@ One command runs everything: `winston up` starts the engines from `data/config.y
 to be healthy, starts the voice channel and serves the control API. Ctrl-C stops all of it.
 
 ```sh
-uv run winston init            # once: creates data/ from the examples (--profile ollama | hosted; --list)
+uv run winston setup           # once: reads the computer, root steps on yes, the profile, data/, the service
+uv run winston init            # or only data/, from the examples (--profile ollama | hosted; --list)
 uv run winston up              # engines + voice channel + API on :8700
 uv run winston status          # health of every engine, GPU memory
 uv run winston restart tts     # one engine or the voice channel
@@ -26,6 +27,10 @@ uv run winston turns [--day DAY]  # the turn record: each spoken turn, heard, do
 uv run winston turns mark ID KIND # mark one as a mistake (misheard, not_addressed, wrong_action, too_slow); unmark, marked
 uv run winston check turns [--with FILE]  # the marked turns replayed through this setup or a candidate, scored
 ```
+
+Set up by `winston setup`, he runs as `winston.service` in your user's systemd ([setup](setup.md)):
+`systemctl --user restart winston` restarts all of him, and `journalctl --user -u winston -f` follows his
+log.
 
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
 localhost: wake, request, streamed reply, a follow-up without the wake word, silence.
@@ -67,9 +72,9 @@ lists a day ([understanding](understanding.md#1-turn-record-and-marks)).
 
 ## Status and errors
 
-`winston status` shows each engine and channel as healthy, starting, unhealthy (running, health check
-failing), stopped or error; the Status page says Running, Starting, Not responding, Stopped or Failed.
-An error says why, and stays until you start or stop that engine again:
+`winston status` shows each engine and channel as healthy, installing, starting, unhealthy (running,
+health check failing), stopped or error; the Status page says Running, Installing, Starting, Not
+responding, Stopped or Failed. An error says why, and stays until you start or stop that engine again:
 
 - A channel whose variables are not set is not started: Discord without `DISCORD_BOT_TOKEN` shows
   `DISCORD_BOT_TOKEN empty in data/.env` (or `missing from`), naming the variables, never their values.
@@ -80,9 +85,14 @@ An error says why, and stays until you start or stop that engine again:
   its log, say `exited with code 1: discord.errors.LoginFailure: Improper token has been passed.`
   The full log is `data/logs/<name>.log`.
 - A process with no health check (Discord) counts as up only after it has run for 2 seconds.
-- An engine that does not answer its health check within `startup_timeout` says so: one Winston runs
-  adds that a first start may still be downloading, so raise Startup time limit under How it runs; an
-  external server, that nothing answered at its Address. A channel says only that it was not ready.
+- An engine that lacks something it needs is installed first, and says Installing with how far it is
+  ("the model, 6.2 GB of 16.4 GB"): its Docker image, its venv under `services/` (`uv sync`, logged to
+  `data/logs/install-<service>.log`) and the brain's model. One that does not fit says how much it needs
+  and how much is free, and is not started ([setup](setup.md#winston-installs-his-engines)).
+- An engine that does not answer its health check within `startup_timeout` says so. While the Hugging
+  Face cache grows during a start (a voice fetching its weights the first time), it waits on and says
+  "downloading, 1.2 GB so far"; a download that stops says where it stopped. An external server says
+  that nothing answered at its Address. A channel says only that it was not ready.
 
 `winston status` prints an error's reason on the line under it. In the UI, Log shows the end of an
 engine's or channel's log (`GET /api/engines/{name}/log?lines=200`): the log file of a process, the
@@ -190,15 +200,17 @@ asks a name and how it runs, are commands in the header; Stop all asks first.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/brain-dark.png">
-  <img src="images/brain-light.png" alt="The Brain page: Runs on, the model list open with the running and downloaded models, and Think before answering" width="720">
+  <img src="images/brain-light.png" alt="The Brain page: llama.cpp with the 27B, Ready before the first question switched on, and Think before answering" width="720">
 </picture>
 
 Brain picks what runs the brain under Runs on, from presets (vLLM, llama.cpp, Ollama, hosted), each with
 a line on what it is good at, and what it needs where its name does not say, and the model from three
 lists: Running, what the brain's server reports; Downloaded, what the chosen engine can load from the
 Hugging Face cache on this machine; and Suggested, the presets' models for that engine, not downloaded
-yet. Picking a preset rewrites the engine block and the settings that go with it, and asks first when
-you had edited that block. How it runs, closed at the bottom of the What runs his brain card, holds
+yet. Under the model, a pick that is not on this computer says what it needs downloaded, its size and
+the free space, with Download, which gets it while the brain that runs now keeps answering
+([setup](setup.md#winston-installs-his-engines)). Picking a preset rewrites the engine block and the
+settings that go with it, and asks first when you had edited that block. How it runs, closed at the bottom of the What runs his brain card, holds
 the engine block (Runs as, Start with Winston, port, image, arguments and the rest), its state with
 Log and Restart while it runs, Reset to the preset while the block differs from the preset, the API
 address while Winston runs the engine, and How thinking is switched; a problem with the engine shows
