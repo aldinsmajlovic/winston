@@ -9,7 +9,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { buttonVariants } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmContext, type Ask, type ConfirmRequest } from '@/hooks/use-confirm'
 
@@ -65,7 +64,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             {request?.choices.map((choice) => (
               <AlertDialogAction
                 key={choice.value}
-                className={choice.destructive ? buttonVariants({ variant: 'destructive' }) : undefined}
+                variant={choice.destructive ? 'destructive' : 'default'}
                 onClick={() => settle(choice.value)}
               >
                 {choice.label}
