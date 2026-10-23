@@ -613,7 +613,10 @@ class Brain:
         changed prompt is a full prefill (9.4k tokens took 7.5 to 10.6 s on the 27B). With a throwaway
         user message, not an empty context: llama.cpp keeps a checkpoint where the last user message
         starts, so the first real turn resumes at the end of the system prompt instead of reading its last
-        ~500 tokens again (measured 593 ms against 142 ms). The one-token reply is thrown away."""
+        ~500 tokens again (measured 593 ms against 142 ms). The one-token reply is thrown away. Nothing with
+        llm.warm_up off: a hosted brain bills each read."""
+        if not self.cfg.llm.warm_up:
+            return
         t0 = time.perf_counter()
         try:
             await self.llm.run_inference(LLMContext([{"role": "user", "content": "."}],

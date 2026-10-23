@@ -242,6 +242,14 @@ class LLMConfig(Model):
                        json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models",
                                             help="One not on this computer downloads when the brain restarts, and he "
                                                  "can't answer until it's done."))
+    warm_up: bool = Field(True, title="Ready before the first question",
+                          description="He has the brain read his instructions and tools when it starts, when a box "
+                                      "connects and when the Talk page microphone opens. Without it the first answer "
+                                      "waits while they are read, seconds on a large prompt. A hosted brain bills each "
+                                      "read.",
+                          json_schema_extra=ui(restarts=["voice", "satellite"],    # winstond reads the saved config
+                                               help="The first answer comes as quickly as the rest. Off saves a "
+                                                    "hosted brain the extra reads."))
     sampling: Sampling = Field(Sampling(), title="How he picks his words")
     thinking: Thinking = Field(Thinking(), title="Thinking")
 

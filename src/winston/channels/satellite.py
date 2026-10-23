@@ -766,18 +766,30 @@ class Satellite:
         house = directory.house_map(self.cfg, await directory.home(self.cfg))
         return persona(self.cfg, house, "satellite"), signature(tools.json(), kinds.json().get("kinds", 0) > 0)
 
+    async def _brain_up(self) -> float | None:
+        """Since when the brain's server has been up (winstond's status); None while it is not."""
+        async with httpx.AsyncClient(base_url=self.cfg.control.url, timeout=3) as h:
+            engines = (await h.get("/api/status")).json().get("engines", [])
+        return next((e["since"] for e in engines if e["name"] == "llm" and e["state"] == "healthy"), None)
+
     async def _prewarm(self):
         """Every PREWARM_SECS while the box is idle: when the prompt a new conversation would get has changed
         (the diary after midnight, a remembered fact, an extension's notes or tools), build and warm that
         conversation now, so the first wake after it does not wait while llama.cpp reads ~9.4k tokens (7.5 to
         10.6 s). Never while a conversation is in use and not stale: its cached prompt must stay. Only a
         change starts one, never idling, so an unused conversation still goes stale at the wake as before
-        (a fresh Home Assistant session) and is rebuilt there from the cache."""
+        (a fresh Home Assistant session) and is rebuilt there from the cache. When the brain's server came up
+        again (restarted, or a model switch), the conversation the box has is warmed again, used or not."""
         idle = self.cfg.channels.satellite.session_idle_mins * 60
+        brain = None                    # when the brain's server last came up, from winstond's status
         while True:
             await asyncio.sleep(PREWARM_SECS)
             try:
                 c, uses = self.conversation, self._uses
+                up = await self._brain_up()
+                if up and brain and up != brain and c and not self._busy():
+                    await c.brain.warm()        # the brain restarted: what it had read is gone
+                brain = up or brain
                 if self._busy() or (c and c.used and not await stale(c, idle)):
                     continue
                 key = await self._next_key()

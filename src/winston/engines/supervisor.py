@@ -7,6 +7,7 @@ import asyncio
 import os
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import httpx
@@ -119,6 +120,7 @@ class Supervisor:
     def __init__(self, cfg: WinstonConfig):
         self.cfg = cfg
         self.items: dict[str, Managed] = self._build(cfg)
+        self.on_healthy: Callable[[str], object] | None = None     # told the name of each one that comes up
 
     @staticmethod
     def _build(cfg: WinstonConfig) -> dict[str, Managed]:
@@ -204,6 +206,8 @@ class Supervisor:
     def _set(self, m: Managed, state: str, detail: str = ""):
         if state != m.state:
             m.since = time.time()
+            if state == "healthy" and self.on_healthy:
+                self.on_healthy(m.name)
         m.state, m.detail = state, detail
 
     async def healthy(self, m: Managed) -> bool:

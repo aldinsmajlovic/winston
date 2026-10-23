@@ -36,7 +36,7 @@ from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.common import failure_words, key
-from winston.core.brain import api_key
+from winston.core.brain import Brain, api_key
 from winston.core import memory, persona, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
 from winston.core.rooms import BoxState, MicHold, Rooms, RoomState, SyncRequest, SyncResult
@@ -469,6 +469,22 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     def spawn(coro):
         """Run in the background, holding a reference so the task is not collected mid-way."""
         t = asyncio.create_task(coro); tasks.add(t); t.add_done_callback(tasks.discard)
+
+    async def warm_typed():
+        """The prompt a typed conversation starts with (the Talk page's and Discord's are the same, on the same
+        server slot), read as soon as the brain's server is up, so the first typed answer is not the slow one:
+        10.8 s cold against 0.35 s on the 27B (2026-10-23). The box and the Talk page microphone warm their own."""
+        b = Brain(app.state.cfg, channel="text")
+        try:
+            await b.start()
+            await b.warm()
+        except Exception as e:                                          # noqa: BLE001
+            logger.warning(f"typed conversations not warmed: {e}")
+        finally:
+            await b.close()
+
+    if autostart:       # not a winstond that only watches (--no-start, a test's): the engines are not its own
+        sup.on_healthy = lambda name: name == "llm" and app.state.cfg.llm.warm_up and spawn(warm_typed())
 
     def publish_announcement(a: Announcement) -> Delivery:
         """The hub delivers to the channels; the feed and the web conversation get it too."""

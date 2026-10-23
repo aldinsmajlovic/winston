@@ -202,7 +202,11 @@ you had edited that block. How it runs, closed at the bottom of the What runs hi
 the engine block (Runs as, Start with Winston, port, image, arguments and the rest), its state with
 Log and Restart while it runs, Reset to the preset while the block differs from the preset, the API
 address while Winston runs the engine, and How thinking is switched; a problem with the engine shows
-above it, never folded away. Think before answering and How he picks his words (temperature, top-p,
+above it, never folded away. Ready before the first question (`llm.warm_up`, on) has the brain read his
+instructions and tools before anyone asks: typed conversations (the Talk page and Discord share one
+prompt) when the brain's server comes up, a box when it connects and again a minute after a brain
+restart, the Talk page microphone when it opens. Cold, the 27B took 10.8 s to read the typed prompt
+and 0.35 s warmed. Off, nothing is read ahead, which saves a hosted brain the extra requests. Think before answering and How he picks his words (temperature, top-p,
 presence penalty and the longest reply, for when your model's page recommends other values) are cards
 of their own. Voice does the same for speaking and hearing ([voices](voices.md)).
 

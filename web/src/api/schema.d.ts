@@ -2431,6 +2431,12 @@ export interface components {
              */
             model: string;
             /**
+             * Ready before the first question
+             * @description He has the brain read his instructions and tools when it starts, when a box connects and when the Talk page microphone opens. Without it the first answer waits while they are read, seconds on a large prompt. A hosted brain bills each read.
+             * @default true
+             */
+            warm_up?: boolean;
+            /**
              * How he picks his words
              * @default {
              *       "temperature": 0.3,

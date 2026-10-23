@@ -217,7 +217,9 @@ keeps what the box has.
   prompt changed (the diary after midnight, a remembered fact, an extension's tools) and builds and
   warms one, unless someone is talking on any channel (winstond's `talking` in `/api/status`).
   Reading the 9.4k-token prompt cold takes 7.5 to 10.6 s, which the day's first request used to wait.
-  A wake during that keeps the conversation it has.
+  A wake during that keeps the conversation it has. When the brain's server comes up again (a restart,
+  a model switch), the same check warms the conversation the box has, used or not. With Ready before
+  the first question off (`llm.warm_up`), nothing is warmed.
 - When the box ends or aborts a request, the log says so, and a run stopped from outside sets the Talk
   page back to Ready. `kill -USR1 <satellite pid>` writes every thread's stack to the log, for a run
   that hangs.

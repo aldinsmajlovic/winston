@@ -14,6 +14,7 @@ from winston.channels import satellite as sat
 from winston.config.schema import WinstonConfig
 
 KEY = ["prompt 1"]          # what a conversation built now gets (Conversation.key)
+BRAIN = [1.0]               # since when the brain's server is up (winstond's status)
 STALE: set = set()          # conversations stale() calls stale
 
 
@@ -56,7 +57,10 @@ def box() -> sat.Satellite:
 
     async def next_key():
         return KEY[0]
-    s._next_key = next_key
+
+    async def brain_up():
+        return BRAIN[0]
+    s._next_key, s._brain_up = next_key, brain_up
     return s
 
 
@@ -112,6 +116,13 @@ async def main():
     check("wake during a prewarm: no wait, same conversation", got is cur, True)
     await asyncio.sleep(0.4)
     check("prewarm dropped its build after the use", (s.conversation is cur, cur.closed), (True, False))
+    # The brain restarted: the conversation in use is warmed again, kept, and only once.
+    cur.used, warmed = True, cur.warmed
+    BRAIN[0] = None                                     # stopped
+    await asyncio.sleep(0.1)
+    BRAIN[0] = 2.0                                      # up again
+    await asyncio.sleep(0.4)
+    check("brain restarted: in use, warmed again once", (s.conversation is cur, cur.warmed - warmed), (True, 1))
     loop.cancel()
     await asyncio.gather(loop, return_exceptions=True)
     FakeConversation.delay = 0.02
@@ -194,5 +205,5 @@ async def pauses():
 asyncio.run(main())
 asyncio.run(pauses())
 finish_checks("satellite: one build at a time, a cut-short wake's build kept, prewarm only on a changed prompt "
-              "and never in a wake's way, a failed build tried again, a pause ends a request only when it sounds "
+              "and never in a wake's way, warmed again after a brain restart, a failed build tried again, a pause ends a request only when it sounds "
               "finished and ends a sentence, longer in a chat ok")
