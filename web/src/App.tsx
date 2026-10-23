@@ -12,6 +12,7 @@ import ExtensionsPage, { ExtensionPage } from '@/pages/extensions'
 import HomeAssistantPage from '@/pages/home-assistant'
 import MemoryPage from '@/pages/memory'
 import PersonalityPage from '@/pages/personality'
+import SetupPage from '@/pages/setup'
 import SpeakingUpPage from '@/pages/speaking-up'
 import StatusPage from '@/pages/status'
 import TalkPage from '@/pages/talk'
@@ -77,6 +78,8 @@ export default function App() {
         <Route path="/memory" element={<MemoryPage />} />
         <Route path="/wall" element={<DashboardPage />} />
         <Route path="/dashboard" element={<Moved to="/wall" />} />
+        <Route path="/setup" element={<SetupPage />} />
+        <Route path="/setup/:step" element={<SetupPage />} />
         <Route element={<SettingsLayout />}>
           <Route path="/status" element={<StatusPage />} />
           <Route path="/status/engines/:name" element={<EnginePage />} />

@@ -25,6 +25,7 @@ import { useSettings } from '@/hooks/use-settings'
 import { capitalize, since } from '@/lib/format'
 import { matchPreset, SLOT_TITLES, type Kind } from '@/lib/presets'
 import { getIn, section, setIn } from '@/lib/schema'
+import { SETUP_STEPS } from '@/lib/setup'
 import { cn } from '@/lib/utils'
 
 const CONTROL = ['control']
@@ -171,6 +172,7 @@ export default function StatusPage() {
   const presets = $api.useQuery('get', '/api/presets')
   const extensions = $api.useQuery('get', '/api/extensions', undefined, { refetchInterval: 15_000 })
   const rooms = $api.useQuery('get', '/api/rooms')
+  const setup = $api.useQuery('get', '/api/setup')
   const ha = saved?.providers?.home_assistant
   const haSetUp = !!ha?.url
   const haOn = haSetUp && ha?.enabled !== false
@@ -316,7 +318,21 @@ export default function StatusPage() {
         ]
       : []),
   ]
+  // The setup wizard while it is not finished, then each step skipped in it, until it is done there.
+  const skipped = setup.data?.active ? [] : (setup.data?.order ?? []).filter((id) => setup.data?.steps[id] === 'skipped')
   const next: ReactNode[] = [
+    ...(setup.data?.active
+      ? [
+          <StatusLine key="setup" tone="muted" action={{ label: 'Continue setup', to: '/setup' }}>
+            Setup is not finished.
+          </StatusLine>,
+        ]
+      : []),
+    ...skipped.map((id) => (
+      <StatusLine key={`setup-${id}`} tone="muted" action={{ label: 'Set it up', to: `/setup/${id}` }}>
+        {`${SETUP_STEPS[id]?.title ?? id}: skipped during setup.`}
+      </StatusLine>
+    )),
     ...(!haSetUp
       ? [
           <StatusLine key="home_assistant" tone="muted" action={{ label: 'Set up', to: '/home-assistant' }}>

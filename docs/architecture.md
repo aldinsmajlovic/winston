@@ -124,7 +124,9 @@ flowchart TB
 - **Setup** (`winston/setup.py`): `winston setup`, which reads the computer, runs what needs root on yes,
   makes the data directory and the systemd user service, and `winston update` and `winston uninstall`
   for an install from a release. `scripts/install.sh` installs one, and `scripts/release.py` builds one,
-  as `.github/workflows/release.yml` does on a tag ([setup](setup.md)).
+  as `.github/workflows/release.yml` does on a tag ([setup](setup.md)). Setup mode
+  (`winston/api/setup_link.py`): until the wizard (`web/src/pages/setup.tsx`) is done, winstond serves
+  another device only with the setup link's key, and starts no engine before Brain and voice.
 
 ## Config API
 

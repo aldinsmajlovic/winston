@@ -237,7 +237,8 @@ the program ("Start with Winston", "Takes effect when Winston restarts").
   preset's line, the slot's own fields, "Off, so he cannot answer." with Turn on, what the pick still
   needs downloaded with its size against the free space and Download (then its progress, or why it
   failed with Try again), and, while the engine is on but not Running, its state with Log and Restart
-  or Start, so a problem is never folded away.
+  or Start, so a problem is never folded away. Installing is said once, by the download line with its
+  progress.
   Nothing else is folded to hide settings; a fold elsewhere only shortens a long list.
 - Destructive, slow or outside-reaching actions confirm once (`useConfirm`, worded as in Copy). The
   Save confirm also lists what starts, restarts and stops ("Discord: stops now"), a model download, and
@@ -357,6 +358,12 @@ checked at 1280 px beside the sidebar.
   pasted keys (`useSecretsDraft`), restart.
 - A page without fields of its own (the Extensions store) or a document (Personality,
   `pages/personality.tsx` at `/assistant/personality`, saving each edit) uses `Page` directly.
+- Setup wizard: `pages/setup.tsx` at `/setup/:step`, outside the sidebar: his logo, "Set up <name>" and
+  the step it is on, the steps with their marks, then the step with Skip for now and its own button
+  ([setup](setup.md#the-steps)). A step draws the owning pages' own cards and forms on the same draft
+  (`SlotCard`, `SectionForm`), so nothing is edited in two ways; its button saves through the same
+  confirm. `SlotCard`'s `quietWhenStopped` leaves out the stopped line there, since the wizard starts
+  them. The step names are in `lib/setup.ts`.
 - Status: `pages/status.tsx` at `/status`, the landing: Needs you and Set up next while they apply,
   his parts by role (each a row linking to its page, with one text command and a `RowMenu`), graphics
   memory, custom engines once there is one, and the web address with its warning; Start all and Stop

@@ -463,8 +463,10 @@ def run(yes: bool, profile: str | None) -> None:
     data = target()
     os.environ["WINSTON_DATA"] = str(data)
     data_dir.cache_clear()
+    from winston.api import setup_link
     config = data / "config.yaml"
-    if config.is_file():
+    fresh = not config.is_file()
+    if not fresh:
         print(f"\nKeeping {config}: the brain and voice stay as they are (change them on his pages).")
     else:
         from winston.config.presets import profile as get_profile
@@ -472,6 +474,9 @@ def run(yes: bool, profile: str | None) -> None:
             get_profile(profile)               # a typo fails before anything is made
         print()
         make_data_dir(profile or choose(m, yes))
+    # Setup mode for a new data directory, and a new link each run until the wizard is done. Before the service
+    # starts, which then listens on the network for it.
+    key = setup_link.new_key() if fresh or setup_link.active() else None
     cfg = yaml.safe_load(config.read_text()) or {}
 
     need = needs(cfg)
@@ -495,11 +500,36 @@ def run(yes: bool, profile: str | None) -> None:
             print("\nAlready in use, so these cannot start until they are free: " + ", ".join(busy))
     service = m.systemd and _service(data, start=not taken)
 
+    first = "Open" if service or running else "Start him with `winston up`, then open"
+    if key:
+        print(f"\n{first} {_links(key, port)}")
+        return
     also = ""
     if host not in ("127.0.0.1", "localhost", "::1") and (ip := _lan_address()):
         also = f", or http://{ip}:{port} from another device here"
-    first = "Open" if service or running else "Start him with `winston up`, then open"
     print(f"\n{first} http://localhost:{port} on this computer{also}.")
+
+
+def _links(key: str, port: int) -> str:
+    """The setup link for another device, and this computer's, which needs no key."""
+    there = f"http://{ip}:{port}/setup?key={key} from any device here,\nor " if (ip := _lan_address()) else ""
+    return f"{there}http://localhost:{port}/setup on this computer."
+
+
+def link() -> None:
+    """`winston setup link`: a new key while setup is under way; the link before stops working."""
+    from winston.api import setup_link
+    data = target()
+    os.environ["WINSTON_DATA"] = str(data)
+    data_dir.cache_clear()
+    if not setup_link.active():
+        sys.exit("No setup is under way here, so there is no setup link: the page follows Who can open this page, "
+                 "on Status.")
+    try:
+        port = (yaml.safe_load((data / "config.yaml").read_text()) or {}).get("control", {}).get("port", 8700)
+    except OSError:
+        port = 8700
+    print(f"Open {_links(setup_link.new_key(), port)}\nThe link before this one no longer works.")
 
 
 # ---- Updating and removing --------------------------------------------------------------------------------

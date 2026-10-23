@@ -26,7 +26,7 @@ from starlette.routing import Route as StarletteRoute
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from winston import __version__
-from winston.api import secrets
+from winston.api import secrets, setup_link
 from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
 from winston.config import load, repo_root, save
 from winston.config.loader import apply_changes, get_in, version as file_version
@@ -117,6 +117,17 @@ class Status(BaseModel):
 
 class Ok(BaseModel):
     ok: bool = True
+
+
+class SetupStep(BaseModel):
+    state: Literal["done", "skipped"]
+
+
+class SetupState(BaseModel):
+    active: bool = Field(description="Setup mode: until the wizard's Done, another device needs the setup link's key")
+    remote: bool = Field(description="This request comes from another device, not the computer Winston runs on")
+    order: list[str] = Field(description="The wizard's steps before Done, in order")
+    steps: dict[str, Literal["done", "skipped"]] = Field(description="The steps done or skipped so far")
 
 
 class ChatMessage(BaseModel):
@@ -645,7 +656,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        if autostart:
+        if autostart and setup_link.holding():
+            logger.info("setup: the engines wait for the wizard's Brain and voice, which downloads what they need")
+        elif autostart:
             asyncio.create_task(sup.start_all())
         # Found and described either way, so the page shows them; run only when winstond starts things.
         spawn(extensions.start() if autostart else extensions.refresh())
@@ -665,6 +678,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     app.state.supervisor, app.state.cfg, app.state.hub, app.state.feed = sup, cfg, hub, feed
     app.state.rooms = rooms
     app.state.extensions = extensions
+    app.state.opened_for_setup = False     # `winston up` listened on the network only for setup mode
     app.include_router(extensions_router(extensions, extension_services))
     # The tools you offer, for Claude Code and other MCP clients, at exactly /mcp (a mount would want /mcp/).
     app.router.routes.append(StarletteRoute("/mcp", endpoint=mcp_app))
@@ -710,6 +724,28 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             return JSONResponse({"detail": why}, status_code=403)
         return await call_next(request)
 
+    @app.middleware("http")
+    async def who_may_open(request: Request, call_next):
+        """In setup mode another device needs the setup link's key, from its ?key= or the cookie that sets;
+        this computer needs none. Once setup is done, the network address winstond opened only for setup
+        is closed again, unless Who can open this page opens it."""
+        remote = not (request.client and secrets.loopback(request.client.host))
+        key = setup_link.key_of(request) if remote else None
+        why = None
+        if remote and setup_link.active() and not key:
+            why = ("Until setup is done, another device needs the setup link: open the one `winston setup` showed, "
+                   "or make a new one with `winston setup link` on the computer Winston runs on.")
+        elif remote and app.state.opened_for_setup and not setup_link.active() \
+                and secrets.loopback(app.state.cfg.control.host):
+            why = "This page is open to the computer Winston runs on only (Who can open this page, in Status)."
+        if why:
+            return (JSONResponse({"detail": why}, status_code=403) if request.url.path.startswith("/api/")
+                    else Response(why, status_code=403, media_type="text/plain"))
+        response = await call_next(request)
+        if key and request.query_params.get("key"):
+            response.set_cookie(setup_link.COOKIE, key, httponly=True, samesite="strict")
+        return response
+
     @app.exception_handler(RequestValidationError)
     async def invalid(request: Request, exc: RequestValidationError):
         """FastAPI's 422, without the refused input for a secret."""
@@ -741,6 +777,32 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     @app.get("/api/health", response_model=Ok)
     async def health():
         return Ok()
+
+    def setup_state(request: Request) -> SetupState:
+        s = setup_link.state()
+        return SetupState(active=setup_link.active(), order=list(setup_link.STEPS),
+                          remote=not (request.client and secrets.loopback(request.client.host)),
+                          steps={k: v for k, v in (s.get("steps") or {}).items() if k in setup_link.STEPS})
+
+    @app.get("/api/setup", response_model=SetupState, summary="Setup mode and the wizard's steps done or skipped")
+    async def setup(request: Request):
+        return setup_state(request)
+
+    @app.put("/api/setup/steps/{step}", response_model=SetupState, summary="Mark one of the wizard's steps")
+    async def setup_step(step: str, body: SetupStep, request: Request):
+        try:
+            setup_link.mark(step, body.state)
+        except KeyError:
+            raise HTTPException(404, f"no setup step {step}")
+        return setup_state(request)
+
+    @app.post("/api/setup/finish", response_model=SetupState,
+              summary="End setup mode: another device then needs Who can open this page, not the setup link")
+    async def setup_finish(request: Request):
+        if setup_link.active():
+            setup_link.finish()
+            logger.info("setup finished: the page follows Who can open this page")
+        return setup_state(request)
 
     @app.get("/api/status", response_model=Status)
     async def status():

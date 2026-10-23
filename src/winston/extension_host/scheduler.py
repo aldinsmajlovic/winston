@@ -315,7 +315,8 @@ class Scheduler:
         while True:
             wants = self._wants()
             ha = self.host.cfg.providers.ha
-            if ha is None or not (wants[0] or wants[1]):
+            # No token yet (a new install before the wizard connects it): nothing to listen with, so it waits.
+            if ha is None or not os.environ.get(ha.token_env) or not (wants[0] or wants[1]):
                 await asyncio.sleep(3)
                 continue
             url = ha.url.rstrip("/").replace("http", "ws", 1) + "/api/websocket"

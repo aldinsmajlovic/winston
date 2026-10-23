@@ -310,6 +310,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Setup mode and the wizard's steps done or skipped */
+        get: operations["setup_api_setup_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/steps/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Mark one of the wizard's steps */
+        put: operations["setup_step_api_setup_steps__step__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End setup mode: another device then needs Who can open this page, not the setup link */
+        post: operations["setup_finish_api_setup_finish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -3248,6 +3299,39 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** SetupState */
+        SetupState: {
+            /**
+             * Active
+             * @description Setup mode: until the wizard's Done, another device needs the setup link's key
+             */
+            active: boolean;
+            /**
+             * Remote
+             * @description This request comes from another device, not the computer Winston runs on
+             */
+            remote: boolean;
+            /**
+             * Order
+             * @description The wizard's steps before Done, in order
+             */
+            order: string[];
+            /**
+             * Steps
+             * @description The steps done or skipped so far
+             */
+            steps: {
+                [key: string]: "done" | "skipped";
+            };
+        };
+        /** SetupStep */
+        SetupStep: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "done" | "skipped";
+        };
         /** Shortcut */
         Shortcut: {
             /**
@@ -4588,6 +4672,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Ok"];
+                };
+            };
+        };
+    };
+    setup_api_setup_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupState"];
+                };
+            };
+        };
+    };
+    setup_step_api_setup_steps__step__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                step: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupStep"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_finish_api_setup_finish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupState"];
                 };
             };
         };

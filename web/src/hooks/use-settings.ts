@@ -296,7 +296,8 @@ export type SettingsState = {
   saving: boolean
   update: (fn: (current: Config) => Config) => void
   reset: () => void
-  save: () => Promise<void>
+  /** Whether it saved: false when asked and cancelled, refused or failed. */
+  save: () => Promise<boolean>
 }
 
 type Loading = { loading: true; page: null }
@@ -448,7 +449,10 @@ export function useSettings(): Loading | Ready {
     let haLine: string | null = null
     if (changes.length) {
       const dry = await patchConfig(changes, { version, dryRun: true })
-      if (!dry.ok) return refused(dry)
+      if (!dry.ok) {
+        await refused(dry)
+        return false
+      }
       restarts = dry.result.restarts
       rename = dry.result.persona_rename
       const ha = dry.result as { ha_plan?: ExposurePlan | null; ha_plan_error?: string | null }
@@ -511,7 +515,7 @@ export function useSettings(): Loading | Ready {
             ]
           : [{ label: stopping.length ? 'Save and stop' : 'Save', value: 'save' }],
       })
-      if (!choice) return
+      if (!choice) return false
       restart = choice === 'restart'
     }
 
@@ -519,7 +523,10 @@ export function useSettings(): Loading | Ready {
     let haApply: HAApply | null | undefined
     if (changes.length) {
       const saved = await patchConfig(changes, { version, client, renamePersona })
-      if (!saved.ok) return refused(saved)
+      if (!saved.ok) {
+        await refused(saved)
+        return false
+      }
       haApply = saved.result.ha_apply
       if (saved.result.persona_rename?.renamed) void client.invalidateQueries({ queryKey: personaKey })
     }
@@ -537,15 +544,18 @@ export function useSettings(): Loading | Ready {
     if (restart) {
       for (const e of restarting) actions.restart.mutate({ params: { path: { name: e.name } } })
     }
+    return true
   }
 
   const save = async () => {
-    if (!dirty || store.saving) return
+    if (!dirty) return true
+    if (store.saving) return false
     store.setSaving(true)
     try {
-      await runSave()
+      return await runSave()
     } catch (e) {
       toast.error('Not saved', { description: errorText(e) })
+      return false
     } finally {
       store.setSaving(false)
     }

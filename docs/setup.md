@@ -1,9 +1,10 @@
 # Setup
 
 Approved 2026-10-23. Built so far: Winston installing his engines, `winston setup`, the install script,
-the release build, `winston update` and `winston uninstall`; the wizard comes next, in the order and with
-the checks in the [plan](plan.md) (Setup track). Until the first release, the way in is the README's
-Quickstart, or `uv run winston setup` in a clone.
+the release build, `winston update` and `winston uninstall`, setup mode with its link, and the wizard's
+frame with its Brain and voice step. Its other steps come next, in the order and with the checks in the
+[plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart, or
+`uv run winston setup` in a clone.
 
 One command installs Winston on a Linux computer, and a wizard on his page does the rest the first
 time it opens: Home Assistant, the brain and voice for your hardware, who he is, and a room box.
@@ -47,11 +48,11 @@ it found, and then:
    ([below](#what-needs-root)).
 3. Installs a systemd user service, `winston.service`, that runs `winston up`, and starts it. Without
    systemd (a container, say) there is no service and it says to run `winston up`.
-4. Says where to open him: this computer's address, and the network's when Who can open this page
-   allows it. The setup link for another device comes with the wizard.
+4. Says where to open him: for a new data directory, the setup link ([below](#the-first-run)), else
+   this computer's address, and the network's when Who can open this page allows it.
 
 Run it again and it does only what is still missing: a step skipped, or the `docker` group after
-logging in again.
+logging in again. Until the wizard is done, each run prints a new setup link.
 
 The engines (brain, voice, hearing) are not installed by setup. The wizard does it, with sizes and
 progress, the same way the settings pages do later; until then each gets what it lacks when the
@@ -111,24 +112,51 @@ download needed.
 
 ## The first run
 
-Until the wizard is done, winstond listens on the network and serves the wizard to anyone with the
-setup link, and to this computer without it:
+`winston setup` making a new data directory starts setup mode. Until the wizard is done, winstond
+listens on the network and serves the wizard to anyone with the setup link, and to this computer
+without it:
 
 ```
 Open http://192.168.1.20:8700/setup?key=7f3k-q9xm-2bvd from any device here,
 or http://localhost:8700/setup on this computer.
 ```
 
-Without the key, a request from another address is refused. The key is kept only as its hash, works
-until setup ends, and `winston setup link` makes a new one. When the wizard ends, the page follows
-Who can open this page (`control.host`) as now; its last step asks.
+Without the key, a request from another address is refused, page or API, with a line saying to open
+the setup link. Opening the link sets a cookie with the key, so the rest of the wizard needs nothing in
+the address, and the page takes the key out of the address bar. The key is twelve letters and digits
+(no 0, 1, i, l or o), kept only as its hash in `data/state/setup.json`, works until setup ends, and
+`winston setup link` (or running `winston setup` again) makes a new one, which the old one stops
+working for. A device holding it counts as this computer for pasting keys (a hosted brain's), which
+is otherwise refused from another address. winstond opens itself to the network for setup only when
+Who can open this page (`control.host`) is this computer and no `--host` was given. When the wizard
+ends, the page follows Who can open this page as now; its last step asks, and the answer applies at
+once: with This computer only, another address is refused from Finish on, and from Winston's next start
+he listens on this computer alone.
+
+While setup is under way and Brain and voice is not done, winstond starts none of his engines, since
+starting one downloads what it lacks: nothing is downloaded before you have seen the picks and their
+sizes. Status says "Setup is not finished." with Continue setup, and Talk that his brain is stopped.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/setup-dark.png">
+  <img src="images/setup-light.png" alt="The setup wizard's Brain and voice step: llama.cpp with the 27B, which needs 17.9 GB downloaded, and Speaking" width="720">
+</picture>
 
 ### The steps
 
-Each step can be skipped and picked up later. A skipped one stays in Set up next on Settings.
+The wizard is its own page (`/setup`): his logo, "Set up" and his name, "Step 1 of 2: Brain and voice",
+the steps with a check for each one done and "(skipped)" for each one skipped, then the step, with Skip
+for now and its own button at the bottom. Each step can be skipped and picked up later: a skipped one
+stays in Set up next on Status ("Brain and voice: skipped during setup." with Set it up) after the
+wizard ends. Built so far: Brain and voice and Done; the others come with their track steps.
 
-1. **Brain and voice.** The profile's picks, preselected, each with its size; Install starts the
-   downloads, which go on during the next steps.
+1. **Brain and voice.** The profile's picks, preselected, on the cards of the Brain and Voice pages:
+   Runs on, the brain's model and its own settings, and each one's size against the free space, with
+   Download. Download and continue saves a changed pick, confirms the sizes ("24.2 GB in all. Brain:
+   its Docker image (2.6 GB) and the model (15.4 GB). Speaking: its Python packages (6.3 GB).") and
+   starts the engines, each of which downloads what it lacks first and then runs, with its progress on
+   its card and on Status, while the next steps go on. With nothing to download it is Continue. The
+   voice itself is picked in Who he is.
 2. **Home Assistant.** Found on the network (`_home-assistant._tcp`, then `homeassistant.local`), or
    typed: mDNS does not cross subnets, so a split network needs the address. Connect opens Home
    Assistant's own login; back on the wizard, winstond creates a long-lived token named Winston on that
@@ -144,7 +172,10 @@ Each step can be skipped and picked up later. A skipped one stays in Set up next
    and would come back as a new device there, so the wizard offers to disable its ESPHome entry in
    Home Assistant (enable it again for a stock firmware update). When his name is not Winston, the box listens for a stock wake
    word instead (Okay Nabu, Hey Jarvis or Hey Mycroft), picked there.
-5. **Done.** Who can open this page from now on, then Talk.
+5. **Done.** Who can open this page from now on, as on Status, with the same warning when it is the
+   whole network, and what was skipped. Finish saves, ends setup mode and opens Talk. From another
+   device that this computer alone may open afterwards, it says so before Finish, and after it that
+   he is opened on the computer he runs on.
 
 ## Updating and removing
 

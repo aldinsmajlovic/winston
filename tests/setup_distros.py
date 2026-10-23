@@ -50,14 +50,18 @@ LOCAL = f"curl --proto '=http' -fsSL {SERVER}/latest/download/install.sh | WINST
 INSTALL = (f"curl --proto '=https' -fsSL https://github.com/aldinsmajlovic/winston/releases/download/v{GITHUB}/install.sh"
            f" | WINSTON_VERSION={GITHUB} sh -s --") if GITHUB else LOCAL
 INSTALLED = GITHUB or FIRST
-# The fake brain in place of the hosted one, as a user would edit it on the Brain page.
+# The fake brain in place of the hosted one, as a user would edit it on the Brain page, and the wizard's
+# Brain and voice done, as its button does: until then a new install starts no engine.
 FAKE_BRAIN = """
-import pathlib, sys, yaml
+import os, pathlib, sys, yaml
 d = pathlib.Path(sys.argv[1]); p = d / "config.yaml"; c = yaml.safe_load(p.read_text())
 c["engines"]["llm"].update(url="http://127.0.0.1:9999", port=9999, health="/v1/models")
 c["llm"].update(base_url="http://127.0.0.1:9999/v1", model="fake")
 p.write_text(yaml.safe_dump(c, sort_keys=False))
 (d / ".env").open("a").write("\\nLLM_API_KEY=test\\n")
+os.environ["WINSTON_DATA"] = str(d)
+from winston.api import setup_link
+setup_link.mark("brain", "done")
 """
 HEALTHY = """
 import httpx, json, sys

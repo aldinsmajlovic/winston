@@ -47,13 +47,28 @@ def init(force: bool = typer.Option(False, help="Overwrite existing files."),
     print(f"\ndata directory: {d}\nnext: edit {d / 'config.yaml'} and {d / '.env'}, then `winston up`")
 
 
-@app.command()
-def setup(yes: bool = typer.Option(False, "--yes", help="Yes to everything, the root steps too."),
+setup_app = typer.Typer(help="Set up this computer: what needs root (shown first), the profile, the data directory, "
+                             "the service, the setup link.")
+app.add_typer(setup_app, name="setup")
+
+
+@setup_app.callback(invoke_without_command=True)
+def setup(ctx: typer.Context, yes: bool = typer.Option(False, "--yes", help="Yes to everything, the root steps too."),
           profile: str = typer.Option(None, help="Skip the pick; see `winston init --list`.")):
-    """Set up this computer: what needs root (shown first), the profile, the data directory, the service."""
+    """Set up this computer: what needs root (shown first), the profile, the data directory, the service, and the
+    setup link for the wizard."""
+    if ctx.invoked_subcommand:
+        return
     from winston.setup import run
     _quiet()
     run(yes, profile)
+
+
+@setup_app.command("link")
+def setup_link():
+    """A new setup link, for another device to open the wizard while setup is not done; the one before stops working."""
+    from winston.setup import link
+    link()
 
 
 @app.command()
@@ -81,8 +96,13 @@ def up(host: str = typer.Option(None), port: int = typer.Option(None),
 
     import uvicorn
     from winston.api.app import create_app
+    from winston.api import setup_link
+    from winston.api.secrets import loopback
     cfg = load()
-    host, port = host or cfg.control.host, port or cfg.control.port
+    # Until setup is done the wizard is served to another device with the setup link (docs/setup.md), so a
+    # winstond that would listen on this computer alone listens on the network. Not when --host says where.
+    opened = host is None and setup_link.active() and loopback(cfg.control.host)
+    host, port = "0.0.0.0" if opened else host or cfg.control.host, port or cfg.control.port
     # Before anything starts: uvicorn binds after the lifespan has started the engines and extensions, and a
     # failed bind left that process running a second copy of every extension.
     with socket.socket() as s:
@@ -93,6 +113,7 @@ def up(host: str = typer.Option(None), port: int = typer.Option(None),
             raise SystemExit(f"port {port} is in use: winstond is already running (`winston status`) or something "
                              f"else has it")
     application = create_app(cfg, autostart=not no_start)
+    application.state.opened_for_setup = opened
     uvicorn.run(application, host=host, port=port, log_level="warning",
                 timeout_graceful_shutdown=5)   # open SSE streams (status, live) would otherwise hold shutdown forever
 

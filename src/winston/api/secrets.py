@@ -171,7 +171,16 @@ def guard(request: Request, control_hosts: list[str], body: bool, name: str | No
     """Writes only through a winstond bound to this machine (control.host as started and as saved), from a
     client on it, asked for by a page on it (the Host and Origin headers stop DNS rebinding), with a JSON body
     (which a cross-site form cannot send without CORS). `name`, the variable a key goes under, is said in the
-    refusal while the page is open to the network, since the form no longer shows it."""
+    refusal while the page is open to the network, since the form no longer shows it. Until setup is done, a
+    device with the setup link's key counts as this machine: the wizard pastes keys from a phone too."""
+    from winston.api import setup_link
+    if setup_link.key_of(request):
+        origin = request.headers.get("origin")
+        if origin and urlsplit(origin).netloc != request.headers.get("host", ""):
+            raise HTTPException(403, "request from another site")
+        if body and not request.headers.get("content-type", "").startswith("application/json"):
+            raise HTTPException(415, "send JSON")
+        return
     if exposed := [h for h in control_hosts if not loopback(h)]:
         if name:        # body: a paste (PUT); else a removal (DELETE)
             what, how = ("pasted", f"Add {name} to") if body else ("removed", f"Remove {name} from")

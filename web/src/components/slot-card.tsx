@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import { $api, errorText, type Config, type EngineStatus, type InstallPlan, type Preset } from '@/api/client'
+import { $api, errorText, type Config, type EngineStatus, type Preset } from '@/api/client'
 import { useErrorsUnder } from '@/api/field-errors'
 import { engineLabel, isRunning, restartCost, STATE_WORDS, useEngineActions, useStatus } from '@/api/status'
 import { Fold } from '@/components/fold'
@@ -14,12 +13,21 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useDrivers } from '@/hooks/use-drivers'
+import { amountOf, before, useInstall, type InstallPart } from '@/hooks/use-install'
 import type { SettingsState } from '@/hooks/use-settings'
 import { capitalize, joinNames, since, size } from '@/lib/format'
 import { applyPreset, CUSTOM, matchPreset, presetFacts, type Kind } from '@/lib/presets'
 import { allBut, deepEqual, hasFields, isRecord, section, setIn } from '@/lib/schema'
 
-type Props = { page: SettingsState; kind: Kind; title: string; presets: Preset[]; children?: ReactNode }
+type Props = {
+  page: SettingsState
+  kind: Kind
+  title: string
+  presets: Preset[]
+  /** Says nothing while the engine is merely stopped: the setup wizard, which starts it when you go on. */
+  quietWhenStopped?: boolean
+  children?: ReactNode
+}
 
 // Each slot's engine block in the config.
 const ENGINES: Record<Kind, string[]> = { llm: ['engines', 'llm'], tts: ['engines', 'tts'], stt: ['engines', 'stt'] }
@@ -69,7 +77,7 @@ function runsAsPreset(page: SettingsState, kind: Kind, preset: Preset): boolean 
 /** One slot (brain, speaking, hearing): what it runs on as a dropdown of presets, each with what it needs,
  * then the slot's own controls and, last, its closed How it runs. Picking a preset rewrites the engine
  * block and the settings that go with it, after asking when the engine block was changed by hand. */
-export function SlotCard({ page, kind, title, presets, children }: Props) {
+export function SlotCard({ page, kind, title, presets, quietWhenStopped, children }: Props) {
   const ask = useConfirm()
   const current = matchPreset(kind, page.value, presets)
   const preset = presets.find((p) => p.id === current)
@@ -140,40 +148,25 @@ export function SlotCard({ page, kind, title, presets, children }: Props) {
         </div>
         {children}
         <InstallLine page={page} kind={kind} />
-        <HowItRuns page={page} kind={kind} presets={presets} />
+        <HowItRuns page={page} kind={kind} presets={presets} quietWhenStopped={quietWhenStopped} />
       </CardContent>
     </Card>
   )
 }
 
-type Part = InstallPlan['parts'][number]
-// openapi-react-query keys a query [method, path, init]: this prefix is every draft's plan.
-const planKey = ['post', '/api/install/plan']
-
-/** "the model (16.4 GB)" before a download, "the model, 6.2 of 16.4 GB" during it. */
-const before = (p: Part) => (p.size ? `${p.title} (${size(p.size)})` : p.title)
-const during = ({ title, size: n, done = 0 }: Part) => (n ? `${title}, ${size(Math.min(done, n))} of ${size(n)}` : done ? `${title}, ${size(done)} so far` : title)
+/** "the model, 6.2 of 16.4 GB" during a download. */
+const during = ({ title, size: n, done = 0 }: InstallPart) => (n ? `${title}, ${size(Math.min(done, n))} of ${size(n)}` : done ? `${title}, ${size(done)} so far` : title)
 
 /** While the slot's pick lacks something on this computer: what it needs with its size against the free
  * space and Download, the download as it goes, or why it failed. It downloads in the background, so the
  * engine that runs now keeps running; a saved engine that still lacks something gets it when it starts. */
 function InstallLine({ page, kind }: { page: SettingsState; kind: Kind }) {
-  const client = useQueryClient()
   const ask = useConfirm()
-  const block = page.value.engines?.[kind]
-  const body = { engine: kind, block: block ?? null, model: kind === 'llm' ? page.value.llm.model : null }
-  const plan = $api.useQuery('post', '/api/install/plan', { body }, {
-    enabled: !!block && block.enabled !== false,
-    retry: false,
-    refetchInterval: (q) => (q.state.data?.parts.some((p) => p.state === 'running') ? 2000 : false),
-  })
-  const download = $api.useMutation('post', '/api/install', { onSettled: () => client.invalidateQueries({ queryKey: planKey }) })
-  const missing = (plan.data?.parts ?? []).filter((p) => !p.installed)
+  const { body, plan, download, missing } = useInstall(page, kind)
   if (!missing.length) return null
   const running = missing.filter((p) => p.state === 'running')
   const failed = missing.filter((p) => p.state === 'error')
-  const known = missing.reduce((n, p) => n + (p.size ?? 0), 0)
-  const amount = known ? `${size(known)}${missing.some((p) => p.size == null) ? ' and more' : ''} ` : ''
+  const amount = amountOf(missing)
   const go = async () => {
     const choice = await ask({
       title: `Download what ${engineLabel(kind)} needs?`,
@@ -215,11 +208,12 @@ function stateText(e: EngineStatus): string {
  * the block differs from the preset it matches), then the slot's fields it holds. It is there when the
  * slot has an engine block or one of those fields to draw, and an error from a refused save under it
  * opens it. */
-function HowItRuns({ page, kind, presets }: Omit<Props, 'children' | 'title'>) {
+function HowItRuns({ page, kind, presets, quietWhenStopped }: Omit<Props, 'children' | 'title'>) {
   const status = useStatus()
   const actions = useEngineActions()
   const ask = useConfirm()
   const drivers = useDrivers()
+  const install = useInstall(page, kind)
   const [log, setLog] = useState(false)
   const lines = $api.useQuery('get', '/api/engines/{name}/log', { params: { path: { name: kind }, query: { lines: 300 } } }, { enabled: log })
   const paths = held(kind, page.value)
@@ -232,6 +226,9 @@ function HowItRuns({ page, kind, presets }: Omit<Props, 'children' | 'title'>) {
   if (!block && !fields.length) return null
   const preset = presets.find((p) => p.id === matchPreset(kind, page.value, presets))
   const engine = block ? status.data?.engines.find((e) => e.name === kind) : undefined
+  // Installing is said once, by the download line above with its progress; stopped, in setup, not at all.
+  const downloading = install.missing.some((p) => p.state === 'running')
+  const quiet = (e: EngineStatus) => (e.state === 'installing' && downloading) || (quietWhenStopped && e.state === 'stopped')
   const byName = { params: { path: { name: kind } } }
 
   const restart = async (e: EngineStatus) => {
@@ -267,7 +264,7 @@ function HowItRuns({ page, kind, presets }: Omit<Props, 'children' | 'title'>) {
     ) : null
   return (
     <>
-      {engine && engine.state !== 'healthy' && block?.enabled !== false ? stateLine(engine) : null}
+      {engine && engine.state !== 'healthy' && block?.enabled !== false && !quiet(engine) ? stateLine(engine) : null}
       <Fold title="How it runs" summary={drivers.find((d) => d.value === block?.driver)?.label} forceOpen={errors}>
         <div className="flex flex-col gap-4 pt-2">
           {engine?.state === 'healthy' ? stateLine(engine) : null}
