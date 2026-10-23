@@ -297,8 +297,10 @@ the program ("Start with Winston", "Takes effect when Winston restarts").
   may bring up are drawn by `KindList` (When and Where; Off is the last When). Both take the titles,
   summaries and descriptions the SDK, MCP and Home Assistant provide, never the model's prompt.
 - The Home Assistant page shows the path from Home Assistant to him as data, because saving it changes
-  Home Assistant too. Not set up, it is one card whose checks run against the draft address and the
-  pasted token. Set up, it is the connection, the devices he can use grouped by Home Assistant's areas
+  Home Assistant too. Not set up, it is one card: those found on the network with Sign in, the address
+  with Sign in to Home Assistant under it, and a token to paste instead, whose checks run against the
+  draft address and the pasted token. Its cards are `HomeAssistantSections`, which the setup wizard's
+  step draws too. Set up, it is the connection, the devices he can use grouped by Home Assistant's areas
   with summary lines only for exceptions, and his actions there, listed without a Permission choice.
   The Save confirm lists the exposure plan, and the toast says what Home Assistant got. The labels are
   in [Home Assistant](home-assistant.md#the-page).

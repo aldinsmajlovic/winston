@@ -123,8 +123,13 @@ uv run winston ha expose          # apply the saved list (adds and exposes; remo
   <img src="images/home-assistant-light.png" alt="The Home Assistant page: the Connection card, and Devices he can use grouped by room with the names each answers to" width="720">
 </picture>
 
-**Not set up.** Until an address is saved the page is one card, Connect Home Assistant: Address and
-Access token. Under them two checks run against what you typed, before anything is saved
+**Not set up.** Until an address is saved with its token (a new install has the example's address and
+no token) the page is one card, Connect Home Assistant. First each Home Assistant found on the network,
+with Sign in, then the Address with Sign in to Home Assistant under it, then the Access token to paste
+instead. Signing in opens Home Assistant's own login, and back from it Winston has his own long-lived
+token there, named Winston, saved for him and never shown; an administrator's sign-in also switches
+on the Model Context Protocol Server when it is off ([setup](setup.md#the-steps) has the whole
+sequence). A pasted token is checked against what you typed, before anything is saved
 (`POST /api/providers/home_assistant/check` with the address and the pasted token, which is used for
 the check only and never kept): "Reachable: Home Assistant 2026.9.3" and "Token accepted", or "Token
 refused" or "Can't reach Home Assistant at this address". Until a token is saved he answers without

@@ -18,10 +18,10 @@ test.beforeAll(() => {
 
 test.afterAll(() => rmSync(state, { force: true }))
 
-/** Setup mode with a known key and no step done, as `winston setup` leaves a new data directory. */
-function startSetup() {
+/** Setup mode with a known key and these steps done, as `winston setup` leaves a new data directory. */
+function startSetup(steps: Record<string, string> = {}) {
   mkdirSync(join(data, 'state'), { recursive: true })
-  writeFileSync(state, JSON.stringify({ key_sha256: createHash('sha256').update(KEY).digest('hex') }))
+  writeFileSync(state, JSON.stringify({ key_sha256: createHash('sha256').update(KEY).digest('hex'), steps }))
 }
 
 async function fits(page: Page, width: number, label: string) {
@@ -40,15 +40,20 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await page.goto(`/setup?key=${KEY}`)
     await expect(page).toHaveURL(/\/setup\/brain$/)
     await expect(page.locator('h1')).toHaveText(/^Set up \S/)
-    await expect(page.getByText('Step 1 of 2: Brain and voice')).toBeVisible()
+    await expect(page.getByText('Step 1 of 3: Brain and voice')).toBeVisible()
     for (const title of ['What runs his brain', 'Speaking', 'Hearing']) {
       await expect(page.locator('[data-slot="card-title"]', { hasText: title })).toBeVisible()
     }
     await fits(page, width, 'Brain and voice')
 
     await page.getByRole('button', { name: 'Skip for now' }).click()
+    await expect(page).toHaveURL(/\/setup\/home_assistant$/)
+    await expect(page.getByText('Step 2 of 3: Home Assistant')).toBeVisible()
+    await fits(page, width, 'Home Assistant')
+    await page.getByRole('button', { name: 'Skip for now' }).click()
     await expect(page).toHaveURL(/\/setup\/done$/)
     await expect(page.getByText('Brain and voice was skipped. It waits under Set up next on Status.')).toBeVisible()
+    await expect(page.getByText('Home Assistant was skipped. It waits under Set up next on Status.')).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Setup steps' }).getByRole('link', { name: /Brain and voice/ })).toContainText('(skipped)')
     await expect(page.getByText('Who can open this page', { exact: true })).toBeVisible()
     await fits(page, width, 'Done')
@@ -60,7 +65,7 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await page.goto('/status')
     await expect(page.getByText('Brain and voice: skipped during setup.')).toBeVisible()
     await expect(page.getByText('Setup is not finished.')).toHaveCount(0)
-    await page.getByRole('link', { name: 'Set it up' }).click()
+    await page.getByRole('link', { name: 'Set it up' }).first().click()
     await expect(page).toHaveURL(/\/setup\/brain$/)
     expect(errors).toEqual([])
   })
@@ -71,4 +76,26 @@ test('while setup is not finished, Status says so and leads back to it', async (
   await page.goto('/status')
   await page.getByRole('link', { name: 'Continue setup' }).click()
   await expect(page).toHaveURL(/\/setup\/brain$/)
+})
+
+test('the wizard signs in to Home Assistant, which then lists the devices he can use', async ({ page }) => {
+  test.skip(!process.env.FAKE_HA_URL, 'the fake Home Assistant did not start')
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  startSetup({ brain: 'done' })
+  // A new install: Home Assistant's address, and no token for it yet.
+  expect((await page.request.delete('/api/secrets/HA_TOKEN')).ok()).toBe(true)
+  await page.goto('/setup/home_assistant')
+  await expect(page.locator('[data-slot="card-title"]', { hasText: 'Connect Home Assistant' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0)
+  // Its login (the fake signs in at once) and back, with his own token there.
+  await page.getByRole('button', { name: 'Sign in to Home Assistant' }).click()
+  await expect(page.getByText('Signed in as Someone. He has his own token there now, named Winston.')).toBeVisible()
+  await expect(page).toHaveURL(/\/setup\/home_assistant$/)
+  await expect(page.getByText(/Connected to Home Assistant/)).toBeVisible()
+  await expect(page.locator('[data-slot="card-title"]', { hasText: 'Devices he can use' })).toBeVisible()
+  await expect(page.locator('[data-slot="card-title"]', { hasText: 'What he can do there' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await expect(page).toHaveURL(/\/setup\/done$/)
+  expect(errors).toEqual([])
 })

@@ -126,7 +126,9 @@ flowchart TB
   for an install from a release. `scripts/install.sh` installs one, and `scripts/release.py` builds one,
   as `.github/workflows/release.yml` does on a tag ([setup](setup.md)). Setup mode
   (`winston/api/setup_link.py`): until the wizard (`web/src/pages/setup.tsx`) is done, winstond serves
-  another device only with the setup link's key, and starts no engine before Brain and voice.
+  another device only with the setup link's key, and starts no engine before Brain and voice. Signing
+  in to Home Assistant (`winston/providers/ha_signin.py`): found through zeroconf, its own login, then
+  a long-lived token named Winston and its MCP server switched on.
 
 ## Config API
 

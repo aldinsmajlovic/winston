@@ -5,7 +5,7 @@ import { errorText, type ExposedEntity, type HomeAssistantConfig } from '@/api/c
 import { useConfig } from '@/api/config'
 import { ActionList } from '@/components/action-list'
 import { Combobox } from '@/components/combobox'
-import { HACheck, HAConnectionStatus } from '@/components/ha-connection'
+import { HACheck, HAConnectionStatus, HADiscovered, HASignInButton, HASignInResult, type SignInBack } from '@/components/ha-connection'
 import { HAEntityTables } from '@/components/ha-entities'
 import { HAEntityPicker } from '@/components/ha-entity-picker'
 import { ItemDialog } from '@/components/item-dialog'
@@ -37,8 +37,8 @@ import {
   type HAExposure,
 } from '@/hooks/use-home-assistant'
 import { useOptions } from '@/hooks/use-options'
-import { useSecretsDraft } from '@/hooks/use-secrets'
-import { useSettings } from '@/hooks/use-settings'
+import { useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
+import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { joinNames } from '@/lib/format'
 import { allBut, deepEqual, prune, section } from '@/lib/schema'
 
@@ -60,8 +60,22 @@ function rowBadge(entry: ExposedEntity, saved: ExposedEntity | undefined, exposu
   return e.exposed === false ? 'Not exposed yet' : 'Names not added yet'
 }
 
+const INTRO = 'Connect Home Assistant and choose what he sees and controls there; saving also sets what its own assistant, Assist, exposes.'
+
 export default function HomeAssistantPage() {
   const s = useSettings()
+  if (s.loading) return <PageSkeleton title="Home Assistant" />
+  return (
+    <SettingsPage title="Home Assistant" intro={INTRO} page={s.page}>
+      <HomeAssistantSections page={s.page} back="/home-assistant" />
+    </SettingsPage>
+  )
+}
+
+/** The page's cards, which the setup wizard's Home Assistant step draws too (`back`, where signing in comes
+ * back to), there without What he can do there. Not set up (no address, or no token saved for it), it is
+ * Connect Home Assistant: those found on the network, the address with Sign in, and a token to paste. */
+export function HomeAssistantSections({ page, back }: { page: SettingsState; back: SignInBack }) {
   const ask = useConfirm()
   const client = useQueryClient()
   const config = useConfig()
@@ -73,47 +87,51 @@ export default function HomeAssistantPage() {
   const [picker, setPicker] = useState({ open: false, key: 0 })
   const [sharing, setSharing] = useState(false)
   const [search, setSearch] = useState('')
+  const keys = useSecretStatus()
   const saved: HomeAssistantConfig | null = config.data?.providers?.home_assistant ?? null
-  // Set up once an address is saved; until then the page is the Connect card.
-  const setUp = !!saved?.url
+  // Set up once an address is saved with its token (a new install has the example's address and none);
+  // until then the page is the Connect card. While the keys load, an address counts.
+  const setUp = !!saved?.url && keys.byName.get(saved.token_env || 'HA_TOKEN')?.set !== false
   const savedOn = setUp && saved.enabled !== false
   const { exposure, registry, tools } = useHomeAssistant(savedOn)
   // Say first, Stay quiet and Run at its name are for scripts and scenes (Run at its name: scripts only).
   const editId = editing?.id ?? ''
   const entitySchema = useMemo(() => {
-    if (!s.page) return null
     const runs = editId.startsWith('script.') || editId.startsWith('scene.')
     const omit = [...(runs ? [] : ['say_first', 'quiet_after']), ...(editId.startsWith('script.') ? [] : ['shortcut'])]
-    return prune(section(s.page.schema, [...HA, 'expose', 'item']), s.page.schema, { omit })
-  }, [s.page, editId])
-  if (s.loading || !entitySchema) return <PageSkeleton title="Home Assistant" />
-  const { page } = s
+    return prune(section(page.schema, [...HA, 'expose', 'item']), page.schema, { omit })
+  }, [page.schema, editId])
+  const inSetup = back === '/setup/home_assistant'
   const ha: HomeAssistantConfig | null = page.value.providers?.home_assistant ?? null
   const setHa = (next: HomeAssistantConfig | null) => page.update((c) => ({ ...c, providers: { ...c.providers, home_assistant: next } }))
   const on = ha !== null && ha.enabled !== false
   const token = secrets.pending[ha?.token_env || 'HA_TOKEN']
-  const intro = 'Connect Home Assistant and choose what he sees and controls there; saving also sets what its own assistant, Assist, exposes.'
 
   if (!setUp) {
     return (
-      <SettingsPage title="Home Assistant" intro={intro} page={page}>
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <KindIcon name="homeassistant" />
-              Connect Home Assistant
-            </CardTitle>
-            <CardDescription>Home Assistant gives him your devices, rooms and sensors, and lets your automations make him speak.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <SectionForm page={page} path={HA} omit={allBut(page.schema, HA, ['url', 'token_env'])} />
-            <HACheck url={ha?.url} token={token} />
-            <p className="text-sm text-muted-foreground">
-              After you save, choose which devices he can use. Nothing changes in Home Assistant until you do.
-            </p>
-          </CardContent>
-        </Card>
-      </SettingsPage>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KindIcon name="homeassistant" />
+            Connect Home Assistant
+          </CardTitle>
+          <CardDescription>Home Assistant gives him your devices, rooms and sensors, and lets your automations make him speak.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <HASignInResult />
+          <HADiscovered back={back} />
+          {/* The address with Sign in under it, then the token to paste instead. */}
+          <SectionForm page={page} path={HA} omit={allBut(page.schema, HA, ['url'])} />
+          <HASignInButton url={ha?.url} back={back} />
+          <SectionForm page={page} path={HA} omit={allBut(page.schema, HA, ['token_env'])} />
+          {token ? <HACheck url={ha?.url} token={token} /> : null}
+          <p className="text-sm text-muted-foreground">
+            {token
+              ? 'After you save, choose which devices he can use. Nothing changes in Home Assistant until you do.'
+              : 'Signed in or with a pasted token, you choose next which devices he can use. Nothing changes in Home Assistant until you do.'}
+          </p>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -226,8 +244,9 @@ export default function HomeAssistantPage() {
   const actions = haActionItems(tools.data ?? [])
 
   return (
-    <SettingsPage title="Home Assistant" intro={intro} page={page}>
+    <>
       <SectionForm page={page} path={HA} omit={LISTS} title="Connection">
+        <HASignInResult />
         {on ? (
           ha.url !== saved.url || token ? (
             <HACheck url={ha.url} token={token} />
@@ -291,23 +310,25 @@ export default function HomeAssistantPage() {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>What he can do there</CardTitle>
-              <CardDescription>Home Assistant's own actions, which follow what you share above.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              {!savedOn ? null : toolsError ? (
-                <StatusLine tone="warning">{errorText(toolsError)}</StatusLine>
-              ) : tools.data?.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Home Assistant offers no actions yet.</p>
-              ) : actions.length ? (
-                <ActionList items={actions} details readOnly />
-              ) : null}
-              <p className="text-sm text-muted-foreground">These run on their own. To keep him away from a device, leave it off the list above.</p>
-              <SectionForm page={page} path={VERIFY} />
-            </CardContent>
-          </Card>
+          {inSetup ? null : (
+            <Card>
+              <CardHeader>
+                <CardTitle>What he can do there</CardTitle>
+                <CardDescription>Home Assistant's own actions, which follow what you share above.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {!savedOn ? null : toolsError ? (
+                  <StatusLine tone="warning">{errorText(toolsError)}</StatusLine>
+                ) : tools.data?.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Home Assistant offers no actions yet.</p>
+                ) : actions.length ? (
+                  <ActionList items={actions} details readOnly />
+                ) : null}
+                <p className="text-sm text-muted-foreground">These run on their own. To keep him away from a device, leave it off the list above.</p>
+                <SectionForm page={page} path={VERIFY} />
+              </CardContent>
+            </Card>
+          )}
           <HAEntityPicker
             key={picker.key}
             open={picker.open}
@@ -375,6 +396,6 @@ export default function HomeAssistantPage() {
           </ItemDialog>
         </>
       ) : null}
-    </SettingsPage>
+    </>
   )
 }

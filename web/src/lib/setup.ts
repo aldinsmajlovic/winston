@@ -5,4 +5,8 @@ export const SETUP_STEPS: Record<string, { title: string; intro: string }> = {
     title: 'Brain and voice',
     intro: 'What he thinks, speaks and hears with, picked for this computer. Change any of them here, or later in Settings.',
   },
+  home_assistant: {
+    title: 'Home Assistant',
+    intro: 'Sign in to Home Assistant, then choose the devices he can see and control there.',
+  },
 }

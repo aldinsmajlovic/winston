@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Literal
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 from loguru import logger
@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from winston import __version__
 from winston.api import secrets, setup_link
+from winston.providers import ha_signin
 from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
 from winston.config import load, repo_root, save
 from winston.config.loader import apply_changes, get_in, version as file_version
@@ -117,6 +118,21 @@ class Status(BaseModel):
 
 class Ok(BaseModel):
     ok: bool = True
+
+
+class HADiscovered(BaseModel):
+    url: str
+    name: str
+    version: str | None = None
+
+
+class HASignIn(BaseModel):
+    url: str = Field(min_length=8, max_length=500, pattern=r"^https?://", description="Home Assistant's address")
+    back: Literal["/home-assistant", "/setup/home_assistant"] = Field(description="The page to come back to")
+
+
+class HASignInLink(BaseModel):
+    authorize: str = Field(description="Home Assistant's login, for the browser to open")
 
 
 class SetupStep(BaseModel):
@@ -1226,7 +1242,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return PersonaRename(old=old, new=name, lines=lines, places=sum(len(word.findall(x)) for x in lines))
 
     async def commit(cur: WinstonConfig, v: str, new: WinstonConfig, dry_run: bool, applied: list[str],
-                     response: Response, rename_persona: bool = False) -> ConfigResult:
+                     response: Response, rename_persona: bool = False, apply_ha: bool = True) -> ConfigResult:
         restarts = [r for r in running_restarts(_dump(cur), _dump(new)) if r not in applied]
         rename = persona_rename(cur, new)
         if dry_run:
@@ -1242,7 +1258,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             rename.renamed = persona.rename(new, rename.old, rename.new) > 0
         # Before the reload, so channels that restart read Home Assistant's new tool list. A live voice
         # switch never touches Home Assistant.
-        ha_apply = await apply_saved(cur, new) if "voice" not in applied and ha_changed(cur, new) else None
+        ha_apply = await apply_saved(cur, new) if apply_ha and "voice" not in applied and ha_changed(cur, new) else None
         before = set(sup.items)
         await sup.reload(new)
         if autostart:       # what the config just gained (a hearing engine, a channel) starts: no restart would
@@ -1452,6 +1468,53 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return out
 
     # A POST only: it may send the saved token to another address, so it sits behind the same-site write guard.
+    @app.get("/api/providers/home_assistant/discover", response_model=list[HADiscovered],
+             summary="Home Assistants on this network (mDNS, then homeassistant.local), for signing in to one")
+    async def discover_home_assistant():
+        return await ha_signin.discover()
+
+    def ha_token_env() -> str:
+        ha = app.state.cfg.providers.home_assistant
+        return ha.token_env if ha and ha.token_env else "HA_TOKEN"
+
+    @app.post("/api/providers/home_assistant/signin", response_model=HASignInLink,
+              summary="Start signing in to Home Assistant: its login's address, for the browser. Where keys can "
+                      "be pasted only, since it ends with one saved")
+    async def signin_home_assistant(body: HASignIn, request: Request):
+        secrets.guard(request, [started["control"]["host"], app.state.cfg.control.host], True, ha_token_env())
+        origin = f"{request.url.scheme}://{request.headers.get('host') or request.url.netloc}"
+        return HASignInLink(authorize=ha_signin.start(body.url, origin, body.back))
+
+    @app.get(ha_signin.CALLBACK, include_in_schema=False)
+    async def signin_home_assistant_back(state: str = "", code: str = "", error: str = ""):
+        """Where Home Assistant's login sends the browser back: the code becomes Winston's own token there,
+        saved with the address as a Save would, without applying the device list (as a first connect)."""
+        p = ha_signin.take(state)
+        if p is None:
+            return Response("This sign-in is not one Winston started, or it is over ten minutes old. Start it again.",
+                            status_code=400, media_type="text/plain")
+
+        def back(**query: str) -> Response:
+            return Response(status_code=303, headers={"Location": f"{p.back}?{urlencode(query)}"})
+        if error or not code:
+            return back(signin_error="The sign-in was cancelled in Home Assistant.")
+        try:
+            done = await ha_signin.finish(p, code)
+        except Exception as e:                                          # noqa: BLE001
+            logger.warning(f"Home Assistant sign-in at {p.url} did not finish: {failure_words(e)}")
+            return back(signin_error=f"Signing in did not finish: {failure_words(e)}")
+        name = ha_token_env()
+        secrets.write(name, done.token)
+        await secret_changed(name)
+        async with config_lock:
+            cur, v = current()
+            merged = apply_changes(_dump(cur), [(["providers", "home_assistant", "url"], p.url),
+                                                (["providers", "home_assistant", "enabled"], True)])
+            await commit(cur, v, WinstonConfig.model_validate(merged), False, [], Response(), apply_ha=False)
+        logger.info(f"Home Assistant: signed in at {p.url} as {done.name or 'its user'}, admin {done.admin}, "
+                    f"MCP server {done.mcp}; the token is saved as {name}")
+        return back(signin="done", name=done.name, admin="1" if done.admin else "0", mcp=done.mcp)
+
     @app.post("/api/providers/home_assistant/check", response_model=HomeAssistantCheck,
               summary="Whether Home Assistant answers at an address with a token, both before they are saved")
     async def ha_check(t: HomeAssistantTry):

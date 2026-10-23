@@ -13,10 +13,12 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useConfirm } from '@/hooks/use-confirm'
 import { amountOf, before, useInstall } from '@/hooks/use-install'
+import { useSecretStatus } from '@/hooks/use-secrets'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { capitalize, joinNames } from '@/lib/format'
 import type { Kind } from '@/lib/presets'
 import { SETUP_STEPS } from '@/lib/setup'
+import { HomeAssistantSections } from '@/pages/home-assistant'
 import { cn } from '@/lib/utils'
 
 const setupKey = ['get', '/api/setup']
@@ -77,6 +79,7 @@ export default function SetupPage() {
     <Frame name={name} state={state} order={order} current={step}>
       <p className="text-muted-foreground">{step === DONE ? 'Who can open this page from now on.' : SETUP_STEPS[step].intro}</p>
       {step === 'brain' ? <BrainStep page={s.page} presets={presets.data} next={next} /> : null}
+      {step === 'home_assistant' ? <HomeAssistantStep page={s.page} next={next} /> : null}
       {step === DONE ? <DoneStep page={s.page} state={state} name={name} /> : null}
     </Frame>
   )
@@ -134,9 +137,9 @@ function Frame({ name, state, order = [], current, children }: FrameProps) {
   )
 }
 
-type Actions = { label: string; busy: boolean; onClick: () => void; onSkip?: () => void }
+type Actions = { label?: string; busy: boolean; onClick?: () => void; onSkip?: () => void }
 
-/** Skip for now, then the step's own button. */
+/** Skip for now, then the step's own button, when it has one yet. */
 function StepActions({ label, busy, onClick, onSkip }: Actions) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
@@ -145,10 +148,54 @@ function StepActions({ label, busy, onClick, onSkip }: Actions) {
           Skip for now
         </Button>
       ) : null}
-      <Button disabled={busy} onClick={onClick}>
-        {label}
-      </Button>
+      {label ? (
+        <Button disabled={busy} onClick={onClick}>
+          {label}
+        </Button>
+      ) : null}
     </div>
+  )
+}
+
+/** Run one of the step's actions, the buttons off meanwhile. */
+function useBusy(): [boolean, (run: () => Promise<void>) => Promise<void>] {
+  const [busy, setBusy] = useState(false)
+  return [
+    busy,
+    async (run) => {
+      setBusy(true)
+      try {
+        await run()
+      } finally {
+        setBusy(false)
+      }
+    },
+  ]
+}
+
+/** The Home Assistant page's own cards: Connect, with those found on the network and Sign in, until it is
+ * connected, then the connection and the devices he can use. Its button saves the list (which applies it
+ * there) and goes on; until connected there is only Skip for now. */
+function HomeAssistantStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
+  const config = $api.useQuery('get', '/api/config')
+  const keys = useSecretStatus()
+  const [busy, run] = useBusy()
+  const saved = config.data?.providers?.home_assistant
+  const connected = !!saved?.url && keys.byName.get(saved.token_env || 'HA_TOKEN')?.set === true
+  const go = () =>
+    run(async () => {
+      if (await page.save()) await next('done')
+    })
+  return (
+    <>
+      <HomeAssistantSections page={page} back="/setup/home_assistant" />
+      <StepActions
+        label={connected ? (page.dirty ? 'Save and continue' : 'Continue') : undefined}
+        busy={busy || page.saving}
+        onClick={() => void go()}
+        onSkip={() => void run(() => next('skipped'))}
+      />
+    </>
   )
 }
 
@@ -161,13 +208,12 @@ type StepProps = { page: SettingsState; presets: Presets; next: (how: 'done' | '
 function BrainStep({ page, presets, next }: StepProps) {
   const ask = useConfirm()
   const { startAll } = useEngineActions()
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy()
   const installs = { llm: useInstall(page, 'llm'), tts: useInstall(page, 'tts'), stt: useInstall(page, 'stt') }
   // What still has to start downloading: a part already on its way goes on by itself.
   const waiting = KINDS.map((k) => ({ kind: k, parts: installs[k].missing.filter((p) => p.state !== 'running') })).filter((w) => w.parts.length)
-  const go = async () => {
-    setBusy(true)
-    try {
+  const go = () =>
+    run(async () => {
       if (!(await page.save())) return
       if (waiting.length) {
         const amount = amountOf(waiting.flatMap((w) => w.parts))
@@ -185,18 +231,7 @@ function BrainStep({ page, presets, next }: StepProps) {
       // The supervisor downloads what each one lacks before it starts it (Installing on Status).
       await startAll.mutateAsync({})
       await next('done')
-    } finally {
-      setBusy(false)
-    }
-  }
-  const skip = async () => {
-    setBusy(true)
-    try {
-      await next('skipped')
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
   return (
     <>
       <SlotCard page={page} kind="llm" title="What runs his brain" presets={presets.llm} quietWhenStopped>
@@ -204,7 +239,7 @@ function BrainStep({ page, presets, next }: StepProps) {
       </SlotCard>
       <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts} quietWhenStopped />
       <SlotCard page={page} kind="stt" title="Hearing" presets={presets.stt} quietWhenStopped />
-      <StepActions label={waiting.length ? 'Download and continue' : 'Continue'} busy={busy || page.saving} onClick={() => void go()} onSkip={() => void skip()} />
+      <StepActions label={waiting.length ? 'Download and continue' : 'Continue'} busy={busy || page.saving} onClick={() => void go()} onSkip={() => void run(() => next('skipped'))} />
     </>
   )
 }
@@ -215,24 +250,20 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
   const navigate = useNavigate()
   const client = useQueryClient()
   const finish = $api.useMutation('post', '/api/setup/finish', { onSuccess: (data) => client.setQueryData(setupKey, data) })
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy()
   const [closed, setClosed] = useState(false)
   const host = page.value.control?.host?.trim() ?? '127.0.0.1'
   const haSetUp = !!page.value.providers?.home_assistant?.url
   const closing = state.remote && LOCAL.includes(host)
   const him = name ?? 'he'
   const skipped = state.order.filter((id) => state.steps[id] === 'skipped')
-  const go = async () => {
-    setBusy(true)
-    try {
+  const go = () =>
+    run(async () => {
       if (!(await page.save())) return
       await finish.mutateAsync({})
       if (closing) setClosed(true)
       else void navigate('/')
-    } finally {
-      setBusy(false)
-    }
-  }
+    })
   if (closed) return <p>Setup is done. From now on, open this page on the computer {him} runs on.</p>
   return (
     <>

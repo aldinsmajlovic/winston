@@ -12,7 +12,7 @@ from pathlib import Path
 
 from winston.config import data_dir
 
-STEPS = ("brain",)          # the wizard's steps before Done, in order; the Setup track adds the rest
+STEPS = ("brain", "home_assistant")   # the wizard's steps before Done, in order; the Setup track adds the rest
 COOKIE = "winston_setup"
 ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz"     # read aloud or typed from a screen: no 0, 1, i, l or o
 

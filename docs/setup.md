@@ -2,7 +2,7 @@
 
 Approved 2026-10-23. Built so far: Winston installing his engines, `winston setup`, the install script,
 the release build, `winston update` and `winston uninstall`, setup mode with its link, and the wizard's
-frame with its Brain and voice step. Its other steps come next, in the order and with the checks in the
+frame with its Brain and voice and Home Assistant steps. Its other steps come next, in the order and with the checks in the
 [plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart, or
 `uv run winston setup` in a clone.
 
@@ -148,7 +148,8 @@ The wizard is its own page (`/setup`): his logo, "Set up" and his name, "Step 1 
 the steps with a check for each one done and "(skipped)" for each one skipped, then the step, with Skip
 for now and its own button at the bottom. Each step can be skipped and picked up later: a skipped one
 stays in Set up next on Status ("Brain and voice: skipped during setup." with Set it up) after the
-wizard ends. Built so far: Brain and voice and Done; the others come with their track steps.
+wizard ends. Built so far: Brain and voice, Home Assistant and Done; the others come with their track
+steps.
 
 1. **Brain and voice.** The profile's picks, preselected, on the cards of the Brain and Voice pages:
    Runs on, the brain's model and its own settings, and each one's size against the free space, with
@@ -157,13 +158,24 @@ wizard ends. Built so far: Brain and voice and Done; the others come with their 
    starts the engines, each of which downloads what it lacks first and then runs, with its progress on
    its card and on Status, while the next steps go on. With nothing to download it is Continue. The
    voice itself is picked in Who he is.
-2. **Home Assistant.** Found on the network (`_home-assistant._tcp`, then `homeassistant.local`), or
-   typed: mDNS does not cross subnets, so a split network needs the address. Connect opens Home
-   Assistant's own login; back on the wizard, winstond creates a long-lived token named Winston on that
-   account (kept in `data/.env`, never shown) and switches on Home Assistant's MCP server if it is
-   off. A user who is not an administrator is told what will not work (rooms, names, the device
-   list). Pasting a token stays, under the address. Then the devices he can use, as on the Home
-   Assistant page.
+2. **Home Assistant.** The Home Assistant page's own cards. Until it is connected, Connect Home
+   Assistant: each Home Assistant found on the network ("Found Home, Home Assistant 2026.9.3, at
+   http://192.168.1.5:8123" with Sign in), from its `_home-assistant._tcp` announcement and the address
+   it gives there, else `homeassistant.local` where the system resolves it; then the address with Sign
+   in to Home Assistant under it, and the access token to paste instead. mDNS does not cross from one
+   network to another, so a Home Assistant on another subnet is not found and its address is typed.
+   Sign in opens Home Assistant's own login (this page's address is the client id it sends the browser
+   back to). Back from it, winstond takes the code for a session, makes a long-lived token named
+   Winston on that account (for ten years, as Home Assistant's own page does; one made by an earlier
+   sign-in is replaced, since Home Assistant takes a name once), switches on Home Assistant's Model
+   Context Protocol Server with Assist if it is off and the account is an administrator's, drops the
+   sign-in's own session, and saves the token in `data/.env` and the address in the config, without
+   applying the device list, as a first connect. The token is in no log, page or API answer. The
+   step then says "Signed in as Sam. He has his own token there now, named Winston.", that it
+   switched the MCP server on, and, for an account that is not an administrator's, what will not
+   work (rooms and names, the device list, switching the MCP server on). A sign-in that does not
+   finish says why. Then the devices he can use, as on the Home Assistant page; Continue saves the
+   list (which applies it there) and goes on. Until it is connected there is only Skip for now.
 3. **Who he is.** His name, his personality and his voice, as on the Assistant and Voice pages: a
    bundled voice with a preview once the voice is installed, or one cloned from a clip.
 4. **A room box.** Plug a Voice PE into this computer with USB-C. Winston finds it, flashes Winston's
@@ -176,6 +188,11 @@ wizard ends. Built so far: Brain and voice and Done; the others come with their 
    whole network, and what was skipped. Finish saves, ends setup mode and opens Talk. From another
    device that this computer alone may open afterwards, it says so before Finish, and after it that
    he is opened on the computer he runs on.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/setup-home-assistant-dark.png">
+  <img src="images/setup-home-assistant-light.png" alt="The setup wizard's Home Assistant step before signing in: a Home Assistant found on the network with Sign in, the address with Sign in to Home Assistant, and the access token to paste instead" width="720">
+</picture>
 
 ## Updating and removing
 

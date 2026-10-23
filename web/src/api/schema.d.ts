@@ -1152,6 +1152,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/providers/home_assistant/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Home Assistants on this network (mDNS, then homeassistant.local), for signing in to one */
+        get: operations["discover_home_assistant_api_providers_home_assistant_discover_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/providers/home_assistant/signin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start signing in to Home Assistant: its login's address, for the browser. Where keys can be pasted only, since it ends with one saved */
+        post: operations["signin_home_assistant_api_providers_home_assistant_signin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/providers/home_assistant/check": {
         parameters: {
             query?: never;
@@ -2227,6 +2261,15 @@ export interface components {
             /** Entities */
             entities: components["schemas"]["HAEntity"][];
         };
+        /** HADiscovered */
+        HADiscovered: {
+            /** Url */
+            url: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version?: string | null;
+        };
         /** HAEntity */
         HAEntity: {
             /** Entity Id */
@@ -2333,6 +2376,28 @@ export interface components {
              * @default []
              */
             groups?: components["schemas"]["HAArea"][];
+        };
+        /** HASignIn */
+        HASignIn: {
+            /**
+             * Url
+             * @description Home Assistant's address
+             */
+            url: string;
+            /**
+             * Back
+             * @description The page to come back to
+             * @enum {string}
+             */
+            back: "/home-assistant" | "/setup/home_assistant";
+        };
+        /** HASignInLink */
+        HASignInLink: {
+            /**
+             * Authorize
+             * @description Home Assistant's login, for the browser to open
+             */
+            authorize: string;
         };
         /** HATool */
         HATool: {
@@ -6393,6 +6458,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Options"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discover_home_assistant_api_providers_home_assistant_discover_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HADiscovered"][];
+                };
+            };
+        };
+    };
+    signin_home_assistant_api_providers_home_assistant_signin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HASignIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HASignInLink"];
                 };
             };
             /** @description Validation Error */

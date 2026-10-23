@@ -2,7 +2,12 @@
 REST (/api/config, /api/states, /api/services and calls to them, /api/history), the websocket API (auth; entity, area and device registry lists;
 entity_registry/get_entries and /update; expose_entity, expose_entity/list, expose_new_entities/get
 and /set; subscribe_events) and the MCP server's Streamable HTTP endpoint (initialize, tools/list), whose
-tools follow the exposed domains as the real one's do.
+tools follow the exposed domains as the real one's do. And signing in as Home Assistant's login does it:
+/auth/authorize signs its one user in at once and sends the browser back with a code (refusing a
+redirect_uri on another address than the client_id, as Home Assistant does), /auth/token and /auth/revoke,
+the websocket's auth/current_user, auth/refresh_tokens, auth/delete_refresh_token and
+auth/long_lived_access_token (a name once), and the MCP server's config flow for an administrator, which
+switches it on (`mcp_on`, off with --no-mcp). `admin` makes its user an administrator or not.
 
 Every write is recorded, so a test can check exactly what Winston sent (for example that it never sent
 a "name"). GET /fake/log returns the writes so far, in order.
@@ -15,6 +20,7 @@ import asyncio
 import copy
 import json
 from datetime import datetime
+from urllib.parse import urlencode, urlsplit
 
 from aiohttp import WSMsgType, web
 
@@ -122,9 +128,11 @@ def _between(events: list[dict], body: dict) -> list[dict]:
 
 
 class FakeHA:
-    def __init__(self, port: int = 18123, token: str = TOKEN, seed: str = "test"):
+    def __init__(self, port: int = 18123, token: str = TOKEN, seed: str = "test", mcp_on: bool = True):
         self.port, self.token = port, token
         self.areas, self.devices, self.entities = SEEDS[seed]
+        self.user = {"id": "user_1", "name": "Someone", "is_owner": True, "is_admin": True}
+        self.mcp_on = mcp_on
         self.reset()
         self.app = web.Application()
         self.app.add_routes([
@@ -133,7 +141,10 @@ class FakeHA:
             web.get("/api/services", self.get_services), web.post("/api/services/{domain}/{service}", self.call_service),
             web.get("/api/history/period/{since}", self.get_history),
             web.post("/api/mcp", self.mcp), web.get("/api/mcp", self.mcp_get), web.delete("/api/mcp", self.mcp_delete),
-            web.get("/fake/log", self.fake_log),
+            web.get("/fake/log", self.fake_log), web.get("/manifest.json", self.manifest),
+            web.get("/auth/authorize", self.authorize), web.post("/auth/token", self.auth_token),
+            web.post("/auth/revoke", self.revoke), web.post("/api/config/config_entries/flow", self.flow_start),
+            web.post("/api/config/config_entries/flow/{flow_id}", self.flow_step),
         ])
         self.subscribers: dict[web.WebSocketResponse, dict[int, str]] = {}
         self.runner: web.AppRunner | None = None
@@ -152,12 +163,79 @@ class FakeHA:
         self.expose_new = True
         self.writes: list[dict] = []
         self.events: dict[str, list[dict]] = {}       # calendar.get_events answers, by calendar
+        self.tokens = {self.token}                    # every access token it takes
+        self.codes: dict[str, str] = {}               # sign-in code -> client_id
+        self.refresh: dict[str, dict] = {}            # refresh token id -> {token, access, client_name, type}
+        self.n = 0
 
     # ------------------------------------------------------------ REST
 
     async def _gate(self, request: web.Request):
-        if request.headers.get("Authorization") != f"Bearer {self.token}":
+        if request.headers.get("Authorization", "").removeprefix("Bearer ") not in self.tokens:
             raise web.HTTPUnauthorized()
+
+    # ------------------------------------------------------------ signing in
+
+    def _new(self, kind: str) -> str:
+        self.n += 1
+        return f"fake-{kind}-{self.n}"
+
+    async def manifest(self, request):
+        return web.json_response({"name": "Home Assistant", "short_name": "Home Assistant"})
+
+    async def authorize(self, request):
+        """Its login, signed in at once: back to redirect_uri with a code and the state."""
+        q = request.query
+        client, back = urlsplit(q.get("client_id", "")), urlsplit(q.get("redirect_uri", ""))
+        if q.get("response_type") != "code" or not client.netloc or (client.scheme, client.netloc) != (back.scheme, back.netloc):
+            return web.Response(status=400, text="Invalid redirect URI")
+        code = self._new("code")
+        self.codes[code] = q["client_id"]
+        self.writes.append({"type": "auth/authorize", "client_id": q["client_id"], "redirect_uri": q["redirect_uri"]})
+        raise web.HTTPFound(f"{q['redirect_uri']}?{urlencode({'code': code, 'state': q.get('state', '')})}")
+
+    async def auth_token(self, request):
+        form = await request.post()
+        if form.get("grant_type") != "authorization_code" or self.codes.pop(form.get("code", ""), None) != form.get("client_id"):
+            return web.json_response({"error": "invalid_request", "error_description": "Invalid code"}, status=400)
+        access, token = self._new("session"), self._new("refresh")
+        self.tokens.add(access)
+        self.refresh[self._new("rid")] = {"token": token, "access": access, "client_name": None, "type": "normal",
+                                          "client_id": form["client_id"]}
+        return web.json_response({"access_token": access, "token_type": "Bearer", "refresh_token": token,
+                                  "expires_in": 1800, "ha_auth_provider": "homeassistant"})
+
+    async def revoke(self, request):
+        form = await request.post()
+        for rid, r in list(self.refresh.items()):
+            if r["token"] == form.get("token"):
+                self._drop(rid)
+                self.writes.append({"type": "auth/revoke", "client_id": r.get("client_id")})
+        return web.Response(status=200)
+
+    def _drop(self, rid: str):
+        self.tokens.discard(self.refresh.pop(rid)["access"])
+
+    async def flow_start(self, request):
+        await self._gate(request)
+        if not self.user["is_admin"]:
+            raise web.HTTPUnauthorized()
+        body = await request.json()
+        if body.get("handler") != "mcp_server":
+            return web.json_response({"message": "Invalid handler specified"}, status=404)
+        if self.mcp_on:
+            return web.json_response({"type": "abort", "flow_id": "flow_1", "reason": "single_instance_allowed"})
+        return web.json_response({"type": "form", "flow_id": "flow_1", "handler": "mcp_server", "step_id": "user",
+                                  "data_schema": [{"name": "llm_hass_api", "default": ["assist"]}]})
+
+    async def flow_step(self, request):
+        await self._gate(request)
+        body = await request.json()
+        if request.match_info["flow_id"] != "flow_1" or not body.get("llm_hass_api"):
+            return web.json_response({"message": "Invalid flow"}, status=400)
+        self.mcp_on = True
+        self.writes.append({"type": "config_entries/mcp_server", **body})
+        return web.json_response({"type": "create_entry", "flow_id": "flow_1", "title": "Assist"})
 
     async def api_root(self, request):
         await self._gate(request)
@@ -168,7 +246,8 @@ class FakeHA:
         return web.json_response({"version": VERSION, "location_name": "Fake home", "country": "SE",
                                   "currency": "SEK", "time_zone": "Europe/Stockholm", "language": "en",
                                   "unit_system": {"temperature": "°C", "length": "km"},
-                                  "components": ["http", "websocket_api", "conversation", "mcp_server", "light"]})
+                                  "components": ["http", "websocket_api", "conversation", "light"]
+                                  + (["mcp_server"] if self.mcp_on else [])})
 
     async def get_states(self, request):
         await self._gate(request)
@@ -260,6 +339,26 @@ class FakeHA:
             return None
         if t == "get_config":
             return {"version": VERSION}
+        if t == "auth/current_user":
+            return dict(self.user)
+        if t == "auth/refresh_tokens":
+            return [{"id": rid, "client_name": r["client_name"], "type": r["type"], "client_id": r.get("client_id")}
+                    for rid, r in self.refresh.items()]
+        if t == "auth/delete_refresh_token":
+            if msg["refresh_token_id"] not in self.refresh:
+                raise LookupError("Refresh token not found")
+            self.writes.append({"type": t, "client_name": self.refresh[msg["refresh_token_id"]]["client_name"]})
+            self._drop(msg["refresh_token_id"])
+            return {}
+        if t == "auth/long_lived_access_token":
+            if any(r["client_name"] == msg["client_name"] for r in self.refresh.values()):
+                raise LookupError(f"{msg['client_name']} already exists")
+            access = self._new("llat")
+            self.tokens.add(access)
+            self.refresh[self._new("rid")] = {"token": self._new("refresh"), "access": access,
+                                              "client_name": msg["client_name"], "type": "long_lived_access_token"}
+            self.writes.append({"type": t, "client_name": msg["client_name"], "lifespan": msg["lifespan"]})
+            return access
         raise KeyError(t)
 
     async def websocket(self, request):
@@ -267,7 +366,7 @@ class FakeHA:
         await ws.prepare(request)
         await ws.send_json({"type": "auth_required", "ha_version": VERSION})
         first = await ws.receive_json()
-        if first.get("type") != "auth" or first.get("access_token") != self.token:
+        if first.get("type") != "auth" or first.get("access_token") not in self.tokens:
             await ws.send_json({"type": "auth_invalid", "message": "Invalid access token or password"})
             await ws.close()
             return ws
@@ -322,6 +421,8 @@ class FakeHA:
 
     async def mcp(self, request):
         await self._gate(request)
+        if not self.mcp_on:
+            raise web.HTTPNotFound()
         msg = await request.json()
         if "id" not in msg:                     # a notification
             return web.Response(status=202)
@@ -370,8 +471,8 @@ class FakeHA:
         await self.runner.cleanup()
 
 
-async def _main(port: int, token: str, seed: str):
-    async with FakeHA(port, token, seed) as ha:
+async def _main(port: int, token: str, seed: str, mcp_on: bool):
+    async with FakeHA(port, token, seed, mcp_on) as ha:
         print(f"fake Home Assistant on {ha.url}", flush=True)
         await asyncio.Event().wait()
 
@@ -382,5 +483,6 @@ if __name__ == "__main__":
     ap.add_argument("--token", default=TOKEN)
     ap.add_argument("--seed", choices=sorted(SEEDS), default="test",
                     help="test: the fixture the checks use; home: a made-up home for docs screenshots")
+    ap.add_argument("--no-mcp", action="store_true", help="the MCP server not set up, for signing in to switch on")
     a = ap.parse_args()
-    asyncio.run(_main(a.port, a.token, a.seed))
+    asyncio.run(_main(a.port, a.token, a.seed, not a.no_mcp))
