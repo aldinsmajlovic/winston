@@ -19,6 +19,7 @@ The release server listens on every address of this computer while it runs (root
 host only that way), on PORT.
 
     uv run python tests/setup_distros.py [debian-13 ubuntu-24.04 fedora-44 leap-16.0 archlinux systemd]
+        [--github 0.1.0-rc.1]     # install that release from GitHub instead
 """
 import functools
 import http.server
@@ -42,7 +43,13 @@ IMAGES = {
     "archlinux": ("docker.io/library/archlinux:latest", "pacman -Sy --noconfirm --needed curl ca-certificates"),
 }
 OUT = Path(sys.argv[sys.argv.index("--out") + 1]) if "--out" in sys.argv else Path.home() / ".cache/winston-setup-distros"
-INSTALL = f"curl --proto '=http' -fsSL {SERVER}/latest/download/install.sh | WINSTON_RELEASES={SERVER} sh -s --"
+GITHUB = sys.argv[sys.argv.index("--github") + 1] if "--github" in sys.argv else None
+LOCAL = f"curl --proto '=http' -fsSL {SERVER}/latest/download/install.sh | WINSTON_RELEASES={SERVER} sh -s --"
+# With --github VERSION, that release is installed from GitHub instead of FIRST from here; the tampered tarball
+# and NEXT, the update, still come from here.
+INSTALL = (f"curl --proto '=https' -fsSL https://github.com/aldinsmajlovic/winston/releases/download/v{GITHUB}/install.sh"
+           f" | WINSTON_VERSION={GITHUB} sh -s --") if GITHUB else LOCAL
+INSTALLED = GITHUB or FIRST
 # The fake brain in place of the hosted one, as a user would edit it on the Brain page.
 FAKE_BRAIN = """
 import pathlib, sys, yaml
@@ -156,7 +163,7 @@ def before_install(f, name: str, shell: str, user: str | None = None) -> dict:
     subprocess.run(["podman", "cp", str(REPO / "scripts/install.sh"), f"{name}:/tmp/install.sh"], check=True)
     cut = timed(f, name, f"install.sh cut short, under {shell}", CUT.replace("SHELL_UNDER_TEST", shell))[0]
     said = timed(f, name, "a tarball with one byte changed",
-                 f"{INSTALL.replace(SERVER, SERVER + '/tampered')} --yes --profile hosted 2>&1; echo exit $?; "
+                 f"{LOCAL.replace(SERVER, SERVER + '/tampered')} --yes --profile hosted 2>&1; echo exit $?; "
                  "ls -A ~/.local/share/winston-app ~/.local/bin 2>&1", user=user)[1]
     refused = "does not match its SHA256SUMS" in said and "exit 1" in said and said.count("No such file") == 2
     return {"cut_short": cut, "tampered": refused}
@@ -167,7 +174,7 @@ def distro(key: str) -> dict:
     name, caches = f"winston-setup-{key}", OUT / "caches"
     (caches / "uv").mkdir(parents=True, exist_ok=True)
     (caches / "hf").mkdir(parents=True, exist_ok=True)
-    app = f"/root/.local/share/winston-app/{FIRST}"
+    app = f"/root/.local/share/winston-app/{INSTALLED}"
     result = {"distro": key}
     with (OUT / f"{key}.log").open("w") as f:
         subprocess.run(["podman", "rm", "-f", name], capture_output=True, check=False)
@@ -253,7 +260,7 @@ def systemd(root: Path) -> dict:
             timed(f, name, "the unit", f"cat {home}/.config/systemd/user/winston.service")
             result["installed"] = ok and gone and active == "active"
 
-            # winston update: NEXT beside FIRST, the service restarted on NEXT, the data directory as it was but
+            # winston update: NEXT beside the installed one, the service restarted on NEXT, the data directory as it was but
             # for what the restarted Winston writes itself.
             latest(root, NEXT)
             pid = f"{svc} show winston -p MainPID --value"
@@ -276,17 +283,17 @@ def systemd(root: Path) -> dict:
             result["updated"] = (version == NEXT and new_pid not in ("", "0", first_pid) and cwd == f"{apps}/{NEXT}"
                                  and same and healthy)
 
-            # Back to FIRST, which is still here, with the service stopped: nothing downloaded, and the whole data
-            # directory byte for byte, logs and caches too. Then started again on FIRST, for the control.
+            # Back to the installed one, which is still here, with the service stopped: nothing downloaded, and the whole data
+            # directory byte for byte, logs and caches too. Then started again on it, for the control.
             ex(name, "systemctl --user stop winston", user=user)
             strict = sums("")
-            ok_back, said = timed(f, name, f"winston update {FIRST}, the service stopped", f"winston update {FIRST}",
+            ok_back, said = timed(f, name, f"winston update {INSTALLED}, the service stopped", f"winston update {INSTALLED}",
                                   user=user)
             back = (ok_back and "Downloading" not in said and "not running" in said and sums("") == strict
-                    and ex(name, f"readlink {apps}/current").stdout.strip() == FIRST)
+                    and ex(name, f"readlink {apps}/current").stdout.strip() == INSTALLED)
             ex(name, "systemctl --user start winston", user=user)
             back = back and wait_healthy(f, name, py, 10)[0]
-            log(f, f"--- back to {FIRST}: {back}")
+            log(f, f"--- back to {INSTALLED}: {back}")
             result["updated"] = result["updated"] and back
 
             # The control: without lingering, logging out stops him.
@@ -317,7 +324,8 @@ def systemd(root: Path) -> dict:
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
-    wanted = [a for a in sys.argv[1:] if not a.startswith("--") and a != str(OUT)] or [*IMAGES, "systemd"]
+    values = {sys.argv[i + 1] for i, a in enumerate(sys.argv[:-1]) if a in ("--out", "--github")}
+    wanted = [a for a in sys.argv[1:] if not a.startswith("--") and a not in values] or [*IMAGES, "systemd"]
     root = releases()
     serve(root)
     results = []

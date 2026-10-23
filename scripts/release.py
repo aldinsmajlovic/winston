@@ -19,9 +19,10 @@ STAMPS = {"pyproject.toml": "version = ", "src/winston/__init__.py": "__version_
 
 
 def files() -> list[str]:
-    """What git tracks, or would (CI's checkout has nothing else), and the built UI, but never data/."""
-    out = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z", "-co", "--exclude-standard"],
-                         capture_output=True, text=True, check=True).stdout.split("\0")
+    """What git tracks (as it is on disk) and the built UI. Not untracked files: CI writes the release into the
+    checkout, and the first one held a part of its own tarball."""
+    out = subprocess.run(["git", "-C", str(REPO), "ls-files", "-z"], capture_output=True, text=True,
+                         check=True).stdout.split("\0")
     dist = {str(p.relative_to(REPO)) for p in (REPO / "web/dist").rglob("*") if p.is_file()}
     if not dist:
         sys.exit("web/dist is empty: build the UI first (cd web && pnpm install && pnpm build)")
