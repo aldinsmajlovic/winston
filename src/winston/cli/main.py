@@ -57,6 +57,23 @@ def setup(yes: bool = typer.Option(False, "--yes", help="Yes to everything, the 
 
 
 @app.command()
+def update(version: str = typer.Argument(None, help="This release instead of the latest, e.g. 0.2.0.")):
+    """Install the latest release beside this one and restart the service. The data directory is not touched."""
+    from winston.setup import update as run
+    _quiet()
+    run(version)
+
+
+@app.command()
+def uninstall(data: bool = typer.Option(False, "--data", help="The data directory too: config, memory, voices, logs."),
+              yes: bool = typer.Option(False, "--yes", help="Do not ask first.")):
+    """Remove the service and the code, keep the data directory, and list what stays with its size."""
+    from winston.setup import uninstall as run
+    _quiet()
+    run(data, yes)
+
+
+@app.command()
 def up(host: str = typer.Option(None), port: int = typer.Option(None),
        no_start: bool = typer.Option(False, "--no-start", help="Run the control service without starting engines.")):
     """Run winstond: start the engines and the channels, serve the control API. Ctrl-C stops everything."""

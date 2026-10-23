@@ -1,10 +1,13 @@
 """`winston setup`: reads the computer, picks the profile, makes the data directory, runs what needs root
-(each command shown first, run on yes) and installs the systemd user service that runs `winston up`.
+(each command shown first, run on yes) and installs the systemd user service that runs `winston up`. Also
+`winston update` and `winston uninstall` for an install from a release (scripts/install.sh).
 The engines are not installed here: the wizard or their first start does it (engines/install.py).
 The design is docs/setup.md."""
 from __future__ import annotations
 
 import grp
+import hashlib
+import io
 import json
 import os
 import pwd
@@ -13,6 +16,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -396,20 +400,33 @@ def make_data_dir(profile: str, force: bool = False) -> Path:
     return d
 
 
+def release_app() -> Path | None:
+    """Where install.sh puts each release (~/.local/share/winston-app), when this is one; None in a clone."""
+    current = repo_root().parent / "current"
+    return current.parent if current.is_symlink() and current.resolve() == repo_root() else None
+
+
 def unit(data: Path) -> str:
-    exe = Path(sys.executable).with_name("winston")      # this venv's, as `uv run` and the release have it
+    exe, work = Path(sys.executable).with_name("winston"), repo_root()    # this venv's, as `uv run` has it
+    if app := release_app():                     # through `current`, which `winston update` moves
+        work = app / "current"
+        exe = work / ".venv/bin/winston"
     return (
         "[Unit]\nDescription=Winston, a self-hosted voice assistant\n"
         "Documentation=https://github.com/aldinsmajlovic/winston/blob/main/docs/setup.md\n\n"
-        f'[Service]\nExecStart="{exe}" up\nWorkingDirectory={repo_root()}\n'
+        f'[Service]\nExecStart="{exe}" up\nWorkingDirectory={work}\n'
         f'Environment="WINSTON_DATA={data}"\n'
         f'Environment="PATH={os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")}"\n'   # uv, docker, ollama
         "Restart=on-failure\nRestartSec=5\n\n"
         "[Install]\nWantedBy=default.target\n")
 
 
+def _unit_path() -> Path:
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "systemd/user/winston.service"
+
+
 def _service(data: Path, start: bool) -> bool:
-    path = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "systemd/user/winston.service"
+    path = _unit_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(unit(data))
     for cmd in (["systemctl", "--user", "daemon-reload"],
@@ -483,3 +500,152 @@ def run(yes: bool, profile: str | None) -> None:
         also = f", or http://{ip}:{port} from another device here"
     first = "Open" if service or running else "Start him with `winston up`, then open"
     print(f"\n{first} http://localhost:{port} on this computer{also}.")
+
+
+# ---- Updating and removing --------------------------------------------------------------------------------
+
+RELEASES = "https://github.com/aldinsmajlovic/winston/releases"
+ROOT_LEFT = ("What setup ran as root stays, whichever of these it ran: Docker and NVIDIA's toolkit, the docker and "
+             "serial groups, lingering (sudo loginctl disable-linger {user}), IPv4 first in /etc/gai.conf")
+
+
+def release(version: str | None) -> tuple[str, str, str]:
+    """(version, its tarball's address, its SHA-256) from a release's SHA256SUMS: the latest, or `version`.
+    WINSTON_RELEASES gets it from somewhere other than GitHub, as for install.sh."""
+    import httpx
+    base = os.environ.get("WINSTON_RELEASES", RELEASES)
+    url = f"{base}/download/v{version}" if version else f"{base}/latest/download"
+    r = httpx.get(f"{url}/SHA256SUMS", follow_redirects=True, timeout=30)
+    r.raise_for_status()
+    for line in r.text.splitlines():
+        digest, _, name = line.partition("  ")
+        if name.startswith("winston-") and name.endswith(".tar.gz"):
+            return name.removeprefix("winston-").removesuffix(".tar.gz"), f"{url}/{name}", digest
+    raise ValueError(f"no Winston release in {url}/SHA256SUMS")
+
+
+def update(version: str | None) -> None:
+    """The release beside this one, its packages, `current` moved to it and the service restarted. The data
+    directory is not touched; the release before stays, for going back."""
+    import httpx
+    from winston import __version__
+    from winston.engines.install import _uv, _venv_env
+    app = release_app()
+    if not app:
+        sys.exit("This is a clone: update it with `git pull`, `uv sync` and `pnpm build` (docs/running.md).")
+    if version and (app / version).is_dir():
+        new = version                                # going back to one still here
+    else:
+        try:
+            new, url, digest = release(version)
+        except (httpx.HTTPError, ValueError) as e:
+            sys.exit(f"Could not read the release: {e}")
+    if new == __version__:
+        print(f"Winston {new} is the one here.")
+        return
+    dest = app / new
+    if not dest.is_dir():
+        print(f"Downloading Winston {new}")
+        try:
+            r = httpx.get(url, follow_redirects=True, timeout=120)
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            sys.exit(f"Could not download it: {e}")
+        if hashlib.sha256(r.content).hexdigest() != digest:
+            sys.exit(f"{url.rsplit('/', 1)[1]} does not match its SHA256SUMS, so nothing changed.")
+        tmp = app / f".{new}"
+        shutil.rmtree(tmp, ignore_errors=True)
+        with tarfile.open(fileobj=io.BytesIO(r.content)) as tar:
+            tar.extractall(tmp, filter="data")
+        (tmp / f"winston-{new}").rename(dest)
+        tmp.rmdir()
+    print("Installing its packages")
+    uv = _uv() or str(Path.home() / ".local/bin/uv")
+    if subprocess.run([uv, "sync", "--frozen", "--quiet"], cwd=dest, env=_venv_env(), check=False).returncode:
+        sys.exit(f"Its packages did not install, so Winston {__version__} stays.")
+    link = app / ".current"
+    link.unlink(missing_ok=True)
+    link.symlink_to(new)
+    link.replace(app / "current")                    # at once: the service never sees no `current`
+    old = repo_root().name
+    for d in app.iterdir():
+        if d.name not in (new, old, "current"):
+            shutil.rmtree(d, ignore_errors=True)
+    msg = f"Winston {new} is installed; {old} stays in {app} (`winston update {old}` goes back)."
+    if not (_unit_path().is_file() and Path("/run/systemd/system").is_dir()):
+        print(f"{msg}\nRestart `winston up` to run it.")
+    elif _run(["systemctl", "--user", "is-active", "winston.service"]).stdout.strip() != "active":
+        print(f"{msg}\nThe service is not running; its next start runs {new}.")
+    else:
+        r = _run(["systemctl", "--user", "restart", "winston.service"])
+        print(f"{msg}\n" + ("The service restarted." if not r.returncode else
+                            f"The service did not restart: {(r.stderr or r.stdout).strip()}"))
+
+
+def leftovers(cfg: dict, data: Path | None) -> list[str]:
+    """What uninstalling leaves, each with its size."""
+    import httpx
+    from winston.api.options import llm_engine
+    from winston.config.presets import presets
+    from winston.engines.install import _tree_bytes, gb
+    out = [f"The data directory, {data}: {gb(_tree_bytes(data))} (config, memory, voices, logs)"] if data else []
+    engines = cfg.get("engines") or {}
+    images = {e.get("image") for e in engines.values()} | {
+        (f.get("engine") or {}).get("image") for kind in ("llm", "tts", "stt") for f in presets(kind)}
+    if shutil.which("docker"):
+        for ref in sorted(i for i in images if i):
+            r = _run(["docker", "image", "inspect", "--format", "{{.Size}}", ref])
+            if not r.returncode and r.stdout.strip().isdigit():
+                out.append(f"Docker's image {ref}: {gb(int(r.stdout))} (docker rmi {ref})")
+    llm = engines.get("llm") or {}
+    if llm and llm_engine(llm) == "ollama":
+        model = (cfg.get("llm") or {}).get("model", "")
+        base = (llm.get("url") or f"http://127.0.0.1:{llm.get('port', 11434)}").rstrip("/")
+        try:
+            tags = httpx.get(f"{base}/api/tags", timeout=3).json().get("models", [])
+            out += [f"Ollama's {m['name']}: {gb(m['size'])} (ollama rm {m['name']})"
+                    for m in tags if m.get("name") in (model, f"{model}:latest")]
+        except (httpx.HTTPError, ValueError):
+            pass
+    for what, p in (("The Hugging Face cache", Path(os.environ.get("HF_HOME") or Path.home() / ".cache/huggingface")),
+                    ("uv's cache", Path(os.environ.get("UV_CACHE_DIR") or Path.home() / ".cache/uv")),
+                    ("uv's Python", Path.home() / ".local/share/uv/python")):
+        if p.is_dir():
+            out.append(f"{what}, {p}: {gb(_tree_bytes(p))}" + (", his models and any other program's"
+                                                              if what.endswith("Face cache") else ""))
+    return out
+
+
+def uninstall(remove_data: bool, yes: bool) -> None:
+    """The service and the code go; the data directory stays unless asked; the rest is listed with its size."""
+    app, data, path = release_app(), target(), _unit_path()
+    try:
+        cfg = yaml.safe_load((data / "config.yaml").read_text()) or {}
+    except OSError:
+        cfg = {}
+    gone = [p for p in (path, app, data if remove_data else None) if p and p.exists()]
+    print("This removes:\n" + "\n".join(f"  {p}" for p in gone) if gone else "Nothing of Winston's to remove here.")
+    if not app:
+        print(f"This clone stays: delete {repo_root()} yourself.")
+    if gone and not (yes or typer.confirm("Remove it?", default=False)):
+        return
+    systemd = Path("/run/systemd/system").is_dir()
+    if path.exists() and systemd:
+        _run(["systemctl", "--user", "disable", "--now", "winston.service"])
+    port = (cfg.get("control") or {}).get("port", 8700)
+    if _winstond(port):
+        sys.exit(f"Winston still answers on port {port}, not as the service: stop `winston up`, then run this again.")
+    left = leftovers(cfg, None if remove_data else data)       # now, while the code to measure them is here
+    if path.exists():
+        path.unlink()
+        if systemd:
+            _run(["systemctl", "--user", "daemon-reload"])
+    if app:
+        link = Path.home() / ".local/bin/winston"
+        if link.is_symlink() and str(os.readlink(link)).startswith(str(app)):
+            link.unlink()
+        shutil.rmtree(app)
+    if remove_data:
+        shutil.rmtree(data, ignore_errors=True)
+    print("Removed. Left on this computer:\n" + "\n".join(f"  {line}" for line in left)
+          + "\n  " + ROOT_LEFT.format(user=pwd.getpwuid(os.getuid()).pw_name))

@@ -1,9 +1,9 @@
 # Setup
 
-Approved 2026-10-23. Built so far: Winston installing his engines and `winston setup`; the install
-script, the releases and the wizard come next, in the order and with the checks in the
-[plan](plan.md) (Setup track). Today's way in is the README's Quickstart, or `uv run winston setup` in
-a clone.
+Approved 2026-10-23. Built so far: Winston installing his engines, `winston setup`, the install script,
+the release build, `winston update` and `winston uninstall`; the wizard comes next, in the order and with
+the checks in the [plan](plan.md) (Setup track). Until the first release, the way in is the README's
+Quickstart, or `uv run winston setup` in a clone.
 
 One command installs Winston on a Linux computer, and a wizard on his page does the rest the first
 time it opens: Home Assistant, the brain and voice for your hardware, who he is, and a room box.
@@ -23,10 +23,19 @@ less install.sh && sh install.sh
 
 `install.sh` does only what has to happen before Python is there, then hands over to `winston setup`:
 
-1. Installs uv into `~/.local/bin` if it is missing, through uv's own installer at a pinned version.
-2. Downloads the release and its `SHA256SUMS`, checks the file and unpacks it into
-   `~/.local/share/winston/app/<version>`. A file that does not match stops the install.
-3. Runs `uv sync` there and starts `winston setup`.
+1. Downloads the release's `SHA256SUMS` and its tarball, checks the tarball and unpacks it into
+   `~/.local/share/winston-app/<version>`. A tarball that does not match stops the install with nothing
+   unpacked.
+2. Installs uv into `~/.local/bin` if it is missing, through uv's own installer at a pinned version
+   (0.10.6).
+3. Runs `uv sync` there, points `~/.local/share/winston-app/current` at it, links `winston` into
+   `~/.local/bin` and starts `winston setup` with the script's arguments
+   (`curl ... | sh -s -- --yes --profile hosted`).
+
+The code stays out of the data directory, so a backup of `~/.local/share/winston` holds only what is
+yours. `WINSTON_VERSION=0.2.0` installs that release instead of the latest, and `WINSTON_RELEASES`
+downloads from somewhere other than GitHub (the checks use it). The script's body is one function,
+called on its last line, so a download cut short runs nothing.
 
 `winston setup` reads the computer (the distribution, the graphics card and its driver, Docker and
 its runtimes, Ollama, free disk where the downloads land, the serial group, lingering, IPv6), says what
@@ -49,7 +58,6 @@ progress, the same way the settings pages do later; until then each gets what it
 service first starts it.
 
 `--yes` answers yes to everything and `--profile NAME` skips the pick, for scripts and tests.
-The script's body is one function, so a download cut short runs nothing.
 
 ## What needs root
 
@@ -140,16 +148,28 @@ Each step can be skipped and picked up later. A skipped one stays in Set up next
 
 ## Updating and removing
 
-`winston update` downloads the next release, checks it, unpacks it beside the current one, syncs what
-changed and restarts the service. The data directory is never touched. `winston uninstall` removes the
-service and the code, keeps the data directory unless `--data`, and lists what it leaves (Docker
-images, the Hugging Face cache, Ollama's models) with their sizes.
+`winston update` reads the latest release's `SHA256SUMS`, downloads its tarball, checks it, unpacks it
+beside the current one, runs `uv sync` there (quick, from uv's cache), moves `current` to it in one step
+and restarts the service if it is running. The data directory is never touched. The release before stays
+for going back, `winston update 0.1.0`, with nothing downloaded; older ones are removed. `winston update
+0.2.0` installs that release. In a clone it says to `git pull` instead.
+
+`winston uninstall` names what it removes and asks: the service (stopped and disabled), the code and
+the `winston` link, and the data directory too with `--data`. It stops if Winston still answers outside
+the service. Then it lists what it leaves, with sizes and how to remove each: the data directory,
+the engines' Docker images, the brain's Ollama model, the Hugging Face cache (his models and any other
+program's), uv's cache and its Python, and what setup ran as root. In a clone only the service goes.
 
 ## Releases
 
-A tag `v*` makes CI build the release: the code, the UI already built, Winston's Voice PE firmware
-(ESPHome 2026.9.1, the version `services/voice-pe` pins), `install.sh` and `SHA256SUMS`, with GitHub's
-build attestation. So installing needs neither Node nor a 30 minute firmware compile.
+A tag `v*` makes CI (`.github/workflows/release.yml`) build the release: `winston-<version>.tar.gz`
+(the files git tracks, the UI already built, the tag's version stamped in), Winston's Voice PE firmware
+(`voice-pe-winston-<version>.factory.bin`, ESPHome 2026.9.1, the version `services/voice-pe` pins),
+`install.sh` and `SHA256SUMS`, with GitHub's build attestation for each file
+(`gh attestation verify winston-0.2.0.tar.gz --repo aldinsmajlovic/winston`). So installing needs
+neither Node nor a 30 minute firmware compile. The tag is the version; one with a hyphen
+(`v0.2.0-rc.1`) is a pre-release, which `latest` skips. `python3 scripts/release.py 0.2.0 dist` builds
+the same files here, the firmware only when `--firmware` names ESPHome's `firmware.factory.bin`.
 
 ## From a clone
 

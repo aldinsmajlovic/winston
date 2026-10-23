@@ -1,0 +1,52 @@
+# A release for each `v*` tag (docs/setup.md): the code with the UI built, Winston's Voice PE firmware,
+# install.sh and SHA256SUMS, with GitHub's build attestation. The tag is the version; a tag with a
+# hyphen (v0.2.0-rc.1) is a pre-release, which `latest` skips. scripts/release.py builds the same locally.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write           # the release
+      id-token: write           # the attestation's signing certificate
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4  # v3.1.1
+        with:
+          version: 12
+          runtime: node@26
+          working-directory: web
+          require-lockfile: true
+      - name: The UI
+        run: pnpm build
+        working-directory: web
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+      - name: Voice PE firmware, with the ESPHome services/voice-pe pins
+        run: uvx esphome@2026.9.1 compile voice-pe-winston.yaml
+        working-directory: services/voice-pe
+      - name: Build
+        run: >
+          python3 scripts/release.py "${GITHUB_REF_NAME#v}" dist
+          --firmware services/voice-pe/.esphome/build/home-assistant-voice/build/firmware.factory.bin
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6  # v4.2.2
+        with:
+          subject-path: dist/*
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          flags=()
+          case $version in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Winston $version" --generate-notes "${flags[@]}"

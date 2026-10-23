@@ -1,8 +1,8 @@
 """`winston setup` (src/winston/setup.py): reading the computer from recorded `os-release` (each
 distribution's image), `nvidia-smi` and `docker info` (this desktop's, and Docker's CLI with no daemon and
 with a socket it may not open), the profile it picks, the root steps with each distribution's commands, the
-data directory and the service file. Nothing here runs a root command; tests/setup_distros.py does, in
-containers.
+data directory and the service file, a release's through `current`. Nothing here runs a root command;
+tests/setup_distros.py does, in containers, and installs, updates and removes releases there.
 
     uv run python tests/setup_cases.py
 """
@@ -132,5 +132,18 @@ check("the service runs this venv's winston up on that data directory, and start
           f'ExecStart="{Path(sys.executable).with_name("winston")}" up', f'Environment="WINSTON_DATA={made}"',
           "Restart=on-failure", "WantedBy=default.target")], [True] * 4)
 
+app = scratch / "winston-app"
+(app / "0.1.0").mkdir(parents=True)
+real_root = setup.repo_root
+setup.repo_root = lambda: app / "0.1.0"
+check("a clone is not a release install", setup.release_app(), None)
+(app / "current").symlink_to("0.1.0")
+check("install.sh's layout is: the version's folder, `current` pointing at it", setup.release_app(), app)
+lines = setup.unit(made).splitlines()
+check("a release's service runs through `current`, so `winston update` only moves it",
+      [f'ExecStart="{app}/current/.venv/bin/winston" up' in lines, f"WorkingDirectory={app}/current" in lines],
+      [True, True])
+setup.repo_root = real_root
+
 finish_checks("setup: each distribution read, the profile picked, the root steps per distribution, the data "
-              "directory and the service file")
+              "directory and the service file, a clone's and a release's")

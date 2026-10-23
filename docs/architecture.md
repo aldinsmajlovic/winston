@@ -122,7 +122,9 @@ flowchart TB
   in an observer, and reading winstond's event streams. Clients reach winstond at `control.url`.
 - **Control** (`winston/api`, `winston/cli`): `winstond` and the `winston` command.
 - **Setup** (`winston/setup.py`): `winston setup`, which reads the computer, runs what needs root on yes,
-  makes the data directory and the systemd user service ([setup](setup.md)).
+  makes the data directory and the systemd user service, and `winston update` and `winston uninstall`
+  for an install from a release. `scripts/install.sh` installs one, and `scripts/release.py` builds one,
+  as `.github/workflows/release.yml` does on a tag ([setup](setup.md)).
 
 ## Config API
 

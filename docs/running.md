@@ -30,7 +30,9 @@ uv run winston check turns [--with FILE]  # the marked turns replayed through th
 
 Set up by `winston setup`, he runs as `winston.service` in your user's systemd ([setup](setup.md)):
 `systemctl --user restart winston` restarts all of him, and `journalctl --user -u winston -f` follows his
-log.
+log. Installed from a release (`install.sh`), `winston` is in `~/.local/bin`, without `uv run`:
+`winston update` installs the next release and restarts him, and `winston uninstall` removes him and
+keeps the data directory ([setup](setup.md#updating-and-removing)).
 
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
 localhost: wake, request, streamed reply, a follow-up without the wake word, silence.
