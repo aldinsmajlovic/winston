@@ -106,8 +106,10 @@ first one and start over with each sentence: a short line never reaches a long c
 joins would not be heard. A warning icon beside the time means the running server did not use the
 settings (`X-Streaming: ignored`). Both buttons are disabled, their reason in the tooltip: "Save and
 restart speaking to hear this engine" while the unsaved engine or server address differs from the
-saved one or speaking waits for a restart, "Speaking is not running yet", or "Turn on speaking to hear
-a voice"; the sample also while look-ahead is not shorter than the first chunk.
+saved one or speaking waits for a restart, "Speaking is still installing" while it downloads what it
+needs, "Speaking is not running yet", or "Turn on speaking to hear a voice"; the sample also while
+look-ahead is not shorter than the first chunk. The setup wizard's Who he is says the same in a line
+under the voice, with how far an install is.
 
 `uv run python tests/preview_check.py` checks the same on the running Winston without a browser: it
 asks for a voice other than the saved one, twice, and the sample unstreamed and streamed with 2.4 s

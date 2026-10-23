@@ -1,9 +1,9 @@
 # Setup
 
 Approved 2026-10-23. Built so far: Winston installing his engines, `winston setup`, the install script,
-the release build, `winston update` and `winston uninstall`, setup mode with its link, and the wizard's
-frame with its Brain and voice and Home Assistant steps. Its other steps come next, in the order and with the checks in the
-[plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart, or
+the release build, `winston update` and `winston uninstall`, setup mode with its link, and the wizard
+with its Brain and voice, Home Assistant and Who he is steps. A room box comes next, in the order and
+with the checks in the [plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart, or
 `uv run winston setup` in a clone.
 
 One command installs Winston on a Linux computer, and a wizard on his page does the rest the first
@@ -148,8 +148,8 @@ The wizard is its own page (`/setup`): his logo, "Set up" and his name, "Step 1 
 the steps with a check for each one done and "(skipped)" for each one skipped, then the step, with Skip
 for now and its own button at the bottom. Each step can be skipped and picked up later: a skipped one
 stays in Set up next on Status ("Brain and voice: skipped during setup." with Set it up) after the
-wizard ends. Built so far: Brain and voice, Home Assistant and Done; the others come with their track
-steps.
+wizard ends. Built so far: Brain and voice, Home Assistant, Who he is and Done; A room box comes with
+its track step.
 
 1. **Brain and voice.** The profile's picks, preselected, on the cards of the Brain and Voice pages:
    Runs on, the brain's model and its own settings, and each one's size against the free space, with
@@ -176,8 +176,15 @@ steps.
    work (rooms and names, the device list, switching the MCP server on). A sign-in that does not
    finish says why. Then the devices he can use, as on the Home Assistant page; Continue saves the
    list (which applies it there) and goes on. Until it is connected there is only Skip for now.
-3. **Who he is.** His name, his personality and his voice, as on the Assistant and Voice pages: a
-   bundled voice with a preview once the voice is installed, or one cloned from a clip.
+3. **Who he is.** His name and reply language as on the Assistant page, his personality as on its own
+   page (the same document: each rule edited, deleted or added saves at once, with Undo), and his voice
+   as on the Voice page, with Hear this voice beside it and Your voices under it. Until speaking runs
+   the step says why a voice cannot be heard yet: "Speaking is still installing (its Python packages,
+   0.4 of 1.0 GB). You can hear a voice once it runs.", "Speaking is starting.", or that speaking is
+   off or not running. The voices are the bundled clips, the speech server's own and those he cloned
+   when asked (Your voices says how: tell him "clone my voice" on the Talk page, and the person agrees
+   out loud first). Its button saves; a new name goes through the same confirm as on the Assistant
+   page, which offers to change his name in his personality too.
 4. **A room box.** Plug a Voice PE into this computer with USB-C. Winston finds it, flashes Winston's
    firmware ("Okay Winston") from the release, gives it Wi-Fi from the networks it sees, checks he can
    reach it there and puts it in a room. A box Home Assistant had adopted loses its key with the flash
@@ -188,6 +195,11 @@ steps.
    whole network, and what was skipped. Finish saves, ends setup mode and opens Talk. From another
    device that this computer alone may open afterwards, it says so before Finish, and after it that
    he is opened on the computer he runs on.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/setup-who-dark.png">
+  <img src="images/setup-who-light.png" alt="The setup wizard's Who he is step: his name and reply language, then his personality as a list of rules" width="720">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/setup-home-assistant-dark.png">

@@ -2,23 +2,28 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
-import { $api, type Presets, type SetupState } from '@/api/client'
-import { partName, useEngineActions } from '@/api/status'
+import { $api, type EngineStatus, type Presets, type SetupState } from '@/api/client'
+import { partName, useEngineActions, useStatus } from '@/api/status'
+import { ClonedVoices } from '@/components/cloned-voices'
 import { LoadError, useTitle } from '@/components/page'
 import { Presence } from '@/components/presence'
 import { SectionForm } from '@/components/section-form'
 import { runsHere, SlotCard } from '@/components/slot-card'
 import { StatusLine } from '@/components/status-line'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useConfirm } from '@/hooks/use-confirm'
 import { amountOf, before, useInstall } from '@/hooks/use-install'
 import { useSecretStatus } from '@/hooks/use-secrets'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
+import { useVoicePreviews } from '@/hooks/use-voice-previews'
 import { capitalize, joinNames } from '@/lib/format'
 import type { Kind } from '@/lib/presets'
+import { allBut, setIn } from '@/lib/schema'
 import { SETUP_STEPS } from '@/lib/setup'
 import { HomeAssistantSections } from '@/pages/home-assistant'
+import { PersonalityDocument } from '@/pages/personality'
 import { cn } from '@/lib/utils'
 
 const setupKey = ['get', '/api/setup']
@@ -27,6 +32,8 @@ const LLM = ['llm']
 // As on the Brain page: thinking and sampling have their own cards there, and keep their defaults here.
 const OWN_CARDS = ['thinking', 'sampling']
 const CONTROL = ['control']
+const ASSISTANT = ['assistant']
+const TTS = ['tts']
 const KINDS: Kind[] = ['llm', 'tts', 'stt']
 const LOCAL = ['127.0.0.1', 'localhost', '::1']
 
@@ -80,6 +87,7 @@ export default function SetupPage() {
       <p className="text-muted-foreground">{step === DONE ? 'Who can open this page from now on.' : SETUP_STEPS[step].intro}</p>
       {step === 'brain' ? <BrainStep page={s.page} presets={presets.data} next={next} /> : null}
       {step === 'home_assistant' ? <HomeAssistantStep page={s.page} next={next} /> : null}
+      {step === 'who' ? <WhoStep page={s.page} next={next} /> : null}
       {step === DONE ? <DoneStep page={s.page} state={state} name={name} /> : null}
     </Frame>
   )
@@ -240,6 +248,56 @@ function BrainStep({ page, presets, next }: StepProps) {
       <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts} quietWhenStopped />
       <SlotCard page={page} kind="stt" title="Hearing" presets={presets.stt} quietWhenStopped />
       <StepActions label={waiting.length ? 'Download and continue' : 'Continue'} busy={busy || page.saving} onClick={() => void go()} onSkip={() => void run(() => next('skipped'))} />
+    </>
+  )
+}
+
+/** Whether speaking can be heard yet, in words: while it installs, with how far it is. A hosted voice has
+ * no engine and can always be heard. */
+function speakingLine(tts: EngineStatus | undefined, off: boolean): ReactNode {
+  if (off) return <StatusLine tone="muted">Speaking is off, so a voice cannot be heard.</StatusLine>
+  if (!tts || tts.state === 'healthy') return null
+  const words: Partial<Record<EngineStatus['state'], string>> = {
+    installing: `Speaking is still installing${tts.detail ? ` (${tts.detail})` : ''}. You can hear a voice once it runs.`,
+    starting: 'Speaking is starting. You can hear a voice in a moment.',
+  }
+  return <StatusLine tone="muted">{words[tts.state] ?? 'Speaking is not running, so a voice cannot be heard yet.'}</StatusLine>
+}
+
+/** His name and reply language as on the Assistant page, his personality as on its own page (each edit
+ * saved at once), and his voice as on the Voice page, with Hear this voice once speaking runs, and the
+ * voices cloned by asking him. Its button saves, renaming him through the same confirm, which offers to
+ * change his name in his personality too. */
+function WhoStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
+  const previews = useVoicePreviews(page)
+  const tts = useStatus().data?.engines.find((e) => e.name === 'tts')
+  const [busy, run] = useBusy()
+  return (
+    <>
+      <SectionForm page={page} path={ASSISTANT} title="Who he is" />
+      <Card>
+        <CardHeader>
+          <CardTitle>His personality</CardTitle>
+          <CardDescription>Instructions only you can change. Each edit is saved at once, with Undo.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <PersonalityDocument />
+        </CardContent>
+      </Card>
+      <SectionForm page={page} path={TTS} title="His voice" omit={allBut(page.schema, TTS, ['voice'])} adornments={{ voice: previews.voice }}>
+        {speakingLine(tts, page.value.engines?.tts?.enabled === false)}
+      </SectionForm>
+      <ClonedVoices current={page.value.tts?.voice} onUse={(voice) => page.update((c) => setIn(c, ['tts', 'voice'], voice))} />
+      <StepActions
+        label={page.dirty ? 'Save and continue' : 'Continue'}
+        busy={busy || page.saving}
+        onClick={() =>
+          void run(async () => {
+            if (await page.save()) await next('done')
+          })
+        }
+        onSkip={() => void run(() => next('skipped'))}
+      />
     </>
   )
 }

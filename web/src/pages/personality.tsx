@@ -17,9 +17,23 @@ type Key = 'behaviour' | 'instructions'
 type Persona = Record<Key, string[]>
 
 /** His personality: how he talks and behaves, as instructions to him, and the technical instructions
- * folded away. A document: each edit saves itself with Undo, and only this page writes it, never a
- * conversation. */
+ * folded away. A document: each edit saves itself with Undo, and only this page (and the setup wizard's
+ * Who he is, which draws the same document) writes it, never a conversation. */
 export default function PersonalityPage() {
+  return (
+    <Page
+      title="Personality"
+      back={{ to: '/assistant', label: 'Assistant' }}
+      intro="How he talks and behaves, as instructions only you can change; changes apply from his next conversation."
+    >
+      <PersonalityDocument />
+    </Page>
+  )
+}
+
+/** The document itself: How he behaves, each rule editable with Undo and Add a rule, then the technical
+ * instructions, folded. */
+export function PersonalityDocument() {
   const persona = $api.useQuery('get', '/api/persona')
   const put = $api.useMutation('put', '/api/persona', OWN_ERRORS)
   const ask = useConfirm()
@@ -78,11 +92,7 @@ export default function PersonalityPage() {
     ))
 
   return (
-    <Page
-      title="Personality"
-      back={{ to: '/assistant', label: 'Assistant' }}
-      intro="How he talks and behaves, as instructions only you can change; changes apply from his next conversation."
-    >
+    <>
       {!p && persona.isError ? (
         <LoadError error={persona.error} retrying={persona.isFetching} onRetry={() => void persona.refetch()} />
       ) : !p ? (
@@ -145,6 +155,6 @@ export default function PersonalityPage() {
           </section>
         </>
       )}
-    </Page>
+    </>
   )
 }

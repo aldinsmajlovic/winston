@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 
@@ -40,7 +40,7 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await page.goto(`/setup?key=${KEY}`)
     await expect(page).toHaveURL(/\/setup\/brain$/)
     await expect(page.locator('h1')).toHaveText(/^Set up \S/)
-    await expect(page.getByText('Step 1 of 3: Brain and voice')).toBeVisible()
+    await expect(page.getByText('Step 1 of 4: Brain and voice')).toBeVisible()
     for (const title of ['What runs his brain', 'Speaking', 'Hearing']) {
       await expect(page.locator('[data-slot="card-title"]', { hasText: title })).toBeVisible()
     }
@@ -48,8 +48,13 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
 
     await page.getByRole('button', { name: 'Skip for now' }).click()
     await expect(page).toHaveURL(/\/setup\/home_assistant$/)
-    await expect(page.getByText('Step 2 of 3: Home Assistant')).toBeVisible()
+    await expect(page.getByText('Step 2 of 4: Home Assistant')).toBeVisible()
     await fits(page, width, 'Home Assistant')
+    await page.getByRole('button', { name: 'Skip for now' }).click()
+    await expect(page).toHaveURL(/\/setup\/who$/)
+    await expect(page.getByText('Step 3 of 4: Who he is')).toBeVisible()
+    await expect(page.locator('[data-slot="card-title"]', { hasText: 'His voice' })).toBeVisible()
+    await fits(page, width, 'Who he is')
     await page.getByRole('button', { name: 'Skip for now' }).click()
     await expect(page).toHaveURL(/\/setup\/done$/)
     await expect(page.getByText('Brain and voice was skipped. It waits under Set up next on Status.')).toBeVisible()
@@ -96,6 +101,41 @@ test('the wizard signs in to Home Assistant, which then lists the devices he can
   await expect(page.locator('[data-slot="card-title"]', { hasText: 'Devices he can use' })).toBeVisible()
   await expect(page.locator('[data-slot="card-title"]', { hasText: 'What he can do there' })).toHaveCount(0)
   await page.getByRole('button', { name: 'Continue' }).click()
-  await expect(page).toHaveURL(/\/setup\/done$/)
+  await expect(page).toHaveURL(/\/setup\/who$/)
+  expect(errors).toEqual([])
+})
+
+test('the wizard renames him, and his personality follows as on the Assistant page', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', (e) => errors.push(e.message))
+  const personaFile = join(data, 'persona.md')
+  const original = existsSync(personaFile) ? readFileSync(personaFile, 'utf8') : null
+  startSetup({ brain: 'done', home_assistant: 'done' })
+  await page.goto('/setup/who')
+  const name = page.locator('#cfg_assistant_name')
+  const old = await name.inputValue()
+  const persona = `# ${old}\n\n## How you behave\n\n- You are ${old}, a butler and voice assistant in a home full of rooms, lamps and speakers.\n\n## Instructions\n\n- Run \`winston announce\`.\n`
+  writeFileSync(personaFile, persona)
+  try {
+    await page.reload()
+    // His personality is the document from its own page, here in the step.
+    await expect(page.getByText(`You are ${old}, a butler and voice assistant`)).toBeVisible()
+    // The smoke test's copy has every engine off.
+    await expect(page.getByText('Speaking is off, so a voice cannot be heard.')).toBeVisible()
+    await name.fill('Smokey')
+    await page.getByRole('button', { name: 'Save and continue' }).click()
+    const dialog = page.getByRole('alertdialog')
+    await expect(dialog.getByRole('heading')).toHaveText('Rename him to Smokey?')
+    await expect(dialog.getByRole('checkbox', { name: `His personality says ${old} in 2 places. Change them to Smokey?` })).toBeChecked()
+    await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page).toHaveURL(/\/setup\/done$/)
+    await expect.poll(() => readFileSync(personaFile, 'utf8')).toBe(persona.replaceAll(old, 'Smokey'))
+    expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('name: Smokey')
+    await expect(page.locator('h1')).toHaveText('Set up Smokey')
+  } finally {
+    await page.request.patch('/api/config', { data: { changes: [{ path: ['assistant', 'name'], value: old }] } })
+    if (original === null) rmSync(personaFile, { force: true })
+    else writeFileSync(personaFile, original)
+  }
   expect(errors).toEqual([])
 })

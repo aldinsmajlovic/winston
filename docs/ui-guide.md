@@ -363,8 +363,8 @@ checked at 1280 px beside the sidebar.
 - Setup wizard: `pages/setup.tsx` at `/setup/:step`, outside the sidebar: his logo, "Set up <name>" and
   the step it is on, the steps with their marks, then the step with Skip for now and its own button
   ([setup](setup.md#the-steps)). A step draws the owning pages' own cards and forms on the same draft
-  (`SlotCard`, `SectionForm`), so nothing is edited in two ways; its button saves through the same
-  confirm. `SlotCard`'s `quietWhenStopped` leaves out the stopped line there, since the wizard starts
+  (`SlotCard`, `SectionForm`, `HomeAssistantSections`, `PersonalityDocument`, `ClonedVoices`), so
+  nothing is edited in two ways; its button saves through the same confirm. `SlotCard`'s `quietWhenStopped` leaves out the stopped line there, since the wizard starts
   them. The step names are in `lib/setup.ts`.
 - Status: `pages/status.tsx` at `/status`, the landing: Needs you and Set up next while they apply,
   his parts by role (each a row linking to its page, with one text command and a `RowMenu`), graphics

@@ -9,4 +9,8 @@ export const SETUP_STEPS: Record<string, { title: string; intro: string }> = {
     title: 'Home Assistant',
     intro: 'Sign in to Home Assistant, then choose the devices he can see and control there.',
   },
+  who: {
+    title: 'Who he is',
+    intro: 'His name, how he talks and behaves, and the voice he speaks with.',
+  },
 }
