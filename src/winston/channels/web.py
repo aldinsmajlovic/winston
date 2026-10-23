@@ -10,32 +10,13 @@ import time
 import uuid
 from collections import deque
 
-import httpx
-import openai
 from loguru import logger
 
-from winston.channels.text import TextSession, stale
+from winston.channels.text import TextSession, error_text, stale
 from winston.core.announce import note
 from winston.config.schema import WinstonConfig
 from winston.core.live import Feed, LiveEvent, LiveObserver
 from winston.core.rooms import RoomLink, Rooms, area, key, local_sync
-
-
-UNREACHABLE = "He could not reach his brain. It may be stopped or still starting."
-FAILED = "Something went wrong while he answered. The log has the details."
-
-
-def error_text(e: BaseException) -> str:
-    """What the Talk page says when he could not answer: the brain unreachable anywhere in the chain of
-    causes, or that something failed. The exception itself goes to the log."""
-    seen: set[int] = set()
-    cur: BaseException | None = e
-    while cur is not None and id(cur) not in seen:
-        if isinstance(cur, (openai.APIConnectionError, openai.APITimeoutError, httpx.ConnectError)):
-            return UNREACHABLE
-        seen.add(id(cur))
-        cur = cur.__cause__ or cur.__context__
-    return FAILED
 
 
 class WebChat:
@@ -94,8 +75,7 @@ class WebChat:
         self.feed.publish(LiveEvent(channel="web", type="state", state="thinking"))
         try:
             s = await self.current(room)
-            if not await s.ask(text) and s.error:
-                raise s.error
+            await s.ask(text)
         except Exception as e:                                          # noqa: BLE001
             logger.exception("web chat failed")
             self.feed.publish(LiveEvent(channel="web", type="error", text=error_text(e)))

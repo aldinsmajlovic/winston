@@ -7,18 +7,25 @@ Only the one user in channels.discord.allowed_user (or, left empty, the variable
 names) is answered; every other message
 is ignored (plan §6: single user, and a message from anyone else is never an instruction). The
 bot connects out to Discord, nothing listens on the LAN. A conversation starts fresh after
-session_idle_mins, which also re-reads memory."""
+session_idle_mins, which also re-reads memory. /room says where you are: the conversation joins that
+room's and "the lights" means its lights, until room_mins pass without a message from you."""
 import asyncio
 import os
 import sys
+import time
+import uuid
 
 import discord
+import httpx
+from discord import app_commands
 from loguru import logger
 
-from winston.channels.text import TextSession, stale
+from winston.channels.text import TextSession, error_text, stale
 from winston.config import load
 from winston.config.schema import WinstonConfig
 from winston.core.announce import nudge_note, subscribe
+from winston.core.common import key
+from winston.core.rooms import RoomLink, area, configured, http_sync
 
 LIMIT = 2000        # Discord's message length
 
@@ -48,21 +55,87 @@ class DiscordChannel:
         intents.message_content = True          # also enable "Message Content Intent" in the developer portal
         self.client = discord.Client(intents=intents)
         self.session: TextSession | None = None
+        self.session_room: str | None = None    # the room the session was started in
+        self.room: str | None = None            # set with /room
+        self.room_used = 0.0                    # when you last wrote with a room set
+        self.room_gone: str | None = None       # a room that lapsed, said at your next message
         self._session_lock = asyncio.Lock()
         self.client.event(self.on_ready)
         self.client.event(self.on_message)
+        self.tree = app_commands.CommandTree(self.client)
+        self.tree.add_command(self.room_command())
+
+    def lapse(self, now: float) -> None:
+        """Clears a room room_mins after your last message with it set."""
+        if self.room and now - self.room_used > self.cfg.channels.discord.room_mins * 60:
+            self.room_gone, self.room = self.room, None
 
     async def current(self) -> TextSession:
         async with self._session_lock:
-            idle = self.cfg.channels.discord.session_idle_mins * 60
-            if self.session is not None and await stale(self.session, idle):
-                await self.session.close()
+            self.lapse(time.monotonic())
+            s, idle = self.session, self.cfg.channels.discord.session_idle_mins * 60
+            # a room set or cleared starts the next conversation, once this one has answered
+            if s is not None and ((self.session_room != self.room and not s.busy) or await stale(s, idle)):
+                await s.close()
                 self.session = None
             if self.session is None:
-                self.session = await TextSession(self.cfg, channel="discord").start()
+                room = self.session_room = self.room
+                link = RoomLink(room, f"discord:{uuid.uuid4().hex[:8]}", http_sync(self.cfg)) if room else None
+                self.session = await TextSession(self.cfg, channel="discord", room=link,
+                                                 area=area(self.cfg, room) if room else None).start()
                 self.session.notify = self.correction
-                logger.info("new conversation")
+                logger.info(f"new conversation{f' in {room}' if room else ''}")
             return self.session
+
+    async def rooms(self) -> list[str]:
+        """The boxes' rooms, then Home Assistant's areas (through winstond): the Talk page's room choices."""
+        names = configured(self.cfg)
+        try:
+            async with httpx.AsyncClient(timeout=2) as c:
+                r = await c.get(f"{self.cfg.control.url}/api/options/ha_areas")
+            names += [ch["value"] for ch in r.json()["choices"]]
+        except (httpx.HTTPError, ValueError, KeyError) as e:
+            logger.warning(f"Home Assistant's areas not listed for /room: {e}")
+        out: dict[str, str] = {}
+        for n in names:
+            out.setdefault(key(n), n)
+        return list(out.values())
+
+    async def set_room(self, name: str | None) -> str:
+        """/room: none clears it, a name sets it, nothing says which is set. The reply to show."""
+        mins = self.cfg.channels.discord.room_mins
+        self.lapse(time.monotonic())
+        if name is None:
+            if not self.room:
+                return "No room set. Name the room when you ask about its lights, or set one with /room."
+            return f"In {self.room}. It clears after {mins} min without a message from you."
+        if key(name) == "none":
+            self.room = None
+            return "No room now."
+        names = await self.rooms()
+        room = next((n for n in names if key(n) == key(name)), None)
+        if room is None:
+            return f"No room called {name}. Rooms: {', '.join(names) or 'none listed'}."
+        self.room, self.room_used, self.room_gone = room, time.monotonic(), None
+        return (f"In {room} now: \"the lights\" means its lights, and this conversation is the room's. "
+                f"It clears after {mins} min without a message from you.")
+
+    def room_command(self) -> app_commands.Command:
+        @app_commands.command(name="room", description="Say which room you are in, so \"the lights\" means its lights")
+        @app_commands.describe(room="A room, or none to clear it. Leave it out to see which is set.")
+        @app_commands.allowed_contexts(guilds=False, dms=True, private_channels=False)
+        async def room(interaction: discord.Interaction, room: str | None = None):
+            if interaction.user.id != self.allowed:
+                logger.warning(f"ignored /room from {interaction.user} ({interaction.user.id}), not the allowed user")
+                return await interaction.response.send_message("Not available.", ephemeral=True)
+            await interaction.response.defer(thinking=True)        # Home Assistant's areas can take a moment
+            await interaction.followup.send(await self.set_room(room))
+
+        @room.autocomplete("room")
+        async def choices(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+            names = [*await self.rooms(), "none"]
+            return [app_commands.Choice(name=n, value=n) for n in names if key(current) in key(n)][:25]
+        return room
 
     async def dm(self) -> discord.DMChannel:
         user = self.client.get_user(self.allowed) or await self.client.fetch_user(self.allowed)
@@ -95,6 +168,10 @@ class DiscordChannel:
             self._started = True
             if self.cfg.announce.enabled:
                 asyncio.create_task(self.announcements())
+            try:
+                await self.tree.sync()
+            except discord.DiscordException as e:
+                logger.warning(f"/room not registered with Discord: {e}")
 
     async def on_message(self, message: discord.Message):
         if message.author.bot or message.guild is not None:
@@ -106,7 +183,18 @@ class DiscordChannel:
         if not text:
             return
         async with message.channel.typing():
-            reply = await (await self.current()).ask(text)
+            try:
+                s = await self.current()
+                if self.room_gone:
+                    gone, self.room_gone = self.room_gone, None
+                    await message.channel.send(f"No longer in {gone}: {self.cfg.channels.discord.room_mins} min "
+                                               "passed without a message. Set it again with /room.")
+                if self.room:
+                    self.room_used = time.monotonic()
+                reply = await s.ask(text)
+            except Exception as e:                                      # noqa: BLE001
+                logger.exception("no reply")
+                reply = f"_{error_text(e)}_"                            # a note, not his words
         for part in chunks(reply):
             await message.channel.send(part)
 

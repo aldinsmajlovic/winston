@@ -399,6 +399,13 @@ class DiscordChannel(Model):
                                    description="Quiet minutes before a direct-message conversation starts fresh and "
                                                "reads memory again.",
                                    json_schema_extra=ui(unit="min"))
+    room_mins: int = Field(60, ge=1, title="Room set with /room lasts",
+                           description="Minutes without a message from you before the room you set with /room is "
+                                       "cleared.",
+                           json_schema_extra=ui(unit="min",
+                                                help="Type /room to say where you are: \"the lights\" then means "
+                                                     "that room's, and you share its conversation with its box and "
+                                                     "screens."))
     contacts: dict[str, Annotated[str, Field(pattern=DISCORD_ID, json_schema_extra=ui(options="discord_users"))]] = \
         Field(default_factory=dict, title="People he can message",
               description="By the name you say and their Discord user.",

@@ -1330,6 +1330,7 @@ export interface components {
              *       "allowed_user": "",
              *       "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
              *       "session_idle_mins": 30,
+             *       "room_mins": 60,
              *       "contacts": {}
              *     }
              */
@@ -1583,6 +1584,12 @@ export interface components {
              * @default 30
              */
             session_idle_mins?: number;
+            /**
+             * Room set with /room lasts
+             * @description Minutes without a message from you before the room you set with /room is cleared.
+             * @default 60
+             */
+            room_mins?: number;
             /**
              * People he can message
              * @description By the name you say and their Discord user.
@@ -3845,6 +3852,7 @@ export interface components {
              *         "allowed_user_env": "DISCORD_ALLOWED_USER_ID",
              *         "contacts": {},
              *         "enabled": false,
+             *         "room_mins": 60,
              *         "session_idle_mins": 30,
              *         "token_env": "DISCORD_BOT_TOKEN"
              *       },

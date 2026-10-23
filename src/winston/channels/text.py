@@ -5,6 +5,8 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 
+import httpx
+import openai
 from loguru import logger
 from pipecat.frames.frames import (ErrorFrame, Frame, FunctionCallResultFrame, FunctionCallsStartedFrame,
                                    LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame)
@@ -24,6 +26,21 @@ from winston.core.speak_up import Mentions
 from winston.extension_host.client import tools_changed
 
 QUIET_SECS = 1.5   # a reply is over when no LLM activity follows its last full-response end
+UNREACHABLE = "He could not reach his brain. It may be stopped or still starting."
+FAILED = "Something went wrong while he answered. The log has the details."
+
+
+def error_text(e: BaseException) -> str:
+    """What a typed channel says when he could not answer: the brain unreachable anywhere in the chain of
+    causes, or that something failed. The exception itself goes to the log."""
+    seen: set[int] = set()
+    cur: BaseException | None = e
+    while cur is not None and id(cur) not in seen:
+        if isinstance(cur, (openai.APIConnectionError, openai.APITimeoutError, httpx.ConnectError)):
+            return UNREACHABLE
+        seen.add(id(cur))
+        cur = cur.__cause__ or cur.__context__
+    return FAILED
 
 
 class TurnTracker(BaseObserver):
@@ -138,12 +155,9 @@ class TextSession:
     def busy(self) -> bool:
         return self._lock.locked()
 
-    @property
-    def error(self) -> BaseException | None:
-        """Why the last question got no answer, if the pipeline said (the brain unreachable)."""
-        return self._tracker.error
-
     async def ask(self, m: str, timeout: float = 90) -> str:
+        """The reply. Raises what the pipeline said when there is none (the brain unreachable), so no
+        channel shows an empty answer without saying why."""
         async with self._lock:
             self.last_used = time.monotonic()
             self._tracker.error = None
@@ -151,6 +165,8 @@ class TextSession:
                                                                     run_llm=True)])
             reply = await self.printer.wait_reply(timeout)
             self.last_used = time.monotonic()
+            if not reply and self._tracker.error:
+                raise self._tracker.error
             return reply
 
     async def announced(self, text: str, context: dict):
@@ -186,13 +202,20 @@ async def stale(s: TextSession, idle_secs: float) -> bool:
 async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True) -> list[str]:
     """Scripted (messages given, one shared context) or interactive (None) chat."""
     s = await TextSession(cfg, echo=echo).start()
+
+    async def ask(m: str):
+        try:
+            await s.ask(m)
+        except Exception as e:                                          # noqa: BLE001
+            logger.exception("no reply")
+            print(error_text(e), flush=True)
+        await s.settle()
     try:
         if messages:
             for m in messages:
                 if echo:
                     print(f"\n> {m}\n{cfg.assistant.name}: ", end="", flush=True)
-                await s.ask(m)
-                await s.settle()
+                await ask(m)
         else:
             print(f"{cfg.assistant.name} is listening (Ctrl-D to quit).")
             while True:
@@ -202,8 +225,7 @@ async def run(cfg: WinstonConfig, messages: list[str] | None, echo: bool = True)
                     break
                 if m.strip():
                     print(f"{cfg.assistant.name}: ", end="", flush=True)
-                    await s.ask(m)
-                    await s.settle()
+                    await ask(m)
     finally:
         await s.close()
     return s.printer.replies

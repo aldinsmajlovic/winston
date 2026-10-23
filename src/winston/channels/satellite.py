@@ -953,8 +953,10 @@ class Satellite:
                 progress = asyncio.create_task(stream_when_ready())
                 conv.brain.llm.ended = False
                 conv.turns.turn = turn
-                said = await conv.reply(heard, run)
-                progress.cancel()
+                try:
+                    said = await conv.reply(heard, run)     # raises with no reply (the brain unreachable): the box errors
+                finally:
+                    progress.cancel()
                 run.out.put_nowait(None)
                 # A reply that acted invites a quick tweak ("even warmer"); one that only talked, a conversation.
                 self._chatting = not (turn and any(guard.tool_tier(t["name"]) == guard.ACT for t in turn.tools))

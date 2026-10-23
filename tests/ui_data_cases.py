@@ -25,8 +25,8 @@ from pipecat.processors.frame_processor import FrameDirection  # noqa: E402
 
 from winston.api import options as options_api  # noqa: E402
 from winston.api import secrets  # noqa: E402
-from winston.channels.text import Printer, TurnTracker  # noqa: E402
-from winston.channels.web import FAILED, UNREACHABLE, WebChat, error_text  # noqa: E402
+from winston.channels.text import FAILED, UNREACHABLE, Printer, TextSession, TurnTracker, error_text  # noqa: E402
+from winston.channels.web import WebChat  # noqa: E402
 from winston.config.schema import SatelliteDevice, WinstonConfig  # noqa: E402
 from winston.core.common import failure_text, failure_words  # noqa: E402
 from winston.core.live import Feed, know_extension_tools, tool_label  # noqa: E402
@@ -100,7 +100,7 @@ check("why it was unreachable", [failure_words(e) for e in (
 
 # A typed conversation that starts afresh says why, before the message that starts it.
 class Session:
-    busy, brain, error = False, SimpleNamespace(), None
+    busy, brain = False, SimpleNamespace()
 
     def __init__(self, fails: bool = False):
         self.last_used, self.fails = time.monotonic(), fails
@@ -130,29 +130,30 @@ check("why a conversation is new", asyncio.run(typed()), [
     ("conversation", "settings were saved"), ("user", "after a save"), ("error", UNREACHABLE)])
 
 
-# The brain off: its error travels upstream past the printer, which stops waiting, and Talk says why.
-async def unanswered() -> tuple[str, bool, list[str | None]]:
+# The brain off: its error travels upstream past the printer, which stops waiting, ask raises it, and Talk says
+# why (Discord and `winston talk` say the same words; the box shows its error).
+async def unanswered() -> tuple[bool, list[str | None]]:
     tracker = TurnTracker()
-    printer = Printer(tracker, echo=False)
     down = openai.APIConnectionError(request=request)
-    await tracker.on_push_frame(FramePushed(source=printer, destination=printer, direction=FrameDirection.UPSTREAM,
-                                            frame=ErrorFrame("Connection error.", exception=down), timestamp=0))
-    t0 = time.perf_counter()
-    reply = await printer.wait_reply(timeout=5)
-    quick = time.perf_counter() - t0 < 1
+    s = TextSession(WinstonConfig.model_validate({"llm": {"model": "x"}}))
+    s._tracker, s.printer = tracker, Printer(tracker, echo=False)
+
+    async def queue_frames(frames):     # the server refuses the request: its ErrorFrame, as Pipecat pushes it
+        await tracker.on_push_frame(FramePushed(source=s.printer, destination=s.printer,
+                                                direction=FrameDirection.UPSTREAM, timestamp=0,
+                                                frame=ErrorFrame("Connection error.", exception=down)))
+    s._worker = SimpleNamespace(queue_frames=queue_frames)
     feed = Feed()
     chat = WebChat(WinstonConfig.model_validate({"llm": {"model": "x"}}), feed)
-    s = Session()
-    s.error = tracker.error
 
     async def current(room=None):
         return s
     chat.current = current
+    t0 = time.perf_counter()
     await chat.ask("ping")
-    return reply, quick, [e.text for e in feed.backlog() if e.type == "error"]
+    return time.perf_counter() - t0 < 1, [e.text for e in feed.backlog() if e.type == "error"]
 
-check("no reply while the brain is off", asyncio.run(unanswered()),
-      ("", True, [UNREACHABLE]))
+check("no reply while the brain is off", asyncio.run(unanswered()), (True, [UNREACHABLE]))
 
 # Home Assistant: a first connect (none before, or no address) never applies exposure; a changed list does.
 base = {"llm": {"model": "x"}}

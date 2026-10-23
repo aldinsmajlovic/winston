@@ -25,6 +25,8 @@ lights" means that room's lights. A screen with no room works as before.
   match without regard to case or spacing; the picker offers the boxes' rooms and Home Assistant's areas,
   and says what each choice shares. A screen can be in a room with no box (a wall tablet in a room of its
   own): "the lights" there means the Home Assistant area of the room's name.
+- **Discord** has no room until you type `/room` in the DM; it clears after an hour without a message
+  ([Discord](discord.md#saying-which-room-you-are-in)).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/ways-to-talk-dark.png">

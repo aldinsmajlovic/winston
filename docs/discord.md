@@ -40,5 +40,22 @@ line, and `data/logs/discord.log` has the rest.
 Only that one user is answered; DMs from anyone else are ignored and logged. A conversation starts
 fresh after New conversation after (`session_idle_mins`, 30 min) of quiet.
 
+While the brain is stopped or still starting, a message gets _He could not reach his brain. It may be
+stopped or still starting._ instead of an answer; any other failure says the log has the details
+(`data/logs/discord.log`). The Talk page and `winston talk` say the same, and a box shows its error.
+
+## Saying which room you are in
+
+A DM has no room, so "turn off the lights" does not say whose. Type `/room` in the DM and pick one: the
+list is the Talk page's room choices (the boxes' rooms, then Home Assistant's areas), plus none. Your
+next message starts a conversation in that [room](rooms.md): each message is stamped with it, so "the
+lights" means its lights, and the conversation is the room's, shared with its box and screens. `/room`
+alone says which room is set, and `/room none` clears it.
+
+The room clears after Room set with /room lasts (`room_mins`, 60 min) without a message from you, so it
+does not follow you out of the house; your next message says so. Setting or clearing a room starts a new
+conversation once the one under way has answered. Discord registers the command when the channel
+connects; a name not in the list is refused with the list.
+
 Settings under `channels.discord` (Settings, Ways to talk, Discord). Announcements reach Discord per
 `announce.discord`; see [announcements](announcements.md).
