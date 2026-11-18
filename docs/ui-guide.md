@@ -161,11 +161,11 @@ the program ("Start with Winston", "Takes effect when Winston restarts").
   everything until you press the microphone again.", or read aloud is on.
 - An empty conversation says how to start and what he can use, from what is set up and running; with
   nothing connected it says so and links to Status. No example phrases, no chips.
-- His logo, name and readiness at the top left lead back to Talk. History, Memory and Settings are
-  links with an icon and their name at the top right (below `sm` the name stacks under the icon), the
-  current one on a quiet background. Settings opens Status and carries a warning mark while something
-  needs you. `WinstonHeader` draws this for every page on Winston's side, and each page sets its tab
-  title with `useTitle` ("History · <name>", Talk the name alone).
+- The top of the page is one card. His logo, name and readiness at its left lead back to Talk. History,
+  Memory and Settings are links with an icon and their name at its right (below `sm` the name stacks
+  under the icon), the current one on a quiet rounded background. Settings opens Status and carries a
+  warning mark while something needs you. `WinstonHeader` draws this for every page on Winston's side,
+  and each page sets its tab title with `useTitle` ("History · <name>", Talk the name alone).
 - Memory is a document of what he remembers, nothing else; his manner is under Assistant,
   Personality, and a line links there. A topic is a heading with its description as a muted line under
   it, a fact is a row with when it was noted, each row's actions sit in its menu, and a rounded field

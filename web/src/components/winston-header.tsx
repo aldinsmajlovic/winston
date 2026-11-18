@@ -16,8 +16,9 @@ const LINKS = [
 
 type Props = { name: string; state: PresenceState; actions?: ReactNode }
 
-/** Winston's pages share this: his presence, name and whether he can answer, which lead back to Talk, and
- * a link with its name for each other page. Settings carries a mark while something needs you. */
+/** Winston's pages share this, one card along the top: his presence, name and whether he can answer, which
+ * lead back to Talk, and a link with its name for each other page. Settings carries a mark while something
+ * needs you. */
 export function WinstonHeader({ name, state, actions }: Props) {
   const { pathname } = useLocation()
   const status = useStatus()
@@ -25,7 +26,7 @@ export function WinstonHeader({ name, state, actions }: Props) {
   const problem = notReady(status.data, config.data, status.isError)
   const attention = needsAttention(status.data)
   return (
-    <header className="flex w-full max-w-3xl items-center gap-3 px-4 pt-8 pb-6 sm:gap-4">
+    <header className="mt-4 mb-3.5 flex w-full max-w-3xl items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-xs max-sm:w-[calc(100%-1rem)] sm:gap-4">
       {/* The name's link covers his presence too; the Status link sits above it. */}
       <div className="relative flex min-w-0 items-center gap-3 sm:gap-4">
         <Presence state={state} className="size-11 shrink-0 sm:size-13" />
@@ -56,7 +57,7 @@ export function WinstonHeader({ name, state, actions }: Props) {
             variant="ghost"
             asChild
             className={cn(
-              'h-auto gap-0.5 px-1.5 py-1.5 text-xs hover:text-foreground max-sm:flex-col sm:gap-2 sm:px-3 sm:text-sm',
+              'h-auto gap-0.5 px-1.5 py-1.5 text-xs hover:text-foreground max-sm:flex-col sm:gap-2 sm:rounded-full sm:px-3 sm:text-sm',
               pathname === to ? 'bg-accent text-foreground' : 'text-muted-foreground',
             )}
           >
