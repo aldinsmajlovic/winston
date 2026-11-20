@@ -2,6 +2,7 @@
 and the CLI use, and serves the built UI from web/dist. Bound to localhost by default; put it
 behind auth before exposing it."""
 import asyncio
+import dataclasses
 import html
 import json
 import re
@@ -26,8 +27,8 @@ from starlette.routing import Route as StarletteRoute
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from winston import __version__
-from winston.api import secrets, setup_link
-from winston.providers import ha_signin
+from winston.api import room_box as usb_box, secrets, setup_link
+from winston.providers import ha_signin, improv
 from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
 from winston.config import load, repo_root, save
 from winston.config.loader import apply_changes, get_in, version as file_version
@@ -144,6 +145,57 @@ class SetupState(BaseModel):
     remote: bool = Field(description="This request comes from another device, not the computer Winston runs on")
     order: list[str] = Field(description="The wizard's steps before Done, in order")
     steps: dict[str, Literal["done", "skipped"]] = Field(description="The steps done or skipped so far")
+
+
+class BoxInfo(BaseModel):
+    firmware: str = Field(description="What the box runs, as it names it")
+    version: str
+    winston: bool = Field(description="It runs Winston's firmware already")
+
+
+class FlashState(BaseModel):
+    port: str
+    stage: Literal["downloading", "writing", "starting", "done", "error"]
+    percent: int = Field(description="How far the stage is, 0 to 100")
+    error: str = Field(description="Why it stopped, in words, when the stage is error")
+
+
+class SetupBox(BaseModel):
+    ports: list[str] = Field(description="The Voice PEs plugged into this computer by USB, as /dev paths")
+    info: BoxInfo | None = Field(description="What the first of them runs, when it answered")
+    flash: FlashState | None = Field(description="The last flash, or one under way")
+
+
+class BoxPort(BaseModel):
+    port: str
+
+
+class BoxNetwork(BaseModel):
+    ssid: str
+    rssi: int = Field(description="Signal strength in dBm")
+    secured: bool
+
+
+class BoxWifi(BaseModel):
+    port: str
+    ssid: str = Field(min_length=1, max_length=32)
+    password: str = Field("", max_length=63, description="Sent to the box only: never kept or logged")
+
+
+class HAEntry(BaseModel):
+    entry_id: str
+    title: str
+    disabled: bool
+
+
+class BoxJoined(BaseModel):
+    host: str = Field(description="The box's address on that network")
+    mac: str
+    ha_entry: HAEntry | None = Field(description="Home Assistant's ESPHome entry for the box, if it has one")
+
+
+class HAEntryRef(BaseModel):
+    entry_id: str
 
 
 class ChatMessage(BaseModel):
@@ -766,7 +818,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def invalid(request: Request, exc: RequestValidationError):
         """FastAPI's 422, without the refused input for a secret."""
         errors = jsonable_encoder(exc.errors())
-        if request.url.path.startswith(("/api/secrets", "/api/providers/home_assistant/check")):
+        if request.url.path.startswith(("/api/secrets", "/api/providers/home_assistant/check", "/api/setup/box/wifi")):
             # never echo a pasted key back (FastAPI puts the refused body in `input`)
             errors = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in errors]
         return JSONResponse({"detail": errors}, status_code=422)
@@ -819,6 +871,64 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             setup_link.finish()
             logger.info("setup finished: the page follows Who can open this page")
         return setup_state(request)
+
+    # A room box over USB (api/room_box.py, imported as usb_box): the wizard's A room box.
+    def box_port(port: str) -> str:
+        if port not in usb_box.find():
+            raise HTTPException(404, f"No Voice PE on {port}.")
+        return port
+
+    @app.get("/api/setup/box", response_model=SetupBox,
+             summary="The Voice PE plugged in by USB, what it runs, and the last flash")
+    async def setup_box():
+        ports, info = await usb_box.probe()
+        f = usb_box.FLASH
+        return SetupBox(ports=ports, flash=f and FlashState(**dataclasses.asdict(f)),
+                        info=info and BoxInfo(firmware=info.firmware, version=info.version,
+                                              winston=info.version.endswith("-winston")))
+
+    @app.post("/api/setup/box/flash", response_model=FlashState,
+              summary="Put Winston's firmware from this release on the box, in the background")
+    async def setup_box_flash(body: BoxPort):
+        try:
+            return FlashState(**dataclasses.asdict(usb_box.start_flash(box_port(body.port))))
+        except usb_box.BoxError as e:
+            raise HTTPException(409, str(e)) from None
+
+    @app.post("/api/setup/box/networks", response_model=list[BoxNetwork],
+              summary="The Wi-Fi networks the box sees, strongest first")
+    async def setup_box_networks(body: BoxPort):
+        try:
+            return [BoxNetwork(**dataclasses.asdict(n)) for n in await usb_box.networks(box_port(body.port))]
+        except improv.ImprovError as e:
+            raise HTTPException(422, str(e)) from None
+
+    @app.post("/api/setup/box/wifi", response_model=BoxJoined,
+              summary="Give the box a network, then check Winston reaches it there; the password goes to the box only")
+    async def setup_box_wifi(body: BoxWifi):
+        port = box_port(body.port)
+        try:
+            host = await usb_box.join(port, body.ssid, body.password)
+        except improv.ImprovError as e:
+            raise HTTPException(422, str(e)) from None
+        try:
+            mac = await usb_box.reach(host, body.ssid)
+        except usb_box.BoxError as e:
+            raise HTTPException(409, str(e)) from None
+        try:
+            entry = await usb_box.ha_entry(app.state.cfg, mac)
+        except Exception as e:      # noqa: BLE001  Home Assistant down or refusing must not stop the box's setup
+            logger.info(f"room box: Home Assistant's entry for {mac} not read: {type(e).__name__}: {e}")
+            entry = None
+        return BoxJoined(host=host, mac=mac, ha_entry=entry and HAEntry(**entry))
+
+    @app.post("/api/setup/box/ha-disable", status_code=204,
+              summary="Disable Home Assistant's old ESPHome entry for the box, so it does not come back as a new device")
+    async def setup_box_ha_disable(body: HAEntryRef):
+        try:
+            await usb_box.disable(app.state.cfg, body.entry_id)
+        except usb_box.BoxError as e:
+            raise HTTPException(502, str(e)) from None
 
     @app.get("/api/status", response_model=Status)
     async def status():

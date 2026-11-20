@@ -13,4 +13,8 @@ export const SETUP_STEPS: Record<string, { title: string; intro: string }> = {
     title: 'Who he is',
     intro: 'His name, how he talks and behaves, and the voice he speaks with.',
   },
+  box: {
+    title: 'A room box',
+    intro: 'Plug a Voice PE into this computer with USB-C. He puts his firmware on it, gives it your Wi-Fi and puts it in a room.',
+  },
 }

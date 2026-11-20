@@ -361,6 +361,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setup/box": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Voice PE plugged in by USB, what it runs, and the last flash */
+        get: operations["setup_box_api_setup_box_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/box/flash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Put Winston's firmware from this release on the box, in the background */
+        post: operations["setup_box_flash_api_setup_box_flash_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/box/networks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The Wi-Fi networks the box sees, strongest first */
+        post: operations["setup_box_networks_api_setup_box_networks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/box/wifi": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give the box a network, then check Winston reaches it there; the password goes to the box only */
+        post: operations["setup_box_wifi_api_setup_box_wifi_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup/box/ha-disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable Home Assistant's old ESPHome entry for the box, so it does not come back as a new device */
+        post: operations["setup_box_ha_disable_api_setup_box_ha_disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -1375,6 +1460,50 @@ export interface components {
              */
             text?: string;
         };
+        /** BoxInfo */
+        BoxInfo: {
+            /**
+             * Firmware
+             * @description What the box runs, as it names it
+             */
+            firmware: string;
+            /** Version */
+            version: string;
+            /**
+             * Winston
+             * @description It runs Winston's firmware already
+             */
+            winston: boolean;
+        };
+        /** BoxJoined */
+        BoxJoined: {
+            /**
+             * Host
+             * @description The box's address on that network
+             */
+            host: string;
+            /** Mac */
+            mac: string;
+            /** @description Home Assistant's ESPHome entry for the box, if it has one */
+            ha_entry: components["schemas"]["HAEntry"] | null;
+        };
+        /** BoxNetwork */
+        BoxNetwork: {
+            /** Ssid */
+            ssid: string;
+            /**
+             * Rssi
+             * @description Signal strength in dBm
+             */
+            rssi: number;
+            /** Secured */
+            secured: boolean;
+        };
+        /** BoxPort */
+        BoxPort: {
+            /** Port */
+            port: string;
+        };
         /** BoxState */
         BoxState: {
             /**
@@ -1382,6 +1511,19 @@ export interface components {
              * @description The room's box connected (true) or went away (false).
              */
             connected: boolean;
+        };
+        /** BoxWifi */
+        BoxWifi: {
+            /** Port */
+            port: string;
+            /** Ssid */
+            ssid: string;
+            /**
+             * Password
+             * @description Sent to the box only: never kept or logged
+             * @default
+             */
+            password?: string;
         };
         /** BrainTool */
         BrainTool: {
@@ -2172,6 +2314,26 @@ export interface components {
              */
             until?: string | null;
         };
+        /** FlashState */
+        FlashState: {
+            /** Port */
+            port: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "downloading" | "writing" | "starting" | "done" | "error";
+            /**
+             * Percent
+             * @description How far the stage is, 0 to 100
+             */
+            percent: number;
+            /**
+             * Error
+             * @description Why it stopped, in words, when the stage is error
+             */
+            error: string;
+        };
         /** FollowUp */
         FollowUp: {
             /**
@@ -2312,6 +2474,20 @@ export interface components {
              * @default []
              */
             missing_aliases?: string[];
+        };
+        /** HAEntry */
+        HAEntry: {
+            /** Entry Id */
+            entry_id: string;
+            /** Title */
+            title: string;
+            /** Disabled */
+            disabled: boolean;
+        };
+        /** HAEntryRef */
+        HAEntryRef: {
+            /** Entry Id */
+            entry_id: string;
         };
         /** HAExposure */
         HAExposure: {
@@ -3363,6 +3539,18 @@ export interface components {
         SecretValue: {
             /** Value */
             value: string;
+        };
+        /** SetupBox */
+        SetupBox: {
+            /**
+             * Ports
+             * @description The Voice PEs plugged into this computer by USB, as /dev paths
+             */
+            ports: string[];
+            /** @description What the first of them runs, when it answered */
+            info: components["schemas"]["BoxInfo"] | null;
+            /** @description The last flash, or one under way */
+            flash: components["schemas"]["FlashState"] | null;
         };
         /** SetupState */
         SetupState: {
@@ -4812,6 +5000,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetupState"];
+                };
+            };
+        };
+    };
+    setup_box_api_setup_box_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupBox"];
+                };
+            };
+        };
+    };
+    setup_box_flash_api_setup_box_flash_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoxPort"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlashState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_box_networks_api_setup_box_networks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoxPort"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoxNetwork"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_box_wifi_api_setup_box_wifi_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoxWifi"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoxJoined"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_box_ha_disable_api_setup_box_ha_disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HAEntryRef"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

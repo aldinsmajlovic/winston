@@ -2,8 +2,9 @@
 
 Approved 2026-10-23. Built so far: Winston installing his engines, `winston setup`, the install script,
 the release build, `winston update` and `winston uninstall`, setup mode with its link, and the wizard
-with its Brain and voice, Home Assistant and Who he is steps. A room box comes next, in the order and
-with the checks in the [plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart, or
+with its Brain and voice, Home Assistant, Who he is and A room box steps (the room box checked on fakes,
+not yet on a real box). From nothing to talking comes next, in the order and with the checks in the
+[plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart, or
 `uv run winston setup` in a clone.
 
 One command installs Winston on a Linux computer, and a wizard on his page does the rest the first
@@ -72,7 +73,7 @@ then will not work:
 | Your user in the `docker` group | Docker is there and you cannot reach it | `usermod -aG docker`; it takes effect at your next login, so setup asks you to log out and in and run it again, and carries on where it stopped |
 | NVIDIA container toolkit | An NVIDIA profile, and `docker info` lists no `nvidia` runtime | NVIDIA's package (from NVIDIA's repository; Arch has its own), `nvidia-ctk runtime configure --runtime=docker`, Docker restarted |
 | Ollama | The Ollama profile, and Ollama is missing | Ollama's own install script |
-| Your user in the serial group | Not in it yet | `usermod -aG dialout` (`uucp` on Arch, the group made if missing), so a Voice PE on USB can be set up |
+| Your user in the serial group | Not in it yet | `usermod -aG dialout` (`uucp` on Arch, the group made if missing), so a Voice PE on USB can be set up; the service has it after a restart of the computer |
 | Lingering | With systemd | `loginctl enable-linger`, so the service runs without you logged in |
 | IPv4 first | IPv6 addresses sort first and never connect, as behind a VPN that drops IPv6 | `precedence ::ffff:0:0/96 100` in `/etc/gai.conf`, so nothing waits out an IPv6 address before trying IPv4 |
 
@@ -144,12 +145,11 @@ sizes. Status says "Setup is not finished." with Continue setup, and Talk that h
 
 ### The steps
 
-The wizard is its own page (`/setup`): his logo, "Set up" and his name, "Step 1 of 2: Brain and voice",
+The wizard is its own page (`/setup`): his logo, "Set up" and his name, "Step 1 of 5: Brain and voice",
 the steps with a check for each one done and "(skipped)" for each one skipped, then the step, with Skip
 for now and its own button at the bottom. Each step can be skipped and picked up later: a skipped one
 stays in Set up next on Status ("Brain and voice: skipped during setup." with Set it up) after the
-wizard ends. Built so far: Brain and voice, Home Assistant, Who he is and Done; A room box comes with
-its track step.
+wizard ends.
 
 1. **Brain and voice.** The profile's picks, preselected, on the cards of the Brain and Voice pages:
    Runs on, the brain's model and its own settings, and each one's size against the free space, with
@@ -185,16 +185,46 @@ its track step.
    when asked (Your voices says how: tell him "clone my voice" on the Talk page, and the person agrees
    out loud first). Its button saves; a new name goes through the same confirm as on the Assistant
    page, which offers to change his name in his personality too.
-4. **A room box.** Plug a Voice PE into this computer with USB-C. Winston finds it, flashes Winston's
-   firmware ("Okay Winston") from the release, gives it Wi-Fi from the networks it sees, checks he can
-   reach it there and puts it in a room. A box Home Assistant had adopted loses its key with the flash
-   and would come back as a new device there, so the wizard offers to disable its ESPHome entry in
-   Home Assistant (enable it again for a stock firmware update). When his name is not Winston, the box listens for a stock wake
-   word instead (Okay Nabu, Hey Jarvis or Hey Mycroft), picked there.
+4. **A room box.** Plug a Voice PE into this computer with USB-C. Until one is there the step says
+   "Waiting for a Voice PE on USB-C." and looks again every 2 s. Winston finds it by its USB id
+   (Espressif's 303a:1001, read from sysfs) and asks it over Improv Serial what it runs ("Found a Voice
+   PE on /dev/ttyACM0, running Home Assistant Voice PE 25.10.0."). Put Winston's firmware on it
+   downloads the firmware of the release this Winston came from ("Okay Winston",
+   [Voice PE](voice-pe.md#winstons-firmware-okay-winston)), checks it against the release's
+   `SHA256SUMS` (a file that does not match is refused before anything is written) and writes it with
+   esptool through `uvx`, erasing the whole flash, with its progress ("Writing the firmware, 42%"). A
+   box already on Winston's firmware offers Continue, or Flash again.
+
+   Then Wi-Fi: the networks the box sees, strongest first (only 2.4 GHz ones, which the step says), or
+   Another network by name, and its password. The password goes to the box over the cable and nowhere
+   else: it is not kept, logged or sent back. A wrong one says "The box could not join Home. Check the
+   password." and is tried again without a new flash. Joined, the box prints its address in its log,
+   and Winston checks he reaches its ESPHome API there (port 6053). When he cannot, as from another
+   network, the step says so ("The box joined Home at 192.168.1.50, but this computer cannot reach it
+   there (port 6053).") and nothing is saved. A box that still has a key from Home Assistant, kept
+   because it was not flashed, is said to need a flash instead.
+
+   Last its room and Home Assistant area and, when his name is not Winston, a stock wake word (Okay
+   Nabu, Hey Jarvis or Hey Mycroft), since the box knows Okay Winston and those three. A box Home
+   Assistant had adopted loses its key with the flash and would come back as a new device there, so
+   the step says so with Disable it in Home Assistant, on by default (enable its ESPHome entry again
+   for a stock firmware update). Add the box and continue saves it as a room box and switches the
+   room boxes on, through the same confirm as Ways to talk. When Home Assistant does not disable the
+   entry, the step says why and to disable it there by hand, and Continue goes on with the box saved.
+   One talk with the port at a time: the page's look at the box waits while esptool writes. Unplugged
+   midway, the box is said not to answer. When this computer's user may not open the port yet (not in
+   the serial group), the step says so before anything is downloaded: run `winston setup` again, then
+   restart this computer. Logging out and in is not enough, since the service runs under systemd's
+   user manager, which lingers past a logout with the groups it started with.
 5. **Done.** Who can open this page from now on, as on Status, with the same warning when it is the
    whole network, and what was skipped. Finish saves, ends setup mode and opens Talk. From another
    device that this computer alone may open afterwards, it says so before Finish, and after it that
    he is opened on the computer he runs on.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/setup-box-dark.png">
+  <img src="images/setup-box-light.png" alt="The setup wizard's A room box step at Wi-Fi: the network Home picked from those the box sees, with its lock, the note that only 2.4 GHz networks show, and the password" width="720">
+</picture>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/setup-who-dark.png">

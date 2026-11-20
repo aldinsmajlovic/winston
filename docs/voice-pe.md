@@ -19,7 +19,18 @@ already uses its MCP server), Assist stays what it is, and Winston becomes the v
 The satellite channel (`winston/channels/satellite.py`) passes against a fake box
 (`tests/satellite_fake.py`) and has run on a real one since 2026-09-25.
 
-There are two ways in. Without Home Assistant is quicker and is how the first box was set up.
+The wizard does it all for a box on USB-C. By hand there are two ways in: without Home Assistant is
+quicker and is how the first box was set up.
+
+### From the wizard
+
+On a computer set up with `winston setup`, the wizard's A room box step ([setup](setup.md#the-steps))
+does what Without Home Assistant below does, and puts Winston's firmware on the box first: plug it in
+with USB-C, and the step flashes the firmware from Winston's release, gives the box Wi-Fi over Improv
+Serial from the networks it sees, checks Winston reaches it there and adds it as a room box with
+Listen through room boxes on. The flash erases the box, so a box Home Assistant had adopted loses its
+key, and the step offers to disable its old entry there. Settings, Ways to talk, Room boxes, Add a box
+adds a box already on the network.
 
 ### Without Home Assistant
 

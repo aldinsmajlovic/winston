@@ -365,7 +365,10 @@ checked at 1280 px beside the sidebar.
   ([setup](setup.md#the-steps)). A step draws the owning pages' own cards and forms on the same draft
   (`SlotCard`, `SectionForm`, `HomeAssistantSections`, `PersonalityDocument`, `ClonedVoices`), so
   nothing is edited in two ways; its button saves through the same confirm. `SlotCard`'s `quietWhenStopped` leaves out the stopped line there, since the wizard starts
-  them. The step names are in `lib/setup.ts`.
+  them. The step names are in `lib/setup.ts`; Skip for now and the step's button are `StepActions`, and
+  `useBusy` keeps them off while one runs. A room box's step is its own, `pages/setup-box.tsx`, not
+  Ways to talk's Add a box: its address comes from the join and its wake word is narrowed to what the
+  box knows. It saves the box into Room boxes on the same draft and through the same confirm.
 - Status: `pages/status.tsx` at `/status`, the landing: Needs you and Set up next while they apply,
   his parts by role (each a row linking to its page, with one text command and a `RowMenu`), graphics
   memory, custom engines once there is one, and the web address with its warning; Start all and Stop

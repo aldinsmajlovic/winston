@@ -129,6 +129,9 @@ flowchart TB
   another device only with the setup link's key, and starts no engine before Brain and voice. Signing
   in to Home Assistant (`winston/providers/ha_signin.py`): found through zeroconf, its own login, then
   a long-lived token named Winston and its MCP server switched on.
+  A room box over USB (`winston/api/room_box.py`): found by its USB id in sysfs, flashed with the
+  release's firmware through `uvx esptool`, given Wi-Fi over Improv Serial (`winston/providers/improv.py`)
+  and reached at its address over its ESPHome API, one talk with the port at a time.
 
 ## Config API
 

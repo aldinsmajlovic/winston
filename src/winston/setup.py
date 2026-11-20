@@ -539,16 +539,21 @@ ROOT_LEFT = ("What setup ran as root stays, whichever of these it ran: Docker an
              "serial groups, lingering (sudo loginctl disable-linger {user}), IPv4 first in /etc/gai.conf")
 
 
-def release(version: str | None) -> tuple[str, str, str]:
-    """(version, its tarball's address, its SHA-256) from a release's SHA256SUMS: the latest, or `version`.
+def sums(version: str | None) -> tuple[str, dict[str, str]]:
+    """A release's address and its SHA256SUMS (file name: digest): the latest, or `version`.
     WINSTON_RELEASES gets it from somewhere other than GitHub, as for install.sh."""
     import httpx
     base = os.environ.get("WINSTON_RELEASES", RELEASES)
     url = f"{base}/download/v{version}" if version else f"{base}/latest/download"
     r = httpx.get(f"{url}/SHA256SUMS", follow_redirects=True, timeout=30)
     r.raise_for_status()
-    for line in r.text.splitlines():
-        digest, _, name = line.partition("  ")
+    return url, {name: digest for digest, _, name in (line.partition("  ") for line in r.text.splitlines()) if name}
+
+
+def release(version: str | None) -> tuple[str, str, str]:
+    """(version, its tarball's address, its SHA-256) from a release's SHA256SUMS: the latest, or `version`."""
+    url, files = sums(version)
+    for name, digest in files.items():
         if name.startswith("winston-") and name.endswith(".tar.gz"):
             return name.removeprefix("winston-").removesuffix(".tar.gz"), f"{url}/{name}", digest
     raise ValueError(f"no Winston release in {url}/SHA256SUMS")

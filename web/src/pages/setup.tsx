@@ -10,7 +10,6 @@ import { Presence } from '@/components/presence'
 import { SectionForm } from '@/components/section-form'
 import { runsHere, SlotCard } from '@/components/slot-card'
 import { StatusLine } from '@/components/status-line'
-import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -24,6 +23,9 @@ import { allBut, setIn } from '@/lib/schema'
 import { SETUP_STEPS } from '@/lib/setup'
 import { HomeAssistantSections } from '@/pages/home-assistant'
 import { PersonalityDocument } from '@/pages/personality'
+import { StepActions } from '@/components/step-actions'
+import { useBusy } from '@/hooks/use-busy'
+import { BoxStep } from '@/pages/setup-box'
 import { cn } from '@/lib/utils'
 
 const setupKey = ['get', '/api/setup']
@@ -88,6 +90,7 @@ export default function SetupPage() {
       {step === 'brain' ? <BrainStep page={s.page} presets={presets.data} next={next} /> : null}
       {step === 'home_assistant' ? <HomeAssistantStep page={s.page} next={next} /> : null}
       {step === 'who' ? <WhoStep page={s.page} next={next} /> : null}
+      {step === 'box' ? <BoxStep page={s.page} next={next} /> : null}
       {step === DONE ? <DoneStep page={s.page} state={state} name={name} /> : null}
     </Frame>
   )
@@ -145,42 +148,6 @@ function Frame({ name, state, order = [], current, children }: FrameProps) {
   )
 }
 
-type Actions = { label?: string; busy: boolean; onClick?: () => void; onSkip?: () => void }
-
-/** Skip for now, then the step's own button, when it has one yet. */
-function StepActions({ label, busy, onClick, onSkip }: Actions) {
-  return (
-    <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
-      {onSkip ? (
-        <Button variant="ghost" disabled={busy} onClick={onSkip}>
-          Skip for now
-        </Button>
-      ) : null}
-      {label ? (
-        <Button disabled={busy} onClick={onClick}>
-          {label}
-        </Button>
-      ) : null}
-    </div>
-  )
-}
-
-/** Run one of the step's actions, the buttons off meanwhile. */
-function useBusy(): [boolean, (run: () => Promise<void>) => Promise<void>] {
-  const [busy, setBusy] = useState(false)
-  return [
-    busy,
-    async (run) => {
-      setBusy(true)
-      try {
-        await run()
-      } finally {
-        setBusy(false)
-      }
-    },
-  ]
-}
-
 /** The Home Assistant page's own cards: Connect, with those found on the network and Sign in, until it is
  * connected, then the connection and the devices he can use. Its button saves the list (which applies it
  * there) and goes on; until connected there is only Skip for now. */
@@ -207,7 +174,7 @@ function HomeAssistantStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
   )
 }
 
-type StepProps = { page: SettingsState; presets: Presets; next: (how: 'done' | 'skipped') => Promise<void> }
+export type StepProps = { page: SettingsState; presets: Presets; next: (how: 'done' | 'skipped') => Promise<void> }
 
 /** The profile's picks as on the Brain and Voice pages, each with what it still needs downloaded. Until
  * this step is done winstond starts none of them, since a start downloads what it lacks. Its button saves a

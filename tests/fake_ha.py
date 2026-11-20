@@ -114,7 +114,8 @@ TOOLS_BY_DOMAIN = {"light": [("light__HassLightSet", "Sets the brightness percen
 
 INTENT_ARGS = {"type": "object", "properties": {"name": {"type": "string"}, "area": {"type": "string"},
                                              "domain": {"type": "array", "items": {"type": "string"}}}}
-WRITES = {"config/entity_registry/update", "homeassistant/expose_entity", "homeassistant/expose_new_entities/set"}
+WRITES = {"config/entity_registry/update", "homeassistant/expose_entity", "homeassistant/expose_new_entities/set",
+          "config_entries/disable"}
 UPDATE_KEYS = {"aliases", "name", "area_id", "icon", "new_entity_id", "disabled_by", "hidden_by"}
 
 
@@ -167,6 +168,7 @@ class FakeHA:
         self.codes: dict[str, str] = {}               # sign-in code -> client_id
         self.refresh: dict[str, dict] = {}            # refresh token id -> {token, access, client_name, type}
         self.n = 0
+        self.config_entries: list[dict] = []          # config_entries/get; a check adds an ESPHome box's own
 
     # ------------------------------------------------------------ REST
 
@@ -312,6 +314,14 @@ class FakeHA:
             return copy.deepcopy(self.areas)
         if t == "config/device_registry/list":
             return copy.deepcopy(self.devices)
+        if t == "config_entries/get":
+            return [copy.deepcopy(e) for e in self.config_entries if msg.get("domain") in (None, e["domain"])]
+        if t == "config_entries/disable":
+            entry = next((e for e in self.config_entries if e["entry_id"] == msg["entry_id"]), None)
+            if entry is None:
+                raise LookupError("Config entry not found")
+            entry["disabled_by"] = msg["disabled_by"]
+            return {"require_restart": False}
         if t == "homeassistant/expose_entity/list":
             return {"exposed_entities": {eid: {"conversation": True} for eid in sorted(self.exposed)}}
         if t == "homeassistant/expose_entity":
