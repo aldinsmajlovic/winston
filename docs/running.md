@@ -35,6 +35,9 @@ log. Installed from a release (`install.sh`), `winston` is in `~/.local/bin`, wi
 `winston update` installs the next release and restarts him, and `winston uninstall` removes him and
 keeps the data directory ([setup](setup.md#updating-and-removing)).
 
+`winston check` gives the checks, and what they start, one temporary folder (`TMPDIR`) and removes
+it when they end, so a check that forgets its own files leaves nothing in `/tmp`.
+
 `.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
 localhost: wake, request, streamed reply, a follow-up without the wake word, silence.
 
@@ -292,8 +295,9 @@ cd web && pnpm install && pnpm build   # guardrails, lint, type check, bundle in
 `pnpm dev` runs Vite on :5173 with `/api` proxied to :8700. `pnpm api` regenerates the typed client
 from `winston api schema` after the API changes.
 
-`pnpm smoke` (or `winston check ui`) tests the built pages with Playwright in the system Chromium
-(`/usr/bin/chromium`, or set `CHROMIUM`). It copies `config.yaml` and `persona.md` to a temp directory
+`pnpm smoke` (or `winston check ui`) tests the built pages with Playwright in the system Chromium, or
+Chrome where there is none (or set `CHROMIUM`). It copies `config.yaml` and `persona.md` from the data
+directory Winston uses (or `WINSTON_SOURCE`) to a temp directory
 with fake keys, every engine and channel off, Home Assistant pointed at a fake one (`tests/fake_ha.py`),
 every other address pointed nowhere and every port moved to a free one, so nothing reaches the running
 brain, voice server, channels, MCP servers or Spotify receiver. It starts a throwaway

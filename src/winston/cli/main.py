@@ -1,8 +1,11 @@
 """The winston command. Everything here goes through config and the control API, nothing
 touches processes directly."""
 import asyncio
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import typer
@@ -344,11 +347,17 @@ def check(which: str = typer.Argument("all", help="unit | ui | m0 | m1 | m2 | br
     # brain and turns are comparisons and clone takes a minute and a half; they run on purpose
     names = [n for n in plan if n not in ("brain", "clone", "turns")] if which == "all" else [which]
     failed = []
-    for n in names:
-        print(f"\n=== {n}")
-        for step, cmd in (plan[n] if n == "unit" else {n: plan[n]}).items():
-            if subprocess.run(cmd, cwd=repo_root(), check=False).returncode != 0:
-                failed.append(step)
+    # every check's temporary files, and those of what it starts, in one folder removed afterwards:
+    # /tmp is often memory, and a check that forgets its own (or is stopped halfway) leaves nothing
+    tmp = tempfile.mkdtemp(prefix="winston-check-")
+    try:
+        for n in names:
+            print(f"\n=== {n}")
+            for step, cmd in (plan[n] if n == "unit" else {n: plan[n]}).items():
+                if subprocess.run(cmd, cwd=repo_root(), check=False, env={**os.environ, "TMPDIR": tmp}).returncode:
+                    failed.append(step)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     if failed:
         print(f"\nFAILED: {failed}"); raise typer.Exit(1)
     print("\nall passed")

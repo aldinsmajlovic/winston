@@ -17,6 +17,8 @@ key is billed per question), else with this machine's Claude Code login, which t
 ~/.claude itself. Spend is capped per day from the cost the SDK reports."""
 from __future__ import annotations
 
+import atexit
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Literal
@@ -37,6 +39,7 @@ SYSTEM = ("You answer questions passed on by a home voice assistant. Reply in pl
           "question depends on current events you cannot know, say so.")
 KINDS = {"sk-ant-oat": "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-api": "ANTHROPIC_API_KEY"}
 WORKDIR = tempfile.mkdtemp(prefix="winston-claude-")        # empty: nothing on disk for the CLI to pick up
+atexit.register(shutil.rmtree, WORKDIR, True)              # True: ignore_errors
 
 
 class ClaudeSettings(Settings):

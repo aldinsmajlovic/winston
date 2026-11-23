@@ -554,7 +554,7 @@ class QuietObserver(BaseObserver):
                 if self._started(c.tool_call_id):      # its first sighting comes before its result
                     self._pending.add(c.tool_call_id)
                     self._since = time.monotonic()
-        elif isinstance(f, (FunctionCallResultFrame, FunctionCallCancelFrame)):     # or cancelled
-            if f.tool_call_id in self._pending:
-                self._pending.discard(f.tool_call_id)
-                self._since = time.monotonic()
+        elif isinstance(f, (FunctionCallResultFrame, FunctionCallCancelFrame)) and \
+                f.tool_call_id in self._pending:                                   # or cancelled
+            self._pending.discard(f.tool_call_id)
+            self._since = time.monotonic()

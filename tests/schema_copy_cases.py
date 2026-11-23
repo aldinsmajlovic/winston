@@ -7,7 +7,9 @@ switches load as today's two choices, and a typed wake word becomes the box's id
 
     uv run python tests/schema_copy_cases.py
 """
+import json
 import re
+import subprocess
 from pathlib import Path
 
 from harness import check, finish_checks
@@ -15,6 +17,7 @@ from winston_sdk.loader import load
 
 from winston.config.restarts import _deref
 from winston.config.schema import SatelliteDevice, WinstonConfig
+from winston.extension_host.sources import _from_path, command, missing_requirements
 
 BARE = {"Enabled", "Url", "Env"}                    # pydantic's titles for a field nobody named
 UNITS = ("(s)", "(min)", "(days)")                  # units are `unit`, never part of a title
@@ -52,7 +55,13 @@ def walk(node: dict, where: str, root: dict, hidden: bool = False):
 root = WinstonConfig.model_json_schema()
 walk(root, "config", root)
 for path in sorted(p for p in EXTENSIONS.glob("*.py") if not p.name.endswith("_test.py")):
-    schema = load(str(path)).settings_model.model_json_schema()
+    src = _from_path(path, "built-in")
+    if src and src.manifest and missing_requirements(src.manifest):
+        # its own packages (Ask Claude's SDK): described in its own environment, as the host does
+        out = subprocess.run([*command(src), "describe", src.target], capture_output=True, text=True, check=True)
+        schema = json.loads(out.stdout)["settings"]["schema"]
+    else:
+        schema = load(str(path)).settings_model.model_json_schema()
     walk(schema, f"{path.stem}.settings", schema)
 
 

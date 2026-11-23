@@ -8,7 +8,16 @@
 set -euo pipefail
 web="$(cd "$(dirname "$0")/.." && pwd)"
 repo="$(dirname "$web")"
-src="${WINSTON_SOURCE:-$repo/data}"
+# the instance to copy, found as Winston finds it: $WINSTON_DATA, ./data in the clone, else his home
+src="${WINSTON_SOURCE:-${WINSTON_DATA:-$repo/data}}"
+[ -f "$src/config.yaml" ] || [ -n "${WINSTON_SOURCE:-}${WINSTON_DATA:-}" ] || src="$HOME/.local/share/winston"
+# the system's Chromium, or Chrome where there is none
+if [ -z "${CHROMIUM:-}" ]; then
+  for b in chromium chromium-browser google-chrome-stable google-chrome; do
+    if command -v "$b" >/dev/null; then CHROMIUM="$(command -v "$b")"; break; fi
+  done
+  export CHROMIUM
+fi
 [ -f "$web/dist/index.html" ] || { echo "no web/dist: run pnpm build first"; exit 1; }
 [ -f "$src/config.yaml" ] || { echo "no config at $src"; exit 1; }
 
