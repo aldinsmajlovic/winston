@@ -10,12 +10,15 @@ The protocol as Home Assistant uses it (its components/wyoming, and the wyoming 
   `NotHandled(text)` and speaks the text of either; it never reads `HandledChunk`, so the reply goes whole.
 - Discovery is zeroconf, `_wyoming._tcp.local.`. Wyoming has no authentication, so the switch is off by default.
 """
+import errno
 import socket
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import partial
 
+import httpx
 from loguru import logger
 from wyoming.asr import Transcript
 from wyoming.event import Event
@@ -25,7 +28,13 @@ from wyoming.server import AsyncEventHandler, AsyncTcpServer
 from zeroconf.asyncio import AsyncServiceInfo, AsyncZeroconf
 
 import winston
+from winston.channels.text import UNREACHABLE, error_text
+from winston.channels.web import WebChat
 from winston.config.schema import WinstonConfig
+from winston.core import directory
+from winston.core.announce import Hub
+from winston.core.live import Feed, LiveEvent
+from winston.core.rooms import Rooms, room_for_area
 
 SERVICE = "_wyoming._tcp.local."
 MDNS_GROUP = "224.0.0.251"
@@ -132,3 +141,96 @@ class Listener:
         if self.server:
             await self.server.stop()       # closes the port at once, and any open request
         self.server = self.zc = self.service = None
+
+
+NO_BRAIN = "Sorry, I could not reach my brain."
+FAILED = "Sorry, something went wrong while I answered."
+
+
+class Assist:
+    """Answers Home Assistant's requests in winstond: the listener switched by channels.assist, the
+    conversations in a WebChat of their own, and the room each request came from."""
+
+    def __init__(self, cfg: WinstonConfig, feed: Feed, rooms: Rooms, hub: Hub,
+                 ha: Callable[[], httpx.AsyncClient]):
+        self.cfg, self.feed, self.rooms, self.hub, self.ha = cfg, feed, rooms, hub, ha
+        self.chat = WebChat(cfg, feed, rooms, channel="assist")
+        self.listener: Listener | None = None
+        self._as: tuple[int, str] | None = None       # (port, name) it listens and is advertised as
+        self.last_seen: float | None = None
+        self.error: str | None = None
+
+    @property
+    def listening(self) -> bool:
+        return self.listener is not None
+
+    def _seen(self):
+        self.last_seen = time.time()
+
+    async def apply(self, cfg: WinstonConfig) -> None:
+        """Listen, move or stop to match channels.assist. A port that cannot be opened is kept in error and
+        logged, never raised, so the save that switched it on still succeeds; the next save tries again."""
+        self.cfg, a = cfg, cfg.channels.assist
+        want = (a.port, cfg.assistant.name) if a.enabled else None
+        if self.listener and self._as != want:
+            await self.listener.stop()
+            self.listener, self._as = None, None
+            logger.info("assist: stopped listening")
+        self.error = None
+        if want and not self.listener:
+            listener = Listener()
+            try:
+                await listener.start(cfg, a.port, self.answer, self._seen)
+                self.listener, self._as = listener, want
+            except OSError as e:
+                self.error = (f"Port {a.port} is in use by another program." if e.errno == errno.EADDRINUSE
+                              else f"Port {a.port} could not be opened: {e.strerror or e}.")
+                logger.warning(f"assist: {self.error}")
+        await self.chat.reset(cfg)
+
+    async def where(self, req: Request) -> str | None:
+        """The room the request came from: its device's area in Home Assistant, else its satellite's, as a
+        room (core/rooms.room_for_area). None without Home Assistant, its registry, or an area."""
+        snap = await directory.home(self.cfg)
+        if snap is None or snap.registry is None:
+            return None
+        aid = (snap.devices.get(req.device_id or "") or {}).get("area_id")
+        if not aid and req.satellite_id:
+            aid, _ = snap.area(req.satellite_id)
+        name = snap.areas.get(aid) if aid else None
+        return room_for_area(self.cfg, name) if name else None
+
+    async def answer(self, req: Request) -> tuple[str, bool]:
+        """His reply and whether it asks something. In the room the request came from, else in one
+        conversation per Home Assistant conversation id. Never silent: a failure is Unanswered."""
+        room = None
+        try:
+            room = await self.where(req)
+        except Exception:                                               # noqa: BLE001  (answered with no room)
+            logger.exception("assist: the request's room not found")
+        conv = None if room else req.conversation_id
+        try:
+            text = await self.chat.reply(req.text, room, conv, notify=self.chat._correction)
+        except Exception as e:
+            logger.exception("assist: answering failed")
+            said = error_text(e)
+            self.feed.publish(LiveEvent(channel="assist", type="error", text=said))
+            self.feed.publish(LiveEvent(channel="assist", type="state", state="idle"))
+            raise Unanswered(NO_BRAIN if said == UNREACHABLE else FAILED) from e
+        s = self.chat.sessions.get(self.chat._key(room, conv))
+        llm = s.brain.llm if s else None
+        quiet = bool(getattr(llm, "ended", False))      # a scene that speaks for itself (quiet_after)
+        if quiet:
+            llm.ended = False
+        if not text and not quiet:
+            logger.warning("assist: no reply within the time limit")
+            self.feed.publish(LiveEvent(channel="assist", type="error", text="He did not answer in time."))
+            self.feed.publish(LiveEvent(channel="assist", type="state", state="idle"))
+            raise Unanswered(FAILED)
+        return text, asks(text)
+
+    async def close(self):
+        if self.listener:
+            await self.listener.stop()
+        self.listener, self._as = None, None
+        await self.chat.close()

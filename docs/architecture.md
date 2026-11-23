@@ -55,7 +55,8 @@ flowchart TB
   See the [plugin contract](#plugin-contract).
 - **Channels** (`winston/channels`): feed the same brain. Voice is the Pipecat pipeline with VAD,
   barge-in and latency observers. Text is `winston talk`, Discord DMs and the Talk page's web chat,
-  which runs inside winstond.
+  which runs inside winstond. Home Assistant's Assist reaches him over Wyoming, also inside winstond
+  ([Home Assistant Assist](assist.md)).
 - **Live feed** (`core/live.py`): what Winston hears, says and does, as events (state, what you said,
   reply pieces, tool calls, announcements). The voice process posts them to `POST /api/live`, web chat
   publishes in process, and pages read `GET /api/live`. The browser's voice connects through

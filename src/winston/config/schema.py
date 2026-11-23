@@ -429,6 +429,18 @@ class DiscordChannel(Model):
         return self.allowed_user or os.environ.get(self.allowed_user_env, "").strip()
 
 
+class AssistChannel(Model):
+    """Home Assistant's Assist over Wyoming (channels/assist.py): applied on save, no restart."""
+    model_config = section(enabled_by="enabled", icon="homeassistant",
+                           help="Home Assistant's app, chat and voice satellites can use him as their conversation "
+                                "agent.")
+    enabled: bool = Field(False, title="Answer Home Assistant's Assist",
+                          json_schema_extra=ui(help="The port has no password: anyone on your network could ask him "
+                                                    "to act."))
+    port: int = Field(10800, ge=1024, le=65535, title="Port",
+                      description="Where Home Assistant reaches him; it finds him on its own while this is on.")
+
+
 class SatelliteDevice(Model):
     model_config = section("satellite")
     host: str = Field(title="Address",
@@ -540,6 +552,7 @@ class Channels(Model):
     discord: DiscordChannel = DiscordChannel()
     satellite: SatelliteChannel = Field(SatelliteChannel(), title="Room boxes")
     web: WebChannel = WebChannel()
+    assist: AssistChannel = Field(AssistChannel(), title="Home Assistant Assist")
 
 
 class ExposedEntity(Model):

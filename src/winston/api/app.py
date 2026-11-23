@@ -35,6 +35,7 @@ from winston.config.loader import apply_changes, get_in, version as file_version
 from winston.config.presets import LLM, PROFILES, TTS, stt_presets
 from winston.config.restarts import BRAIN_CHANNELS, control_sections, restarts_for
 from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
+from winston.channels.assist import Assist
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.common import failure_words, key
@@ -253,6 +254,17 @@ class SpeakRequest(BaseModel):
         if v is not None and ("\\" in v or "\0" in v or v.startswith("/") or ".." in PurePosixPath(v).parts):
             raise ValueError("a voice is a name under the voices directory: no '..', absolute path, backslash or NUL")
         return v
+
+
+class AssistState(BaseModel):
+    enabled: bool
+    listening: bool = Field(description="The port is open and he is announced on the network.")
+    port: int
+    error: str | None = Field(None, description="Why the port could not be opened.")
+    last_seen: float | None = Field(None, description="When Home Assistant last reached him (epoch seconds); None: "
+                                                      "not since winstond started.")
+    satellites: int = Field(0, description="Home Assistant satellites he speaks on (in rooms with no Winston "
+                                           "speaker of their own).")
 
 
 class TurnMarkBody(BaseModel):
@@ -555,6 +567,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     extensions = Host(cfg, api=cfg.control.url)
     extension_services = ExtensionServices(extensions)
     extension_services.talking = feed.talking             # background model calls yield to conversations
+    assist = Assist(cfg, feed, rooms, hub, extension_services._ha_client)
 
     def llm_up() -> bool:
         """The brain's server (engines.llm) is healthy, or Winston neither runs nor checks one."""
@@ -686,7 +699,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     def confirm_on_phone(p: Pending):
         where = {"web": "on the Talk page", "voice": "on the Talk page", "satellite": "on a room box",
-                 "discord": "on Discord", "text": "in a terminal"}.get(p.channel, "here")
+                 "discord": "on Discord", "text": "in a terminal",
+                 "assist": "through Home Assistant"}.get(p.channel, "here")
         spawn(to_phone(f"{p.label}? Asked for {where}.", f"confirm-{p.id}",
                        [{"action": f"WINSTON_CONFIRM_{p.id}", "title": "Confirm"},
                         {"action": f"WINSTON_DECLINE_{p.id}", "title": "Decline"}]))
@@ -734,12 +748,14 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         if autostart:
             nudges.start()
             spawn(_diary_loop())
+            await assist.apply(cfg)     # a winstond that only watches never listens; a save still applies it
         async with mcp_out.session_manager.run():
             yield
         await nudges.stop()
         await extensions.scheduler.stop()
         await extensions.stop_all()
         await web.close()
+        await assist.close()
         await sup.stop_all(owned_only=True)
 
     app = FastAPI(title="winstond", version=__version__, lifespan=lifespan)
@@ -999,6 +1015,13 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         n = extensions.scheduler.speakers_stopped(m.ext)
         logger.info(f"speakers: stopped by voice{f' in {m.room}' if m.room else ''}; {m.ext} told ({n} handler(s))")
         return Ok()
+
+    @app.get("/api/assist", response_model=AssistState,
+             summary="Home Assistant Assist: whether it listens, why not, and when Home Assistant last reached him")
+    async def assist_state():
+        a = app.state.cfg.channels.assist
+        return AssistState(enabled=a.enabled, listening=assist.listening, port=a.port, error=assist.error,
+                           last_seen=assist.last_seen, satellites=0)
 
     @app.get("/api/rooms", response_model=list[RoomState],
              summary="Rooms: the satellite boxes' and any a browser session named, with who has each mic")
@@ -1380,6 +1403,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         sup.mark_stale((r for r in restarts if r != "control"), base=_dump(cur))
         sup.settle(lambda base: restarts_for(base, new_d, schema))     # a change undone needs no restart
         await web.reset(new)
+        await assist.apply(new)
         response.headers["ETag"] = _etag(app.state.version)
         return ConfigResult(saved=True, restarts=restarts, version=app.state.version, ha_apply=ha_apply,
                             persona_rename=rename)
@@ -1452,6 +1476,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             control_secrets.add(name)
         if set(st.restarts) & set(BRAIN_CHANNELS):
             await web.reset(app.state.cfg)          # the Talk page's brain reads keys when it is built
+            await assist.apply(app.state.cfg)
         await extensions.secret_changed(name)
         return SecretResult(name=name, set=st.set, restarts=st.restarts)
 

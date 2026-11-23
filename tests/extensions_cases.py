@@ -257,7 +257,7 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         r = (await inv("devices")).json()
         rows = {d["id"]: d for d in r.get("result") or []}
         expect("devices: every device, exposed or not, with name, maker, model, firmware and area",
-               r["ok"] and len(rows) == 5 and rows["dev_ceiling"] == {
+               r["ok"] and len(rows) == 7 and rows["dev_ceiling"] == {
                    "id": "dev_ceiling", "name": "TAKLAMPA E27", "manufacturer": "Glimt Lighting", "model": "Ceiling E27",
                    "model_id": "GL-E27", "sw_version": "1.4.2", "hw_version": "2", "area": "Living room",
                    "service": False} and rows["dev_shelf"]["name"] == "Hyllan" and rows["dev_plex"]["service"], r)

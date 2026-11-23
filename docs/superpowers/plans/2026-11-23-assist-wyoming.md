@@ -143,11 +143,11 @@ expect("else the area itself", room_for_area(cfg, "Kitchen") == "Kitchen")
   - `async close()`.
 - `GET /api/assist` returns `AssistState(enabled: bool, listening: bool, port: int, error: str | None, last_seen: float | None, satellites: int)`.
 - `app.py`: `assist = Assist(...)` beside `web`; `await assist.apply(cfg)` in `lifespan` (both `autostart` and not: a watching winstond does not listen, so only when `autostart`), `await assist.apply(new)` next to each `await web.reset(new)` (lines ~1382 and ~1454), `await assist.close()` beside `web.close()`; `confirm_on_phone`'s `where` gains `"assist": "through Home Assistant"`.
-- `tests/fake_ha.py`, default seed: device `dev_satellite` "Kitchen satellite" in `kitchen`, entity `assist_satellite.kitchen_satellite` (state `idle`, not exposed); device `dev_old_box` in `living_room` with `assist_satellite.old_box` state `unavailable`. Run `winston check unit` after: a check that counts the seed's entities may need its number moved, and only that.
+- `tests/fake_ha.py`, default seed: device `dev_satellite` "Kitchen satellite" in `kitchen`, entity `assist_satellite.kitchen_satellite` (state `idle`, not exposed); device `dev_old_box` in `living_room` with `assist_satellite.old_box` state `unavailable`. Run `winston check unit` after: a check that counts the seed's entities may need its number moved, and only that. (It was `tests/extensions_cases.py`'s device count, 5 to 7.) `/api/rooms` lists only configured rooms and those a screen is in, so the room check reads `app.state.rooms` instead. Until Task 5 draws the card, `docs/assist.md` says to switch it on in config.yaml; Task 4 and 5 add their parts to it.
 
-- [ ] **Step 1: Extend `tests/fake_ha.py`** as above.
+- [x] **Step 1: Extend `tests/fake_ha.py`** as above.
 
-- [ ] **Step 2: Failing end-to-end checks in `tests/assist_cases.py`.** A winstond from `harness.winstond_data` on a spare port with the fake Home Assistant and an in-test streaming fake brain (aiohttp, `text/event-stream` chunks then `[DONE]`; it records every request and answers by the newest user message: "lights" gives "Done, sir.", "colour" gives "Which colour, sir?", "break" gives HTTP 500, anything with "Speaking up" gives "Your parcel has arrived, sir."). `ZEROCONF` swapped as in Task 1. Assist switched on with `PATCH /api/config` (`channels.assist.enabled: true`, `port: <free>`), then through `AsyncTcpClient`:
+- [x] **Step 2: Failing end-to-end checks in `tests/assist_cases.py`.** A winstond from `harness.winstond_data` on a spare port with the fake Home Assistant and an in-test streaming fake brain (aiohttp, `text/event-stream` chunks then `[DONE]`; it records every request and answers by the newest user message: "lights" gives "Done, sir.", "colour" gives "Which colour, sir?", "break" gives HTTP 500, anything with "Speaking up" gives "Your parcel has arrived, sir."). `ZEROCONF` swapped as in Task 1. Assist switched on with `PATCH /api/config` (`channels.assist.enabled: true`, `port: <free>`), then through `AsyncTcpClient`:
 
 ```python
 expect("switched on by a save, listening", (await api.get("/api/assist")).json()["listening"])
@@ -166,11 +166,11 @@ expect("switched off: closed and withdrawn", connect_refused and zc.calls[-2:] =
 
   And once with the token variable unset in the throwaway `.env`: a request is answered with no room (Review Focus 6).
 
-- [ ] **Step 3: Run it to see it fail; implement; run it to see it pass.** Then `uv run winston check unit`, `uvx ruff check src tests sdk`, `just lint`.
+- [x] **Step 3: Run it to see it fail; implement; run it to see it pass.** Then `uv run winston check unit`, `uvx ruff check src tests sdk`, `just lint`.
 
-- [ ] **Step 4: Write `docs/assist.md`** (writing-docs style, no intro that restates the heading): switching it on and what that opens (no password, the whole network); adding him (Discovered, or Wyoming Protocol by host and port); picking him in an Assist pipeline; rooms from the device's area and the one-conversation-per-id rule; what works and what does not (his memory, tools, extensions and state check work; no cloned voice, no talking over him, the reply arrives whole, "Prefer handling commands locally" is not offered, Home Assistant's own timers do not ring through him and his reminders do that job); conversations start fresh after the Talk page's "New conversation after". Link it from `docs/home-assistant.md` and add it to the map in `docs/writing-docs.md`.
+- [x] **Step 4: Write `docs/assist.md`** (writing-docs style, no intro that restates the heading): switching it on and what that opens (no password, the whole network); adding him (Discovered, or Wyoming Protocol by host and port); picking him in an Assist pipeline; rooms from the device's area and the one-conversation-per-id rule; what works and what does not (his memory, tools, extensions and state check work; no cloned voice, no talking over him, the reply arrives whole, "Prefer handling commands locally" is not offered, Home Assistant's own timers do not ring through him and his reminders do that job); conversations start fresh after the Talk page's "New conversation after". Link it from `docs/home-assistant.md` and add it to the map in `docs/writing-docs.md`.
 
-- [ ] **Step 5: Commit** code, fake, tests, `docs/assist.md` and the decisions lines. `git commit -s -m "Assist: winstond answers Home Assistant's conversation requests, in the room they came from"`.
+- [x] **Step 5: Commit** code, fake, tests, `docs/assist.md` and the decisions lines. `git commit -s -m "Assist: winstond answers Home Assistant's conversation requests, in the room they came from"`.
 
 ---
 

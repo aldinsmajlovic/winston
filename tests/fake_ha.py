@@ -42,6 +42,9 @@ DEVICES = [
     {"id": "dev_phone", "name": "Phone", "name_by_user": None, "area_id": None},
     {"id": "dev_plex", "name": "Plex client", "name_by_user": None, "area_id": None,
      "manufacturer": "Plexus Media", "sw_version": "9.1", "entry_type": "service"},
+    # Home Assistant's own voice satellites (Assist): one in an area, and an old box gone unavailable.
+    {"id": "dev_satellite", "name": "Kitchen satellite", "name_by_user": None, "area_id": "kitchen"},
+    {"id": "dev_old_box", "name": "Old box", "name_by_user": None, "area_id": "living_room"},
 ]
 # entity_id, friendly name, state, attributes, registry (None: not in the registry), exposed
 ENTITIES = [
@@ -61,6 +64,10 @@ ENTITIES = [
     ("weather.forecast_home", "Forecast", "sunny", {"temperature": 14}, {"device_id": None, "name": None, "aliases": []}, True),
     ("todo.shopping_list", "Shopping list", "2", {}, {"device_id": None, "name": None, "aliases": []}, True),
     ("sun.sun", "Sun", "above_horizon", {}, None, False),       # a state with no registry entry
+    ("assist_satellite.kitchen_satellite", "Kitchen satellite", "idle", {},
+     {"device_id": "dev_satellite", "name": None, "aliases": []}, False),
+    ("assist_satellite.old_box", "Old box", "unavailable", {}, {"device_id": "dev_old_box", "name": None, "aliases": []},
+     False),
 ]
 
 # A home shaped like a real one, for docs screenshots (--seed home): a room light group with three
@@ -265,7 +272,8 @@ class FakeHA:
                 "weather": {"get_forecasts": {"response": {"optional": False}}},
                 "calendar": {"get_events": {"response": {"optional": False}}},
                 "todo": {"get_items": {"response": {"optional": False}}, "add_item": {}},
-                "notify": {"mobile_app_test_phone": {}, "persistent_notification": {}}}
+                "notify": {"mobile_app_test_phone": {}, "persistent_notification": {}},
+                "assist_satellite": {"announce": {}}}
 
     async def get_services(self, request):
         await self._gate(request)
