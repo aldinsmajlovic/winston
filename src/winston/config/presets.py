@@ -57,7 +57,7 @@ LLM: list[Fragment] = [
                 "takes 17 GB of graphics memory and gets requests right that vLLM's 9B misses. It cannot see "
                 "images; starts in 10 s once downloaded.",
         "engine": {
-            "driver": "docker", "image": "ghcr.io/ggml-org/llama.cpp:server-cuda-b11118", "port": 8000,
+            "driver": "docker", "image": "ghcr.io/ggml-org/llama.cpp:server-cuda-v1.0.0-b12359-b1b770d", "port": 8000,
             "health": "/health", "startup_timeout": 900, "gpu": True, "runtime": "nvidia",
             "env": {"NVIDIA_VISIBLE_DEVICES": "all", "NVIDIA_DRIVER_CAPABILITIES": "compute,utility"},
             "volumes": {"~/.cache/huggingface": "/root/.cache/huggingface"},   # llama.cpp reads the HF cache
