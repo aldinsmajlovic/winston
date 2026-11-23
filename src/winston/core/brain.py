@@ -137,7 +137,10 @@ def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice") -> str:
     return "\n\n".join(p for p in parts if p)
 
 
-SPOKEN = ("voice", "satellite")      # channels whose replies are heard, not read
+SPOKEN = ("voice", "satellite")      # channels whose replies are heard, in his own voice
+# Channels whose replies are heard: Home Assistant's Assist speaks his reply in its own voice, so it thinks and
+# takes shortcuts as a spoken channel, but keeps the typed prompt (no vocal events) and the typed server slot.
+HEARD = (*SPOKEN, "assist")
 
 _slots: dict[str, tuple[float, int]] = {}      # server: (when read, its slots)
 
@@ -167,7 +170,7 @@ def thinking_for(cfg: WinstonConfig, channel: str) -> bool:
     """Whether every turn on the channel thinks (llm.thinking.spoken or typed: always). WINSTON_THINKING=1|0
     overrides it, for experiments."""
     t = cfg.llm.thinking
-    default = t.spoken == "always" if channel in SPOKEN else t.typed == "always"
+    default = t.spoken == "always" if channel in HEARD else t.typed == "always"
     v = os.environ.get("WINSTON_THINKING", str(default))
     return str(v).strip().lower() in ("1", "true", "yes")
 
@@ -507,11 +510,11 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
     s = c.sampling
     body = thinking_body(cfg, channel) | ({"id_slot": slot} if slot is not None else {})
     # Only where thinking is otherwise off: text channels already think every turn.
-    home = home_request(cfg) if channel in SPOKEN and c.thinking.spoken == "home" and not thinking_for(cfg, channel) \
+    home = home_request(cfg) if channel in HEARD and c.thinking.spoken == "home" and not thinking_for(cfg, channel) \
         else None
     return WinstonLLM(
         home=home, control=c.thinking.control, effort=c.thinking.home_effort,
-        own=own_answers(cfg) if channel in SPOKEN else None, assistant=cfg.assistant.name,
+        own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name,
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=served_model(cfg),

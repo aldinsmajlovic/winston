@@ -58,6 +58,12 @@ def area(cfg: WinstonConfig, room: str) -> str:
     return room.strip()
 
 
+def room_for_area(cfg: WinstonConfig, area_name: str) -> str:
+    """The room a Home Assistant area means: the configured room whose area it is, else the area's own name. A
+    request from a Home Assistant device in that area joins that room's conversation (channels/assist.py)."""
+    return next((room for room in configured(cfg) if key(area(cfg, room)) == key(area_name)), area_name.strip())
+
+
 def configured(cfg: WinstonConfig) -> list[str]:
     """Rooms named in config: the satellite boxes."""
     return list(cfg.channels.satellite.devices)

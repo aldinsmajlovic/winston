@@ -7,9 +7,10 @@ import asyncio
 import socket
 from typing import ClassVar
 
-from harness import expect, finish, free_port, scratch_data
+from harness import expect, finish, free_port, scratch_data, winstond_data
 
-scratch_data("winston-assist-")
+DATA = scratch_data("winston-assist-")
+winstond_data(DATA, {"llm": {"model": "x"}})        # the persona and memory the prompt is built from
 
 from loguru import logger  # noqa: E402
 from wyoming.asr import Transcript  # noqa: E402
@@ -104,5 +105,22 @@ async def protocol():
     expect("no conversation id: a new one", len(r.conversation_id) == 32 and r.device_id is None)
 
 
+def pure():
+    from winston.core.brain import persona, thinking_for
+    from winston.core.rooms import room_for_area
+    cfg_home = WinstonConfig.model_validate({"llm": {"model": "x", "thinking": {"spoken": "always", "typed": "never"}}})
+    expect("assist thinks as a spoken channel",
+           (thinking_for(cfg_home, "assist"), thinking_for(cfg_home, "text")) == (True, False))
+    cfg_breeze = WinstonConfig.model_validate({"llm": {"model": "x"}, "engines": {"tts": {
+        "driver": "subprocess", "cmd": ["python", "server.py"], "cwd": "services/tts-breeze2", "port": 9000}}})
+    expect("the box's prompt has vocal events", "[sigh]" in persona(cfg_breeze, "", "satellite"))
+    expect("assist's prompt has none", "[sigh]" not in persona(cfg_breeze, "", "assist"))
+    cfg_box = WinstonConfig.model_validate({"llm": {"model": "x"}, "channels": {"satellite": {"devices": {
+        "main room": {"host": "10.0.0.2", "area": "Living room"}}}}})
+    expect("a configured room by its area", room_for_area(cfg_box, "living Room") == "main room")
+    expect("else the area itself", room_for_area(cfg_box, "Kitchen") == "Kitchen")
+
+
+pure()
 asyncio.run(protocol())
 finish()

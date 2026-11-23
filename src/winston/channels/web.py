@@ -1,7 +1,8 @@
 """Web chat: typing on the Talk page. Runs inside winstond, one conversation for the household and
 one per room a page is set to (shared with that room's box, core/rooms.py), with the same brain,
 tools and reply filter as every other channel. Everything it says goes to the live feed;
-`POST /api/chat` only queues the message.
+`POST /api/chat` only queues the message. Home Assistant's Assist (channels/assist.py) keeps its
+conversations in a second one, named by its channel, with one per Home Assistant conversation id too.
 
 A conversation starts fresh after channels.web.session_idle_mins, and after a config save; the feed
 gets a `conversation` event saying why before the message that starts it."""
@@ -20,10 +21,11 @@ from winston.core.rooms import RoomLink, Rooms, area, key, local_sync
 
 
 class WebChat:
-    def __init__(self, cfg: WinstonConfig, feed: Feed, rooms: Rooms | None = None):
-        self.cfg, self.feed, self.rooms = cfg, feed, rooms
-        self.sessions: dict[str | None, TextSession] = {}       # by room key; None is the household's
-        self._why: dict[str | None, str] = {}                   # by room key: why the next one is new
+    def __init__(self, cfg: WinstonConfig, feed: Feed, rooms: Rooms | None = None, channel: str = "web"):
+        self.cfg, self.feed, self.rooms, self.channel = cfg, feed, rooms, channel
+        # by room key, "#" + a conversation id, or None for the household's
+        self.sessions: dict[str | None, TextSession] = {}
+        self._why: dict[str | None, str] = {}                   # by the same key: why the next one is new
         self._lock = asyncio.Lock()
         self._recent: deque[tuple[float, str, str]] = deque(maxlen=10)     # (at, note, said), for a new conversation
 
@@ -32,8 +34,10 @@ class WebChat:
         """The household conversation, the one without a room."""
         return self.sessions.get(None)
 
-    def _key(self, room: str | None) -> str | None:
-        return key(room) if room and self.rooms else None
+    def _key(self, room: str | None, conversation: str | None = None) -> str | None:
+        if room and self.rooms:
+            return key(room)
+        return "#" + conversation if conversation else None
 
     async def _end_stale(self, k: str | None) -> None:
         """Ends a conversation gone stale (channels/text.py), noting why for the next message."""
@@ -43,48 +47,61 @@ class WebChat:
             self._why[k] = f"after {mins:g} min of quiet" if quiet else "his actions changed"
             await self.sessions.pop(k).close()
 
-    async def current(self, room: str | None = None) -> TextSession:
-        """The room's conversation (the household's without one), started if there is none; ask() ends a stale
-        one first."""
-        k = self._key(room)
+    async def current(self, room: str | None = None, conversation: str | None = None) -> TextSession:
+        """The room's conversation, else the one for this conversation id, else the household's; started if
+        there is none. reply() ends a stale one first."""
+        k = self._key(room, conversation)
+        in_room = k is not None and not k.startswith("#")
         async with self._lock:
             s = self.sessions.get(k)
             if s is None:
-                obs = LiveObserver("web", self.feed.publish)
-                link = RoomLink(room, f"web:{uuid.uuid4().hex[:8]}", local_sync(self.rooms)) if k else None
-                s = self.sessions[k] = await TextSession(self.cfg, channel="web", observers=[obs], room=link,
-                                                         area=area(self.cfg, room) if k else None).start()
+                obs = LiveObserver(self.channel, self.feed.publish)
+                link = RoomLink(room, f"{self.channel}:{uuid.uuid4().hex[:8]}", local_sync(self.rooms)) \
+                    if in_room else None
+                # The Talk page's brain is the typed one; another channel's brain is its own (core/brain.HEARD).
+                brain = "text" if self.channel == "web" else self.channel
+                s = self.sessions[k] = await TextSession(self.cfg, channel=self.channel, observers=[obs], room=link,
+                                                         area=area(self.cfg, room) if in_room else None,
+                                                         brain_channel=brain).start()
                 s.notify = self._correction
                 window = self.cfg.channels.web.session_idle_mins * 60
                 for at, house_note, said in self._recent:
                     if time.monotonic() - at < window:
                         await s.noted(house_note, said)
-                logger.info(f"web chat: new conversation{f' in {room}' if k else ''}")
+                logger.info(f"{self.channel} chat: new conversation{f' in {room}' if in_room else ''}")
             return s
 
-    async def ask(self, text: str, room: str | None = None):
-        k = self._key(room)
+    async def reply(self, text: str, room: str | None = None, conversation: str | None = None,
+                    notify=None) -> str:
+        """His answer, with the feed told as for any typed turn; raises what the session raises. notify, when
+        given, is where a state check's correction goes instead of the Talk page alone."""
+        k = self._key(room, conversation)
         try:
             async with self._lock:
                 await self._end_stale(k)
         except Exception:                                               # noqa: BLE001  (it starts afresh)
-            logger.exception("web chat: ending a stale conversation failed")
+            logger.exception(f"{self.channel} chat: ending a stale conversation failed")
         if (why := self._why.pop(k, None)) is not None:
-            self.feed.publish(LiveEvent(channel="web", type="conversation", room=room, text=why))
-        self.feed.publish(LiveEvent(channel="web", type="user", text=text))
-        self.feed.publish(LiveEvent(channel="web", type="state", state="thinking"))
+            self.feed.publish(LiveEvent(channel=self.channel, type="conversation", room=room, text=why))
+        self.feed.publish(LiveEvent(channel=self.channel, type="user", room=room, text=text))
+        self.feed.publish(LiveEvent(channel=self.channel, type="state", state="thinking"))
+        s = await self.current(room, conversation)
+        if notify is not None:
+            s.notify = notify
+        return await s.ask(text, timeout=60)
+
+    async def ask(self, text: str, room: str | None = None):
         try:
-            s = await self.current(room)
-            await s.ask(text)
+            await self.reply(text, room)
         except Exception as e:                                          # noqa: BLE001
-            logger.exception("web chat failed")
-            self.feed.publish(LiveEvent(channel="web", type="error", text=error_text(e)))
-            self.feed.publish(LiveEvent(channel="web", type="state", state="idle"))
+            logger.exception(f"{self.channel} chat failed")
+            self.feed.publish(LiveEvent(channel=self.channel, type="error", text=error_text(e)))
+            self.feed.publish(LiveEvent(channel=self.channel, type="state", state="idle"))
 
     async def _correction(self, text: str):
         """A state check's correction (core/verify.py), shown on the Talk page as a reply of his."""
-        ev = self.feed.publish(LiveEvent(channel="web", type="reply", reply=uuid.uuid4().hex[:12], text=text))
-        self.feed.publish(LiveEvent(channel="web", type="reply_end", reply=ev.reply))
+        ev = self.feed.publish(LiveEvent(channel=self.channel, type="reply", reply=uuid.uuid4().hex[:12], text=text))
+        self.feed.publish(LiveEvent(channel=self.channel, type="reply_end", reply=ev.reply))
 
     async def announced(self, text: str, context: dict):
         """An announcement joins the conversation, so a typed follow-up has its context. Kept for a

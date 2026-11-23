@@ -105,7 +105,7 @@ class Session:
     def __init__(self, fails: bool = False):
         self.last_used, self.fails = time.monotonic(), fails
 
-    async def ask(self, text):
+    async def ask(self, text, timeout=90):
         if self.fails:
             raise RuntimeError("starting") from httpx.ConnectError("refused")
 
@@ -115,7 +115,7 @@ class Session:
 async def typed() -> list[tuple[str, str | None]]:
     feed = Feed()
     chat = WebChat(WinstonConfig.model_validate({"llm": {"model": "x"}}), feed)
-    async def current(room=None):
+    async def current(room=None, conversation=None):
         return chat.sessions.setdefault(None, Session(fails=len(chat.sessions) == 0 and room == "fail"))
     chat.current = current
     await chat.ask("first")
@@ -146,7 +146,7 @@ async def unanswered() -> tuple[bool, list[str | None]]:
     feed = Feed()
     chat = WebChat(WinstonConfig.model_validate({"llm": {"model": "x"}}), feed)
 
-    async def current(room=None):
+    async def current(room=None, conversation=None):
         return s
     chat.current = current
     t0 = time.perf_counter()

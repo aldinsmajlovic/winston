@@ -96,13 +96,13 @@ expect("a taken port raises before advertising", raised_oserror and zc2.calls ==
 
 **Interfaces:**
 - `HEARD = (*SPOKEN, "assist")` in `core/brain.py`: `thinking_for` and `build_llm`'s `home=` and `own=` read `channel in HEARD`; `_vocal_events` and `TextSession`'s `spoken=` keep `SPOKEN`.
-- `WebChat(cfg, feed, rooms, channel: str = "web")`: every `"web"` literal in it becomes `self.channel`; the log lines say the channel.
+- `WebChat(cfg, feed, rooms, channel: str = "web")`: every `"web"` literal in it becomes `self.channel`; the log lines say the channel. Its sessions' brain channel is `"text"` for `web` (as before) and the channel's own name otherwise, so `HEARD` reaches `assist` (found while building: `TextSession` defaults to `brain_channel="text"`). The `user` event carries the room, as the box's does. `tests/ui_data_cases.py` stubs `current` and `ask`, so its stubs take the new arguments.
   - `async current(room: str | None = None, conversation: str | None = None) -> TextSession`: keyed by the room's key, else `"#" + conversation` when given, else None (the household's).
   - `async reply(text, room=None, conversation=None, notify=None) -> str`: what `ask` does today up to the answer (stale end, the `conversation` event, the `user` event with `room`, the `thinking` state), sets `s.notify = notify` when given, returns `await s.ask(text, timeout=60)` and raises what it raises. `ask` becomes `reply` inside its try, unchanged for the Talk page.
 - `room_for_area(cfg, area_name: str) -> str` in `core/rooms.py`: the configured room whose `area(cfg, room)` matches by `key`, else the area's own name. Docstring: a request from a Home Assistant device in that area joins that room's conversation.
 - `HomeAssistant.snapshot(ids)`: with ids, the registry read also takes every `assist_satellite.*` entity in `states`, so `snap.area(eid)` knows each satellite's area. Nothing else in the snapshot changes.
 
-- [ ] **Step 1: Failing pure checks in `tests/assist_cases.py`:**
+- [x] **Step 1: Failing pure checks in `tests/assist_cases.py`:**
 
 ```python
 expect("assist thinks before a home action, as a spoken channel", thinking_for(cfg_home, "assist") == thinking_for(cfg_home, "satellite"))
@@ -113,11 +113,11 @@ expect("else the area itself", room_for_area(cfg, "Kitchen") == "Kitchen")
 
   Where `cfg_box_in_area` has `channels.satellite.devices: {"main room": {"area": "Living room", ...}}` (generic names, as `tests/fake_ha.py` uses), and `cfg_breeze` has a `tts` engine whose `cwd` names `tts-breeze2`.
 
-- [ ] **Step 2: Run to see them fail; implement; run to see them pass.**
+- [x] **Step 2: Run to see them fail; implement; run to see them pass.**
 
-- [ ] **Step 3: Nothing else moved.** `uv run winston check unit` passes, including the web chat, home and extensions cases; `uv run python tests/extensions_cases.py` still sees the satellite's slot 0 and the typed last slot.
+- [x] **Step 3: Nothing else moved.** `uv run winston check unit` passes, including the web chat, home and extensions cases; `uv run python tests/extensions_cases.py` still sees the satellite's slot 0 and the typed last slot.
 
-- [ ] **Step 4: Commit.** `git commit -s -m "Assist groundwork: a heard channel, web chat by channel and conversation, rooms from areas"`.
+- [x] **Step 4: Commit.** `git commit -s -m "Assist groundwork: a heard channel, web chat by channel and conversation, rooms from areas"`.
 
 ---
 

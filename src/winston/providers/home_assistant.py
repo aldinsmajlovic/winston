@@ -364,7 +364,8 @@ class HomeAssistant:
 
     async def snapshot(self, ids: list[str] | None = None) -> Snapshot:
         """Read Home Assistant: states, exposure, areas, devices and the registry entries of ids (None: of
-        every entity with a state, for the picker; with ids, what is exposed is read too). Registry and exposure
+        every entity with a state, for the picker; with ids, what is exposed and every assist_satellite, so
+        each one's area is known for Assist, are read too). Registry and exposure
         reads need an admin token; refused, they stay None and the snapshot says why."""
         async with self._session() as s:
             conf = await self._get(s, "/api/config")
@@ -381,7 +382,9 @@ class HomeAssistant:
                 try:
                     entries = await ws.call("config/entity_registry/get_entries",
                                             entity_ids=list(snap.states) if ids is None else
-                                            list(dict.fromkeys([*ids, *sorted(snap.exposed or ())]))) or {}
+                                            list(dict.fromkeys([*ids, *sorted(snap.exposed or ()),
+                                                                *sorted(e for e in snap.states
+                                                                        if e.startswith("assist_satellite."))]))) or {}
                     snap.registry = {k: v for k, v in entries.items() if v}
                     snap.areas = {a["area_id"]: a["name"] for a in await ws.call("config/area_registry/list") or []}
                     snap.devices = {d["id"]: d for d in await ws.call("config/device_registry/list") or []}
