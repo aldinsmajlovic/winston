@@ -87,7 +87,7 @@ async def main() -> bool:
 
         import winston.channels.text as text_channel
         brain_class = text_channel.Brain
-        text_channel.Brain = lambda cfg, channel="text": brain_class(cfg, channel="voice")
+        text_channel.Brain = lambda cfg, channel="text", **kw: brain_class(cfg, channel="voice", **kw)
         try:
             s = await text_channel.TextSession(load(), channel="voice-test").start()
         finally:

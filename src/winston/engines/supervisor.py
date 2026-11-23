@@ -241,11 +241,15 @@ class Supervisor:
         return list(self.items.values())
 
     async def start(self, name: str, wait: bool = True) -> Managed:
+        from winston.api.options import llm_engine
         m = self.items[name]
+        # Winston's Ollama is up whether or not he started it, but its 16K copy may still be missing: made below,
+        # through Ollama's API, wherever it runs.
+        ollama = name == "llm" and m.cfg.driver == "external" and llm_engine(m.cfg.model_dump()) == "ollama"
         stale = getattr(m.driver, "stale", None)
         if stale and await stale():             # healthy is not enough: it must be the configured engine
             logger.warning(f"{name}: running from a different config, replacing it")
-        elif await self.healthy(m):
+        elif await self.healthy(m) and not ollama:
             self._set(m, "healthy"); return m
         m.stale = False                         # a fresh start reads the saved config and data/.env
         if missing := _missing_env(m.needs_env):
@@ -256,7 +260,7 @@ class Supervisor:
                 missing = f"{rest}; {unset}" if rest else unset
             m.expected = False
             self._set(m, "error", missing); logger.error(f"{name}: not started, {missing}"); return m
-        if m.kind == "engine" and m.cfg.driver != "external":
+        if m.kind == "engine" and (m.cfg.driver != "external" or ollama):
             needs = await install.parts(name, self.cfg)
             if any(not p.installed for p in needs):
                 self._set(m, "installing")

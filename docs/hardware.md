@@ -27,7 +27,7 @@ other two:
 | Voice | Breeze TTS 2 (Voice preset `breeze2`) | 6 GB | Chatterbox-Turbo, streamed (3 GB) | Won 9 of 10 blind pairs (as an all-bf16 build); first sound in 0.18 s against 0.45 s ([voices](voices.md#breeze-tts-2-as-the-voice-10-october)). |
 | Hearing | Parakeet TDT 0.6B v3, int8, on the CPU | none | Qwen3-ASR 0.6B (2.2 GB) | Qwen3-ASR hears better but does not fit beside Breeze. |
 
-The card sits at 23.9 of 24.6 GB. On the Voice PE box since 11 October, from the end of speech to
+The card sits at 22.9 of 24.6 GB (the abliterated 27B and Breeze, 23 November). On the Voice PE box since 11 October, from the end of speech to
 the first sound: 1.28 s median for a plain question (20 turns), 2.4 s when he uses a tool (39 turns),
 and 2.3 s to confirm a home request.
 
@@ -105,7 +105,7 @@ model; the numbers below are scored from the logged calls against the current na
 | `bonsai-2:9b` | 22 of 42 | 13 of 14 | 0.32 / 1.84 s | 4.2 GB (16K) |
 | `granite4.1:3b` | 21 of 42 | no thinking mode | 0.48 s | 5.1 GB (32K) |
 | `qwen3.5:9b` | 17 of 42 | 14 of 14 | 0.32 / 2.24 s | 7.1 GB (16K) |
-| Qwen3.8-27B, llama.cpp (2026-09-23) | 42 of 42 | | 0.94 s | 17.2 GB |
+| Qwen3.8-27B abliterated, llama.cpp v1.0.0 (that evening, after the prompt cuts) | 39 of 42 | | 0.79 s | 17.3 GB |
 
 How they fail:
 
@@ -114,8 +114,9 @@ How they fail:
   stop doing it, which is why they gain the most from it.
 - **Something he should decline**: asked to lock or unlock a door, Granite (both sizes), Nemotron
   and the Qwen 4B tried, 3 of 3 each. That home has no lock, so nothing happened. Granite 8B's only
-  misses are these three.
-- **The clock**: every model but Granite answered the time from the turn's timestamp instead of the
+  misses are these three. Run again that evening, with the lock wording left out of the tools of a home
+  without a lock, Granite 8B still tried, 3 of 3, through HassTurnOn instead of HassTurnOff.
+- **The clock**: every model but Granite, the 27B too, answered the time from the turn's timestamp instead of the
   clock tool, a soft miss.
 - **Ministral** used the wrong tool for a light asked for by name (3 of 3). **Granite 3B** gave an
   empty reply for the weather and answered a recent event from memory instead of searching (3 of 3
@@ -154,22 +155,26 @@ flags in the preset are for Qwen models; another family needs its own parser (`v
 lists them). Winston downloads the weights into `~/.cache/huggingface` before the first start, with
 progress on the Brain page and Status; a start then takes about 3 minutes.
 
-**llama.cpp.** The official `server-cuda` image, pinned to a build, reading GGUF files from
+**llama.cpp.** The official `server-cuda` image, pinned to a release (`server-cuda-v1.0.0-b12359-b1b770d`
+since 18 November), reading GGUF files from
 `~/.cache/huggingface` (the same cache as vLLM). `llm.model` is a Hugging Face repo and quant
 (`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`); the preset passes it as `-hf` and as the served name. Winston
 downloads that quant's files into the cache before the first start, where llama.cpp finds them. It runs two conversations at once with 16K of context each and a q8 cache,
 and drafts with the model's own MTP layer (`--spec-type draft-mtp`), which needs a GGUF that keeps
 that layer; remove those two arguments for one that does not. Thinking is switched with the same
 `enable_thinking` template flag as vLLM. The system prompt with its tools was about 9.4k tokens in
-October (about 12k by late November), and the 27B reads it cold in 7.5 to 10.6 s, so Winston has it read ahead: a Voice PE box when it connects
+October (12.3k by late November, 11.1k after the cuts of 23 November), and the 27B reads it cold in 7.5 to 10.6 s, so Winston has it read ahead: a Voice PE box when it connects
 and again when the prompt changes while it is idle, the browser voice channel when you connect. The
-first real turn then starts from the cache in about 0.15 s.
+first real turn then starts from the cache in about 0.15 s. On the v1.0.0 image the 27B writes 87
+tokens a second (median, 23 November) with 80% of its drafts accepted, against 67 and 59% on the
+October build. That image leaks host memory (llama.cpp #31392, open): the container grew from 1.9 to
+6.4 GB over 182 requests, at most 2 GB of it the prompt cache (`--cache-ram 2048`).
 
 **Ollama.** Speaks the OpenAI protocol at `/v1`. Thinking is switched per request with
 `reasoning_effort`, which is what `llm.thinking.control: reasoning_effort` sends. Ollama ignores
 `tool_choice`, which Winston does not use. Ollama gives a card under 24 GB a 4K context, and
-Winston's system prompt with its tools is about 12k tokens, which its OpenAI API cannot change per
-request. So after pulling the model Winston makes a copy of it with a 16K context (`granite4.1:8b-16k`,
+Winston's system prompt with its tools is about 11k tokens, which its OpenAI API cannot change per
+request. So when the brain starts, Winston makes a copy of the model, one you pulled yourself too, with a 16K context (`granite4.1:8b-16k`,
 the same files, no extra space) and talks to that; Ollama's own docs give the same fix. The Brain
 page lists the model, not the copy.
 

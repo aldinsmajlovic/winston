@@ -273,6 +273,14 @@ async def main():
     await watch(job)
     check("a model already there gets only its copy, not a second pull", (job.state, [a[0] for a in ASKED]),
           ("done", ["create"]))
+    ASKED.clear()
+    OLLAMA.add("pulled:latest")                     # pulled by hand, so the Brain page asks for no download
+    sup = Supervisor(config({"llm": {**ollama, "health": "/api/tags", "startup_timeout": 10}}, "pulled"))
+    started = await sup.start("llm")
+    check("starting Winston's Ollama, which he does not run, makes the copy first", (started.state, ASKED),
+          ("healthy", [("create", {"model": "pulled:latest-16k", "from": "pulled:latest", "stream": False,
+                                   "parameters": {"num_ctx": 16384}})]))
+    await sup.stop("llm")
     on = config({"llm": ollama}, "granite4.1:8b")
     check("requests to Winston's Ollama name the copy", served_model(on), "granite4.1:8b-16k")
     on.engines["llm"].enabled = False
