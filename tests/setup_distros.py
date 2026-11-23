@@ -47,7 +47,7 @@ GITHUB = sys.argv[sys.argv.index("--github") + 1] if "--github" in sys.argv else
 LOCAL = f"curl --proto '=http' -fsSL {SERVER}/latest/download/install.sh | WINSTON_RELEASES={SERVER} sh -s --"
 # With --github VERSION, that release is installed from GitHub instead of FIRST from here; the tampered tarball
 # and NEXT, the update, still come from here.
-INSTALL = (f"curl --proto '=https' -fsSL https://github.com/aldinsmajlovic/winston/releases/download/v{GITHUB}/install.sh"
+INSTALL = (f"curl -fsSL https://github.com/aldinsmajlovic/winston/releases/download/v{GITHUB}/install.sh"
            f" | WINSTON_VERSION={GITHUB} sh -s --") if GITHUB else LOCAL
 INSTALLED = GITHUB or FIRST
 # The fake brain in place of the hosted one, as a user would edit it on the Brain page, and the wizard's

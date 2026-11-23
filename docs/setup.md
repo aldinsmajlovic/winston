@@ -22,13 +22,13 @@ flowchart LR
 1. Run the script:
 
    ```sh
-   curl --proto '=https' -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
+   curl -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
    ```
 
    Or download it and read it first:
 
    ```sh
-   curl --proto '=https' -fsSLO https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh
+   curl -fsSLO https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh
    less install.sh && sh install.sh
    ```
 

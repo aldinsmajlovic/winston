@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs Winston on Linux, then hands over to `winston setup` (docs/setup.md):
 #
-#   curl --proto '=https' -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
+#   curl -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
 #
 # uv into ~/.local/bin if it is missing, the release checked against its SHA256SUMS and unpacked into
 # ~/.local/share/winston-app/<version>, its packages, `winston` in ~/.local/bin, then `winston setup` with
