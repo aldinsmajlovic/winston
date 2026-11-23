@@ -45,6 +45,24 @@ async function save(page: Page, choice?: string) {
   await expect(button).toBeDisabled()
 }
 
+// Switched on in the draft only: a save would open the copy's port and announce it on the real network.
+test('Ways to talk: Home Assistant Assist switched on shows its port, and off again leaves nothing to save', async ({ page }) => {
+  const errors = watchErrors(page)
+  await open(page, '/ways-to-talk')
+  const card = page.locator('[data-slot="card"]', { hasText: 'Home Assistant Assist' }).last()
+  const toggle = card.getByRole('switch', { name: "Answer Home Assistant's Assist" })
+  const saveButton = page.locator('header').getByRole('button', { name: 'Save', exact: true })
+  await expect(toggle).not.toBeChecked()
+  await expect(card.getByText('anyone on your network could ask him to act')).toBeVisible()
+  await expect(card.getByText('Home Assistant reached him')).toHaveCount(0)
+  await toggle.click()
+  await expect(card.getByRole('spinbutton', { name: 'Port' })).toHaveValue('10800')
+  await expect(saveButton).toBeEnabled()
+  await toggle.click()
+  await expect(saveButton).toBeDisabled()
+  expect(errors).toEqual([])
+})
+
 test('every settings page loads, with nothing to save until something is changed', async ({ page }) => {
   const errors = watchErrors(page)
   for (const path of pages) {

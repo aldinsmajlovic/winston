@@ -195,7 +195,7 @@ and voice: skipped during setup." with Set it up) after the wizard ends.
 | Step | What it asks | What it does |
 | --- | --- | --- |
 | [1. Brain and voice](#1-brain-and-voice) | The brain and the voice engines, preselected for your hardware | Saves a changed pick and starts the engines, which download what they lack |
-| [2. Home Assistant](#2-home-assistant) | Sign in to Home Assistant or paste a token, then the devices he may use | Makes him his own token there, switches its MCP server on for an administrator, saves the device list |
+| [2. Home Assistant](#2-home-assistant) | Sign in to Home Assistant or paste a token, then the devices he may use and whether Assist may use him | Makes him his own token there, switches its MCP server on for an administrator, saves the device list |
 | [3. Who he is](#3-who-he-is) | His name, reply language, personality and voice | Saves them, his name in his personality too if you say so |
 | [4. A room box](#4-a-room-box) | A Voice PE on USB-C, its Wi-Fi and its room | Flashes Winston's firmware, gives it Wi-Fi, adds it as a room box |
 | [5. Done](#5-done) | Who can open this page from now on | Ends setup mode and opens Talk |
@@ -253,8 +253,9 @@ switched the MCP server on. For an account that is not an administrator's, it sa
 rooms and names, the device list, switching the MCP server on. A sign-in that does not finish says
 why.
 
-Then come the devices he can use, as on the Home Assistant page. Continue saves the list, which
-applies it in Home Assistant, and goes on.
+Then come the devices he can use, as on the Home Assistant page, and the Home Assistant Assist switch
+from Ways to talk, off by default ([Home Assistant Assist](assist.md)). Continue saves both (the list is
+applied in Home Assistant) and goes on.
 
 #### 3. Who he is
 

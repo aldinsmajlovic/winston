@@ -30,6 +30,7 @@ type SatelliteDevice = components['schemas']['SatelliteDevice']
 const VOICE = ['channels', 'voice']
 const WEB = ['channels', 'web']
 const DISCORD = ['channels', 'discord']
+const ASSIST = ['channels', 'assist']
 const SATELLITE = ['channels', 'satellite']
 const DEVICES = [...SATELLITE, 'devices']
 const NOT_DEVICES = ['devices']
@@ -267,8 +268,8 @@ function RoomBoxes({ page }: { page: SettingsState }) {
   )
 }
 
-/** The Talk page (its microphone, a wall display, when a typed conversation starts over), the room boxes
- * and Discord. How the browser takes turns is config.yaml only. */
+/** The Talk page (its microphone, a wall display, when a typed conversation starts over), the room boxes,
+ * Discord and Home Assistant Assist. How the browser takes turns is config.yaml only. */
 export default function WaysToTalkPage() {
   const s = useSettings()
   if (s.loading) return <PageSkeleton title="Ways to talk" />
@@ -291,6 +292,46 @@ export default function WaysToTalkPage() {
       </Card>
       <RoomBoxes page={page} />
       <SectionForm page={page} path={DISCORD} title="Discord" status={<ChannelState name="discord" />} />
+      <AssistCard page={page} />
     </SettingsPage>
+  )
+}
+
+/** Home Assistant Assist: its switch and port, and under them whether Home Assistant has reached him. Also
+ * in the wizard's Home Assistant step. */
+export function AssistCard({ page }: { page: SettingsState }) {
+  return (
+    <SectionForm page={page} path={ASSIST} title="Home Assistant Assist">
+      <AssistStatus />
+    </SectionForm>
+  )
+}
+
+/** One line on the saved state, polled while the page is open: reached, not yet (and where to add him),
+ * or the port taken; and how many of Home Assistant's satellites he speaks on. Nothing while it is off. */
+function AssistStatus() {
+  const st = $api.useQuery('get', '/api/assist', undefined, { refetchInterval: 10_000 }).data
+  const region = useRegion()
+  if (!st?.enabled) return null
+  const when = (t: number) =>
+    new Date(t * 1000).toDateString() === new Date().toDateString() ? region.time(t) : `${region.day(t)}, ${region.time(t)}`
+  const n = st.satellites ?? 0
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      {st.error ? (
+        <p className="text-destructive">{st.error}</p>
+      ) : st.last_seen ? (
+        <p>Home Assistant reached him at {when(st.last_seen)}.</p>
+      ) : (
+        <p className="text-muted-foreground">
+          Not reached since Winston started. In Home Assistant: Settings, Devices and services, then Winston under Discovered.
+        </p>
+      )}
+      {st.listening && n > 0 ? (
+        <p className="text-muted-foreground">
+          Speaks on {n} Home Assistant {n === 1 ? 'satellite' : 'satellites'}.
+        </p>
+      ) : null}
+    </div>
   )
 }

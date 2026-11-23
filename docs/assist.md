@@ -10,20 +10,36 @@ Winston's own voice path ([Voice PE](voice-pe.md), the Talk page) is separate an
 
 ## Switching it on
 
-Set `channels.assist.enabled: true` in `data/config.yaml` and restart winstond.
+On Settings, Ways to talk, Home Assistant Assist, switch on Answer Home Assistant's Assist and save.
+The first-run wizard offers the same switch in its Home Assistant step, once Home Assistant is
+connected.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/assist-dark.png">
+  <img src="images/assist-light.png" alt="The Home Assistant Assist card on Ways to talk: the switch with its warning that the port has no password, the port, when Home Assistant last reached him and how many of its satellites he speaks on" width="720">
+</picture>
 
 | Setting | Key | Default | What it does |
 | --- | --- | --- | --- |
 | Answer Home Assistant's Assist | `channels.assist.enabled` | off | Opens the port and announces him on the network |
 | Port | `channels.assist.port` | 10800 | The TCP port Home Assistant connects to |
 
-Once on, the port opens on every network address of this computer and Winston announces himself over
-zeroconf. A save through the settings API applies a change at once, with no restart; switched off, the
-port closes and the announcement is withdrawn.
+Saving applies it at once, with no restart: the port opens on every network address of this computer
+and Winston announces himself over zeroconf. Switched off, the port closes and the announcement is
+withdrawn.
 
 **The port has no password.** Wyoming has none (Home Assistant's Piper and Whisper are the same), so
 anyone on your network can then ask him to act, and spend any paid budget he has. That is why it is
 off by default. Keep it on a network you trust.
+
+Under the port, one line says how it stands:
+
+| Line | Means |
+| --- | --- |
+| Home Assistant reached him at 14:02 | Home Assistant has added him and talked to him since Winston started |
+| Not reached since Winston started | Add him in Home Assistant (below) |
+| Port 10800 is in use by another program | Pick another port and save; nothing is announced until then |
+| Speaks on 2 Home Assistant satellites | Satellites with an area, which can [speak for their rooms](#speaking-on-home-assistants-satellites) |
 
 ## Adding him to Home Assistant
 
@@ -51,6 +67,8 @@ Every conversation also starts fresh after the Talk page's New conversation afte
 (`channels.web.session_idle_mins`), and when settings are saved.
 
 Without Home Assistant connected (no token), requests are still answered, with no room.
+
+On the Talk page these turns show under Home Assistant Assist, with the room when there is one.
 
 ## Speaking on Home Assistant's satellites
 

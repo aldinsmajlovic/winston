@@ -22,6 +22,7 @@ import type { Kind } from '@/lib/presets'
 import { allBut, setIn } from '@/lib/schema'
 import { SETUP_STEPS } from '@/lib/setup'
 import { HomeAssistantSections } from '@/pages/home-assistant'
+import { AssistCard } from '@/pages/ways-to-talk'
 import { PersonalityDocument } from '@/pages/personality'
 import { StepActions } from '@/components/step-actions'
 import { useBusy } from '@/hooks/use-busy'
@@ -149,7 +150,7 @@ function Frame({ name, state, order = [], current, children }: FrameProps) {
 }
 
 /** The Home Assistant page's own cards: Connect, with those found on the network and Sign in, until it is
- * connected, then the connection and the devices he can use. Its button saves the list (which applies it
+ * connected, then the connection, the devices he can use and the Home Assistant Assist switch. Its button saves the list (which applies it
  * there) and goes on; until connected there is only Skip for now. */
 function HomeAssistantStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
   const config = $api.useQuery('get', '/api/config')
@@ -164,6 +165,7 @@ function HomeAssistantStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
   return (
     <>
       <HomeAssistantSections page={page} back="/setup/home_assistant" />
+      {connected ? <AssistCard page={page} /> : null}
       <StepActions
         label={connected ? (page.dirty ? 'Save and continue' : 'Continue') : undefined}
         busy={busy || page.saving}

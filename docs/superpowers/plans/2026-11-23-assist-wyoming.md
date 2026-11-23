@@ -230,12 +230,13 @@ expect("a correction is said on the satellite the request came from", correction
 **Interfaces:**
 - `<SectionForm page={page} path={['channels', 'assist']} title="Home Assistant Assist">` with an `AssistStatus` child that reads `GET /api/assist` (`$api.useQuery`, refetched every 10 s while the page is open) and draws the one line of builder's choice 8, with the time in the page's clock format.
 - In the wizard: the same `SectionForm` under `HomeAssistantSections`, only when `connected`; its Save and continue saves it with the rest.
+- Built: `AssistCard` is exported from `ways-to-talk.tsx` and used by both. `pnpm smoke` 26 of 26; its copy switches `assist` off with the other channels, and the new case switches it on and off in the draft only, since a save would open the copy's port and announce it on the real network. The Ways to talk shot shows the page's top, which did not change, and the wizard's Home Assistant shot shows it before connecting, where the card is not drawn, so neither was retaken; the card has its own shot in `docs/assist.md` (`docs/images/assist-*.png`), taken on a throwaway winstond with the fake Home Assistant and a do-nothing zeroconf. Looked at in Chromium at 1400 and 390 wide, light and dark: no page errors, no sideways scroll, nothing to save on load.
 
-- [ ] **Step 1: `pnpm api`,** then the card and the wizard section, by `docs/ui-guide.md` (effect-named labels, one visible help line only where the label cannot say it, no uppercase labels, no mono).
+- [x] **Step 1: `pnpm api`,** then the card and the wizard section, by `docs/ui-guide.md` (effect-named labels, one visible help line only where the label cannot say it, no uppercase labels, no mono).
 
-- [ ] **Step 2: Check:** `pnpm build`, `pnpm smoke` (every page opens with nothing to save; Ways to talk with Assist on and off), and look at it in Chromium on a throwaway winstond from `examples/` with `tests/fake_ha.py`, at 1400 and 390 wide, light and dark. Retake the shots with generic data only.
+- [x] **Step 2: Check:** `pnpm build`, `pnpm smoke` (every page opens with nothing to save; Ways to talk with Assist on and off), and look at it in Chromium on a throwaway winstond from `examples/` with `tests/fake_ha.py`, at 1400 and 390 wide, light and dark. Retake the shots with generic data only.
 
-- [ ] **Step 3: Commit** with `docs/setup.md` and the shots. `git commit -s -m "Assist: its card on Ways to talk and its switch in the wizard"`.
+- [x] **Step 3: Commit** with `docs/setup.md` and the shots. `git commit -s -m "Assist: its card on Ways to talk and its switch in the wizard"`.
 
 ---
 

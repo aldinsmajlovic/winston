@@ -47,6 +47,7 @@ const PARTS: Record<string, [string, string]> = {
   voice: ['Talk page microphone', 'the Talk page microphone'],
   satellite: ['Room boxes', 'the room boxes'],
   discord: ['Discord', 'Discord'],
+  assist: ['Home Assistant Assist', 'Home Assistant Assist'],
 }
 
 /** "Brain" or "Room boxes": an engine or channel by its role; a custom engine by its name. */

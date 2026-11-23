@@ -600,6 +600,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/assist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Home Assistant Assist: whether it listens, why not, and when Home Assistant last reached him */
+        get: operations["assist_state_api_assist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rooms": {
         parameters: {
             query?: never;
@@ -1427,6 +1444,51 @@ export interface components {
              */
             source?: string;
         };
+        /**
+         * AssistChannel
+         * @description Home Assistant's Assist over Wyoming (channels/assist.py): applied on save, no restart.
+         */
+        AssistChannel: {
+            /**
+             * Answer Home Assistant's Assist
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Port
+             * @description Where Home Assistant reaches him; it finds him on its own while this is on.
+             * @default 10800
+             */
+            port?: number;
+        };
+        /** AssistState */
+        AssistState: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Listening
+             * @description The port is open and he is announced on the network.
+             */
+            listening: boolean;
+            /** Port */
+            port: number;
+            /**
+             * Error
+             * @description Why the port could not be opened.
+             */
+            error?: string | null;
+            /**
+             * Last Seen
+             * @description When Home Assistant last reached him (epoch seconds); None: not since winstond started.
+             */
+            last_seen?: number | null;
+            /**
+             * Satellites
+             * @description Home Assistant satellites he speaks on (in rooms with no Winston speaker of their own).
+             * @default 0
+             */
+            satellites?: number;
+        };
         /** AssistantConfig */
         AssistantConfig: {
             /**
@@ -1626,6 +1688,14 @@ export interface components {
              *     }
              */
             web?: components["schemas"]["WebChannel"];
+            /**
+             * Home Assistant Assist
+             * @default {
+             *       "enabled": false,
+             *       "port": 10800
+             *     }
+             */
+            assist?: components["schemas"]["AssistChannel"];
         };
         /** ChatMessage */
         ChatMessage: {
@@ -2860,7 +2930,7 @@ export interface components {
         /**
          * LiveEvent
          * @description One thing that happened. Which fields are set depends on `type`:
-         *     state: state. user: text. reply: reply, text (a piece). reply_end: reply.
+         *     state: state. user: text, room (where it was said, when a room is known). reply: reply, text (a piece). reply_end: reply.
          *     tool: call, name, status, label, ms, icon (an extension's). announcement: text. error: text.
          *     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
          *     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
@@ -4331,6 +4401,10 @@ export interface components {
              *       },
              *       "web": {
              *         "session_idle_mins": 30
+             *       },
+             *       "assist": {
+             *         "enabled": false,
+             *         "port": 10800
              *       }
              *     }
              */
@@ -5454,6 +5528,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assist_state_api_assist_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssistState"];
                 };
             };
         };

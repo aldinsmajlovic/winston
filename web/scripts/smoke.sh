@@ -87,7 +87,7 @@ def isolate(node):
             isolate(v)
 for e in cfg.get("engines", {}).values():
     e["enabled"] = False
-for c in ("voice", "discord", "satellite"):
+for c in ("voice", "discord", "satellite", "assist"):   # assist: a save would announce the copy on the network
     cfg.setdefault("channels", {}).setdefault(c, {})["enabled"] = False
 cfg.setdefault("announce", {})["enabled"] = False
 # Nothing in the copy reaches what the running instance serves on this machine: its brain, voice server,
