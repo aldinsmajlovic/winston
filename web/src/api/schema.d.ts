@@ -3505,7 +3505,7 @@ export interface components {
             key_env?: string | null;
             /**
              * Wake word
-             * @description Several, comma separated, if the box runs more than one at a time. A long press on the box's button switches it off and on again (button only).
+             * @description Several, comma separated, if the box runs more than one at a time. A double press on the box's button switches it off and on again (button only).
              */
             wake_word?: string | null;
             /**

@@ -13,7 +13,7 @@ and whether the words come out right; the owner's ears decide what sounds human,
 | `work/` | copied clips, audio, results, logs and the page (gitignored) |
 
 The candidates live in `services/tts-qwen3/`, `tts-voxcpm2/` and `tts-gepard/` (one venv each, weights
-already in the Hugging Face cache), and are Voice presets too; [docs/voices.md](../../docs/voices.md#benchmark) says why these.
+already in the Hugging Face cache), and are Voice presets too; [docs/voice-benchmarks.md](../../docs/voice-benchmarks.md#candidates-24-september) says why these.
 Breeze TTS 2 (`services/tts-breeze2/`) is the `breeze2` Voice preset since 10 October; measure it as it runs
 with `bench.py breeze2-live=http://127.0.0.1:8880`. Its bf16 builds need more of the card than that, so `breeze2` and `breeze2-fast` stop the brain, voice and hearing (`/api/engines/{llm,tts,stt}/stop`).
 `breeze2-int4` needs only the voice stopped, but leaves about 4.3 GB free, under the script's 5 GB

@@ -1,4 +1,4 @@
-"""Speaking up, the channels' side (docs/extensions.md#speaking-up). winstond's nudge engine decides
+"""Speaking up, the channels' side (docs/speaking-up.md). winstond's nudge engine decides
 whether, when and where; a channel that speaks a nudge words it with its own brain (announce.nudge_note)
 and says the plain line when the wording does not come.
 

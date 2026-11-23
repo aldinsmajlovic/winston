@@ -82,12 +82,15 @@ barge-in. Decide before building 3 and 4.
 Asked the same day: what would a rebuild from scratch look like? Build the brain first; voice is
 something it plugs into.
 
-1. **A house-brain service, no audio in it.** One long-running process that subscribes to HA's event
-   stream and keeps its own picture of the house over time, holds memory with time on it (when a fact
-   was learned and when it stopped being true), runs a scheduler (alarms, timers, reminders), runs a
-   rules engine that decides when something is worth saying, and checks outcomes after every action,
-   with tiered confirmation and a log of every tool call. The LLM does language only: understanding and
-   wording. Everything that must be reliable stays deterministic.
+1. **A house-brain service, no audio in it.** One long-running process that:
+   - subscribes to HA's event stream and keeps its own picture of the house over time;
+   - holds memory with time on it (when a fact was learned and when it stopped being true);
+   - runs a scheduler (alarms, timers, reminders);
+   - runs a rules engine that decides when something is worth saying;
+   - checks outcomes after every action, with tiered confirmation and a log of every tool call.
+
+   The LLM does language only: understanding and wording. Everything that must be reliable stays
+   deterministic.
 2. **An HA conversation agent from day one.** Voice PE, wake words, which satellite answers, streaming TTS
    and soon barge-in come from Assist, and HA improves them for free. Anyone with Assist tries Winston in
    five minutes: a HACS integration plus one container, pointed at any OpenAI-compatible model, local by
@@ -98,23 +101,39 @@ something it plugs into.
 4. **Our own voice pipeline only where HA cannot go.** The browser Talk page with full duplex, and
    satellites with barge-in if HA's stays cloud-only. Months in, not first.
 
-**Skipped or deferred:** the engine supervisor and model-switching settings (one OpenAI-compatible URL
-is enough), our own TTS server, voice cloning, wake word training, Discord, the dashboard, and settings
-polish before there is much to set.
+### Skipped or deferred
 
-**Kept from today's Winston:** `verify.py` (checking outcomes), memory as Markdown in git, tiered
-actions, announcements with follow-ups, measure before optimizing, the docs discipline. Most of
-it lifts across rather than being rewritten.
+- The engine supervisor and model-switching settings (one OpenAI-compatible URL is enough).
+- Our own TTS server, voice cloning and wake word training.
+- Discord and the dashboard.
+- Settings polish before there is much to set.
 
-**How it went so far:** Winston went wide early. M4 started before M2's real-mic check and before M3 had
-hardware, against the rule that milestones are sequential, and most effort went into the layer that
-turned out to be common ground (pipeline, engines, settings). None of it is wasted, but it is why one
-pipecat repo could make the project feel pointless: the differentiating parts were not built yet.
+### Kept from today's Winston
 
-**Order:** month one, the agent, the scheduler and outcome checks, used daily through a stock Voice PE.
-Month two, speaking up with judgment. Then Frigate narration and voice-drafted automations. No teardown
-needed: the plan rework can make brain-as-agent the first milestone of a new phase and freeze the
-pipeline work where it is.
+Most of it lifts across rather than being rewritten:
+
+- `verify.py` (checking outcomes);
+- memory as Markdown in git;
+- tiered actions;
+- announcements with follow-ups;
+- measure before optimizing;
+- the docs discipline.
+
+### How it went so far
+
+Winston went wide early. M4 started before M2's real-mic check and before M3 had hardware, against the
+rule that milestones are sequential, and most effort went into the layer that turned out to be common
+ground (pipeline, engines, settings). None of it is wasted, but it is why one pipecat repo could make
+the project feel pointless: the differentiating parts were not built yet.
+
+### Order
+
+1. **Month one**: the agent, the scheduler and outcome checks, used daily through a stock Voice PE.
+2. **Month two**: speaking up with judgment.
+3. **Then**: Frigate narration and voice-drafted automations.
+
+No teardown needed: the plan rework can make brain-as-agent the first milestone of a new phase and
+freeze the pipeline work where it is.
 
 ## Top user complaints, for reference
 

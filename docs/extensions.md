@@ -1,24 +1,14 @@
 # Extensions
 
-Approved 2026-09-29. Built: everything on this page but entities reaching Home Assistant, which wait
-for Winston's integration (UI track step 3 in the [plan](plan.md)). Ten extensions come with Winston,
-written on this standard alone: Agenda, Ask Claude, Awareness, Hevy, Later, News, Reminders, Sensors,
-Spotify and Web search ([built-in extensions](built-in-extensions.md)). Added within v1 on 2026-10-10, for
-[computers](computer.md) and the vulnerabilities extension: a token for MCP servers over HTTP, the
-`devices` permission, and picking another extension's tool in settings. Added on 2026-10-11: the
-`tools` permission (calling the brain's own tools, for Later) and the diary through `memory`. Added on
-2026-10-12, when web search and Ask Claude moved from the core onto the standard: `filler_after` on a tool.
-Added on 2026-10-17: a maker's logo as an extension's `icon`, and for the settings pages a title and a
-summary on each tool, a description on each kind, help, units and groups on settings, optional keys,
-and what an extension can reach in words. Added on 2026-10-18: a setting's choices from the extension
-itself (`@ext.choices`), and a status that carries a warning and a quieter line (`Status`). Added on
-2026-11-23: `shortcut_only` on a tool.
-
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
-reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs in
-its own process. What it can reach is in its manifest, shown in words on its page before you switch it
-on, and it gets no secrets but the ones its own settings name. A personal one is a single file in
-`data/extensions/`.
+reasons to speak up, and entities for Home Assistant. This page is the standard and how to write one.
+The [SDK reference](extension-sdk.md) lists every settings helper, decorator and `ctx` call,
+[speaking up](speaking-up.md) covers nudges, and the ten that come with Winston are in
+[built-in extensions](built-in-extensions.md).
+
+An extension is written against one small SDK and runs in its own process. What it can reach is in
+its manifest, shown in words on its page before you switch it on, and it gets no secrets but the ones
+its own settings name. A personal one is a single file in `data/extensions/`.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/extensions-dark.png">
@@ -47,8 +37,8 @@ async def flip(ctx) -> str:
     return random.choice(["heads", "tails"])
 ```
 
-Saved as `data/extensions/coin.py`, it shows on the Extensions page; switched on, "flip a coin"
-calls `coin_flip`.
+Saved as `data/extensions/coin.py`, it shows on the Extensions page. Switched on, "flip a coin"
+calls `coin_flip`. `winston ext new NAME` starts one from the template.
 
 ## A real one
 
@@ -122,15 +112,17 @@ async def status(ctx) -> str:
 That file gives:
 
 - **A page under Extensions** with an API key field and "Days without training before he mentions
-  it", whose What it can reach says "Uses the internet: api.hevyapp.com".
+  it". Its What it can reach says "Uses the internet: api.hevyapp.com".
 - **An action, "Last workout",** offered to the brain in every channel as `hevy_last_workout`.
 - **A kind of speaking up, "Time to train",** said when you get home (changeable on its page and on
-  Speaking up). The nudge is about the gap since your last workout (`about`), so it keeps its place
-  through the days: "Yeah I know Winston, I'm training tomorrow, remind me after work" puts it off to
-  then, and it comes back only if you still have not trained, firmer (`level=2`) from the fifth day.
+  Speaking up).
 - **A sensor in Home Assistant,** "Days since last workout".
 
-One using Home Assistant instead of a web service:
+The nudge is about the gap since your last workout (`about`), so it keeps its place through the
+days. "Yeah I know Winston, I'm training tomorrow, remind me after work" puts it off to then. It
+comes back only if you still have not trained, and firmer (`level=2`) from the fifth day.
+
+### One that reads Home Assistant
 
 ```python
 # /// script
@@ -164,7 +156,9 @@ async def thirsty(ctx):
 It is said once, then again each day (`repeat="1d"`) until the soil is wet again and the check
 stops returning it.
 
-And one for what you ask for, where the nudge is pushed rather than checked:
+### One for what you ask for
+
+Here the nudge is pushed rather than checked:
 
 ```python
 # /// script
@@ -194,25 +188,26 @@ async def add(ctx, what: str, at: When) -> str:
     return f"Set for {at:%A %H:%M}."
 ```
 
-Snoozing, "done" and a restart need no code: the core keeps the nudge. The full extension (plan,
-Extensions track step 4) adds listing, cancelling with `ctx.withdraw` and recurring reminders, which
-push their next time from `@ext.on_nudge` when one is said.
+Snoozing, "done" and a restart need no code: the core keeps the nudge. The built-in
+[Reminders](built-in-extensions.md#reminders) adds listing, cancelling with `ctx.withdraw` and
+recurring reminders, which push their next time from `@ext.on_nudge` when one is said.
 
 ## The manifest
 
-The `[tool.winston]` table: in the PEP 723 block of a single file, or in `pyproject.toml` for a
-package. The same keys in both.
+The `[tool.winston]` table goes in the PEP 723 block of a single file, or in `pyproject.toml` for a
+package. The keys are the same in both.
 
-| Key | |
+| Key | What it is |
 | --- | --- |
 | `id` | Lowercase letters, digits and underscores; unique; the prefix of its tools and entities |
-| `name`, `description`, `icon` | For its tile and page; `icon` is a lucide icon name, as in the rest of the web UI, or for an extension of a maker's service its logo from [Simple Icons](https://simpleicons.org) as `simple-icons:<slug>` (`simple-icons:spotify`); a name it does not know gives the puzzle piece |
+| `name`, `description` | For its tile and page |
+| `icon` | A lucide icon name, as in the rest of the web UI. For an extension of a maker's service, its logo from [Simple Icons](https://simpleicons.org) as `simple-icons:<slug>` (`simple-icons:spotify`). A name it does not know gives the puzzle piece |
 | `api` | The major version of the SDK it is written for; winstond runs it with that SDK |
-| `permissions` | What it may reach outside its own process (below) |
+| `permissions` | What it may reach outside its own process ([below](#permissions)) |
 
-`winston-sdk` is always there. The standard `dependencies` key lists anything else it needs; an
-extension runs in Winston's environment when that already has them, and in its own environment made
-by uv when it does not, and so do its tests. In a single file the key is PEP 723's own line, before the
+`winston-sdk` is always there. The standard `dependencies` key lists anything else it needs. An
+extension runs in Winston's environment when that already has them, and otherwise in its own
+environment made by uv; so do its tests. In a single file the key is PEP 723's own line, before the
 table:
 
 ```python
@@ -243,521 +238,183 @@ permissions = { network = ["api.elprisetjustnu.se"], home_assistant = "act", llm
 | `devices = true` | Every device in Home Assistant's registry, exposed or not, through `ctx.devices()`: name, maker, model, firmware and area; no states, network addresses, serial numbers or integration ids | "Sees the list of your devices" |
 | `tools = "read"` or `"act"` | The brain's own tools (Home Assistant's and the other extensions'), through `ctx.tools`: read ones, or read and act ones. Never a restricted one | "Can use his read-only actions", "Can run his actions for you" |
 
-Its page lists what it can change first, then what it reads, then where it connects; one with no
-permissions says it reaches nothing outside itself. The phrases live in `extension_host/api.py`, and a
-case test fails on a permission without one.
+Its page lists what it can change first, then what it reads, then where it connects. One with no
+permissions says it reaches nothing outside itself. The phrases live in `extension_host/api.py`, and
+a case test fails on a permission without one.
+
+### Consent by picking
 
 Picking an entity in an extension's settings is consent for it to use that entity, even if it is not
 exposed to the brain. Picking an extension or MCP server in an `Extensions(tool=...)` setting is
 consent for it to call that one's read tool of that name, as if it were listed under `extensions`.
 
-`tools` is for an extension that acts for you later or on a trigger, as Later does: it runs a call
+### Why `tools` and `devices` are separate
+
+`tools` is for an extension that acts for you later or on a trigger, as Later does. It runs a call
 the brain chose, by the brain's own tool names and tiers, so it can do no more than the brain could
 in a conversation. A restricted tool waits for you to confirm it outside the voice, so no extension
 runs one. Every call goes to the tool-call log with the channel `extension:<id>`.
 
-`devices` is apart from `home_assistant` because the two read different things: `home_assistant` reads
-the states of exposed and picked entities (least privilege, plan §6 rule 5), while an inventory (a
+`devices` is apart from `home_assistant` because the two read different things. `home_assistant`
+reads the states of exposed and picked entities (least privilege, plan §6 rule 5). An inventory (a
 vulnerability check, a firmware or battery list) needs every device, exposed or not, and none of
 their states.
 
+### What needs no permission
+
 Secrets need no permission line: an extension gets the values of its own secret fields and no
-others. Speaking up and entities need none either: declaring a kind or an entity is the request,
-and both show on its page, where each can be switched off.
+others. Speaking up and entities need none either: declaring a kind or an entity is the request, and
+both show on its page, where each can be switched off.
+
+### What permissions do not do
 
 winstond checks every permission except `network` on each call. The SDK checks `network` for
 `ctx.http`; other traffic (a raw socket, IMAP) is held to it only by what the extension declares. An
 MCP server has no manifest and no permissions: it gets only the variables named in its `env`, and
 over HTTP its token (`token_env`).
+
 Permissions keep honest extensions honest and make mistakes visible; they are not a sandbox. An
 extension runs as your user and could read files a well-behaved one would not. Install ones you
-trust, as with VS Code or Home Assistant; the page of anything not built in says where it comes from
+trust, as with VS Code or Home Assistant. The page of anything not built in says where it comes from
 and that it runs as you on this computer.
 
 ## Settings
 
-A settings model subclasses `Settings`; its form is drawn on its page by the same form as the rest of
-settings ([config metadata](architecture.md#config-metadata)), and its values are saved under
+A settings model subclasses `Settings`. Its page draws it with the same form as the rest of settings
+([config metadata](architecture.md#config-metadata)), and its values are saved under
 `extensions.<id>.settings` in `config.yaml`. The entries of a `dict` setting subclass `Model`.
-`Field(default, ...)` works on any type. `Field`, `Entity`, `Topic`, `Extensions`, `TimeOfDay` and
-`Duration` take `default=` (`None` makes the field optional, `[]` an empty list); `Secret` takes the
-variable name instead.
 
-- **All but `Secret`** take `title=` (the label: name the effect, "Days without training before he
-  mentions it", never "Enabled"), `description=` (behind the (i): how it works, trade-offs), `help=`
-  (one sentence shown under the field, for what the label cannot say: a format, a cost, where to get
-  something). All but `Account` also accept `level=` and ignore it, so a package for api 1 that
-  passes it still loads.
-- **`Field`** also takes `placeholder=`, what the form shows while it is empty ("None: no crisis
-  alerts"); `unit=`, the suffix on a number (`"min"`, `"%"`, `"h"`), so the title carries none;
-  `labels=`, words for a choice's values, keyed by the value as text (`{"320": "320 kbps (best)"}`);
-  `widget="slider"` for a number you feel rather than type; `group=`, one heading over the fields that
-  name it; `hidden=True` for a port or path nobody sets by hand, which the form never draws
-  (config.yaml only); and for a `dict` the titles of its two columns, `key_title=` and `value_title=`. `choices=`
-  names an `@ext.choices` function whose list the form offers for the value, and `key_choices=` one
-  for a `dict`'s keys; a typed value is still taken, and while the extension is not running the field
-  is a text box that says so.
-- **`Secret`** takes `label=` (what the key is: "API key", "Client secret"), `help=` (where to get it),
-  `description=`, `group=`, and `optional=True` for a key it works without: it never shows "Not set"
-  and is left out of what the extension needs, so say in `help` what empty means. The form draws the
-  field to paste the key and never the variable's name, which is config.yaml only; `title=` only names
-  that field in the schema ("Key variable" by default). A `Secret` inside a `dict` entry gets no key
-  field, since an entry has no fixed path to store it under.
-- **`Account`** is an account the user signs in to in the browser (OAuth 2's authorization code):
-  `Account("VAR", authorize=, token=, scopes=[...], client_id="its client ID field", client_secret="its
-  client secret field")`, with `title=`, `label=` ("Spotify account"), `help=`, `description=` and
-  `group=`. Both addresses are https on hosts in its `network` permission, and the two fields are its
-  own `Secret` fields for the app. winstond does the sign-in: Connect opens the service's page, which
-  comes back to `http://127.0.0.1:<port>/api/accounts/callback` (the app must list that address; the
-  page shows it), and the refresh token goes to `data/.env` under `VAR`. While winstond listens beyond
-  this machine (`control.host: 0.0.0.0`) its page sets no keys, so Connect says to run
-  `winston ext connect ID` in a terminal on this machine, which opens the same sign-in. The extension never holds it:
-  `await ctx.token("field")` gives an access token, renewed as it runs out, and a new refresh token
-  the service hands out is kept. One the service no longer takes is removed, so the page says Connect.
-
-An optional choice (`Literal[...] | None`) gets a first item for none, so it can be taken back.
-
-| Field | Form | Value in code |
-| --- | --- | --- |
-| `str`, `int`, `float` with `Field(...)` | Text or number, with its limits and `unit` | As typed |
-| `bool` | Switch | `bool` |
-| `Literal["a", "b"]` or an `Enum` | Dropdown | The choice |
-| `list[str]` | One box per entry, with Add | `list[str]` |
-| `dict[str, str]` | A table of two columns, with Add | `dict[str, str]` |
-| `dict[str, Model]` | Named entries in a table, each with its own form in a dialog (several plants, parcels, chores) | `dict[str, Model]`, keyed by the name shown on its page |
-| `Secret("VAR")` | A key field that says Not set, Saved or Optional; the key goes to `data/.env`, the config keeps the variable name (config.yaml only) | The key |
-| `Account("VAR", ...)` | Connect, or Connected with Disconnect; the sign-in goes to `data/.env`, never into the config | `bool`: connected (a change runs `@ext.on_settings`); `await ctx.token(field)` for its token |
-| `Entity(domain="sensor" or [...], device_class=None)` | A picker of Home Assistant entities | The entity id |
-| `Topic()` | A picker of memory topics | The topic name |
-| `Extensions(tool="status")` | A picker of the switched-on extensions and MCP servers with a read tool of that name; picking one lets this extension call it | Their ids (`list[str]`, or `str` for one) |
-| `TimeOfDay("07:00")` | A time picker | `datetime.time` |
-| `Duration("30m")` | A duration | `datetime.timedelta` |
-| `Field(choices="playlists")` | A picker of the extension's own list, with each item's picture and hint | As picked or typed |
-
-Each entry of a `dict` setting gets a stable id when it is added, so renaming it on its page keeps
-its entities and their history.
-
-A list only the extension knows (its playlists, its accounts' calendars) comes from an `@ext.choices`
-function, named by the settings that offer it. It is asked while the extension runs, with 5 s to
-answer, and returns `Choice(value, label, hint, image)` items or plain values:
-
-```python
-class SpotifySettings(Settings):
-    mix_playlist: str | None = Field(None, title="Playlist for mixes", choices="playlists",
-                                     placeholder="None: Spotify's queue")
-    names: dict[str, str] = Field(default_factory=dict, title="Your names for playlists",
-                                  key_title="Playlist", value_title="What you call it", key_choices="playlists")
-
-
-@ext.choices
-async def playlists(ctx) -> list[Choice]:
-    return [Choice(value=p["name"], hint=f"{p['songs']} songs", image=p.get("cover"))
-            for p in ctx.store.get("playlists", [])]
-```
-
-`From("name")` stands for a setting's value wherever a decorator takes one: a schedule, a trigger,
-`per=` on an entity, `Choices` on a tool argument. `@ext.at(From("remind_at"))` follows the setting.
-
-## Reference
-
-### Imports
-
-Everything comes from `winston_sdk`: `Extension`, `Settings`, `Model`, `Field`, `Secret`, `Account`, `Entity`,
-`Topic`, `Extensions`, `TimeOfDay`, `Duration`, `From`, `Choices`, `Choice`, `When`, `Nudge`, `Link`,
-`Status`, `SettingsError`, `NotPermitted`, `HomeAssistantError`.
-
-### Handlers
-
-Every handler is `async` and takes `ctx`, and may take a second argument, `event`, describing what
-started it. Tools take `ctx` and their own arguments instead. All of an extension's handlers share
-one event loop and may interleave at each `await`; never block it (no `time.sleep`, no synchronous
-HTTP; wrap a synchronous library in `ctx.run_sync`). A handler that raises is logged and shown on
-its page.
-
-| Started by | `event` has |
-| --- | --- |
-| `@ext.every`, `@ext.at`, `@ext.cron`, `@ext.on_arrive`, `@ext.on_leave`, `@ext.on_start` | `time` |
-| `@ext.on_state` | `entity_id`, `old`, `new` (each a `State`) |
-| `@ext.on_event` | `type`, `data` |
-| `@ext.hook` | `json`, `headers` |
-| `@ext.job`, run by a timer from `ctx.later`, a hook or `winston ext run` | `time`, `data` |
-| `@ext.on_settings` | `old` (the settings before the save) |
-| `@ext.on_speakers_stop` | `time`: he said "stop" to a box while your `ctx.speakers` stream played; the box is silent already, so stop at your source (Spotify pauses) |
-| `@ext.validate` | `settings` (the ones being saved; `ctx.settings` still holds the saved ones) |
-| `@entity.on_change` | `value`, and `entry` for a `per` entity |
-| `@entity.on_press` | `entry` for a `per` entity |
-| `@ext.action` | `nudge` (`kind`, `about`, `level`, `facts`, `links`) |
-| `@ext.on_nudge` | `what` (`said`, `dismissed`, `put_off`, `muted`, `ended`), `nudge`, and `until` or `where` where they apply |
-
-Checks, `@ext.status`, `@ext.context` and `@ext.hint_words` take `ctx` only. The store is saved after
-every handler, checks included.
-
-### Jobs
-
-| | |
-| --- | --- |
-| `@ext.every(interval, align=False, catch_up=True)` | `"90s"`, `"15m"`, `"1h"`, `"1d"` or a `timedelta`; the first run at start. `align=True` runs on the clock instead (`"15m"` at :00, :15, :30, :45), the first at the next of those |
-| `@ext.at(time, days=None, catch_up=True)` | `"13:15"` or `From(...)`; `days` is `"mon-fri"`, `"sat,sun"` or `None` for every day |
-| `@ext.cron(expr, catch_up=True)` | Five fields, in the home's time zone |
-| `@ext.job` | No schedule: run by a timer from `ctx.later`, a hook's handler or `winston ext run` |
-| `@ext.on_state(entity, to=None, from_=None, for_=None)` | An entity id, a list, or `From(...)` |
-| `@ext.on_event(event_type)` | A Home Assistant event |
-| `@ext.on_arrive`, `@ext.on_leave` | You get home or leave (needs `presence`) |
-| `@ext.on_start` | Once after each start, with settings loaded |
-| `@ext.on_settings` | After a save, so it can drop what the old settings fetched |
-| `@ext.hook(name)` | A `POST` to winstond's `/hooks/<id>/<name>`, reachable where winstond is (loopback unless you open it); returns a dict |
-| `@ext.background` | A task for the life of the process (a websocket, IMAP IDLE), started again if it raises; no time limit |
-
-Scheduled jobs that were missed while Winston was down run once when it is back (`catch_up=False`
-skips that). A job gets 120 s (`timeout=` up to 600).
-
-### Nudge decorators
-
-| | |
-| --- | --- |
-| `@ext.nudge(kind, title, description=None, **options, **triggers)` | A checked kind and its check. `triggers` take the same values as the job decorators (`every=`, `at=`, `on_state=`, ...); a kind needs none. The check returns `None`, a `Nudge` or a list |
-| `ext.kind(kind, title, description=None, **options)` | A pushed kind, for `ctx.nudge` |
-| `Nudge(about, say, facts={}, level=1, urgent=False, not_before=None, expires=None, actions=None, links=[])` | See [Speaking up](#speaking-up) |
-| `@ext.action(title, kinds=None, name=None, tier="act")` | Something you can say back to its nudges, for the kinds listed or all of them; returns a string or dict he reports |
-| `@ext.on_nudge(kinds=None)` | Hears what happens to its nudges |
-
-The options (`deliver`, `where`, `repeat`, `may_be_urgent`, `requested`, `outside`) are under
-[Speaking up](#speaking-up).
-
-### Tool decorator
- `@ext.tool(tier, name=None, outside=True, timeout=10, filler=None, filler_after=1, title=None,
-summary=None, shortcut_only=False)` on `async def f(ctx, arg: T, other: T | None = None)`. `title` is a
-short verb phrase for people ("Play music") and `summary` one sentence on what it does ("Plays a song,
-artist, album, playlist, genre or mood on your speakers."); see [Tools](#tools) for where they show.
-`shortcut_only=True` is for a tool a shortcut runs with fixed arguments (Spotify's party): the model is
-not offered it, so his prompt does not carry its description. Arguments are `str`, `int`,
-`float`, `bool`, a `Literal`, `date`, `datetime`, `When`, or a list of these; `T | None = None` makes one
-optional. A `When` is read by the core as `follow_up` reads times ("at six", "in 20 minutes", "tomorrow
-morning"; the brain sees the date and time with every message) and arrives as an aware `datetime`. The
-docstring's first paragraph describes the tool and an `Args:` section each argument.
-`Annotated[int, Field(ge=1)]` adds limits, and `Annotated[str, Choices(From("chores"))]` limits a text
-argument to the names in a `dict` setting, so the brain sees them (the tool list changes from the next
-conversation after a save). It returns a dict, list or string. An exception's message goes to the brain
-as the tool's error ("Error: ..."), the traceback to the log. See [Tools](#tools).
-
-### Entities
-
-`ext.entity(key, kind, name, unit=None, device_class=None, state_class=None, icon=None, options=None,
-min=None, max=None, step=None, per=None)`
-
-- `kind` is `sensor`, `binary_sensor`, `event`, `switch`, `button`, `number`, `select` or `text`.
-- `state_class` is Home Assistant's (`measurement`, `total`, `total_increasing`), so a sensor keeps
-  long-term statistics.
-- `icon` is Home Assistant's form (`"mdi:dumbbell"`); most entities need none, their device class
-  gives one.
-- `per=From("chores")` makes one entity for each entry of a `dict` setting, named with `{entry}`
-  filled in (`name="{entry} done"`); entries added or removed on its page add or remove entities.
-
-`await entity.set(value, **attributes)` updates it with a `str`, `int`, `float`, `bool`, an aware
-`datetime` (for a `timestamp` sensor) or `None` for unknown. For a `per` entity,
-`entity[entry]` is that entry's entity. `@entity.on_change` (switch, number, select, text) and
-`@entity.on_press` (button) handle what Home Assistant sets; the new value shows there once the
-handler returns without raising.
-
-### Other decorators
-
-| | |
-| --- | --- |
-| `ext.settings(Model)` | Its settings |
-| `@ext.status` | Returns the line on its page and in `winston status`, or a `Status(text, warning=None, note=None)`: the warning shows as a warning on its page (a feed not answering) and the note as a quieter line under the line |
-| `@ext.choices` | Returns a list for the settings that name it (`choices=`, `key_choices=`): `Choice(value, label, hint, image)` items or plain values; asked while it runs, 5 s |
-| `@ext.context` | Returns up to 300 characters for his prompt at the start of each conversation, or `None` for nothing |
-| `@ext.hint_words` | Returns words speech to text should hear right (exercise names, band names) |
-| `@ext.validate` | Runs on save while the extension runs (one that does not is checked against its settings schema), may use the network, 10 s; `raise SettingsError("field", "Hevy rejected this key")` shows on that field |
-
-### ctx
-
-Not awaited: `ctx.settings`, `ctx.store`, `ctx.folder`, `ctx.now()`, `ctx.today()`, `ctx.log`, `ctx.ongoing()`.
-Everything else reaches winstond, Home Assistant or the network, and is awaited.
-
-| | |
-| --- | --- |
-| `ctx.settings` | Its settings, typed; secret fields hold their values |
-| `ctx.now()`, `ctx.today()` | The core's clock: an aware `datetime` in the home's time zone (a `ZoneInfo`, so arithmetic across daylight saving holds), and its `date`. Tests move it |
-| `ctx.store` | A dict of JSON values in its state folder, saved (nested changes too) after every handler |
-| `ctx.folder` | That folder, `data/state/extensions/<id>/`, for SQLite or files |
-| `ctx.ongoing(text)` | What is going on now that he should know with every message ("playing Oh Dove by Men I Trust"), up to 160 characters, or `None` once it is over. It goes in front of each thing said to him while it lasts (`[09:30; spotify: playing ...]`), read fresh each message, so it costs no prompt cache; it is cleared when the extension's process starts or stops, and while it is set a saved change to the extension's code waits to reload until it is over (so it does not cut the music); other extensions reload meanwhile. `@ext.context` is for what holds for a whole conversation |
-| `ctx.log.info(msg)`, `.warning`, `.error` | Its log, shown by Log on its page and by `winston ext logs` |
-| `ctx.http` | An `httpx.AsyncClient` for the declared hosts, 10 s timeout. It does not raise on 4xx or 5xx (check `status_code` or call `raise_for_status()`); an undeclared host raises `NotPermitted`. Each request is logged by method, host, path, status and time; never the query string, headers or body |
-| `ctx.ha.state(id)`, `.states(domain)`, `.history(id, since)` | `State(entity_id, state, attributes, last_changed)`, a list of them, or `None` |
-| `ctx.ha.query(domain, service, data=None, target=None)` | A response-only service's answer, as Home Assistant gives it (read) |
-| `ctx.ha.call(domain, service, data=None, target=None)` | Any service on permitted entities (act); returns its response or `None` |
-| `ctx.memory.facts(topic=None)`, `.remember(text, topic, until=None)` | `Fact(text, topic, noted, until)` items; writing as `remember` |
-| `ctx.memory.diary(days=7)` | His diary entries of the last `days` days, newest first, as `DiaryEntry(day, text)` (needs `memory`) |
-| `ctx.tools.list()`, `.call(name, args=None)` | The brain's tools from Home Assistant and the other extensions as `ToolInfo(name, tier, description)`, and one run as the brain would, with its arguments as one dict; a failure raises with its error (needs `tools`) |
-| `ctx.presence.home()`, `.since()` | `bool`, `datetime` |
-| `ctx.devices()` | `Device(id, name, manufacturer, model, model_id, sw_version, hw_version, area, service)` for every device Home Assistant knows (needs `devices`); `service` is true for what it lists as a service rather than hardware (an add-on, Home Assistant itself, a cloud account) |
-| `ctx.llm.ask(prompt, schema=None, max_tokens=500)` | Text, or an instance of the Pydantic model `schema`. The background model is the local brain unless you pick a cloud model; an extension never chooses, so nothing leaves the house unless a setting says so. It waits while a conversation runs (see [How it runs](#how-it-runs)) |
-| `ctx.ext(id).call(tool, **args)` | Another extension's or MCP server's read tool, with the permission you gave it (needs `extensions`, or `id` picked in an `Extensions(tool=...)` setting) |
-| `ctx.speakers.play(url, title=None)`, `.stop()` | Plays a stream (anything ffmpeg reads, served on 127.0.0.1 or a declared host) on the box of the room last talked in, else on every box, and returns how many play; a new stream replaces what plays, and `stop()` ends only its own. The box turns it down while it listens and while he talks, and stops it when he says "stop" (`@ext.on_speakers_stop`) (needs `speakers`) |
-| `ctx.speakers.volume(level=None, change=0)` | The box's own volume, 0 to 1 (what its dial sets: the voice and everything it plays), set to `level`, moved by `change`, or only read; returns it after, `None` while no box has reported one. Each box reports its volume on every change, the dial's too. Spotify turns it up when asked for louder with its own level at full (needs `speakers`) |
-| `ctx.later(when, job, data=None)` | Runs one of its jobs once at a computed `datetime` or after a `timedelta`, kept across restarts; returns a timer with `cancel()`. `ctx.timers()` lists them |
-| `ctx.nudge(kind, nudge)`, `ctx.withdraw(kind, about)` | Pushes a nudge of a pushed kind, or takes one back |
-| `ctx.nudges(kind=None)` | Its nudges now and those ended in the last 7 days, each with `kind`, `about`, `level`, `facts`, `links`, `state` (waiting, held, said, dismissed, ended), `said_at`, `held_until` |
-| `ctx.parse_when(text)` | Reads a time as `When` does; `None` if it cannot |
-| `ctx.token(field)` | An access token for its `Account` setting `field`, with a minute left at least, or `None` while it is not connected |
-| `ctx.quota(name, per_day)` | Takes one use and returns `True`, or `False` once the day's are gone (for paid APIs) |
-| `ctx.poke(kind)` | Asks the core to run a kind's check now |
-| `ctx.run_sync(fn, *args)` | Runs a synchronous function in a thread |
-
-Errors: `NotPermitted` (outside its permissions), `HomeAssistantError` (Home Assistant failed or
-refused, `ctx.devices()` included), `SettingsError(field, message)` (raised by `@ext.validate`).
-
-### Shortcuts and scenes
-
-Any extension tool can be run as a spoken shortcut, straight away and without the model, through the
-top-level `shortcuts` config: an entry gives the `phrases`, the `tool` (`extension.tool`), the fixed
-`args` to run it with, and optional `say_first` and `quiet_after` (see
-[home-assistant.md](home-assistant.md)). Saying one of the phrases runs the tool the same way every time.
-
-This is how a party scene is built. The Spotify extension's `party(what, lights, restore, volume)` tool
-(it needs `home_assistant = "act"`) plays a track on the speakers and arms a light show; when go-librespot
-reports the track as `playing`, the extension runs the `lights` Home Assistant script so the show starts
-with the sound rather than on a guessed delay, and when the music stops it turns that script off and turns
-on the `restore` scene. The `lights` script and the `restore` scene must be keys in `ha.expose` for the
-`ctx.ha.call` to be allowed. A shortcut then wires a phrase ("party time") to `spotify.party` with
-the track, scene and volume as its `args`.
+The field types, the parameters for labels and help, keys, accounts and lists the extension supplies
+are in the [SDK reference](extension-sdk.md#settings).
 
 ## Speaking up
 
-A nudge reaches the core one of two ways. From there every nudge follows the same rules and takes
-the same follow-ups.
-
-- **Checked**, for conditions: "no workout for three days", "the soil is dry". A kind declared with
-  `@ext.nudge` has a check the core runs on the kind's triggers, after every other handler of the
-  extension (a job, hook, tool, action or entity change may have changed what there is to say), on
-  `ctx.poke`, and again right before a held nudge is said. The check returns what should be said
-  now, or nothing, and a nudge lasts as long as its check returns it. So a nudge put off is checked
-  again before he says it, and one whose condition has cleared is never said.
-- **Pushed**, for things that happen or that you ask for: a reminder, a breaking story, a parcel at
-  the door. A kind declared with `ext.kind` takes nudges from `await ctx.nudge(kind, Nudge(...))`.
-  The core keeps each one until it is said (and not put off), dismissed, expired, or withdrawn with
-  `await ctx.withdraw(kind, about)`.
-
-The core keeps every nudge's state in `data/state/nudges.json`, so a restart loses nothing and nothing
-is said twice. A check gets 5 s: read the store, Home Assistant and presence there, and leave the
-internet and the model to jobs. A check that raises or runs out of time counts as no answer: nothing
-changes, and the error shows on its page.
-
-| Field | |
-| --- | --- |
-| `about` | What it is about, unique within its kind. Everything the core remembers about a nudge (said, put off, dismissed) belongs to its kind and `about` |
-| `say` | A plain line, said as is when his wording fails |
-| `facts` | What he words it from and answers follow-ups from. They reach the brain as outside information, like tool results, unless the kind says `outside=False` |
-| `level` | 1, or higher as it grows more pressing; a kind can deliver each level differently |
-| `urgent` | May be spoken in quiet hours, only if the kind was declared `may_be_urgent=True` |
-| `not_before` | A `datetime` before which it is held (a reminder's time, 15 minutes before a meeting) |
-| `expires` | A `datetime`, or a `timedelta` from when it is first due, for what goes stale (a news story). Default: none |
-| `actions` | Names of its extension's actions that apply; `None` for all its kind's, `[]` for none |
-| `links` | Up to three `Link(title, url)`: buttons on the phone (a tap opens the first), text on Discord, links on the Talk page; never spoken. "Send me the links" is a nudge of a kind with `where="phone"` that carries them |
-
-**`about` names one occurrence of the thing, and stays the same while it is that occurrence**: a
-workout gap by the workout's start time, a plant by its sensor, a story by its link, one time of a
-recurring reminder by the reminder's id and that time. Never build it from the current date or from
-words like "tomorrow", or the core sees a new nudge each day and forgets what you said about the old
-one.
-
-A kind's options, given to `@ext.nudge` or `ext.kind`; you change `deliver` and `where` on its page
-and on Speaking up:
-
-| Option | |
-| --- | --- |
-| `title` | Its name on its page and in "why" |
-| `description` | One sentence for people on what he will say and when ("Says so when you have not trained for the days you set"), under its title |
-| `deliver` | When (below); one value, or one per level (`{1: "next_talk", 2: "when_home"}`). Default `now` |
-| `where` | Where (below); one value, or one per level. Default `auto` |
-| `repeat` | Checked kinds: say it again after this long (`"1d"`) while the check still returns it |
-| `may_be_urgent` | Its nudges may be urgent |
-| `requested` | Its nudges are things you asked for (reminders, alarms): see the rules |
-| `outside` | `False` when its facts hold only what the extension works out itself or you told it |
-
-| Deliver | On its page | |
-| --- | --- | --- |
-| `now` | Right away, outside quiet hours (a `requested` kind: even in quiet hours) | As soon as the rules below allow |
-| `when_home` | When you get home | At once if you are home, otherwise when you get home (your person in Home Assistant, on Speaking up) |
-| `when_leaving` | As you leave | As you leave |
-| `next_talk` | Next time you talk to him | The next time you talk to him; he mentions it after answering |
-| `briefing` | In the morning briefing | The first conversation after `speak_up.briefing_from`, or "what's new?" |
-| `silent` | Only show it on Talk | Only its page, the Talk page and the Home Assistant event |
-
-The When choice ends with Off, which keeps him quiet about that kind (`enabled: false`); a kind that
-delivers per level shows "Depends on how urgent".
-
-| Where | On its page | |
-| --- | --- | --- |
-| `auto` | Where you are | The speakers while you are home, your phone while you are away |
-| `speakers` | Speakers at home | The speakers in the room you are in (the room last talked in, within 30 minutes: its box, and browser sessions set to it or to no room), else every connected speaker. With none connected, the phone |
-| `phone` | Your phone | The notify service picked on Speaking up (the Home Assistant companion app), with Done and Later buttons; Discord when none is set. It cannot be picked until one of them is |
-
-The rules, each step logged to `logs/nudges.jsonl`:
-
-- **Not said again** once said, unless `repeat` has passed or its level has risen. A nudge put off
-  with `later` is said at that time all the same.
-- **Not said again after a dismissal**, until it ends and comes back, or its level rises.
-- **Held** while its kind is muted, while it is put off, before `not_before`, while its delivery
-  waits, during quiet hours (the same `announce.quiet_hours` as announcements) unless urgent, and
-  while a conversation is running, on any channel, until 30 s of quiet. Nothing that can deliver it
-  (no speaker connected, no phone, no Discord) holds it too, and says so on its page.
-- **Moved to the briefing** past `speak_up.max_per_day` (4) spoken nudges today.
-- **What you asked for comes when you asked.** Nudges of a `requested` kind, and any nudge at a time
-  you gave with `later`, come at that time through quiet hours, the daily limit and their delivery's
-  wait. They still wait out a running conversation.
-- **Checked again** when a held nudge of a checked kind comes due: said only if the check still
-  returns its kind and `about`, with its newest level and facts.
-
-What happens to a nudge runs the extension's `@ext.on_nudge`: said (and where), dismissed, put off
-(and until), muted, ended. So an extension keeps its own lists and entities current without polling
-`ctx.nudges()`.
-
-The channel that speaks a nudge words it with its own brain inside the conversation, from `facts`
-and the persona, so it sounds like him and a follow-up has the context. The chime plays first; the
-plain `say` line is spoken instead when no wording has started within 12 s. The nudge's kind,
-`about` and actions go into the conversation with it, and into the Talk page's typed conversation.
-After a spoken nudge the box listens as it does after a reply (ESPHome's announcement with
-`start_conversation`), so an answer needs no wake word; the browser's mic is always open. Next-talk
-nudges and the briefing are added to your message at your next turn, on any channel, and he mentions
-them after answering. Every delivered nudge shows on the Talk page with where it went.
-
-Every nudge takes the same follow-ups through one fixed core tool, `follow_up(nudge, action, when,
-reason)`, so extensions write none of it:
-
-| Action | Said as | Does |
-| --- | --- | --- |
-| `later` | "Remind me after work", "snooze ten minutes" | Held until `when`, checked again if it is a checked kind, then said; `reason` goes with it ("You said you'd train today, sir."). Works on a nudge already said, and holds even if its level rises meanwhile |
-| `dismiss` | "I know", "done", "thanks" | A pushed nudge ends; a checked one is not said again until it ends and comes back, or its level rises |
-| `mute` | "Stop telling me about the plants until Monday" | The whole kind is held until `when`, or until switched back on |
-| `why` | "Why are you telling me this?" | The extension, the kind and the facts it came from |
-| its own | "Turn off the heater", "send me the links" | The extension's `@ext.action` handler |
-
-Ending, putting off and silencing belong to the core, so an extension's actions do what those
-cannot.
-
-`when` takes what code can read: "tomorrow 17:30", "in two hours", "Monday", "when I'm home", and
-parts of the day (morning 08:00, afternoon 15:00, evening 19:00, tonight 20:00; changeable under
-`speak_up`). He fills in times he knows from memory (when you finish work). A phrase with a day that
-code still cannot read ("tomorrow after work" with nothing in memory) becomes "when home" on that
-day, with `speak_up.fallback_time` (18:00) if you are already home. The tool answers with what it
-set, so he says the real time. Extensions read times the same way through a `When` argument or
-`ctx.parse_when`.
-
-The brain has `follow_up` whenever an extension that is switched on declares a kind; a conversation
-keeps the tools it started with, so one started before such an extension was switched on gets its
-nudges without it and says that they can be put off in a new conversation. Your phone's buttons
-are follow-ups too: Done dismisses, Later puts it off until you are home (two hours when no person
-entity is set). A restricted call waiting for you (a tool or an action) is also sent to the phone,
-with Confirm and Decline.
-
-Measured with the 27B (`tests/speak_up_brain.py`, three runs each): he words the nudge himself
-("It's been three days since your last workout, sir. Time to get moving?"); "Yeah I know Winston,
-I'm training tomorrow, remind me after work" becomes `follow_up(later, "tomorrow after work",
-reason "training tomorrow")`, "when you get home tomorrow, or at 18:00", 3 of 3; with "finishes work
-at 17:00" in memory it becomes "tomorrow 17:00", 3 of 3; he says the time back ("Noted, sir. I'll
-remind you tomorrow at seventeen hundred."), and "why are you telling me this?" names the Trainer
-extension, its check and the facts, 6 of 6.
-
-The Speaking up page (`/speaking-up`, in the settings sidebar) holds what every extension's messages
-and announcements share:
-
-- **When he may speak**: Quiet hours (`announce.quiet_hours`), Spoken messages a day
-  (`speak_up.max_per_day`, 4; past it the rest wait for the morning briefing, and what you asked for
-  does not count) and Morning briefing from (`briefing_from`, 06:00); then, under When you put
-  something off, When after work is (`fallback_time`, 18:00) and Parts of the day (24-hour times,
-  like 19:00), for "after work" and "tomorrow morning".
-- **Reaching you**: Your person in Home Assistant (`home`, so he knows whether you are home), Your
-  phone (`phone`, a notify service; it also asks you to confirm actions that need your OK), whether
-  announcements also go to Discord, and one line on where he reaches you at home and away, or a
-  warning when nothing reaches you away from home.
-- **From automations and apps**: announcements ([announcements](announcements.md)), with an example
-  to copy into an automation.
-- **What extensions may bring up**: every extension's messages, folded by extension ("Later, 2
-  messages"), each with its When and Where from the tables above, the extension's own choice marked
-  "(default)". A message muted by asking ("stop telling me about the plants until Monday") says until
-  when, with Unmute.
-- **Recently**: the last ten messages, newest first, each with its day (when it was said, else when
-  it came up), from which extension and where it stands: how it was said ("Said on the speakers"),
-  "Not said: quiet hours" for one that ended unsaid, "Held: quiet hours" or "Put off until ...".
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/speaking-up-dark.png">
-  <img src="images/speaking-up-light.png" alt="The Speaking up page: quiet hours, spoken messages a day and the morning briefing, then when you put something off: when after work is and the parts of the day" width="720">
-</picture>
+An extension speaks up through nudges, which the core keeps, times and words. How to write one, the
+rules that hold it back and how you answer it are on [speaking up](speaking-up.md).
 
 ## Tools
 
-- **Named `<id>_<name>`**, listed in a fixed order (extension id, then declaration), the same list
-  in every channel, so the prompt cache holds. A stopped or crashed extension keeps its tools listed
-  and they answer that it is unavailable; switching one on or off, or changing a tool's description
-  or arguments, starts a new conversation with the new list at the next turn (what was said carries over).
-- **Tiers** decide how a call is handled. They map to MCP's tool annotations, and actions have them
-  too:
+### Names and the tool list
 
-  | Tier | Meaning | MCP annotations | A call |
-  | --- | --- | --- | --- |
-  | `read` | Only looks | `readOnlyHint: true` | Runs |
-  | `act` | Changes something that can be changed back | `readOnlyHint: false`, `destructiveHint: false` | Runs, logged as an action |
-  | `restricted` | Destructive, security or money | `destructiveHint: true` | Waits for you to confirm it outside the voice |
+Each tool is named `<id>_<name>` and listed in a fixed order (extension id, then declaration), the
+same list in every channel, so the prompt cache holds. A stopped or crashed extension keeps its tools
+listed, and they answer that it is unavailable.
 
-  A restricted call does nothing until you confirm it within 5 minutes: with a button on the Talk
-  page at winstond's own address (never from a wall panel, which anyone in the house can reach), or
-  with an actionable notification on your phone through the Home Assistant app. A call you make
-  yourself at the machine (`winston ext call`, the API without a conversation) runs. The tool answers
-  that it is waiting and he says so; voice alone never runs one (plan §6 rule 4). A tool with no
-  annotations counts as restricted, which is also MCP's default.
-- **Permission** is how you change that, per action, on its page and on Actions: On its own (read
-  and act), Asks you first (restricted) or Off, the source's own choice marked "(default)". Read is
-  never a choice, so an action that changes things cannot quietly be marked as only looking; a saved
-  `read` shows as On its own. Choosing On its own for one the source marked restricted asks first.
-  Your choice is saved under `extensions.<id>.tools.<name>` (`tier`, `enabled`) only where it differs.
-  Beside the choice, "Only looks" or "Changes things" says what the source declared; built-in and
-  personal extensions are trusted on it, while for an MCP server or a package it reads "Says it only
+Switching an extension on or off, or changing a tool's description or arguments, starts a new
+conversation with the new list at the next turn. What was said carries over.
+
+### Tiers
+
+Tiers decide how a call is handled. They map to MCP's tool annotations, and actions have them too:
+
+| Tier | Meaning | MCP annotations | A call |
+| --- | --- | --- | --- |
+| `read` | Only looks | `readOnlyHint: true` | Runs |
+| `act` | Changes something that can be changed back | `readOnlyHint: false`, `destructiveHint: false` | Runs, logged as an action |
+| `restricted` | Destructive, security or money | `destructiveHint: true` | Waits for you to confirm it outside the voice |
+
+A tool with no annotations counts as restricted, which is also MCP's default.
+
+A restricted call does nothing until you confirm it within 5 minutes: with a button on the Talk page
+at winstond's own address (never from a wall panel, which anyone in the house can reach), or with an
+actionable notification on your phone through the Home Assistant app. The tool answers that it is
+waiting and he says so; voice alone never runs one (plan §6 rule 4). A call you make yourself at the
+machine (`winston ext call`, the API without a conversation) runs.
+
+### Permission per action
+
+You change a tool's handling per action, on its page and on Actions: On its own (read and act),
+Asks you first (restricted) or Off. The source's own choice is marked "(default)".
+
+- Read is never a choice, so an action that changes things cannot quietly be marked as only looking.
+  A saved `read` shows as On its own.
+- Choosing On its own for one the source marked restricted asks first.
+- Your choice is saved under `extensions.<id>.tools.<name>` (`tier`, `enabled`), only where it
+  differs.
+- Beside the choice, "Only looks" or "Changes things" says what the source declared. Built-in and
+  personal extensions are trusted on it. For an MCP server or a package it reads "Says it only
   looks", "Says it changes things" or "Not marked safe" (restricted: an MCP tool with no hints or one
-  marked destructive), and an MCP server's actions are off until you choose.
-- **Titles for people.** `title` and `summary` on `@ext.tool` are what people read: on its page, on
-  Actions, in the Extensions search and in the line on Talk. An MCP server's tool takes MCP's own
-  `title` (or `annotations.title`) and the first sentence of its description. Without a title its name
-  is put in words ("next_track" is "Next track"). The docstring, written for the brain, shows only for
-  an MCP server's or a package's tools, in a closed Details under the summary: "Name he sees" and
-  "What he is told".
-- **Outside information.** With `outside=True` (the default) the result reaches the brain wrapped
-  with a note that it is information from outside, never instructions (plan §6 rule 3), because
-  text from a web service or a feed can carry instructions meant for him. Set `outside=False` only
-  for values the extension works out itself (a count, a sum); a title or a note from an API is
-  still outside.
-- **Results** travel as one JSON text, so a list or a string arrives as exactly what the tool
-  returned, and are cut at 4,000 characters with a note.
-- **Time**: 10 s by default, up to 60 s with `timeout=`. `filler="Let me check."` is said on the
-  spoken channels when a result takes more than `filler_after` seconds (1); `filler_after=0` says it
-  as the call starts, for a tool that is always slow (a web search).
-- **Prompt cost**: each extension's tool schemas and context are counted on its page and, for the
-  extensions that are on, in a total under the tiles, like memory's size meter. From 1,000 characters
-  its tile says it slows his first word a little, from 5,000 noticeably.
-- **On Talk and History** a call is one line with the extension's icon, the tool's title and the call's
-  first text argument: "Search the web: population of Sarajevo", or "Couldn't search the web" when it
-  failed.
+  marked destructive).
+- An MCP server's actions are off until you choose.
+
+### What people see
+
+`title` and `summary` on `@ext.tool` are what people read: on its page, on Actions, in the
+Extensions search and in the line on Talk. Without a title its name is put in words ("next_track" is
+"Next track"). An MCP server's tool takes MCP's own `title` (or `annotations.title`) and the first
+sentence of its description.
+
+The docstring is written for the brain. It shows only for an MCP server's or a package's tools, in a
+closed Details under the summary: "Name he sees" and "What he is told".
+
+On Talk and History a call is one line with the extension's icon, the tool's title and the call's
+first text argument: "Search the web: population of Sarajevo", or "Couldn't search the web" when it
+failed.
+
+### Outside information
+
+With `outside=True` (the default) the result reaches the brain wrapped with a note that it is
+information from outside, never instructions (plan §6 rule 3), because text from a web service or a
+feed can carry instructions meant for him. Set `outside=False` only for values the extension works
+out itself (a count, a sum). A title or a note from an API is still outside.
+
+### Results, time and prompt cost
+
+| | |
+| --- | --- |
+| Results | Travel as one JSON text, so a list or a string arrives as exactly what the tool returned. Cut at 4,000 characters, with a note |
+| Time | 10 s by default, up to 60 s with `timeout=` |
+| Filler | `filler="Let me check."` is said on the spoken channels when a result takes more than `filler_after` seconds (1). `filler_after=0` says it as the call starts, for a tool that is always slow (a web search) |
+| Prompt cost | Each extension's tool schemas and context are counted on its page, and for the extensions that are on in a total under the tiles, like memory's size meter. From 1,000 characters its tile says it slows his first word a little, from 5,000 noticeably |
+
+### Running a tool from a phrase
+
+Any extension tool can be run as a spoken shortcut, straight away and without the model, through the
+top-level `shortcuts` config ([Home Assistant](home-assistant.md)). Saying one of its phrases runs
+the tool the same way every time. An entry gives:
+
+- `phrases`: what you say
+- `tool`: `extension.tool`
+- `args`: the fixed arguments to run it with
+- `say_first` and `quiet_after`: optional
+
+A tool with `shortcut_only=True` is not offered to the model at all, so his prompt does not carry
+its description.
+
+This is how a party scene is built. The Spotify extension's `party(what, lights, restore, volume)`
+tool (it needs `home_assistant = "act"`) plays a track on the speakers and arms a light show:
+
+1. When go-librespot reports the track as `playing`, the extension runs the `lights` Home Assistant
+   script, so the show starts with the sound rather than on a guessed delay.
+2. When the music stops, it turns that script off and turns on the `restore` scene.
+
+The `lights` script and the `restore` scene must be keys in `ha.expose` for the `ctx.ha.call` to be
+allowed. A shortcut then wires a phrase ("party time") to `spotify.party`, with the track, scene and
+volume as its `args`.
 
 ## Home Assistant entities
 
-An extension's entities reach Home Assistant through Winston's own integration (UI track step 3), as
-one device per extension with unique ids, so they keep their history and can be renamed, put in
-areas, shown on dashboards and used in automations. Switches, buttons, numbers, selects and text
-let Home Assistant drive an extension: a "chore done" button, a cheap-charging switch. Each
-extension also has one event entity, `event.<id>_nudge`, that fires with every nudge it delivers,
-silent ones included (kind, `about`, level), so an automation can react ("flash the hallway lamp
-when he mentions training"). Until the integration exists, entities show under Readings on its page
-and through the API only.
+An extension's entities reach Home Assistant through Winston's own integration (UI track step 3 in
+the [plan](plan.md)), as one device per extension with unique ids. So they keep their history and can
+be renamed, put in areas, shown on dashboards and used in automations. Until the integration exists,
+entities show under Readings on its page and through the API only.
+
+- Switches, buttons, numbers, selects and text let Home Assistant drive an extension: a "chore done"
+  button, a cheap-charging switch.
+- Each extension also has one event entity, `event.<id>_nudge`, that fires with every nudge it
+  delivers, silent ones included (kind, `about`, level). An automation can react to it ("flash the
+  hallway lamp when he mentions training").
 
 ## Where extensions come from
 
 - **Built in**: `src/winston/extensions/`, off until switched on.
 - **Packages**: anything installed with the entry point group `winston.extensions`.
 - **Personal**: `data/extensions/<name>.py`, or a folder with a `pyproject.toml`.
-- **Any MCP server**, as tools only: no speaking up, settings or entities; its `instructions` are its
+- **Any MCP server**, as tools only: no speaking up, settings or entities. Its `instructions` are its
   line in the prompt.
+
+The Extensions page writes their config, with only what differs from each source's own choices. It
+looks like this:
 
 ```yaml
 extensions:
@@ -775,15 +432,16 @@ extensions:
     tools: {status: {enabled: true}}
 ```
 
-The page writes this, with only what differs from each source's own choices; it is shown so you know
-what the file holds. An MCP server offers the brain only
-the tools listed under its `tools`; its page lists every action it has, each with its Permission, Off
-until you choose. One started by a command gets only the keys named in its `env` (Keys it needs). One
-over HTTP that wants a token gets it from the variable `token_env` names, sent as `Authorization:
-Bearer` on every request; its page has a Token field for it, saved to `data/.env` like any key, so the
-token is never in `config.yaml` or shown back. A missing or refused token is said on its page ("it
-wants a token (401)"). It is read again at each connect, so a token saved after the server was added
-reaches it on the next try.
+### MCP servers
+
+- **Tools**: the brain is offered only the tools listed under its `tools`. Its page lists every
+  action it has, each with its Permission, Off until you choose.
+- **Keys**: one started by a command gets only the keys named in its `env` (Keys it needs).
+- **Token**: one over HTTP that wants a token gets it from the variable `token_env` names, sent as
+  `Authorization: Bearer` on every request. Its page has a Token field for it, saved to `data/.env`
+  like any key, so the token is never in `config.yaml` or shown back. It is read again at each
+  connect, so a token saved after the server was added reaches it on the next try.
+- **A missing or refused token** is said on its page ("it wants a token (401)").
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/extensions-mcp-dark.png">
@@ -801,74 +459,113 @@ flowchart LR
   w -->|nudges: to the speakers, your phone or Discord| ch
 ```
 
-- **One process per extension**, started and watched by winstond. Its environment holds
-  `WINSTON_API`, `WINSTON_TOKEN` (scoped to its permissions) and `WINSTON_STATE` (its folder), and
-  nothing else of winstond's, whose environment holds every key in `data/.env`. The values of its own
-  secret fields arrive with its settings over the protocol, so a new key reaches it without a restart.
-  An MCP server gets the variables named in its `env`, and no others; over HTTP, its token is sent with
-  each request instead. Each takes about 76 MB.
-- **MCP over stdio**, spec 2026-07-28, with winstond as the client. Tools are plain MCP tools. The
-  rest travels on Winston's extension to the protocol, `io.github.aldinsmajlovic/winston` version 1,
-  negotiated as the spec's extension mechanism (SEP-2133) provides. A missing or mistyped param is
-  refused with its name; one a method does not take is ignored, so winstond can add params within a
-  version. The methods:
-  - `winston/configure`: new settings, answered with field errors or ok
-  - `winston/run`: a job, with its `event`
-  - `winston/check`: a kind's nudges
-  - `winston/act`: a nudge action
-  - `winston/entity`: a value set from Home Assistant
-  - `winston/hook`: a request to one of its hooks
-  - `winston/nudge_event`: what happened to one of its nudges, for `@ext.on_nudge`
-  - `winston/status`, `winston/context` and `winston/hint_words`
-  - `winston/choices`: one of its `@ext.choices` lists, for a picker in its settings
-  - `winston/info`: its process id, for the watch on crashes and memory
-- **Back to winstond over REST**, under `/api/ext/v1/`, with its token. winstond checks every call
-  against the manifest and logs it with the extension's id.
-- **The core owns time.** Jobs, triggers, timers and checks are scheduled by winstond, which resolves
-  `From` references with the saved settings. Tests can move one clock, missed runs are caught up in
-  one place, and its page shows the next run.
+### One process each
+
+Each extension is one process, started and watched by winstond, at about 76 MB. Its environment
+holds `WINSTON_API`, `WINSTON_TOKEN` (scoped to its permissions) and `WINSTON_STATE` (its folder),
+and nothing else of winstond's, whose environment holds every key in `data/.env`. The values of its
+own secret fields arrive with its settings over the protocol, so a new key reaches it without a
+restart.
+
+An MCP server gets the variables named in its `env`, and no others; over HTTP, its token is sent with
+each request instead.
+
+### From found to running
+
+```mermaid
+stateDiagram-v2
+  [*] --> Described: found, or its code or the SDK changes
+  Described --> Started: switched on
+  Started --> Running: its settings arrive
+  Running --> Restarting: crash, past its memory limit, or 30 s without an answer
+  Restarting --> Started: after 1, 5, then 30 s
+  Restarting --> Stopped: five times in ten minutes
+```
+
+- **Described.** `python -m winston_sdk describe` gives its settings schema, kinds, actions, entities,
+  jobs and triggers, with `From` references as field names. It runs without secrets or a token.
+  winstond keeps the answer, so the config and the form are checked without starting it, and it
+  starts an extension only once it is described, so its keys are known.
 - **Until its settings arrive**, an extension with keys or required settings runs no tool and no job
-  (a key would still be its variable's name); one with neither runs on its defaults, so a plain MCP
-  client can use it directly. winstond starts an extension only once it is described, so its keys are
-  known.
-- **Describe runs** (`python -m winston_sdk describe`: settings schema, kinds, actions, entities, jobs
-  and triggers, with `From` references as field names) without secrets or a token when the extension
-  is found, its code changes or the SDK changes. winstond keeps the answer, so the config and the form
-  are checked without starting it.
-- **Failures stay contained.** A crash restarts it after 1, 5 and 30 s; five crashes in ten minutes
-  stop it. Past its memory limit (`memory_mb`, 500) it is stopped, and one that stops answering for
-  30 s is started again. The reason is on its page either way, in words (settings that did not load
-  name the setting: "its settings did not load: Speaker: not set"), and the error as raised is in its
-  Log. While it runs again its page says since when, and after ten minutes running cleanly why it
-  stopped lately is no longer shown. MCP 2026-07-28 has no ping, so an extension is asked
-  `winston/info` and an MCP server to list its tools every 10 s.
-- **The background model yields to conversations.** `ctx.llm.ask` keeps to a slot of its own on the
-  model server (llama.cpp's last one, when it has more than one), so it never takes the one that
-  holds a conversation's cached prompt, and it waits while anyone is talking to him (until 30 s of
-  quiet); a call under way when a conversation starts is stopped and asked again after it. Right
-  after winstond starts the model it also waits for it to load. It gives up after 45 s of waiting,
-  with an error saying so. Measured with the 27B and an extension asking
-  one story after another (`tests/background_llm_voice.py`): unpinned and unyielding, a spoken turn's
-  median first audio went from 982 ms to 2147 ms, and the first turn took 8.4 s, its prompt evicted;
-  with the slot alone, 892 ms to 1782 ms; yielding as well, 976 ms quiet and 1004 ms with every turn
-  starting while a call was under way (five stopped and asked again, 60 answered between turns).
-- **Its prompt lines and hint words** are written as files in its folder when it starts and after
-  each of its jobs, and read by every channel when a conversation starts, as memory is, so the prompt
-  stays the same through a conversation and its cache holds. An MCP server's prompt line is its own
-  `instructions` (MCP's word for what a server is and offers), written when it connects, cut at 300
-  characters and marked as information like the rest.
-- **Other languages** join as an MCP server, with tools only. Everything else on this page needs
-  `winston-sdk`, a small Python package in `sdk/` with no part of Winston's voice stack in it: winstond
-  reads an extension's manifest from Python and describes it by running it under the SDK. The protocol
-  above is what an SDK in another language would speak; none exists yet.
+  (a key would still be its variable's name). One with neither runs on its defaults, so a plain MCP
+  client can use it directly.
+- **Watched.** MCP 2026-07-28 has no ping, so every 10 s an extension is asked `winston/info` and an
+  MCP server to list its tools. Past its memory limit (Memory limit on its page, `memory_mb`, 500) it
+  is stopped and started again like a crash.
+- **Why it stopped** is on its page in words. Settings that did not load name the setting ("its
+  settings did not load: Speaker: not set"), and the error as raised is in its Log. While it runs
+  again its page says since when. After ten minutes running cleanly, why it stopped lately is no
+  longer shown.
+- **Reloads.** An extension reloads when its file is saved (winstond looks every 2 s), a built-in one
+  too, so editing one's code restarts it on a running Winston.
+
+### The protocol
+
+MCP over stdio, spec 2026-07-28, with winstond as the client. Tools are plain MCP tools. The rest
+travels on Winston's extension to the protocol, `io.github.aldinsmajlovic/winston` version 1,
+negotiated as the spec's extension mechanism (SEP-2133) provides. A missing or mistyped param is
+refused with its name. One a method does not take is ignored, so winstond can add params within a
+version.
+
+| Method | Carries |
+| --- | --- |
+| `winston/configure` | New settings, answered with field errors or ok |
+| `winston/run` | A job, with its `event` |
+| `winston/check` | A kind's nudges |
+| `winston/act` | A nudge action |
+| `winston/entity` | A value set from Home Assistant |
+| `winston/hook` | A request to one of its hooks |
+| `winston/nudge_event` | What happened to one of its nudges, for `@ext.on_nudge` |
+| `winston/status`, `winston/context`, `winston/hint_words` | Its status line, prompt line and hint words |
+| `winston/choices` | One of its `@ext.choices` lists, for a picker in its settings |
+| `winston/info` | Its process id, for the watch on crashes and memory |
+
+Back to winstond it calls REST under `/api/ext/v1/`, with its token. winstond checks every call
+against the manifest and logs it with the extension's id.
+
+### The core owns time
+
+Jobs, triggers, timers and checks are scheduled by winstond, which resolves `From` references with
+the saved settings. Tests can move one clock, missed runs are caught up in one place, and its page
+shows the next run.
+
+### The background model yields to conversations
+
+`ctx.llm.ask` keeps to a slot of its own on the model server (llama.cpp's last one, when it has more
+than one), so it never takes the one that holds a conversation's cached prompt.
+
+- It waits while anyone is talking to him, until 30 s of quiet. A call under way when a conversation
+  starts is stopped and asked again after it.
+- Right after winstond starts the model, it also waits for it to load.
+- It gives up after 45 s of waiting, with an error saying so.
+
+### Prompt lines and hint words
+
+An extension's prompt lines and hint words are written as files in its folder when it starts and
+after each of its jobs. Every channel reads them when a conversation starts, as memory is, so the
+prompt stays the same through a conversation and its cache holds.
+
+An MCP server's prompt line is its own `instructions` (MCP's word for what a server is and offers),
+written when it connects, cut at 300 characters and marked as information like the rest.
+
+### Other languages
+
+Other languages join as an MCP server, with tools only. Everything else on this page needs
+`winston-sdk`, a small Python package in `sdk/` with no part of Winston's voice stack in it: winstond
+reads an extension's manifest from Python and describes it by running it under the SDK. The protocol
+above is what an SDK in another language would speak; none exists yet.
 
 ## Offering tools to other apps
 
-winstond serves MCP at `/mcp` on the same loopback address as the rest of its API, listing the actions
-you tick under Share with other AI apps on the Actions page (shown while an extension is on, with the
-address to copy). None
-are shared until you tick them, an action that is Off for him cannot be, and one that asks you first
-still waits for your OK. Claude Code can then use your extensions' tools:
+winstond serves MCP at `/mcp` on the same loopback address as the rest of its API. It lists the
+actions you tick under Share with other AI apps on the Actions page, shown while an extension is on,
+with the address to copy.
+
+- None are shared until you tick them.
+- An action that is Off for him cannot be shared.
+- One that asks you first still waits for your OK.
+
+Claude Code can then use your extensions' tools:
 
 ```sh
 claude mcp add --transport http winston http://127.0.0.1:8700/mcp
@@ -877,12 +574,11 @@ claude mcp add --transport http winston http://127.0.0.1:8700/mcp
 ## Versions
 
 `api` in the manifest is the SDK's major version. Within a major, changes only add. winstond runs
-extensions for the current major and the one before, and once there is a second major will say on its
-page when one is on the old one. v1 is frozen once Hevy, news and reminders are built on it (plan,
-Extensions track step 4).
+extensions for the current major and the one before, and once there is a second major will say on
+its page when one is on the old one. v1 is frozen once Hevy, News and Reminders have had their week
+of real use on it (Extensions track step 4 in the [plan](plan.md)).
 
-Sign-in with OAuth, designed here first, was built within v1 for Spotify as `Account` (see
-[Settings](#settings)). Designed now, built within v1 when the first extension needs them (each only adds):
+Designed, and built within v1 when the first extension needs them (each only adds):
 
 - **Views**: `@ext.view(title, talk=False)` returns blocks (text, list, table, line or bar chart) the
   page draws in the UI's own style; `talk=True` also offers it beside the Talk page. For a parcel
@@ -893,13 +589,7 @@ Sign-in with OAuth, designed here first, was built within v1 for Spotify as `Acc
 
 ## Testing
 
-`winston_sdk.testing` runs an extension against a fake winstond: a clock you move, a fake Home
-Assistant (`FakeHA(states, services, devices)`), recorded HTTP answers, the other extensions it calls
-(`others={"desk": {"status": {...}}}`, refused unless listed or picked in its settings), remembered
-facts and diary entries (`facts=[...]`, `diary={"2026-10-10": "..."}`), the brain's tools
-(`tools={"HassTurnOn": {"tier": "act", "answer": "..."}}`, each call in `h.tool_calls`), connected
-accounts (`accounts={"account": "a-token"}`: that field is true and `ctx.token` gives the token) and a
-record of what it asked to say.
+`winston_sdk.testing` runs an extension against a fake winstond:
 
 ```python
 from winston_sdk.testing import FakeHA, Harness, recorded
@@ -914,13 +604,28 @@ async def test_rest_after_three_days():
     assert nudge.level == 1 and nudge.facts["days_since"] == 3
 ```
 
-`await h.status()` is its status line, `await h.status_parts()` the line with its warning and note,
-and `await h.choices("playlists")` what an `@ext.choices` list gives the form.
-`background=False` leaves its `@ext.background` tasks unstarted (a receiver it runs, a websocket), so
-a test calls what they would instead. Fixtures in the repo are made up. A recording of a real account
-stays in `data/`, like all personal data. `winston ext test` runs the tests in the extension's own environment when it needs packages
-Winston does not have (`python -m winston_sdk test FILE` there); `winston check unit` runs the built-in
-extensions' tests.
+| Fake | How to give it |
+| --- | --- |
+| A clock you move | `h.clock.advance(...)` |
+| Home Assistant | `FakeHA(states, services, devices)` |
+| HTTP answers | `recorded(...)` from a fixture |
+| The other extensions it calls | `others={"desk": {"status": {...}}}`, refused unless listed or picked in its settings |
+| Remembered facts and diary entries | `facts=[...]`, `diary={"2026-10-10": "..."}` |
+| The brain's tools | `tools={"HassTurnOn": {"tier": "act", "answer": "..."}}`, each call in `h.tool_calls` |
+| Connected accounts | `accounts={"account": "a-token"}`: that field is true and `ctx.token` gives the token |
+
+It also records what the extension asked to say.
+
+- `await h.status()` is its status line, and `await h.status_parts()` the line with its warning and
+  note.
+- `await h.choices("playlists")` is what an `@ext.choices` list gives the form.
+- `background=False` leaves its `@ext.background` tasks unstarted (a receiver it runs, a websocket),
+  so a test calls what they would instead.
+
+Fixtures in the repo are made up. A recording of a real account stays in `data/`, like all personal
+data. `winston ext test` runs the tests in the extension's own environment when it needs packages
+Winston does not have (`python -m winston_sdk test FILE` there). `winston check unit` runs the
+built-in extensions' tests.
 
 ## Commands
 
@@ -938,64 +643,74 @@ winston ext logs ID
 winston ext test ID                  # its tests, with the harness
 ```
 
-An extension reloads when its file is saved (winstond looks every 2 s), a built-in one too, so
-editing one's code restarts it on a running Winston.
-
 ## The Extensions and Actions pages
+
+### Extensions
+
+**Extensions** (`/extensions`, in the settings sidebar after Home Assistant) is a store: a search over
+names, descriptions and action titles, then every extension as a tile under Needs you, On and Off.
+Under the tiles, how many characters the extensions that are on add to every request.
+
+A tile shows:
+
+- its icon and name, and where it comes from beside the name when it is not built in ("MCP server",
+  "Package", "Personal")
+- two lines of its description
+- a dot while it has unsaved edits
+- a word only when there is something to say: "Needs a key"; for one that is on, "Not running" or
+  "Stopped" with why; "Slows his first word a little" for one that adds 1,000 characters or more to
+  every request ("noticeably" from 5,000)
+
+An MCP server without a name is shown by its id in words, in capitals when it is one or two letters
+("PC").
+
+**Add an MCP server** asks for a name (its id, and its actions' prefix, come from it), how it starts
+(a command on this computer or an address), the keys a command needs by the name it reads each one
+by, and for an address an optional token. It goes into the draft switched on with every action off,
+and its page opens.
+
+### An extension's page
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/extensions-news-dark.png">
+  <img src="images/extensions-news-light.png" alt="The News extension's page: its description, the Use News switch and its status, what it can reach, and the start of its settings" width="720">
+</picture>
+
+A tile opens the extension's own page (`/extensions/ID`), under the breadcrumb Extensions / its name,
+with Log and "Restart <its name>" ("Start <its name>" while it is stopped) in the header. It is
+switched on there and not on its tile, so what it can reach is in view first. Sections with nothing
+to show are left out:
+
+| Section | What it holds |
+| --- | --- |
+| The top card | Its switch ("Use News"), which starts or stops it when you save; where it comes from when it is not built in; its status line; and what is wrong, in words: why it stopped lately, a key it needs, something it ran that failed today. An MCP server or a personal extension also has Remove this extension |
+| What it can reach | Its [permissions](#permissions) in words. An MCP server declares none, so it says what that means: one Winston starts runs as you and can do anything you can; one at an address can do whatever that server does with what he sends it |
+| Settings | Its settings form, keys included. For an MCP server: its name (empty, its id in words), start command or address, the keys it needs and its token |
+| What he can do with News (its name) | Its actions, each with its title, summary, "Only looks" or "Changes things", and its [Permission](#permission-per-action) |
+| When it speaks up | Its kinds of message, each with its description, When and Where ([speaking up](speaking-up.md#kinds-and-their-options)). A muted kind shows "Muted until ..." with Unmute. Then what it brought up recently, each with its day and where it stands ("Said on the speakers", "Said in a conversation, then you dismissed it", "Not said: quiet hours", "Held: quiet hours", "Put off until ...") |
+| Readings | Its entities' values |
+| How it runs | When it runs next, what it adds to every request and what that does to his first word (from "too few to notice" to "noticeably"), its memory against its limit while it runs, and the Memory limit field. An MCP server at an address runs elsewhere, so its page has no Memory limit |
+
+### Actions
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/actions-dark.png">
   <img src="images/actions-light.png" alt="The Actions page: a line on what asking first means, a search with All, Asks you first and Off, then each source's actions folded under its name" width="720">
 </picture>
 
-**Extensions** (`/extensions`, in the settings sidebar after Home Assistant) is a store: a search over
-names, descriptions and action titles, then every extension as a tile under Needs you, On and Off. A
-tile shows its icon and name, where it comes from beside the name when it is not built in ("MCP
-server", "Package", "Personal"), two lines of its description, a dot while it has unsaved edits, and
-a word only when there is something to say: "Needs a key", or for one that is on "Not running" or
-"Stopped" with why, and "Slows his first word a little" for one that adds 1,000 characters or more to
-every request ("noticeably" from 5,000). An MCP server without a name is shown by its id in words,
-in capitals when it is one or two letters ("PC"). Under the tiles, how many characters the extensions that are on add to every request.
-**Add an MCP server** asks for a name (its id, and its actions' prefix, come from it), how it starts (a
-command on this computer or an address), the keys a command needs by the name it reads each one by,
-and for an address an optional token. It goes into the draft switched on with every action off, and
-its page opens.
+**Actions** (`/actions`) lists everything he can do, from every source, top to bottom:
 
-A tile opens the extension's own page (`/extensions/ID`), under the breadcrumb Extensions / its name,
-with Log and "Restart <its name>" ("Start <its name>" while it is stopped) in the header. It is switched on there and not on its
-tile, so what it can reach is in view first. Sections with nothing to show are left out:
-
-- **The top card**: its switch ("Use News"), which starts or stops it when you save; where it comes
-  from when it is not built in; its status line; and what is wrong, in words: why it stopped lately, a
-  key it needs, something it ran that failed today. An MCP server or a personal extension also has
-  Remove this extension.
-- **What it can reach**: its permissions in words ([Permissions](#permissions)). An MCP server
-  declares none, so it says what that means: one Winston starts runs as you and can do anything you
-  can; one at an address can do whatever that server does with what he sends it.
-- **Settings**: its settings form, keys included; for an MCP server its name (empty, its id in words),
-  start command or address, the keys it needs and its token.
-- **What he can do with News** (its name): its actions, each with its title, summary, "Only looks" or
-  "Changes things", and its Permission ([Tools](#tools)).
-- **When it speaks up**: its kinds of message, each with its description, When and Where ([Speaking
-  up](#speaking-up)); a muted kind shows "Muted until ..." with Unmute. Then what it brought up
-  recently, each with its day and where it stands ("Said on the speakers", "Said in a conversation,
-  then you dismissed it", "Not said: quiet hours", "Held: quiet hours", "Put off until ...").
-- **Readings**: its entities' values.
-- **How it runs**: when it runs next, what it adds to every request and what that does to his first
-  word (from "too few to notice" to "noticeably"), its memory against its limit while it runs, and
-  the Memory limit field (past it, it is stopped and the page says why). An MCP server at an address
-  runs elsewhere, so its page has no Memory limit.
-
-**Actions** (`/actions`) lists everything he can do, from every source. A line says what asking first
-means (he says what he wants to do and waits up to 5 minutes for your OK on the Talk page or your
-phone; saying yes out loud is not enough), with a warning while no phone is set. Then a search, a
-filter (All, Asks you first, Off) and each source's actions folded under its name with a count ("14
-actions, 2 ask you first"). Home Assistant's are listed with no Permission choice: they run on their
-own, and what he can reach there is the devices you share ([Home Assistant](home-assistant.md)). An
-extension that is off has its actions greyed, and each group links to its page. Last, Share with
-other AI apps ([offering tools to other apps](#offering-tools-to-other-apps)), while an extension is
-on: the address, and each extension that is on as a closed fold with how many of its actions are
-shared.
+1. A line on what asking first means: he says what he wants to do and waits up to 5 minutes for your
+   OK on the Talk page or your phone; saying yes out loud is not enough. A warning shows while no
+   phone is set.
+2. A search and a filter (All, Asks you first, Off).
+3. Each source's actions, folded under its name with a count ("14 actions, 2 ask you first"). Home
+   Assistant's are listed with no Permission choice: they run on their own, and what he can reach
+   there is the devices you share ([Home Assistant](home-assistant.md)). An extension that is off has
+   its actions greyed, and each group links to its page.
+4. Share with other AI apps ([offering tools to other apps](#offering-tools-to-other-apps)), while an
+   extension is on: the address, and each extension that is on as a closed fold with how many of its
+   actions are shared.
 
 A restricted call waiting for you shows on the Talk page with Confirm and Decline.
 
@@ -1006,5 +721,5 @@ A restricted call waiting for you shows on the Talk page with Confirm and Declin
   messaging channel is wanted.
 - **Anything that needs the microphone or speaker audio** (cloning, intercom, sound detection, playing
   radio): a later part of the standard, designed with the first feature that needs it for its own sake.
-- **The core**: memory, rooms, the persona, speaking up and announcements, and Home
-  Assistant, which extensions reach through `ctx.ha`.
+- **The core**: memory, rooms, the persona, speaking up and announcements, and Home Assistant, which
+  extensions reach through `ctx.ha`.

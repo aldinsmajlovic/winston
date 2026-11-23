@@ -29,52 +29,60 @@ uv run winston turns mark ID KIND # mark one as a mistake (misheard, not_address
 uv run winston check turns [--with FILE]  # the marked turns replayed through this setup or a candidate, scored
 ```
 
+## Running as a service
+
 Set up by `winston setup`, he runs as `winston.service` in your user's systemd ([setup](setup.md)):
-`systemctl --user restart winston` restarts all of him, and `journalctl --user -u winston -f` follows his
-log. Installed from a release (`install.sh`), `winston` is in `~/.local/bin`, without `uv run`:
+
+```sh
+systemctl --user restart winston       # restart all of him
+journalctl --user -u winston -f        # follow his log
+```
+
+Installed from a release (`install.sh`), `winston` is in `~/.local/bin` and runs without `uv run`.
 `winston update` installs the next release and restarts him, and `winston uninstall` removes him and
 keeps the data directory ([setup](setup.md#updating-and-removing)).
 
-`winston check` gives the checks, and what they start, one temporary folder (`TMPDIR`) and removes
-it when they end, so a check that forgets its own files leaves nothing in `/tmp`.
+## Test scripts
 
-`.venv/bin/python tests/satellite_fake.py` runs the satellite channel against a fake Voice PE on
-localhost: wake, request, streamed reply, a follow-up without the wake word, silence.
+`winston check` gives the checks, and what they start, one temporary folder (`TMPDIR`) and removes it
+when they end, so a check that forgets its own files leaves nothing in `/tmp`.
 
-`uv run python tests/rooms_voice.py` puts that fake box and a headless browser session in one room
-against the running `winston up` and checks he answers once and the conversation carries across
-([rooms](rooms.md)); `uv run python tests/room_trials.py` checks "the lights" in a room means that
-room's. Both leave the house alone: the box's actions are stubbed, and the browser session is only
-asked questions.
+The scripts below are run by hand.
 
-`.venv/bin/python tests/conversations.py [name ...]` talks to the voice pipeline headless in eighteen
-scripted conversations (vague requests, things he cannot do, Swedish, talking over him, prompt
-injection, a promise he might not keep and more) and prints each transcript: what speech-to-text heard,
-tool calls, what he said and time to first audio. Actions are stubbed and the tool log goes to the temp
-dir, so the house and `data/` are untouched. It judges
-nothing; read the transcripts.
+| Script | What it does | Needs | Leaves alone |
+| --- | --- | --- | --- |
+| `.venv/bin/python tests/satellite_fake.py` | Runs the satellite channel against a fake Voice PE on localhost: wake, request, streamed reply, a follow-up without the wake word, silence | The LLM and TTS engines | The house: actions are stubbed |
+| `uv run python tests/rooms_voice.py` | Puts that fake box and a headless browser session in one room and checks he answers once and the conversation carries across ([rooms](rooms.md)) | `winston up` | The house: the box's actions are stubbed, and the browser session is only asked questions |
+| `uv run python tests/room_trials.py` | Checks that "the lights" in a room means that room's | The LLM and Home Assistant | The house: actions are stubbed |
+| `.venv/bin/python tests/conversations.py [name ...]` | Talks to the voice pipeline headless in eighteen scripted conversations (vague requests, things he cannot do, Swedish, talking over him, prompt injection, a promise he might not keep and more). It prints each transcript, with what speech-to-text heard, the tool calls, what he said and the time to first audio, and judges nothing | The engines | The house and `data/`: actions are stubbed and the tool log goes to the temp dir |
+| `uv run python tests/announce_voice.py` | An announcement and a spoken follow-up, end to end ([announcements](announcements.md#checking-it)) | `winston up` | Nothing is saved, but the announcement plays on every connected box and browser too |
+| `uv run python tests/extensions_voice.py` | Measures first audio on spoken turns while an extension misbehaves (blocks its loop, grows past its memory limit, crashes), in a throwaway winstond | The LLM and TTS engines | `data/`, which it only reads |
+| `uv run python tests/extensions_demo.py` | Serves the docs' example extensions and an MCP server on :8790 against the fake Home Assistant, for looking at the Extensions page | Nothing | `data/` and the real Home Assistant |
+| `uv run python tests/turns_demo.py` | Serves a made-up turn record on :8791, for looking at the History page and its marks | Nothing | `data/` |
 
-`uv run python tests/extensions_voice.py` measures spoken turns against the running engines while an
-extension misbehaves (blocks its loop, grows past its memory limit, crashes), in a throwaway winstond:
-2026-09-29, median first audio 892 ms with it quiet and 967 ms while it misbehaved 44 times.
-`uv run python tests/extensions_demo.py` serves the docs' example extensions and an MCP server on
-:8790 against the fake Home Assistant, for looking at the Extensions page; neither touches `data/`.
-`uv run python tests/turns_demo.py` serves a made-up turn record on :8791, for looking at the History
-page and its marks; it does not touch `data/` either.
+## Logs
 
-Logs: engine subprocesses write to `data/logs/<engine>.log`; each extension to
-`data/logs/extensions/<id>.log` (what it printed, every failure with its traceback), and keeps its state
-in `data/state/extensions/<id>/`; every step of speaking up (a nudge held, said, put off, and why) to
-`data/logs/nudges.jsonl`, with the nudges themselves in `data/state/nudges.json`; the LLM container to
-`docker logs winston-llm`; every tool call to `data/logs/tool_calls.jsonl`. The voice and satellite channels write
-one line per spoken turn, once his reply is over, to `data/logs/latency.jsonl` (`logging.latency`; empty
-turns it off): time from the end of your speech to the transcript (`stt_ms`), the first token
-(`first_token_ms`) and the first audio (`first_audio_ms`), and the names of the tools the turn called;
-no words, no audio. A request that never reached him (nothing heard, "that's all") gets no line. The
-times are the turn record's. With `logging.turns.enabled` (Keep recordings of what you say, on
-Assistant; off by default) they also keep each spoken turn whole in `data/turns/<day>/`: its audio
-and what was heard, done and said, for 14 days (`logging.turns.keep_days`); `uv run winston turns`
-lists a day ([understanding](understanding.md#1-turn-record-and-marks)).
+Paths are in the data folder.
+
+| What | Where | Set by |
+| --- | --- | --- |
+| Each engine subprocess's output | `logs/<engine>.log` | |
+| Installing a service's venv (`uv sync`) | `logs/install-<service>.log` | |
+| The LLM container | `docker logs winston-llm` | |
+| Each extension: what it printed, every failure with its traceback | `logs/extensions/<id>.log`, its state in `state/extensions/<id>/` | |
+| Every step of speaking up: a nudge held, said or put off, and why | `logs/nudges.jsonl`, the nudges in `state/nudges.json` | |
+| Every announcement and where it went | `announcements.jsonl`, beside the tool log | |
+| Every tool call | `logs/tool_calls.jsonl` | `logging.tool_calls` |
+| Each spoken turn's timings | `logs/latency.jsonl` | `logging.latency`; empty turns it off |
+| Each spoken turn whole: its audio and what was heard, done and said | `turns/<day>/`, kept 14 days | Keep recordings of what you say, on Assistant (`logging.turns.enabled`, off); `logging.turns.keep_days` |
+
+The voice and satellite channels write the latency line once his reply is over, with no words and no
+audio. It holds the time from the end of your speech to the transcript (`stt_ms`), to the first token
+(`first_token_ms`) and to the first audio (`first_audio_ms`), and the names of the tools the turn
+called. The times are the turn record's. A request that never reached him (nothing heard, "that's
+all") gets no line.
+
+`uv run winston turns` lists a day of recordings ([understanding](understanding.md#1-turn-record-and-marks)).
 
 ## Status and errors
 
@@ -112,203 +120,8 @@ channel off (or leaves the room boxes with no box) stops it right away, and its 
 
 ## Web UI
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/talk-dark.png">
-  <img src="images/talk-light.png" alt="The Talk page: an announcement from Home Assistant, a typed request that dims the lights, a spoken reminder from a room box, and a question about the weather" width="720">
-</picture>
-
-`winston up` serves the UI at http://localhost:8700 once `web/dist` exists. The home page is the
-Talk page: everything Winston hears, says and does on any channel, each action as one line, a divider
-for each new conversation and why it started, and what he brought up on his own as one line with
-the time, what he said and from whom. Lines from another place say where ("Kitchen box", "Discord").
-Under his name a line says whether he can answer: Ready, Listening, Thinking, Speaking, Starting,
-or Can't answer with a link to Status. History, Memory and Settings are at the top right; Settings
-carries a warning mark while something needs you.
-
-- **Talk and type.** Type and press Enter, or press the round button to talk: it connects the
-  browser's mic to the voice channel through winstond, with no wake word, so he hears everything until
-  you press it again.
-- **Read aloud.** The speaker icon in the message field reads typed replies aloud in Winston's voice,
-  a sentence at a time as the reply streams in (off by default, remembered per browser); spoken turns
-  already are.
-- **New conversation** is the round button left of the field. Typed messages form one conversation
-  that starts fresh after `channels.web.session_idle_mins` (30) and after a settings save.
-- **The line above the field** holds the room picker, which puts this browser in a room with a Voice
-  PE box: one conversation and one mic for both ([rooms](rooms.md)). At its right it says what matters
-  now, such as "Microphone paused while the Kitchen box has it".
-- **Its settings** are on Ways to talk, Talk page: Talk by voice (off leaves typing, and the page says
-  the microphone is off), the Wall display row, and New conversation after for the typed conversation.
-  How long he waits in silence before answering in the browser is config.yaml only
-  ([below](#settings-only-in-configyaml)): raise `vad.unfinished_stop_secs` if he cuts you off
-  mid-sentence.
-- **Other devices.** Browsers only give the mic to `localhost` or HTTPS, so talking from another
-  device needs HTTPS on the LAN.
-- **Not an archive.** The page keeps the last few hundred events while winstond runs; the tool log is
-  the record.
-
-History, at `/history` (`/turns` and `/diary` lead there), shows the spoken requests kept while
-recordings are on, one day at a time under his diary entry for it, or only the ones marked as
-mistakes ([understanding](understanding.md#1-turn-record-and-marks)).
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/wall-dark.png">
-  <img src="images/wall-light.png" alt="The wall display: Winston's logo large, speaking, with the question and his answer under it" width="720">
-</picture>
-
-The wall display, at http://localhost:8700/wall (`/dashboard` leads there, keeping its room), is the
-same feed full screen for a wall tablet; `/wall?room=main room` puts it in a room, a box's or
-a Home Assistant area ([rooms](rooms.md)). Its link is made once per tablet in Settings, Ways to talk: the Wall display row on
-the Talk page card takes a room, then Open or Copy link. Tap the logo to talk and again to hang up. Its
-room shows at the top left and Close at the top right. The line under the logo follows his state ("Tap
-to talk", or why he cannot answer); what you said and his answer show while he is busy and for 20
-seconds after. What he says aloud on his own (an announcement, a message on the speakers) takes the
-screen for a minute, until you tap it or until you answer it. The page asks the browser to keep the
-screen on, which like the mic only works on `localhost` or HTTPS. To show it in Home Assistant, add a
-Webpage card pointing at the wall display's address; if Home Assistant itself is on HTTPS, the browser
-blocks a plain `http://` page inside it, so Winston needs HTTPS too.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/status-dark.png">
-  <img src="images/status-light.png" alt="The Status page: his parts by role with what runs each and its state, and the graphics memory" width="720">
-</picture>
-
-Settings opens on Status. The sidebar groups the pages: Status; Assistant, Brain and Voice; Ways to
-talk, Home Assistant and Extensions; Actions and Speaking up. The theme and the version are at its
-foot. Status has, from the top:
-
-- **Needs you**, only when something does: an engine or channel that failed or stopped responding,
-  with Log, Restart and a link to its page; an extension that needs a key or is on but not running, with a link to it;
-  Home Assistant set up but out of reach. Saved settings that wait for a restart are said once, in the
-  header, with one Restart.
-- **Set up next**, only while one applies: connect Home Assistant, choose the devices he may use, add
-  a room box.
-- **His parts**: Brain, Speaking, Hearing, Talk page microphone, Room boxes, Discord, Home Assistant and
-  Extensions. Each row says what runs it ("2 boxes, 1 connected"; the brain's model by its own name,
-  "Qwen3.8-27B", without its maker, file format or quantization, which the Brain page shows whole), its
-  state in words with how long ("Running, up 15 min", "Starting, 40 s of about 2 min"), and the reason
-  under it when it is not running. Its command is Restart while it runs, Start while it does not, Turn on for one switched
-  off (a draft change, for Save) and Set up for Discord; its menu has Stop and Log; the row opens the
-  page that sets it up. Stop and Restart say what stops and for how long ("Stop the brain? He cannot
-  answer anywhere until it starts again, about 24 s.").
-- **Graphics memory**: "23.4 of 24.0 GB in use" and the card's name. The brain and the voices share
-  it; one that does not fit will not start. Above 90% the bar is in the warning colour and the card
-  says "Nearly full: a bigger model or voice will not fit."
-- **Custom engines**, once there is one: servers Winston starts and keeps running, which nothing uses
-  until a setting points at their address. Each row opens its page at `/status/engines/<name>`, which
-  shows how it runs open.
-- **Web address**: Who can open this page, This computer only or Every device on your network
-  (`control.host`). Open to the network, a warning says anyone on it can control him (and your home,
-  once Home Assistant is set up), and a line says keys cannot be pasted on these pages then. It takes
-  effect when Winston restarts. API reference opens `/docs`.
-
-Start all (while something is stopped), Stop all (while something runs) and Add a custom engine, which
-asks a name and how it runs, are commands in the header; Stop all asks first.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/brain-dark.png">
-  <img src="images/brain-light.png" alt="The Brain page: llama.cpp with the 27B, Ready before the first question switched on, and Think before answering" width="720">
-</picture>
-
-Brain picks what runs the brain under Runs on, from presets (vLLM, llama.cpp, Ollama, hosted), each with
-a line on what it is good at, and what it needs where its name does not say, and the model from three
-lists: Running, what the brain's server reports; Downloaded, what the chosen engine can load from the
-Hugging Face cache on this machine; and Suggested, the presets' models for that engine, not downloaded
-yet. Under the model, a pick that is not on this computer says what it needs downloaded, its size and
-the free space, with Download, which gets it while the brain that runs now keeps answering
-([setup](setup.md#winston-installs-his-engines)). Picking a preset rewrites the engine block and the
-settings that go with it, and asks first when you had edited that block. How it runs, closed at the bottom of the What runs his brain card, holds
-the engine block (Runs as, Start with Winston, port, image, arguments and the rest), its state with
-Log and Restart while it runs, Reset to the preset while the block differs from the preset, the API
-address while Winston runs the engine, and How thinking is switched; a problem with the engine shows
-above it, never folded away. Ready before the first question (`llm.warm_up`, on) has the brain read his
-instructions and tools before anyone asks: typed conversations (the Talk page and Discord share one
-prompt) when the brain's server comes up, a box when it connects and again a minute after a brain
-restart, the Talk page microphone when it opens. Cold, the 27B took 10.8 s to read the typed prompt
-and 0.35 s warmed. Off, nothing is read ahead, which saves a hosted brain the extra requests. Think before answering and How he picks his words (temperature, top-p,
-presence penalty and the longest reply, for when your model's page recommends other values) are cards
-of their own. Voice does the same for speaking and hearing ([voices](voices.md)).
-
-The settings pages are drawn from the config schema: a label that says what the setting does, a line
-under it where the label cannot say it all, and an (i) beside it for the background. There are no
-view modes: a setting is on its page, or, for what nobody sets by hand, only in config.yaml
-([below](#settings-only-in-configyaml)).
-
-Anything a machine already knows is a searchable dropdown filled from `/api/options/{name}`, and a
-typed value still works when the list is empty. A list that cannot be fetched (no token yet, the
-server down) leaves a plain text box with the reason in a line under it.
-
-| Field | Filled from |
-| --- | --- |
-| Brain model | Running: the brain's server (`/models`), following an unsaved base URL. Downloaded: the Hugging Face cache the engine reads, with each model's size on disk. Suggested: the presets' models for that engine |
-| Voice | clips in `data/voices/`, your cloned voices and the TTS server's built-in voices |
-| Speech-to-text model | the models onnx-asr knows, downloaded ones marked |
-| Home Assistant entities, sensors, domains | Home Assistant's states, with each entity's name, state and an icon for its type |
-| Your Discord user ID, contacts | the members of the bot's servers, a pasted id looked up ([Discord](discord.md)) |
-| Sound before an announcement | None, and the sounds in `assets/sounds/` and `data/sounds/` |
-| Who can open this page | This computer only, Every device on your network |
-
-A field that does not apply is not shown: an API key only for a hosted brain or voice, the voice's
-Model only for a hosted one, the Streaming
-settings only when the speech engine's command uses them, engine fields only for their driver. A
-feature that is switched off (a channel, memory, announcements) keeps its fields visible and editable
-at full contrast; its switch's line says they wait until it is on, and its keys do not warn. Keys are
-never shown: a key field says Saved or Not set, takes a pasted key that Save writes to `data/.env`,
-and Remove deletes the stored one at once, after asking; the variable it is stored under is
-config.yaml only, and a key refused while the page is open to your network names it.
-Maps (Discord contacts, an engine's environment and volumes) are tables with Add, a dialog per entry
-and trash with Undo. A card about something that runs (the Talk page, Room boxes, Discord) shows its
-state in its title while it is not running. The Home Assistant page checks the address and token
-before anything is saved ([Home Assistant](home-assistant.md#the-page)).
-
-Edits are one draft across all pages until saved or discarded; a dot in the sidebar marks each page
-with unsaved edits, and closing the tab asks first. Save sends only the changed fields
-(`PATCH /api/config` with the version the edits started from). Its confirm lists the changes by page,
-then what the save starts, stops and restarts, with roughly how long each takes, a model download, and
-what Home Assistant would change; its title says it ("Save and start the room boxes and restart the
-brain?"). It asks when something starts, stops or restarts, or the edits reach past the current page.
-Pasted keys are written after the config. If something else saved one of the same fields meanwhile (a
-voice switched by asking), nothing is overwritten: the page reloads, keeps your edits on top, names
-the field in a message, and you save again. A field the server refuses is marked where it is.
-Discard asks when edits reach past the current page, offering that page alone. On a phone, Discard and
-Save sit in a bar along the bottom while there are unsaved changes.
-
-Downloaded is read from the disk, never the Hub: the host side of the engine's huggingface volume,
-else `HF_HOME`, else `~/.cache/huggingface`. llama.cpp and Ollama list each GGUF quant as
-`repo:quant` (a split file is one quant, listed once every part is there); Ollama's entries are `hf.co/repo:quant`, as Ollama pulls its
-own copy. vLLM lists safetensors repos with a language model config. A model the engine cannot load
-is greyed with the reason ("vLLM only"); speech models (Chatterbox, Parakeet, Pocket TTS, a model card
-tagged text-to-speech) are left out. When Save changes the brain's model to one that is neither
-running nor downloaded, the confirm says the restart downloads it first, size unknown, and may take
-many minutes; the brain is offline until the download ends.
-
-While a saved change waits for a restart, every settings page says so beside Save ("Waiting for a
-restart: the brain, about 24 s"; the icon lists each part and its cost) with a Restart button that
-restarts only those. What only winstond reads (the web address, announcements, Home Assistant) says it
-takes effect when Winston restarts, the next `winston up`, and has no button.
-
-Build it once (Node 22 or newer, pnpm):
-
-```sh
-cd web && pnpm install && pnpm build   # guardrails, lint, type check, bundle into web/dist
-```
-
-`pnpm dev` runs Vite on :5173 with `/api` proxied to :8700. `pnpm api` regenerates the typed client
-from `winston api schema` after the API changes.
-
-`pnpm smoke` (or `winston check ui`) tests the built pages with Playwright in the system Chromium, or
-Chrome where there is none (or set `CHROMIUM`). It copies `config.yaml` and `persona.md` from the data
-directory Winston uses (or `WINSTON_SOURCE`) to a temp directory
-with fake keys, every engine and channel off, Home Assistant pointed at a fake one (`tests/fake_ha.py`),
-every other address pointed nowhere and every port moved to a free one, so nothing reaches the running
-brain, voice server, channels, MCP servers or Spotify receiver. It starts a throwaway
-`winston up --no-start` on a free port and deletes it all afterwards. It checks that every settings page loads with
-nothing to save; that every page fits a 390 px phone with every How it runs open, without sideways
-scroll or a card's content wider than the card; that a rename survives a reload; that a pasted key
-shows as Saved and never comes back from the server, and an MCP server's token lands in `data/.env`
-alone; that a hosted-only field is left out for a local engine; that a refused save opens the How it
-runs that holds the field; that Status lists the custom engines and who can open the page; that Save
-only leaves a Restart button; and the Brain, Voice, Home Assistant, Memory, History and Talk
-pages' own cases.
+The Talk page, History, the wall display and every settings page, and how settings are saved, are in
+[web UI](web-ui.md). `winston up` serves it at http://localhost:8700 once it is built.
 
 ## Settings only in config.yaml
 
@@ -361,18 +174,23 @@ should hear right writes.
 
 ## Engines
 
-Declared under `engines:` in config with a driver:
+Declared under `engines:` in config, each with a driver:
 
-- `docker`: image, args, env, volumes, gpu. Used for the vLLM and llama.cpp servers. With Docker's
-  `--gpus` path broken by a stale CDI spec on some hosts, set `runtime: nvidia` explicitly. The
-  container carries a label with a hash of its engine block; `winston up` replaces a running
-  `winston-<name>` container whose label does not match, so a swapped engine never silently keeps
-  the old one. Before it starts one, the host side of each volume is made as you, and `hub/` in a
-  Hugging Face cache volume: the container runs as root, and a folder it made would be root's, which a
-  voice running on the host then cannot download its model into.
-- `subprocess`: cmd and cwd, with `{data}` and `{repo}` expanding. Used for the Chatterbox TTS server,
-  which has its own venv because it pins torch 2.6.
-- `external`: a URL you already run; Winston only health-checks it.
+| Driver | What it takes | Used for |
+| --- | --- | --- |
+| `docker` | image, args, env, volumes, gpu | The vLLM and llama.cpp servers |
+| `subprocess` | cmd and cwd, with `{data}` and `{repo}` expanding | The Chatterbox TTS server, which has its own venv because it pins torch 2.6 |
+| `external` | A URL you already run; Winston only health-checks it | Something you run yourself |
+
+For a `docker` engine:
+
+- Where Docker's `--gpus` path is broken by a stale CDI spec, set `runtime: nvidia` explicitly.
+- The container carries a label with a hash of its engine block. `winston up` replaces a running
+  `winston-<name>` container whose label does not match, so a swapped engine never silently keeps the
+  old one.
+- Before it starts one, the host side of each volume is made as you, and `hub/` in a Hugging Face cache
+  volume. The container runs as root, and a folder it made would be root's, which a voice running on
+  the host then could not download its model into.
 
 In args and cmd, `{model}` stands for `llm.model` and `{section.field}` for any other config value,
 so a server's own options can be ordinary settings: the Chatterbox command passes

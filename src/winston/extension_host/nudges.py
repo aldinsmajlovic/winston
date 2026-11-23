@@ -1,4 +1,4 @@
-"""Speaking up (docs/extensions.md#speaking-up): nudges from extensions, and the core's rules for
+"""Speaking up (docs/speaking-up.md): nudges from extensions, and the core's rules for
 whether, when and where each is said.
 
 A checked kind is asked: its check runs on the kind's triggers, after each of the extension's other

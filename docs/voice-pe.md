@@ -1,375 +1,407 @@
-# Voice Preview Edition as Winston's satellite
+# Voice PE room boxes
 
-Written 2026-09-23 after Aldin asked whether Home Assistant's Voice Preview Edition (Voice PE) makes
-Winston redundant, and then whether it could be Winston's room satellite instead. The answers: no,
-and yes. This page is the plan for that, and the reasoning, so it is not lost.
+Home Assistant's Voice Preview Edition (Voice PE) as Winston's microphone and speaker in a room: setting
+one up, how a request goes, what ends one, Winston's own firmware, and getting "Okay Winston" to wake
+from across the room. What a room shares with the screens in it is on [rooms](rooms.md).
 
 ## Why it fits
 
-Voice PE is a good microphone and speaker for about 60 dollars: dual mics behind an XMOS XU316 with
-hardware echo cancellation, a physical mute switch, a dial, an LED ring, a 3.5 mm jack for a better
-speaker. Winston's M3 plan assumed a Raspberry Pi plus a conference speakerphone; this is cheaper,
-smaller and skips the Linux audio plumbing.
-
-Winston and Assist overlap only on the voice front end. Home Assistant stays the hands (Winston
-already uses its MCP server), Assist stays what it is, and Winston becomes the voice on top.
+- **A good microphone and speaker for about 60 dollars**: two microphones behind an XMOS XU316 with
+  hardware echo cancellation, a mute switch, a dial, an LED ring and a 3.5 mm jack for a better speaker.
+- **Cheaper and smaller than the plan's satellite**, a Raspberry Pi with a conference speakerphone, and
+  no Linux audio plumbing.
+- **It overlaps Home Assistant's Assist only on the voice.** Home Assistant stays the hands (Winston
+  uses its MCP server), Assist stays what it is, and Winston is the voice on top.
 
 ## Setting one up
 
-The satellite channel (`winston/channels/satellite.py`) passes against a fake box
-(`tests/satellite_fake.py`) and has run on a real one since 2026-09-25.
-
-The wizard does it all for a box on USB-C. By hand there are two ways in: without Home Assistant is
-quicker and is how the first box was set up.
+The wizard does it all for a box on USB-C. By hand there are two ways in, and without Home Assistant is
+the quicker one.
 
 ### From the wizard
 
-On a computer set up with `winston setup`, the wizard's A room box step ([setup](setup.md#the-steps))
-does what Without Home Assistant below does, and puts Winston's firmware on the box first: plug it in
-with USB-C, and the step flashes the firmware from Winston's release, gives the box Wi-Fi over Improv
-Serial from the networks it sees, checks Winston reaches it there and adds it as a room box with
-Listen through room boxes on. The flash erases the box, so a box Home Assistant had adopted loses its
-key, and the step offers to disable its old entry there. Settings, Ways to talk, Room boxes, Add a box
-adds a box already on the network.
+On a computer set up with `winston setup`, plug the box in with USB-C. The wizard's A room box step
+([setup](setup.md#the-steps)) then:
+
+1. puts Winston's firmware on the box, from Winston's release. This erases the box, so a box Home
+   Assistant had adopted loses its key; the step offers to disable its old entry there.
+2. gives the box Wi-Fi over Improv Serial, from the networks it sees.
+3. checks that Winston reaches it there.
+4. adds it as a room box, with Listen through room boxes on.
+
+A box already on the network is added with Add a box, in Settings, Ways to talk, Room boxes.
 
 ### Without Home Assistant
 
-A box that was never adopted has no API encryption, so Winston needs no key and nothing else
-takes the microphone.
+A box that was never adopted has no API encryption, so Winston needs no key and nothing else takes the
+microphone.
 
 1. Plug the box into the Winston machine with USB-C. It shows up as `/dev/ttyACM0` (Espressif USB
    JTAG/serial).
 2. Give it Wi-Fi over that cable with Improv Serial, for example from https://web.esphome.io
    ("Connect", then "Configure Wi-Fi"). Its serial log then prints its IP address.
-3. Add it in Settings, Ways to talk, Room boxes with Add a box, leaving Encryption key empty, switch
-   on Listen through room boxes and save.
-4. When Home Assistant offers the discovered box, ignore it. Adopting it gives it a key and makes
-   Home Assistant the client that takes the microphone.
+3. In Settings, Ways to talk, Room boxes, use Add a box and leave Encryption key empty. Switch on
+   Listen through room boxes and save.
+4. When Home Assistant offers the discovered box, ignore it. Adopting it gives it a key and makes Home
+   Assistant the client that takes the microphone.
 
 ### With Home Assistant
 
-1. Set the box up with the Home Assistant app as usual (Wi-Fi, adoption, firmware update) and talk
-   to Assist once, so the hardware is known good.
-2. Get its API encryption key. Home Assistant generates it during adoption and keeps it in
-   `.storage/core.config_entries` (the ESPHome entry's `noise_psk`); read it with the File editor or
-   SSH add-on. You paste it into the box's Encryption key field in step 4.
+Only one client can hold a box's voice assistant, first come first served. While Home Assistant is
+connected to the box, Winston gets nothing.
+
+1. Set the box up with the Home Assistant app as usual (Wi-Fi, adoption, firmware update) and talk to
+   Assist once, so the hardware is known good.
+2. Get its API encryption key. Home Assistant makes it during adoption and keeps it in
+   `.storage/core.config_entries`, as the ESPHome entry's `noise_psk`. Read it with the File editor or
+   SSH add-on.
 3. In Home Assistant, disable the box's ESPHome entry (Settings, Devices, ESPHome, the box, disable).
-   Only one client can hold a box's voice assistant, first come first served, so while Home
-   Assistant is connected Winston gets nothing. The LEDs, dial and button keep working; they run on
-   the box. Enable it again for firmware updates.
-4. In Settings, Ways to talk, Room boxes: Add a box with its room, its address, the encryption key
-   (kept on this computer, never shown again) and its wake word, switch on Listen through room boxes
-   and save. Saving starts the room boxes, or offers to restart them when they already run. The box's
-   row then says Connected. By hand, the same in `data/config.yaml`, with the key in `data/.env`
-   (`VOICE_PE_KEY=...`), then restart Winston:
+   The LEDs, dial and button keep working, since they run on the box. Enable the entry again for
+   firmware updates.
+4. In Settings, Ways to talk, Room boxes, use Add a box: its room, its address, the encryption key (kept
+   on this computer and never shown again) and its wake word. Switch on Listen through room boxes and
+   save. Saving starts the room boxes, or offers to restart them when they already run, and the box's
+   row then says Connected.
 
-   ```yaml
-   channels:
-     satellite:
-       enabled: true
-       devices:
-         living room: {host: 192.168.1.50, key_env: VOICE_PE_KEY, wake_word: hey_jarvis}
-   ```
+By hand, the same goes in `data/config.yaml`, with the key in `data/.env` (`VOICE_PE_KEY=...`); then
+restart Winston. `winston status` lists the satellite, and its log says when a box connects.
 
-   `winston status` lists the satellite; its log says when a box connects.
+```yaml
+channels:
+  satellite:
+    enabled: true
+    devices:
+      living room: {host: 192.168.1.50, key_env: VOICE_PE_KEY, wake_word: hey_jarvis}
+```
 
 ### The network
 
-The box fetches the replies from this machine on port 8702, so that port must be open to it, and
-Winston connects to the box on port 6053. With the box on its own VLAN, both need a rule:
+Winston connects to the box, and the box fetches what it plays from Winston. With the box on its own
+VLAN, the router and this machine's firewall both need a rule for each port.
 
-- the router: the box to this machine, TCP 8702 (and this machine to the box, TCP 6053);
-- this machine's firewall, for example with firewalld:
-  `firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="<box subnet>" port port="8702" protocol="tcp" accept'`.
+| Port | From, to | What for | Key in config.yaml |
+| --- | --- | --- | --- |
+| TCP 6053 | This machine to the box | The box's ESPHome API | `port` on the box's entry |
+| TCP 8702 | The box to this machine | Replies, announcements and music, on every interface | `channels.satellite.http_port` |
+| TCP 3232 | This machine to the box | Firmware updates over the network | none |
 
-The symptom of a blocked 8702: the log shows the wake word, what was heard and what he said, but no
-`reply ... fetched by <box>` line, and the box stays silent.
+For example, with firewalld:
 
-The ports and the address are config.yaml only ([running](running.md#settings-only-in-configyaml)):
-`channels.satellite.http_port` (8702) for the replies, a box's `port` (6053) for its ESPHome API, and
-`channels.satellite.public_host`, this computer's address as the boxes reach it. Unset, it is found
-from the route to each box; set it when the boxes hear you but play nothing on a VPN, under Docker or
-with several network interfaces.
+```sh
+firewall-cmd --permanent --zone=public --add-rich-rule='rule family="ipv4" source address="<box subnet>" port port="8702" protocol="tcp" accept'
+```
 
-Say the wake word, then the request. After every reply the box listens again without the wake word for
-Listen after a reply (`channels.satellite.follow_up_secs`, 6 s; at least 8 s after a question, on Room
-boxes in Ways to talk), so a conversation carries on without "Okay Winston" each time. If nothing is
-said the box goes back to waiting for the wake word. 0 keeps the box listening only after a question.
-While music plays on the box it listens on only after a question: of 124 listening windows after a reply
-during music, 16 heard talk not meant for him (guests, Swedish) and 5 changed the music. A question
-anywhere in the reply counts, not only at its end: "How about Elliott Smith? Those are soothing." once
-left the box deaf to the answer. A request
-starts with a quarter of a second of voice, so the wake word's own tail is not taken for it (it once
-ended 8 of 95 wakes during music with nothing heard). The replies are served from port 8702 on every
-interface; the box must be able to reach this machine there.
+The box reaches this computer at `channels.satellite.public_host`. Unset, Winston finds it from the
+route to each box. Set it when the boxes hear you but play nothing, on a VPN, under Docker or with
+several network interfaces. These three are config.yaml only
+([running](running.md#settings-only-in-configyaml)).
 
-When a request ends is config.yaml only: `channels.satellite.end_silence_secs` (0.8 s) of silence ends
-one that sounds finished, `unfinished_silence_secs` (2.5 s) one that does not (raise it if he cuts you
-off mid-thought), and `chat_silence_secs` (1.5 s) a finished sentence in answer to a reply that only
-talked ([how each is judged](#what-the-stock-firmware-allows-checked-2026-09-24)).
+## Talking to it
+
+Say the wake word, then the request. The box hears its wake word itself and then streams its microphone
+to Winston, who decides when you have finished, answers, and hands the box a link to play the reply
+from while he is still speaking.
+
+```mermaid
+sequenceDiagram
+  participant You
+  participant Box as Voice PE
+  participant W as Winston
+  You->>Box: "Okay Winston"
+  Box->>W: wake, then its microphone
+  W->>Box: run start, with the reply's link
+  Note over W: brings the room's conversation up to date
+  You->>Box: the request, then a pause
+  Note over W: transcribes and judges the pause
+  W->>Box: end of speech, the box stops its microphone
+  W->>Box: start fetching, at his first sentence
+  Box->>W: fetches the reply on TCP 8702
+  Box->>You: plays it as he speaks
+  W->>Box: listen on, without the wake word
+```
+
+- **The conversation is ready before the transcript.** A wake starts bringing the room's conversation
+  up to date, rebuilt and warmed when it went stale, while you speak. The request waits for it only if
+  it is not done.
+- **An idle box keeps the next one warm.** Every minute it checks whether a new conversation's prompt
+  changed (the diary after midnight, a remembered fact, an extension's tools) and builds and warms one,
+  unless someone is talking on any channel. When the brain's server comes back (a restart, a model
+  switch), it warms the conversation the box has. Ready before the first question (`llm.warm_up`) off
+  warms nothing.
+- **A request starts with a quarter of a second of voice**, so the wake word's own tail is not taken for
+  it (that tail once ended 8 of 95 wakes during music with nothing heard).
+- **It gives up after 8 s** with no speech after the wake word, and a request stops at 60 s.
+
+### When a request ends
+
+When you pause for 0.3 s, the box starts transcribing what you said and Smart Turn judges whether it
+sounds finished. If you go on, both are thrown away. Which silence then ends the request depends on what
+you said and on his last reply. All three are config.yaml only, in `channels.satellite`.
+
+| Setting | Key | Default | When it applies |
+| --- | --- | --- | --- |
+| Silence before he answers | `end_silence_secs` | 0.8 s | A request that sounds finished and ends a sentence |
+| Silence mid-sentence | `unfinished_silence_secs` | 2.5 s | It sounds unfinished ("what to have in my living room because"), or has no full stop ("Tell me about"). Raise it if he cuts you off mid-thought |
+| Pause in a conversation | `chat_silence_secs` | 1.5 s | A finished sentence in answer to a reply that only talked, so you can stop to think. After a reply that acted, a quick "even warmer" still ends after `end_silence_secs` |
+
+Each verdict is in the log (`sounds finished 0.01`, `no full stop`). With hold to talk, the request ends
+when you let go of the button instead. How the browser judges the same pause is on
+[understanding](understanding.md#3-hearing).
+
+### Listening after a reply
+
+After every reply the box listens again without the wake word, so a conversation carries on without
+"Okay Winston" each time. If nothing is said, it goes back to waiting for the wake word.
+
+- **How long**: Listen after a reply on Room boxes in Ways to talk (`channels.satellite.follow_up_secs`,
+  6 s), and at least 8 s after a question. 0 listens on only after a question.
+- **A question anywhere in the reply counts**, not only at its end: "How about Elliott Smith? Those are
+  soothing."
+- **While music plays on the box**, it listens on only after a question, since the room is rarely quiet.
+- **Never in button only.**
 
 ### When he speaks first
 
-Announcements and nudges from extensions ([speaking up](extensions.md#speaking-up)) play on the box as
-a reply does, the chime first. A nudge goes to the box of the room you last talked in, and after one
-the box listens on, so "thanks, I know" or "remind me after work" needs no wake word (not in button
-only).
+Announcements and nudges from extensions ([speaking up](speaking-up.md)) play on the box as
+a reply does, the chime first. A nudge goes to the box of the room you last talked in. After one, the
+box listens on, so "thanks, I know" or "remind me after work" needs no wake word (not in button only).
 
 ### Music
 
-Extensions play streams on the box's media player, the one replies do not use ([`ctx.speakers`](extensions.md#ctx);
-Spotify is the [built-in one](built-in-extensions.md#spotify)). The satellite channel turns a stream into
-48 kHz 16-bit stereo FLAC with ffmpeg, the box's own output rate, and the box fetches it from the PC on
-TCP 8702 like a reply. The box turns media down 20 dB while it listens and while he talks, and its echo
-cancellation takes out what it plays, through its speaker or its jack, so "Okay Winston" works over the
-music. The stock firmware has no pause on that player, so a pause stops the stream. A restart of the
-satellite channel cuts the stream; winstond keeps what is playing and hands it to the channel when it is
-back, so the music picks up again and the next song still reaches the box.
+Extensions play streams on the box's media player, the one replies do not use
+([`ctx.speakers`](extension-sdk.md#speakers); [Spotify](spotify.md) is the built-in one).
 
-The box has one volume, what its dial sets, for its voice and everything it plays. The channel reports it to
-winstond whenever it changes, the dial's turns too, and sets it when an extension asks
-(`ctx.speakers.volume`): Spotify turns the box up a step when asked for louder with its own level at full.
+- **The stream**: the satellite channel turns it into 48 kHz 16-bit stereo FLAC with ffmpeg, the box's
+  own output rate, and the box fetches it on TCP 8702 like a reply.
+- **"Okay Winston" works over the music.** The box turns media down 20 dB while it listens and while he
+  talks, and its echo cancellation takes out what it plays, through its speaker or its jack.
+- **There is no pause** on that player in the stock firmware, so a pause stops the stream.
+- **A restart of the satellite channel** cuts the stream. winstond keeps what is playing and hands it
+  back when the channel returns, so the music picks up again and the next song still reaches the box.
+- **One volume**, what the dial sets, for his voice and everything the box plays. The channel reports
+  each change, the dial's too, and sets it when an extension asks (`ctx.speakers.volume`). Spotify turns
+  the box up a step when asked for louder with its own level at full.
 
-### Ending a conversation, and the button
+## Ending a conversation, and the button
 
-- **"Stop", "that's all", "never mind"** (or "be quiet", "not you", "nothing") in that listening
-  window end the conversation without a reply, and the box goes back to waiting for the wake word.
-  "No" and "thank you" on their own are answers and get one. While an extension plays on the box
-  (Spotify), "stop", "stop it", "quiet", "be quiet" or "shut up" also stop the music at once, and the
-  extension is told so it pauses at its source (`@ext.on_speakers_stop`), so "resume" carries on;
-  "that's all", "never mind" and "not you" leave it playing.
-- **"Stop" or a press of the button while he talks** stops him, and the box does not listen again
-  afterwards (the stock firmware's stop word).
-- **Hold to talk** (Winston's firmware): hold the button; after a second the box plays its long
-  press sound and listens. Talk, and let go when you are done. The request ends there, however long
-  you pause in it, plus 0.3 s for a last word cut short. For a request with pauses to think in it, or
-  a noisy room. After the reply he listens on as after any request, unless the box is button only.
-  A request stops at 60 s. A hold never resets the box: the stock factory reset (its warning at 10 s,
-  the reset on letting go after 22 s) is skipped while the button is in use, as when you turn the dial
-  with it held. To reset the box, switch the mute on first, then hold the button.
-- **A double press** switches the box to **button only**: the wake word is off, a short press or a
-  hold starts a request, and he never listens after a reply. He says "Very well. I shall listen only
-  when you press the button." Another double press switches the wake word back on. Meant for a party
-  or the TV. The box keeps the choice through restarts of it and of Winston.
-- **Talking over him** (Winston's firmware) is off by default (`barge_in_secs: 0`, config.yaml only),
-  because on the Voice PE his own echo stops him; the wake word over a reply (next) stops him instead.
-  Set `barge_in_secs` to a length of speech (0.3 s was the default before) and that much speech over
-  his voice stops him within about half a second, and what you say is the next request, no wake word
-  needed; never in button only, where the TV or a party would stop him. On stock firmware the box
-  stays turn based. Speech also has to reach `barge_in_volume` (0.6, Pipecat's default): lower it if
-  talking from across the room does not stop him, raise it if his own voice does. Each reply logs how
-  much speech the box heard over it and how loud (`2.4 s heard over the reply, speech 0.00 s at most,
-  volume 0.31 at most`), the numbers to set them by. On the first real box (2026-10-13) his own voice
-  stopped him a second into a reply. Winston now listens on the quieter second channel instead,
-  `barge_in_gain_db` (30) louder and not in the first `barge_in_grace_secs` (3 s) of a reply, but at
-  higher volume his echo there is as loud as you are (2026-10-15), so it stays off; details in [the
-  plan](plan.md#m3-next-steps-added-2026-09-25-in-this-order).
-- **The wake word over a reply** (Winston's firmware) stops him, as on stock firmware, and what you
-  say after the name is the next request: "Okay Winston, what time is it?" while he talks. "Stop"
-  only stops him. A reply the box stops while it is still streaming in has its connection reset
-  (`Run.cut`), since the queued audio once crashed the box about 14 s later.
-- **The mute switch** on the side cuts the microphones altogether. Two red LEDs by the microphones
-  mean it is on; a red ring slowly twinkling means Winston is not connected.
+| You | What happens |
+| --- | --- |
+| "Stop", "that's all", "never mind", "be quiet", "not you" or "nothing", in the listening window | The conversation ends with no reply, and the box waits for the wake word. "No" and "thank you" on their own are answers and get one |
+| "Stop", "stop it", "stop that", "quiet", "be quiet" or "shut up", with music playing | The music stops at once too, and the extension pauses at its source (`@ext.on_speakers_stop`), so "resume" carries on. "That's all", "never mind" and "not you" leave it playing |
+| "Stop", or a press of the button, while he talks | He stops, and the box does not listen again (the stock firmware's stop word) |
+| The wake word while he talks | He stops, and what you say after the name is the next request: "Okay Winston, what time is it?" Winston's firmware |
+| Hold the button | Hold to talk. Winston's firmware |
+| Double press | Button only, on or off |
+| The mute switch | The microphones are cut off altogether |
 
-### Wake word sensitivity
+- **Hold to talk**: hold the button. After a second the box plays its long press sound and listens.
+  Talk, and let go when you are done: the request ends there however long you pause in it, plus 0.3 s
+  for a last word cut short. For a request with pauses to think in, or a noisy room. On stock firmware
+  a hold does nothing.
+- **A hold never resets the box.** The stock factory reset (its warning at 10 s, the reset on letting go
+  after 22 s) is skipped while the button is in use. To reset the box, switch the mute on first, then
+  hold the button.
+- **Button only** is for a party or the TV: the wake word is off, a short press or a hold starts a
+  request, and he never listens after a reply. He says "Very well. I shall listen only when you press
+  the button." The box keeps the choice through restarts of it and of Winston.
+- **A reply stopped while it still streams in** has its connection reset (`Run.cut`), since the audio
+  left queued for it can crash the box.
+- **The LEDs**: two red LEDs by the microphones mean the mute switch is on. A red ring slowly twinkling
+  means Winston is not connected.
 
-`wake_sensitivity` per box (Wake word sensitivity in the box's dialog on Ways to talk) sets the box's
-own "Wake word sensitivity": `Slightly sensitive` (fewest false wakes), `Moderately sensitive` or
-`Very sensitive` (fewest misses). On stock firmware it covers
-okay_nabu, hey_jarvis and hey_mycroft; Winston's firmware from 2026-09-27 adds Okay Winston at
-thresholds 0.95, 0.85 and 0.70 (before that it stayed at 0.95 whatever the setting said). Empty
-keeps what the box has.
+### Talking over him
 
-### What the stock firmware allows (checked 2026-09-24)
+Off by default. With Winston's firmware the box keeps streaming its microphone through a reply, and
+speech over his voice can stop him within about half a second, with what you said as the next request.
+On the Voice PE his own echo is as loud there as you are and stops him too, so the wake word over a
+reply does this job instead. The room tests are in [the
+plan](plan.md#m3-next-steps-added-2026-09-25-in-this-order).
 
-- **The wake word is on the box**: microWakeWord with okay_nabu, hey_jarvis and hey_mycroft
-  (`use_wake_word: false` in the firmware, so it never streams for a server-side wake word).
-  `wake_word` picks one; "Okay Winston" needs Winston's firmware (below).
-- **One wake word at a time.** The Voice PE firmware reports `max_active_wake_words` 1, so a box
-  cannot listen for Okay Winston and Okay Nabu together; `wake_word` accepts a comma separated list
-  for boxes that can, and Winston keeps as many as the box allows.
-- **Only the voice client may ask.** The box lists and sets its wake words only for the connection
-  that has subscribed to its voice assistant; anyone else gets an empty list. Winston subscribes
-  first, then sets the wake word.
-- **The wake word is set per box and does not follow his name.** Renaming him (`assistant.name`)
-  changes what he calls himself, not what wakes a box: each box keeps its own `wake_word`.
-- **Replies are played from a URL**, as Home Assistant's streaming TTS: RUN_START carries it,
-  INTENT_PROGRESS with `tts_start_streaming` tells the box to start fetching, and Winston serves a
-  48 kHz WAV that grows while he speaks.
-- **Turn based**: the box stops its microphone at STT_VAD_END and plays the reply; no barge-in.
-  Winston's firmware keeps the microphone on through the reply (below).
-- **A stop from the box is an abort** (checked 2026-10-11): `voice_assistant.stop` while it listens
-  tells the client to abort and the box goes idle without playing a reply. So hold to talk does not
-  stop the box on release; the box starts the run without silence detection (no `USE_VAD` flag) and
-  reports its button, and Winston ends the request when the button is let go.
-- Measured on the real box (2026-09-25, from this machine over Wi-Fi): first audio 0.7 to 0.9 s after
-  the transcript, speech recognition about 0.2 s for 2.5 s of speech.
-- Measured against the fake box: first audio 1.8 to 2.3 s after the end of speech, of which 0.8 s
-  is the silence that ends a request (`end_silence_secs`). The browser path measures about 1.3 s.
-- Since 2026-10-08 the box starts transcribing at the first 0.3 s of a pause and throws that away if
-  you go on, so the text is ready when the 0.8 s are up: end of speech to text 0.80 to 0.83 s against
-  0.97 to 1.1 s before, on the fake box. Ending at the first pause instead cut people off (see
-  [understanding](understanding.md#3-hearing)).
-- Since 2026-10-11 Smart Turn also judges that pause. A request that sounds finished ends after
-  `end_silence_secs`; one that does not ("Can you tell me what to have in my living room because")
-  waits `unfinished_silence_secs` (2.5 s), so a pause to think does not cut you off. Each verdict is
-  logged (`sounds finished 0.01`).
-- Since 2026-10-16 the words must end a sentence too: a transcript without a full stop ("Tell me
-  about") waits `unfinished_silence_secs`, whatever Smart Turn says (logged as `no full stop`). Answering
-  a reply that only talked, a finished sentence waits `chat_silence_secs` (1.5 s) instead of
-  `end_silence_secs`, so you can stop to think in a conversation; after a reply that acted, a quick
-  "even warmer" still ends at `end_silence_secs`. See [understanding](understanding.md#3-hearing).
-- Since 2026-10-11 the box is told to start fetching (`tts_start_streaming`) when the first sentence
-  goes to the voice, as Home Assistant does, not when its audio exists, so the box connects and
-  ffmpeg starts while it is spoken. A lone "." before a tool call never starts a reply.
-- **The conversation is ready before the transcript.** A wake starts bringing the room's
-  conversation up to date, rebuilt and warmed when it went stale, while you speak; the request waits
-  for it only if it is not done. And every minute an idle box checks whether a new conversation's
-  prompt changed (the diary after midnight, a remembered fact, an extension's tools) and builds and
-  warms one, unless someone is talking on any channel (winstond's `talking` in `/api/status`).
-  Reading the 9.4k-token prompt cold takes 7.5 to 10.6 s, which the day's first request used to wait.
-  A wake during that keeps the conversation it has. When the brain's server comes up again (a restart,
-  a model switch), the same check warms the conversation the box has, used or not. With Ready before
-  the first question off (`llm.warm_up`), nothing is warmed.
-- When the box ends or aborts a request, the log says so, and a run stopped from outside sets the Talk
-  page back to Ready. `kill -USR1 <satellite pid>` writes every thread's stack to the log, for a run
-  that hangs.
+To try it anyway, set these in `channels.satellite` in config.yaml. It never applies in button only,
+where the TV or a party would stop him, and a box on stock firmware stays turn based.
+
+| Setting | Key | Default | What it does |
+| --- | --- | --- | --- |
+| Talk over him for at least | `barge_in_secs` | 0 (off) | Speech this long over his voice stops him |
+| How loud you must be | `barge_in_volume` | 0.6 | Lower it if talking across the room does not stop him, raise it if his own voice does |
+| Boost on the second microphone | `barge_in_gain_db` | 30 | Winston listens on the box's quieter second channel, this much louder |
+| Not at the start of a reply | `barge_in_grace_secs` | 3 s | The start of a reply where talking over does not count, while the echo cancelling settles |
+
+Each reply logs how much speech the box heard over it and how loud (`2.4 s heard over the reply, speech
+0.00 s at most, volume 0.31 at most`): the numbers to set them by.
+
+## The wake word
+
+Each box has its own, Wake word in its dialog on Ways to talk (`wake_word`). It does not follow his
+name: renaming him (`assistant.name`) changes what he calls himself, not what wakes a box.
+
+- **Stock firmware**: Okay Nabu, Hey Jarvis or Hey Mycroft. Okay Winston needs
+  [Winston's firmware](#winstons-firmware-okay-winston).
+- **One at a time** on the Voice PE. `wake_word` takes a comma separated list for a box that can run
+  more, and Winston keeps as many as the box allows.
+
+Wake word sensitivity in the same dialog (`wake_sensitivity`) sets the box's own setting of that name.
+On stock firmware it covers the three stock words. Winston's firmware adds Okay Winston:
+
+| Wake word sensitivity | Okay Winston wakes at | |
+| --- | --- | --- |
+| Slightly sensitive | 0.95 | Fewest false wakes |
+| Moderately sensitive | 0.85 | |
+| Very sensitive | 0.70 | Fewest misses |
+| Empty | | Keeps what the box has |
+
+## When something goes wrong
+
+- **He hears you but the box stays silent**: the log shows the wake word, what was heard and what he
+  said, but no `reply ... fetched by <box>` line. TCP 8702 is blocked ([the network](#the-network)), or
+  `public_host` is needed.
+- **A red ring slowly twinkling**: Winston is not connected to the box. Check that Home Assistant is
+  not holding it and that TCP 6053 is open.
+- **A request that ended early, or a run that went away**: the log says when the box ended or aborted a
+  request, and a run stopped from outside sets the Talk page back to Ready.
+- **A run that hangs**: `kill -USR1 <satellite pid>` writes every thread's stack to the log.
+
+## What the stock firmware does
+
+Read from its source and checked on the box. Winston works with all of it;
+[its own firmware](#winstons-firmware-okay-winston) changes only the turn taking and the button.
+
+- **The wake word is on the box**: microWakeWord with okay_nabu, hey_jarvis and hey_mycroft. It never
+  streams for a server-side wake word (`use_wake_word: false`).
+- **One wake word at a time.** It reports `max_active_wake_words` 1, so a box cannot listen for Okay
+  Winston and Okay Nabu together.
+- **Only the voice client may ask.** The box lists and sets its wake words only for the connection that
+  subscribed to its voice assistant; anyone else gets an empty list. Winston subscribes first, then sets
+  the wake word.
+- **Replies are played from a link**, as with Home Assistant's streaming TTS. RUN_START carries the
+  link, and INTENT_PROGRESS with `tts_start_streaming` tells the box to start fetching. Its decoder
+  takes FLAC and MP3, not WAV, so Winston serves a 48 kHz FLAC that grows while he speaks.
+- **Turn based.** The box stops its microphone at STT_VAD_END and plays the reply; during it, only the
+  stop word and the wake word work, on the box. Winston's firmware keeps the microphone on.
+- **A stop from the box is an abort.** `voice_assistant.stop` while it listens aborts the run, and the
+  box goes idle without playing a reply. So for hold to talk Winston's firmware starts the run without
+  silence detection (no `USE_VAD` flag) and reports the button, and Winston ends the request on release.
+- **No pause on the media player.**
 
 ## Winston's firmware: "Okay Winston"
 
-`services/voice-pe/voice-pe-winston.yaml` is the official factory firmware at a pinned release plus
-the `okay_winston` model from `assets/wake/`, barge-in and hold to talk: the stock long press also starts a
-request without silence detection and sets the firmware's `dial_touched`, which keeps the factory
-reset off until the button is let go, and the center button is named so the box reports it. Its
-Wi-Fi never naps: the factory's light power save made the box wake for packets every 307 ms, so it
-heard `tts_start_streaming` up to 0.3 s late (0.14 s on average, from 196 replies); it costs about
-0.2 W. Nothing else changes, and Wi-Fi set over USB survives the flash. On stock firmware a hold does nothing; a
-double press still switches button only. Build and flash with the box on USB:
+`services/voice-pe/voice-pe-winston.yaml` is the official factory firmware at a pinned release, plus:
+
+- **The `okay_winston` model** from `assets/wake/`, with its three sensitivities.
+- **Hold to talk.** The stock long press also starts a request without silence detection and sets the
+  firmware's `dial_touched`, which keeps the factory reset off until the button is let go. The center
+  button is named, so the box reports it.
+- **Talking over him and the wake word over a reply**, through a copy of ESPHome's `voice_assistant`
+  (below).
+- **Wi-Fi that never naps.** In light power save the box heard `tts_start_streaming` up to 0.3 s late.
+  This costs about 0.2 W.
+
+Nothing else changes, and Wi-Fi set over USB survives the flash. On stock firmware a double press
+still switches button only.
+
+### Building and flashing
+
+Back up the box first; writing the file back at 0 restores it exactly.
+
+```sh
+uvx esptool --port /dev/ttyACM0 read-flash 0 0x1000000 backup.bin
+```
+
+Then build and flash with the box on USB. The first build takes 15 to 30 min and downloads the
+toolchain.
 
 ```sh
 cd services/voice-pe
-uvx esphome@2026.9.1 compile voice-pe-winston.yaml     # first build 15 to 30 min, downloads the toolchain
+uvx esphome@2026.9.1 compile voice-pe-winston.yaml
 uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device /dev/ttyACM0
 ```
 
-then set `wake_word: okay_winston` for the box. Later builds go over the network:
-`uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device <box address>` (17 s; the box needs TCP
-3232 open from this machine).
+Then set the box's wake word to `okay_winston`. Later builds go over the network in about 17 s, with
+TCP 3232 open from this machine to the box:
 
-Barge-in is a copy of ESPHome's `voice_assistant` component in `services/voice-pe/components/`,
-taken from ESPHome 2026.9.1 and changed only where it says `Winston:`. It keeps ESPHome's license
-(GPLv3 for the C++, MIT for the Python), in `components/LICENSE`, not the repo's Apache 2.0. The stock component stops the
-microphone when the request ends (STT_VAD_END) and streams nothing while it waits for the reply and
-plays it. The copy leaves the microphone on and keeps streaming its echo-cancelled audio to Winston in
-those two states, and stops it when the run goes idle. It also adds `stopped_reply()` and
-`listen_on()`, which `on_wake_word_detected` in `voice-pe-winston.yaml` uses to listen on after the
-wake word has stopped a reply, and tells Winston with the `Wake word over reply` event. Winston listens to it while the reply plays
-with the browser path's voice detection (Silero, at Pipecat's thresholds, the volume floor set by
-`barge_in_volume`). On `barge_in_secs` of speech
-he tells the box to listen on after the reply, stops its playback (a media player stop, the same as
-the box's own "Stop") and cuts the reply and the brain behind it. The audio from half a second before
-he was sure goes to the run the box starts next, so the first word is not lost. A build must use
-ESPHome 2026.9.1 (`uvx esphome@2026.9.1`), the release the copy comes from. Moving to a newer one means
-copying its component again and redoing those changes. Home Assistant as the client would get the
-extra audio and has no use for it. Back up the box first
-(`uvx esptool --port /dev/ttyACM0 read-flash 0 0x1000000 backup.bin`); writing that file back at 0
-restores it exactly.
+```sh
+uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device <box address>
+```
 
-The model was trained with the
-[microWakeWord trainer](https://github.com/TaterTotterson/microWakeWord-Trainer-Nvidia-Docker) (v17,
-Docker, NVIDIA): 50,000 Piper samples of the phrase, 40,000 steps, 36 min on an RTX 3090 after an
+### The voice_assistant copy
+
+`services/voice-pe/components/` holds a copy of ESPHome's `voice_assistant` component from ESPHome
+2026.9.1, changed only where it says `Winston:`. It keeps ESPHome's license (GPLv3 for the C++, MIT for
+the Python) in `components/LICENSE`, not the repo's Apache 2.0. A build must use ESPHome 2026.9.1;
+moving to a newer one means copying its component again and redoing the changes.
+
+- **The microphone stays on.** The stock component stops it when the request ends (STT_VAD_END) and
+  streams nothing while it waits for the reply and plays it. The copy keeps streaming its echo-cancelled
+  audio to Winston in those two states, and stops when the run goes idle. Home Assistant as the client
+  would get the extra audio and has no use for it.
+- **The wake word over a reply.** `stopped_reply()` and `listen_on()`, used by `on_wake_word_detected`
+  in `voice-pe-winston.yaml`, listen on after the wake word has stopped a reply, and the
+  `Wake word over reply` event tells Winston.
+- **Talking over him**, when it is on: Winston listens to that audio with the browser's voice detection
+  (Silero, at Pipecat's thresholds, with `barge_in_volume` as the floor). On `barge_in_secs` of speech
+  he tells the box to listen on after the reply, stops its playback (the same media player stop as the
+  box's own "Stop") and cuts the reply and the brain behind it. The audio from half a second before he
+  was sure goes to the next run, so the first word is not lost.
+
+### The model
+
+The current model was made with the
+[microWakeWord trainer](https://github.com/TaterTotterson/microWakeWord-Trainer-Nvidia-Docker) v17
+(Docker, NVIDIA): 50,000 Piper samples of the phrase and 40,000 steps, 36 min on an RTX 3090 after an
 hour of one-off dataset downloads. ESPHome rejects a manifest with keys it does not know, so
-`okay_winston.json` keeps only its schema's fields; the trainer's full report, with the
-calibration, is `okay_winston_eval.json`.
+`okay_winston.json` keeps only its schema's fields. The trainer's full report, with the calibration, is
+`okay_winston_eval.json`.
 
-## The technical path
-
-1. **Stock firmware, Winston as the client.** The box speaks ESPHome's native API, a bidirectional
-   TCP protocol; Home Assistant is the client that subscribes to the voice assistant, receives
-   microphone audio, sends the listening/thinking/speaking events and streams reply audio back to
-   the speaker. That client side is `aioesphomeapi`, the library Home Assistant itself uses. Winston
-   implements that role as a channel next to the browser one: same brain, STT, TTS and guard.
-   - Wake word: on the box, one of its three (see above; the continuous-streaming mode this plan
-     assumed is off in the stock firmware).
-   - Reply audio: a URL the box's media player fetches, as a growing WAV (see above). Not Piper.
-   - Keep the box out of Home Assistant's voice pipeline, or HA subscribes first. It can stay in HA
-     for the LEDs and the dial.
-   - Limit: the stock voice flow stops listening while the speaker plays. Turn based, no barge-in.
-2. **Streaming during playback.** The same stock firmware already listens for the word "Stop" during
-   playback, on the device, through the echo cancellation, so the microphone is usable while it
-   talks. Step two is a firmware configuration that keeps streaming that audio to Winston during
-   playback instead of only running the on-device stop word. Built 2026-10-12 as a patched
-   `voice_assistant` in Winston's firmware (above). Offer it upstream to ESPHome rather than keeping
-   it Winston-only; Home Assistant's own barge-in
-   ([core#182776](https://github.com/home-assistant/core/pull/182776)) is still a draft for cloud live
-   models.
-3. **Fallback** if step two is blocked: the plan's original satellite (Pi plus a speakerphone), where
-   barge-in is the same as the browser path. Its wake word is ready: `assets/wake/hey_winston.onnx`,
-   "Hey Winston" for openWakeWord. The trainer that made it is in git history at commit 1aa216d
-   (`services/wakeword/`).
-
-Expected cost over the browser path: a tenth to a fifth of a second of latency from chunked audio
-over the LAN in both directions.
+If the box ever cannot take a firmware change, the fallback is the plan's original satellite, a Pi with
+a speakerphone, where talking over him works as in the browser. Its wake word is ready:
+`assets/wake/hey_winston.onnx`, "Hey Winston" for openWakeWord, trained by `services/wakeword/` (in git
+history at commit 1aa216d).
 
 ## Why it could carry the project
 
-Thousands of Voice PE owners hit Assist's ceiling within a week: the Piper voice, one command per
-wake word, an experimental LLM layer, cloud speech recognition for accuracy. "Keep your Voice PE,
-get a real voice and a real conversation, all local" is a one-sentence pitch that community
-understands.
+Voice PE owners hit Assist's ceiling within a week: the Piper voice, one command per wake word, an
+experimental LLM layer, cloud speech recognition for accuracy. "Keep your Voice PE, get a real voice and
+a real conversation, all local" is a one-sentence pitch that community understands. Doing it properly,
+in order of importance:
 
-Doing it properly, in order of importance:
+- **No firmware step for the first hour.** Install, point it at the box, talk. Talking over him is the
+  optional later step.
+- **Do not fight Home Assistant.** Winston is the voice on top of it, never an Assist replacement. A
+  rival on Nabu Casa's hardware gets a cold reception; an upgrade to it gets shared.
+- **Solve the hardware people have.** Most owners run Home Assistant on a small box with no GPU. The
+  `ollama` and `hosted` profiles cover hearing and voice on the CPU; the brain is the sticking point. A
+  4B model on a CPU is too slow for conversation, so the honest path is a small GPU with Ollama, or a
+  hosted brain while the microphone never leaves the house. Measure both on modest hardware before
+  publishing numbers.
+- **Room awareness**: with two boxes, "turn off the lights" means this room ([rooms](rooms.md)).
+- **One page and one video**: a fifteen-minute setup page and a ninety-second clip of the voice, a tool
+  call and an interruption.
 
-- **No firmware step for the first hour.** Install, point it at the box, talk. Barge-in is the
-  optional later step. Zero soldering, zero flashing for the first impression.
-- **Do not fight Home Assistant.** Winston is the voice on top of HA, never an Assist replacement.
-  Nabu Casa moves fast on voice; a rival on their hardware gets a cold reception, an upgrade to
-  their hardware gets shared.
-- **Solve the hardware people have.** Most owners run HA on a small box with no GPU. Hearing and
-  voice on the CPU are covered by the `ollama` and `hosted` profiles; the brain is the sticking
-  point. A 4B model on a CPU is too slow for conversation, so the honest mass path is a small GPU
-  with Ollama, or the hosted profile where the words go to a cloud model and the microphone never
-  leaves the house. Measure both on modest hardware before publishing numbers.
-- **Room awareness.** Two boxes means "turn off the lights" should mean this room. Small feature,
-  big effect on how finished it feels. Built 2026-09-25 with rooms: each box's key is its room, and a
-  screen in the same room shares its conversation and mic ([rooms](rooms.md)).
-- **One page and one video.** A fifteen-minute setup page and a ninety-second clip: the voice, a
-  tool call, an interruption. The interruption is what sells it.
+Where the people are: the Voice Assistant category on the Home Assistant community forum, the Home
+Assistant subreddit, the ESPHome contributors. Accept going in: support load, first users on hardware
+never seen (what the profiles and the Models page are for), and the chance Nabu Casa ships something
+similar. Being first and cooperative is the defensible position.
 
-Where the people are: the Voice Assistant category on the Home Assistant community forum, the HA
-subreddit, the ESPHome contributors.
+## Okay Winston at a distance
 
-Accept going in: support load, first users on hardware never seen (what the profiles and the Models
-page are for), and the chance Nabu Casa ships something similar; being first and cooperative is the
-defensible position.
+Okay Winston misses from across the room. The model is the likely cause, not the box: it learned from
+Piper voices only and was scored on more of the same, never on a real voice at a distance. Okay Nabu's
+thresholds were set on real far-field recordings (DipCo), and it has real voices in its training. What
+to try, in order:
 
-## Next step
-
-The first box runs Winston's firmware and wakes on Okay Winston, with barge-in since 2026-10-12. It woke
-70 to 80% of the time at the fixed 0.95 threshold, against 98.6% on the trainer's synthetic voices;
-since 2026-09-27 it ran `Moderately sensitive` (0.85), and since 2026-10-12 `Very sensitive` (0.70). Barge-in
-failed on its own voice on 2026-10-13 and is off. Next: watch the second microphone channel for speech over a reply,
-end the reply stream before stopping the player (the stop that crashed the box came mid-stream); count misses and
-false wakes, and retrain with real takes of the household's voices if it is still short.
-
-### Okay Winston at a distance
-
-Reported 2026-10-12: Okay Winston wakes badly from across the room (before the `Very sensitive`
-test). Most likely the model rather than the box. It learned from Piper voices only and its 98.6% is
-on more of the same, never on a real voice at a distance. Okay Nabu's thresholds were set on real
-far-field recordings (DipCo), and it has real voices in its training. To do, at home:
-
-1. **Model or box.** Set `wake_word: okay_nabu` for the box and say it from the spots where Okay
+1. **Model or box.** Set the box's wake word to `okay_nabu` and say it from the spots where Okay
    Winston misses. If Nabu wakes and Winston does not, it is the model. If both miss, look at the
    placement (shelf, corner) and the noise (fan, TV).
-2. **Very sensitive (0.70)**, set but not yet tried. The firmware can go lower, with more false wakes
-   from household talk; the Swedish "hej" followed by a name is the one to watch.
+2. **Very sensitive (0.70).** The firmware can go lower, with more false wakes from household talk; the
+   Swedish "hej" followed by a name is the one to watch.
 3. **Retrain with real takes from the box.** 50 to 100 "Okay Winston" said at 1, 3 and 5 m from the
    sofa, kitchen and doorway, normal and tired or mumbled, by hold to talk so the audio comes through the
    box's own microphones into the turn record. Also about an hour of the room as negatives (TV,
    household talk). The trainer takes real samples as uploads; a run took 36 min on the RTX 3090.
    Missing: a way to export those takes from the turn record as a training set.
 
-Sources consulted: https://www.home-assistant.io/voice-pe/ ,
-https://esphome.io/components/voice_assistant/ , https://github.com/esphome/aioesphomeapi ,
-https://github.com/OHF-Voice/linux-voice-assistant (a Linux satellite speaking the same protocol).
+Sources: [Voice PE](https://www.home-assistant.io/voice-pe/),
+[ESPHome's voice_assistant](https://esphome.io/components/voice_assistant/),
+[aioesphomeapi](https://github.com/esphome/aioesphomeapi), and
+[linux-voice-assistant](https://github.com/OHF-Voice/linux-voice-assistant), a Linux satellite that
+speaks the same protocol.

@@ -442,7 +442,7 @@ class SatelliteDevice(Model):
                                                                       "Leave it empty for a box without encryption.", optional=True)))
     wake_word: str | None = Field(None, title="Wake word",
                                   description="Several, comma separated, if the box runs more than one at a time. "
-                                              "A long press on the box's button "
+                                              "A double press on the box's button "
                                               "switches it off and on again (button only).",
                                   json_schema_extra=ui(placeholder="The box's own",
                                                        help="Okay Nabu, Hey Jarvis or Hey Mycroft on a stock box; "

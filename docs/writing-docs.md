@@ -30,19 +30,25 @@ links to it.
 | Page | Owns |
 | --- | --- |
 | `README.md` | Pitch, one screenshot, about eight features, status in two lines, quickstart, links |
-| `docs/running.md` | Commands, web UI, engines, logs, exposure |
+| `docs/running.md` | Commands, engines, logs, exposure |
+| `docs/web-ui.md` | The web UI's pages and how settings pages work |
 | `docs/setup.md` | Installing, what needs root, the first-run wizard, updating and removing, releases |
 | `docs/architecture.md` | How the parts fit, the config API and its metadata, which settings page owns what, the repository, plugin contracts |
 | `docs/ui-guide.md` | How the web UI looks and reads: its rules, words and templates |
 | `docs/identity.md` | His name, his personality and his logo |
 | `docs/hardware.md` | Profiles, GPUs, and what each pick needs |
 | `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md` | Their one subject |
+| `docs/voice-benchmarks.md` | A dated record of the voice and hearing benchmarks |
 | `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
 | `docs/computer.md` | The computer server: opening things, status, logs and updates on each computer |
 | `docs/home-assistant.md`, `docs/announcements.md`, `docs/discord.md` | Their one subject |
-| `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
+| `docs/extensions.md` | The extension standard: what one is, permissions, writing one |
+| `docs/extension-sdk.md` | The SDK reference |
+| `docs/speaking-up.md` | Nudges: how extensions speak up, the rules, the Speaking up page |
 | `docs/built-in-extensions.md` | The extensions that come with Winston |
+| `docs/spotify.md`, `docs/vulnerabilities.md` | Their one extension |
+| `docs/direction.md` | Where Winston is going and why, from research across the alternatives (dated) |
 | `docs/plan.md` | Milestones, their status, and what was measured when |
 | `docs/decisions.md` | What changed and why, one line each |
 

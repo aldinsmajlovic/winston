@@ -10,7 +10,7 @@ so it is cloned into upstream/ at a pinned commit and put on the path.
 
 It streams itself (FastBreezeStreamingRuntime.iter_audio_chunks). Eager it runs at RTF 2.2 on the
 3090, too slow to stream; `--fast backbone_decode depth_decoder codec` captures the per-frame work as
-CUDA graphs: RTF 0.44, 9.1 GB, 13.7 GB peak while capturing (docs/voices.md#breeze-tts-2-8-october).
+CUDA graphs: RTF 0.44, 9.1 GB, 13.7 GB peak while capturing (docs/voice-benchmarks.md#breeze-tts-2-8-october).
 The warmup captures graphs only for the guidance scale in use (upstream's profile also captures the
 two-branch ones for a scale of 4).
 

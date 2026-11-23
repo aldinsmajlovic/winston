@@ -1,4 +1,4 @@
-"""Speaking up (docs/extensions.md#speaking-up), in two parts.
+"""Speaking up (docs/speaking-up.md), in two parts.
 
 The rules: the nudge engine against a stand-in host, a fake clock, fake presence and a fake speaker,
 so every rule is checked at the minute it matters.
