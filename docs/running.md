@@ -398,6 +398,3 @@ its own process, gets only its own keys, and its tools reach every channel's bra
 may do on its own is set on Actions. An action ticked under Share with other AI apps (on Actions
 while an extension is on, with the address to copy) is also offered to MCP apps on this computer, such
 as Claude Code, at http://127.0.0.1:8700/mcp.
-
-## Memory of what was measured
-

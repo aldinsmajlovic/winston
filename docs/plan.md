@@ -9,7 +9,7 @@ This plan was written by Claude (an AI) on 2026-09-21, based on one conversation
 - **Model picks have a short shelf life.** Speech and LLM models are moving monthly. Every model named here is a *default that was reasonable in September 2026*, not a commitment. Before installing any model, check whether a newer one in the same slot exists and whether the local serving stack (vLLM, vllm-omni, llama.cpp) actually supports it.
 - **The architecture is the durable part.** The decision to build a modular cascade (STT → local LLM with tools → TTS, with barge-in), keep Home Assistant as the "hands," and hand hard tasks to a cloud model should survive model swaps. Design every component behind a swappable interface so replacing a model is a config change.
 - **Numbers are estimates.** VRAM figures and latencies come from vendor docs and community reports, not from this hardware. Measure everything on the actual box before optimizing.
-- **Change freely, but log why.** Keep a `DECISIONS.md` in the repo. When you deviate from this plan, write one line: what changed, why, date.
+- **Change freely, but log why.** Keep `docs/decisions.md`. When you deviate from this plan, write one line: what changed, why, date.
 
 ---
 

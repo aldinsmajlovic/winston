@@ -11,8 +11,12 @@ A change is not done until the docs say it exists. In the same commit as the cod
   The feature list stays at about eight short lines; a new feature is folded into an existing line or
   replaces a weaker one, never appended. Reread the whole README and rewrite it as one page, not as a
   log of what was added last.
-- **The topic page**: the page that owns the subject gets the detail (see the map below).
-- **`docs/decisions.md`**: one line for any deviation from the plan, as always.
+- **The topic page**: the page that owns the subject gets the detail (see the map below). A topic
+  page says what is true now. When a change touches a paragraph, rewrite the paragraph; do not add a
+  dated sentence to it. "Since", "until" and "before" with a date belong in `decisions.md`.
+- **`docs/decisions.md`**: one entry for any deviation from the plan: date, what, why, in at most two
+  lines.
+- **`docs/plan.md`**: the status, the trial results and what was measured, with their dates.
 
 Before committing, read the README top to bottom once and ask: would someone cloning today be
 surprised by anything? Remove what is no longer true; stale lines are worse than missing ones.
@@ -31,7 +35,7 @@ links to it.
 | `docs/architecture.md` | How the parts fit, the config API and its metadata, which settings page owns what, the repository, plugin contracts |
 | `docs/ui-guide.md` | How the web UI looks and reads: its rules, words and templates |
 | `docs/identity.md` | His name, his personality and his logo |
-| `docs/hardware.md` | Profiles, GPUs, measured budgets |
+| `docs/hardware.md` | Profiles, GPUs, and what each pick needs |
 | `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md` | Their one subject |
 | `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
@@ -39,18 +43,26 @@ links to it.
 | `docs/home-assistant.md`, `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: the SDK, permissions, speaking up, writing one |
 | `docs/built-in-extensions.md` | The extensions that come with Winston |
-| `docs/plan.md` | Milestones and their status |
+| `docs/plan.md` | Milestones, their status, and what was measured when |
 | `docs/decisions.md` | What changed and why, one line each |
 
 A subject that outgrows a section of its page (a new channel with setup steps, a tool with keys and
 limits) gets its own page in `docs/`, linked from the README and from the page it left. Prefer several
-short pages over one long one.
+short pages over one long one: a section over about 40 lines gets subheadings named for what the
+reader wants to do, and a section over about 100 lines, or a page over about 300, becomes its own page.
 
 ## Style
 
 - Short. Say what it does and how to use it; the why goes in `decisions.md`. No intros that restate
   the heading, no closing summaries, no "Overview" sections.
-- Plain words, first-hand tone. Numbers that were measured, not adjectives.
+- Short paragraphs: one subject each, at most about six lines. Facts about several things side by side
+  (engines, settings, options) go in a table or a list, not in one paragraph.
+- Plain words, first-hand tone. Numbers that were measured, not adjectives. A number on a topic page is
+  one the reader acts on (a size, a limit, a default, a wait) and carries no date; trial results and
+  before and after go to `plan.md`.
+- When a section names more than three settings, flags or parameters, use a table: its name on the
+  page, its key, its default, what it does. Prose names a setting by its label. At most about two
+  code spans in a sentence.
 - No em dashes. No emoji in prose.
 - Code blocks only for things someone types or pastes.
 

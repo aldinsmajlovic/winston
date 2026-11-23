@@ -150,53 +150,74 @@ page and the Pocket preset on the Voice page.
 
 ## Notes per engine
 
-**vLLM.** Fastest tool calls and the only path with vision. The tool-call and reasoning parser
-flags in the preset are for Qwen models; another family needs its own parser (`vllm serve --help`
-lists them). Winston downloads the weights into `~/.cache/huggingface` before the first start, with
-progress on the Brain page and Status; a start then takes about 3 minutes.
+| Engine | Part | Runs on | Pick it for |
+| --- | --- | --- | --- |
+| [vLLM](#vllm) | Brain | NVIDIA, in Docker | The fastest tool calls, and images |
+| [llama.cpp](#llamacpp) | Brain | NVIDIA, in Docker | The 27B, fast, and a start in seconds |
+| [Ollama](#ollama) | Brain | Any GPU, Apple silicon or a CPU | A small card, AMD, a Mac, or no GPU |
+| [Chatterbox-Turbo](#chatterbox-turbo) | Voice | NVIDIA | A cloned voice that starts quickly |
+| [Pocket TTS](#pocket-tts) | Voice | CPU | No GPU to spare |
+| [Hosted speech](#hosted-speech) | Voice | A provider, with a key | No local voice at all |
 
-**llama.cpp.** The official `server-cuda` image, pinned to a release (`server-cuda-v1.0.0-b12359-b1b770d`
-since 18 November), reading GGUF files from
-`~/.cache/huggingface` (the same cache as vLLM). `llm.model` is a Hugging Face repo and quant
-(`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`); the preset passes it as `-hf` and as the served name. Winston
-downloads that quant's files into the cache before the first start, where llama.cpp finds them. It runs two conversations at once with 16K of context each and a q8 cache,
-and drafts with the model's own MTP layer (`--spec-type draft-mtp`), which needs a GGUF that keeps
-that layer; remove those two arguments for one that does not. Thinking is switched with the same
-`enable_thinking` template flag as vLLM. The system prompt with its tools was about 9.4k tokens in
-October (12.3k by late November, 11.1k after the cuts of 23 November), and the 27B reads it cold in 7.5 to 10.6 s, so Winston has it read ahead: a Voice PE box when it connects
-and again when the prompt changes while it is idle, the browser voice channel when you connect. The
-first real turn then starts from the cache in about 0.15 s. On the v1.0.0 image the 27B writes 87
-tokens a second (median, 23 November) with 80% of its drafts accepted, against 67 and 59% on the
-October build. That image leaks host memory (llama.cpp #31392, open): the container grew from 1.9 to
-6.4 GB over 182 requests, at most 2 GB of it the prompt cache (`--cache-ram 2048`).
+### vLLM
 
-**Ollama.** Speaks the OpenAI protocol at `/v1`. Thinking is switched per request with
-`reasoning_effort`, which is what `llm.thinking.control: reasoning_effort` sends. Ollama ignores
-`tool_choice`, which Winston does not use. Ollama gives a card under 24 GB a 4K context, and
-Winston's system prompt with its tools is about 11k tokens, which its OpenAI API cannot change per
-request. So when the brain starts, Winston makes a copy of the model, one you pulled yourself too, with a 16K context (`granite4.1:8b-16k`,
-the same files, no extra space) and talks to that; Ollama's own docs give the same fix. The Brain
-page lists the model, not the copy.
+- A start takes about 3 minutes.
+- Before the first start Winston downloads the weights into `~/.cache/huggingface`. The Brain page
+  and Status show how far it has come.
+- The preset's tool call and reasoning parsers are for Qwen models. Another model family needs its
+  own; `vllm serve --help` lists them.
 
-**Chatterbox-Turbo.** CUDA only, its own venv (`services/tts-chatterbox`) because it pins torch 2.6.
-Clones any clip under `data/voices`; six CC BY 4.0 VCTK samples come bundled. Chatterbox itself
-renders a sentence whole, at about 25 ms per character, so our server streams: it generates the
-speech tokens one at a time and vocodes what it has in chunks, sending only the new audio with a 20 ms
-cross-fade. First audio arrives in about 330 ms whatever the sentence length. The joins can sound a
-little choppy, so it is a setting: under Voice, Streaming turns it off (whole sentences) or makes the
-chunks longer (fewer joins, same start time, 1.6 s by default, up to 6 s); the first chunk (0.96 s)
-and the look-ahead held back at each join (0.32 s) are set in config.yaml. Chunks double from the first up to
-the chosen length, so playback never catches up at any length (measured at 1.6, 3.2 and 6 s).
+### llama.cpp
 
-**Pocket TTS.** Kyutai's 100M model, MIT code and CC BY 4.0 weights, its own venv
-(`services/tts-pocket`) with a CPU-only torch. Streams audio as it generates. 26 built-in voices
-work out of the box. Cloning from a clip needs the gated weights: accept the terms at
-https://huggingface.co/kyutai/pocket-tts, run `uvx hf auth login` once, and the same clips as
-Chatterbox work. Its `--threads` argument defaults to four.
+- Runs the official `server-cuda` image, pinned to one release in the preset.
+- The model is a Hugging Face repo and quant, such as `unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`. Before
+  the first start Winston downloads that quant into `~/.cache/huggingface`, the same cache vLLM uses.
+- Holds two conversations at once, with 16K of context each.
+- Drafts with the model's own MTP layer, which is where most of its speed comes from. That needs a
+  GGUF that keeps the layer. For one that does not, remove `--spec-type draft-mtp` and
+  `--spec-draft-n-max 2` in How it runs.
+- Thinking is switched the same way as on vLLM.
+- Reading Winston's prompt cold takes the 27B several seconds, so Winston reads it ahead: see Ready
+  before the first question in [running](running.md#web-ui).
 
-**Hosted speech.** Any server speaking the OpenAI speech protocol, key in `TTS_API_KEY`; the preset
-is OpenRouter with ElevenLabs Flash v2.5 ([voices](voices.md#hosted-voice)). The built-in voices
-dropdown then shows nothing, since there is no local server to ask; type the name.
+The pinned image leaks host memory, a few GB over a couple of hundred requests (llama.cpp #31392,
+open). Restarting the brain frees it.
+
+### Ollama
+
+- Winston talks to it over its OpenAI API at `/v1` and switches thinking per request, which the
+  preset sets up.
+- Ollama gives a card under 24 GB only 4K of context, and Winston's prompt is about 11K tokens. So
+  when the brain starts, Winston makes a copy of the model with a 16K context (`granite4.1:8b-16k`
+  for `granite4.1:8b`) and talks to that. The copy uses the same files and no extra disk, and it is
+  made for a model you pulled yourself too.
+- The Brain page lists the model, not the copy.
+
+### Chatterbox-Turbo
+
+- NVIDIA only. Its own venv, `services/tts-chatterbox`, since it pins torch 2.6.
+- Clones any clip under `data/voices`. Six VCTK voices (CC BY 4.0) come with it.
+- Winston's server streams it, so the first sound comes in about a third of a second, however long
+  the sentence. The joins between chunks can sound a little choppy; Stream speech and Chunk length on
+  the Voice page change that ([voices](voices.md#trying-a-voice-before-saving)).
+
+### Pocket TTS
+
+- Kyutai's 100M model: MIT code, CC BY 4.0 weights. Its own venv, `services/tts-pocket`, with a
+  CPU-only torch.
+- Streams as it speaks. Its 26 built-in voices work as they are.
+- Uses four CPU threads; change `--threads` in How it runs.
+
+To clone from a clip (the same clips Chatterbox uses):
+
+1. Accept the terms at https://huggingface.co/kyutai/pocket-tts.
+2. Run `uvx hf auth login` once.
+
+### Hosted speech
+
+- Any server that speaks OpenAI's speech API, with its key as `TTS_API_KEY`.
+- The preset is OpenRouter with ElevenLabs Flash v2.5 ([voices](voices.md#hosted-voice)).
+- The Voice list is empty, since there is no local server to ask: type the voice's name.
 
 ## What is not covered
 

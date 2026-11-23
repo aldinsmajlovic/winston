@@ -1,6 +1,6 @@
 # Decisions
 
-One line per deviation from `WINSTON_PLAN.md`: date, what changed, why.
+One entry per deviation from [the plan](plan.md): date, what changed, why, in a line or two.
 
 - 2026-09-22: Renamed the project from Jarvis to Winston (Aldin). Consequence: openWakeWord and microWakeWord ship a pretrained "hey_jarvis" model but nothing for "Winston", so M3 needs a custom-trained wake word model. The plan's factual mention of HA Voice PE shipping "Hey Jarvis" is kept as is.
 - 2026-09-22: Repo created at `~/ai/winston` on a machine with an RTX 3090 (24 GB), 16 CPU threads, 31 GB RAM, Arch (zen kernel). Whether this is the dedicated brain box or the main PC is still an open question (plan §8).
