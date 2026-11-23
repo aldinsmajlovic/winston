@@ -45,8 +45,11 @@ Under the port, one line says how it stands:
 
 1. In Home Assistant, open Settings, Devices and services. Winston shows under Discovered; select Add
    and confirm.
-2. Not discovered (another subnet, or mDNS blocked)? Select Add integration, pick Wyoming Protocol,
-   and give this computer's address and the port.
+2. Not discovered? Discovery uses mDNS, which stays inside one subnet, so Home Assistant on another
+   VLAN never sees him. Select Add integration, pick Wyoming Protocol, and give this computer's
+   address and the port. Cannot connect means a firewall drops it: open the port to Home
+   Assistant's address only, on this computer (`firewall-cmd`, `ufw`) and on the router between
+   the two subnets.
 3. Open Settings, Voice assistants, and edit a pipeline (or add one). Under Conversation agent, pick
    Winston.
 

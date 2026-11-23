@@ -244,9 +244,16 @@ expect("a correction is said on the satellite the request came from", correction
 
 Needs Aldin's go: it switches Assist on in his instance, adds an integration to his Home Assistant, and speaks on his satellites. Back up `data/` first (`tests-never-touch-real-data`), and check `winston status` and that no other session runs brain trials before using the brain.
 
-- [ ] **Step 1:** Switch Assist on on the Ways to talk page. Home Assistant shows "Discovered: Winston"; confirm adds it. Pick Winston as the conversation agent of a test pipeline.
-- [ ] **Step 2:** A typed request in Home Assistant's Assist chat is answered and acts (a living-room light); a spoken one through the Home Assistant app is answered and acts; a request from a Home Assistant satellite in an area lands in that room (the Talk page shows the room; "the lights" means that room's).
+- [x] **Step 1:** Switch Assist on on the Ways to talk page. Home Assistant shows "Discovered: Winston"; confirm adds it. Pick Winston as the conversation agent of a test pipeline.
+- [x] **Step 2:** A typed request in Home Assistant's Assist chat is answered and acts (a living-room light); a spoken one through the Home Assistant app is answered and acts; a request from a Home Assistant satellite in an area lands in that room (the Talk page shows the room; "the lights" means that room's).
 - [ ] **Step 3:** `winston announce "Test"` with no Winston speaker in that satellite's room: said there, once.
 - [ ] **Step 4:** Timed from the end of speech to the first sound on a Home Assistant satellite, against his own Voice PE path, five requests each, median and range.
-- [ ] **Step 5:** Record in `docs/plan.md` UI track step 3: what was built (the conversation part over Wyoming), the measured times, what was not checked. Reread `README.md` top to bottom: fold "Home Assistant's own Assist (its app, chat and stock Voice PE boxes) can pick him as its agent" into the existing Home Assistant or Voice PE line, never a new bullet, and link `docs/assist.md` with the other docs. Restore anything the check changed that Aldin did not want kept.
-- [ ] **Step 6: Commit.** `git commit -s -m "Assist: checked against the real Home Assistant"`.
+- [x] **Step 5:** Record in `docs/plan.md` UI track step 3: what was built (the conversation part over Wyoming), the measured times, what was not checked. Reread `README.md` top to bottom: fold "Home Assistant's own Assist (its app, chat and stock Voice PE boxes) can pick him as its agent" into the existing Home Assistant or Voice PE line, never a new bullet, and link `docs/assist.md` with the other docs. Restore anything the check changed that Aldin did not want kept.
+- [x] **Step 6: Commit.** `git commit -s -m "Assist: checked against the real Home Assistant"`.
+
+Done 2026-11-23, with these differences (details in `docs/plan.md`, UI track step 3):
+
+- Step 1: Home Assistant is on another VLAN, so it never saw the zeroconf announcement (Winston's own browse on this computer did). Added by host and port instead, after opening TCP 10800 from Home Assistant's address on the router and in firewalld. Test pipeline "Winston (test)"; his preferred pipeline unchanged.
+- Step 2: the typed request and a follow-up in the same conversation worked. Not checked: the spoken one (his Home Assistant has no speech-to-text engine) and the satellite's room.
+- Steps 3 and 4: not run. Home Assistant has no satellite: his only box runs Winston's firmware, with its satellite entity disabled on purpose. Measured instead: typed requests through the pipeline against straight to the port.
+- Step 5: the "Not reached" line on the card and `docs/assist.md` now name adding by host and port, and the firewall.

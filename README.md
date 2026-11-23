@@ -21,7 +21,8 @@ by default, and any part can be swapped for a hosted service.
   CPU, or everything runs on Ollama and the CPU. Each can point at a hosted API instead.
 - **Fast.** About 1.3 s from the end of a plain question to his first word, and you can talk over him.
 - **Controls your home** through Home Assistant's MCP server, then checks the device really changed
-  and corrects himself when it did not.
+  and corrects himself when it did not. Home Assistant's own Assist, its app, chat and voice
+  satellites, can pick him as its agent too.
 - **In every room.** A [Voice Preview Edition](#works-with-home-assistant-voice-preview-edition) per
   room, and the browser, with a full-screen wall display for a tablet on the wall. Start a
   conversation at the box and finish it on the screen beside it.
@@ -78,6 +79,7 @@ name him, and can set up a Voice PE plugged in over USB. Details are in [setup](
 ## Documentation
 
 - **Using it:** [setup](docs/setup.md), [running](docs/running.md), [Home Assistant](docs/home-assistant.md),
+  [Assist](docs/assist.md),
   [tools](docs/tools.md), [voices](docs/voices.md), [announcements](docs/announcements.md),
   [Discord](docs/discord.md), [computers](docs/computer.md)
 - **Rooms:** [Voice PE satellite](docs/voice-pe.md), [rooms](docs/rooms.md)

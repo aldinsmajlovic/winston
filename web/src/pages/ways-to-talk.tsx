@@ -324,7 +324,7 @@ function AssistStatus() {
         <p>Home Assistant reached him at {when(st.last_seen)}.</p>
       ) : (
         <p className="text-muted-foreground">
-          Not reached since Winston started. In Home Assistant: Settings, Devices and services, then Winston under Discovered.
+          Not reached since Winston started. In Home Assistant: Settings, Devices and services, then Winston under Discovered, or add Wyoming Protocol with this computer's address and the port.
         </p>
       )}
       {st.listening && n > 0 ? (
