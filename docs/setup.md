@@ -4,8 +4,8 @@ Approved 2026-10-23. Built so far: Winston installing his engines, `winston setu
 the release build, `winston update` and `winston uninstall`, setup mode with its link, and the wizard
 with its Brain and voice, Home Assistant, Who he is and A room box steps (the room box checked on fakes,
 not yet on a real box). From nothing to talking comes next, in the order and with the checks in the
-[plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart, or
-`uv run winston setup` in a clone.
+[plan](plan.md) (Setup track). Until the first release, the way in is the README's Quickstart: a
+clone, then `uv run winston setup`.
 
 One command installs Winston on a Linux computer, and a wizard on his page does the rest the first
 time it opens: Home Assistant, the brain and voice for your hardware, who he is, and a room box.
@@ -107,9 +107,6 @@ when it starts, and says Installing on Status, not Failed. One that does not fit
 A voice's own weights are not sized first: its library chooses the files (Pocket loads a 0.2 GB model
 from an 18 GB repo), so the server fetches them on its first start, and the supervisor waits while the
 cache grows, saying "downloading, 1.2 GB so far".
-
-This replaces the `uv sync` per voice in the Quickstart and the "raise Startup time limit" a first
-download needed.
 
 ## The first run
 

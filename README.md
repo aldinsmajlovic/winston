@@ -54,32 +54,30 @@ Setup, with or without Home Assistant adopting the box: [Voice PE](docs/voice-pe
 ## Status
 
 Early. Voice, Home Assistant, the web UI, memory, extensions and the Voice PE work. Not yet: talking
-over him on the Voice PE, and Discord against the real Discord. Progress is in [the plan](docs/plan.md).
+over him on the Voice PE, Discord against the real Discord, and the setup wizard's Home Assistant and
+Voice PE steps against real ones. Progress is in [the plan](docs/plan.md).
 
 ## Quickstart
 
-Needs Linux, [uv](https://docs.astral.sh/uv/), Home Assistant, and one of the
-[hardware profiles](docs/hardware.md): a 24 GB NVIDIA card with Docker, Ollama on any GPU or CPU, or
-a hosted model.
+Needs Linux, [uv](https://docs.astral.sh/uv/), [pnpm](https://pnpm.io/) for the web UI, and Home
+Assistant. Any of the [hardware profiles](docs/hardware.md) works: a 24 GB NVIDIA card, Ollama on any
+GPU or CPU, or a hosted model.
 
 ```sh
 git clone https://github.com/aldinsmajlovic/winston && cd winston
 uv sync
-(cd services/tts-chatterbox && uv sync)   # GPU voice (nvidia-24gb profiles)
-(cd services/tts-pocket && uv sync)       # CPU voice (ollama and hosted profiles)
-(cd web && pnpm install && pnpm build)    # the web UI
-uv run winston init                       # creates ./data; --list shows the profiles
-uv run winston up                         # everything; Ctrl-C stops it
+(cd web && pnpm install && pnpm build)
+uv run winston setup
 ```
 
-Open http://localhost:8700, paste your Home Assistant address and access token on Settings, Home
-Assistant, and talk. Optional keys go on the page that uses them: web search and Claude on their
-pages under Extensions, Discord under Ways to talk. See [built-in extensions](docs/built-in-extensions.md)
-and [Discord](docs/discord.md).
+Setup reads the computer, picks the profile for it, asks before anything that needs root (Docker,
+NVIDIA's container toolkit, Ollama) and starts Winston as a service. Open the link it prints, on this
+computer or a phone: a wizard downloads his brain and voice, signs in to Home Assistant, lets you
+name him, and can set up a Voice PE plugged in over USB. Details are in [setup](docs/setup.md).
 
 ## Documentation
 
-- **Using it:** [running](docs/running.md), [Home Assistant](docs/home-assistant.md),
+- **Using it:** [setup](docs/setup.md), [running](docs/running.md), [Home Assistant](docs/home-assistant.md),
   [tools](docs/tools.md), [voices](docs/voices.md), [announcements](docs/announcements.md),
   [Discord](docs/discord.md), [computers](docs/computer.md)
 - **Rooms:** [Voice PE satellite](docs/voice-pe.md), [rooms](docs/rooms.md)
