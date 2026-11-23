@@ -9,7 +9,7 @@ page of the web UI. `winston init --list` prints the same table.
 |---|---|---|---|---|
 | `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | vLLM in Docker, Qwen3.5-9B AWQ | Chatterbox-Turbo on the GPU, voice cloning from a clip | Parakeet on the CPU |
 | `nvidia-24gb-27b` | The same | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Chatterbox-Turbo on the GPU | Parakeet on the CPU |
-| `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `qwen3.5:4b` | Pocket TTS on the CPU | Parakeet on the CPU |
+| `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `granite4.1:8b` | Pocket TTS on the CPU | Parakeet on the CPU |
 | `hosted` | Internet and an API key | Any OpenAI-compatible endpoint | Pocket TTS on the CPU | Parakeet on the CPU |
 
 Hearing is Parakeet TDT 0.6B v3 through ONNX on the CPU in every profile. Voice activity, turn
@@ -97,11 +97,11 @@ model; the numbers below are scored from the logged calls against the current na
 
 | Model | Passed, off | Passed, on | First reply text, off / on | VRAM (context) |
 |---|---|---|---|---|
-| `granite4.1:8b` | 39 of 42 | no thinking mode | 0.80 s | 8.0 GB (16K) |
+| `granite4.1:8b` (the preset since) | 39 of 42 | no thinking mode | 0.80 s | 8.0 GB (16K) |
 | `ministral-3:8b` | 33 of 42 | no thinking mode | 0.53 s | 8.3 GB (16K) |
 | `nemotron-3.5-bolt:e4b` | 31 of 42 | 10 of 14 | 0.08 s (see below) / 4.46 s | 8.4 GB (32K) |
 | `mimo-v2.6:9b` | 27 of 42 | 12 of 14 | 0.33 / 1.21 s | 7.1 GB (16K) |
-| `qwen3.5:4b` (the preset) | 26 of 42 | 11 of 14 | 0.52 / 1.84 s | 5.0 GB (32K) |
+| `qwen3.5:4b` (the preset until this day) | 26 of 42 | 11 of 14 | 0.52 / 1.84 s | 5.0 GB (32K) |
 | `bonsai-2:9b` | 22 of 42 | 13 of 14 | 0.32 / 1.84 s | 4.2 GB (16K) |
 | `granite4.1:3b` | 21 of 42 | no thinking mode | 0.48 s | 5.1 GB (32K) |
 | `qwen3.5:9b` | 17 of 42 | 14 of 14 | 0.32 / 2.24 s | 7.1 GB (16K) |
@@ -130,7 +130,8 @@ One round with thinking on is 14 requests, so those columns are a first look, no
 - **NVIDIA with 16 GB or more:** `nvidia-24gb`. Below 24 GB, lower `--gpu-memory-utilization` in
   the vLLM arguments or pick a smaller model; the Chatterbox server needs 3 GB next to it.
 - **A smaller card, AMD, Apple silicon, or no GPU:** `ollama`. Ollama handles the hardware itself.
-  Pull any model whose Ollama page lists `tools`; the default is `qwen3.5:4b`. Set
+  Pull any model whose Ollama page lists `tools`; the default is `granite4.1:8b`, and `qwen3.5:4b`
+  on a card with less than about 8 GB free. Set
   `OLLAMA_CONTEXT_LENGTH=16384` in Ollama's environment on a card under 24 GB: Ollama gives those
   4K by default, and Winston's system prompt with its tools is about 12k tokens on its own.
   Expect less than the 24 GB profiles: the 4B passed 26 of 42 brain trials against the 27B's 42.
