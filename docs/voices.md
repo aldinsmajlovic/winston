@@ -69,6 +69,24 @@ clip with steady noise in it. Measured 2026-10-08 on `vctk/p254_023`, five lines
 So it removes a hum or a hiss, garbles a clip with other voices in it, and blurs a clean one a
 little; the preset leaves it off.
 
+## Hosted voice
+
+The Hosted preset sends what he says to OpenRouter (`https://openrouter.ai/api/v1`), which speaks
+OpenAI's speech API and reaches ElevenLabs, Gemini, Qwen, Fish Audio and others with one key. Put the
+key in `TTS_API_KEY`. The preset picks ElevenLabs Flash v2.5 (Model `elevenlabs/eleven-flash-v2.5`,
+voice `george`, 24 kHz). Not measured yet: the model, the voice and the rate are a first guess
+until they are tried through Winston ([plan](plan.md), M6).
+
+Model (`tts.model`) is shown for a hosted voice only; local servers ignore it. Each model has its own
+voices and rate, listed without a key at
+`https://openrouter.ai/api/v1/audio/speech/models/<model>` (Gemini sends 24 kHz, HeyGen 44.1 kHz).
+Set Sample rate to match, or he sounds too fast or too slow. Any other server speaking OpenAI's speech
+API works the same way with its own address, model and voice.
+
+OpenRouter's prices, 23 November 2026, per million characters: ElevenLabs Flash v2.5, v4 Turbo and
+Turbo v2.5 40 USD, v4 80 USD, Qwen3-TTS 20 USD; Gemini 3.8 Flash TTS by tokens. A household that hears
+about 225,000 characters a month pays a few dollars at these rates.
+
 ## Trying a voice before saving
 
 `POST /api/speak` on winstond speaks text through the configured speech server and streams 16-bit

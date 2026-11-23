@@ -155,12 +155,13 @@ TTS: list[Fragment] = [
     },
     {
         "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI speech URL)", "needs": ["internet"],
-        "hint": "Any server that speaks OpenAI's speech API. Needs the provider's key; what he says leaves your "
-                "network.",
-        "engine": {"driver": "external", "url": "https://api.openai.com", "port": 443, "health": "",
+        "hint": "Any server that speaks OpenAI's speech API; OpenRouter by default, one key for ElevenLabs, Gemini "
+                "and others. Needs the provider's key; what he says leaves your network.",
+        # ponytail: model, voice and rate not yet measured against OpenRouter (docs/voices.md, Hosted voice)
+        "engine": {"driver": "external", "url": "https://openrouter.ai", "port": 443, "health": "",
                    "startup_timeout": 10},
-        "settings": {"tts": {"base_url": "https://api.openai.com/v1", "api_key_env": "TTS_API_KEY",
-                             "voice": "onyx", "sample_rate": 24000}},
+        "settings": {"tts": {"base_url": "https://openrouter.ai/api/v1", "api_key_env": "TTS_API_KEY",
+                             "model": "elevenlabs/eleven-flash-v2.5", "voice": "george", "sample_rate": 24000}},
     },
 ]
 

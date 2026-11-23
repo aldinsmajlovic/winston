@@ -1050,7 +1050,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         cfg = app.state.cfg
         t = cfg.tts
         voice = s.voice or t.voice
-        body: dict[str, Any] = {"model": "winston-tts", "input": s.text.strip(), "voice": voice,
+        body: dict[str, Any] = {"model": t.model, "input": s.text.strip(), "voice": voice,
                                 "response_format": "pcm"}
         headers = {"X-Sample-Rate": str(t.sample_rate), "X-Voice": quote(voice, safe="/._-")}
         eng = cfg.engines.get("tts")

@@ -244,7 +244,8 @@ server down) leaves a plain text box with the reason in a line under it.
 | Sound before an announcement | None, and the sounds in `assets/sounds/` and `data/sounds/` |
 | Who can open this page | This computer only, Every device on your network |
 
-A field that does not apply is not shown: an API key only for a hosted brain or voice, the Streaming
+A field that does not apply is not shown: an API key only for a hosted brain or voice, the voice's
+Model only for a hosted one, the Streaming
 settings only when the speech engine's command uses them, engine fields only for their driver. A
 feature that is switched off (a channel, memory, announcements) keeps its fields visible and editable
 at full contrast; its switch's line says they wait until it is on, and its keys do not warn. Keys are

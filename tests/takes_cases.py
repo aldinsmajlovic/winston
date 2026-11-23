@@ -1,9 +1,14 @@
 """Takes of the lines he says while he thinks (voice.prerender): played in turn from memory, never through the
-speech server; other text, and the same line in another voice, go to the server as before. No hardware.
+speech server; other text, and the same line in another voice, go to the server as before; a hosted voice is
+asked with tts.model and its key. No hardware.
 
     uv run python tests/takes_cases.py
 """
 import asyncio
+import json
+import os
+
+import httpx
 
 from harness import check, finish_checks
 
@@ -45,6 +50,31 @@ async def main():
         check("the line in another voice goes to the server", "served from takes", "asked the server")
     except Asked as e:
         check("the line in another voice goes to the server", str(e), "friends/erik")
+
+    # a hosted voice: tts.model and the key reach the server, live and when lines are read ahead
+    cfg = vp.CFG.model_copy(deep=True)
+    cfg.tts.model, cfg.tts.voice, cfg.tts.api_key_env = "elevenlabs/eleven-flash-v2.5", "george", "TAKES_TEST_KEY"
+    os.environ["TAKES_TEST_KEY"] = "k"
+    hosted = vp.build_tts(cfg)
+    hosted._sample_rate = cfg.tts.sample_rate
+    hosted._client.audio.speech.with_streaming_response.create = lambda **kw: (_ for _ in ()).throw(Asked(kw["model"]))
+    try:
+        [f async for f in hosted.run_tts("Done, sir.", "c")]
+        check("a hosted voice is asked with tts.model", "server not asked", "elevenlabs/eleven-flash-v2.5")
+    except Asked as e:
+        check("a hosted voice is asked with tts.model", str(e), "elevenlabs/eleven-flash-v2.5")
+    seen = []
+
+    def serve(req: httpx.Request) -> httpx.Response:
+        seen.append((req.headers["authorization"], json.loads(req.content)["model"]))
+        return httpx.Response(200, content=b"\0\0" * 240)
+    real = httpx.AsyncClient
+    vp.httpx.AsyncClient = lambda **kw: real(transport=httpx.MockTransport(serve), **kw)
+    try:
+        await vp.prerender(cfg)
+    finally:
+        vp.httpx.AsyncClient = real
+    check("lines read ahead send the key and tts.model", seen[0], ("Bearer k", "elevenlabs/eleven-flash-v2.5"))
 
 
 asyncio.run(main())

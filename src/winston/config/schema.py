@@ -341,6 +341,10 @@ class TTSConfig(Model):
                                     json_schema_extra=ui(hidden=True, when=HOSTED,
                                                          secret=secret("TTS_API_KEY", "API key",
                                                                        "From your provider's account page.")))
+    model: str = Field("winston-tts", title="Model",
+                       description="The model name the speech server knows. Local servers ignore it.",
+                       json_schema_extra=ui(when=HOSTED, help="As your provider writes it, such as "
+                                                              "elevenlabs/eleven-flash-v2.5 on OpenRouter."))
     voice: str = Field("onyx",
                        description="The clip or built-in voice he speaks with. Server default is the clip in the "
                                    "engine's command.",

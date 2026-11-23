@@ -116,11 +116,12 @@ async def prerender(cfg: WinstonConfig = CFG):
     """Fill the takes of HOME_LINES in cfg.tts.voice; filled lines are skipped."""
     c = cfg.tts
     try:
-        async with httpx.AsyncClient(base_url=c.base_url, timeout=60) as h:
+        async with httpx.AsyncClient(base_url=c.base_url, timeout=60,
+                                     headers={"Authorization": f"Bearer {api_key(c.api_key_env)}"}) as h:
             for line in HOME_LINES:
                 takes = _takes.setdefault((c.voice, line), [])
                 while len(takes) < TAKES:
-                    r = await h.post("/audio/speech", json={"input": line, "voice": c.voice, "model": "winston-tts",
+                    r = await h.post("/audio/speech", json={"input": line, "voice": c.voice, "model": c.model,
                                                            "response_format": "pcm"})
                     r.raise_for_status()
                     takes.append(r.content)
@@ -172,7 +173,7 @@ class SpeechTTS(OpenAITTSService):
 def build_tts(cfg: WinstonConfig = CFG):
     c = cfg.tts
     return SpeechTTS(api_key=api_key(c.api_key_env), base_url=c.base_url, sample_rate=c.sample_rate,
-                     settings=SpeechTTS.Settings(model="winston-tts", voice=c.voice),
+                     settings=SpeechTTS.Settings(model=c.model, voice=c.voice),
                      text_filters=[SpokenText(cfg)])      # times in the region's clock, in words
 
 

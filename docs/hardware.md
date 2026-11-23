@@ -188,8 +188,9 @@ work out of the box. Cloning from a clip needs the gated weights: accept the ter
 https://huggingface.co/kyutai/pocket-tts, run `uvx hf auth login` once, and the same clips as
 Chatterbox work. Its `--threads` argument defaults to four.
 
-**Hosted speech.** Any server speaking the OpenAI speech protocol, key in `TTS_API_KEY`. The
-built-in voices dropdown then shows nothing, since there is no local server to ask; type the name.
+**Hosted speech.** Any server speaking the OpenAI speech protocol, key in `TTS_API_KEY`; the preset
+is OpenRouter with ElevenLabs Flash v2.5 ([voices](voices.md#hosted-voice)). The built-in voices
+dropdown then shows nothing, since there is no local server to ask; type the name.
 
 ## What is not covered
 

@@ -3833,6 +3833,12 @@ export interface components {
              */
             api_key_env?: string | null;
             /**
+             * Model
+             * @description The model name the speech server knows. Local servers ignore it.
+             * @default winston-tts
+             */
+            model?: string;
+            /**
              * Voice
              * @description The clip or built-in voice he speaks with. Server default is the clip in the engine's command.
              * @default onyx
@@ -4265,6 +4271,7 @@ export interface components {
              * @default {
              *       "provider": "openai_speech",
              *       "base_url": "http://127.0.0.1:8880/v1",
+             *       "model": "winston-tts",
              *       "voice": "onyx",
              *       "sample_rate": 24000,
              *       "streaming": {
