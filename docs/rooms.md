@@ -41,6 +41,9 @@ channels:
 - **The picker offers** the boxes' rooms and Home Assistant's areas, and says what each choice shares.
 - **A room with no box** works too, for a wall tablet in a room of its own: "the lights" there means
   the Home Assistant area of the room's name.
+- **A Home Assistant satellite** (with [Assist](assist.md) on) is in the room of its area in Home
+  Assistant: the box's room whose area that is, else the area's own name. Requests from it join that
+  room's conversation, and it speaks for the room while no box or screen is connected there.
 - **The Wall display row** on the Talk page card, in Ways to talk, opens the wall display for any room,
   a box's or a Home Assistant area: pick it, then Open, or Copy link for the tablet.
 

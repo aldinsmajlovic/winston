@@ -52,6 +52,22 @@ Every conversation also starts fresh after the Talk page's New conversation afte
 
 Without Home Assistant connected (no token), requests are still answered, with no room.
 
+## Speaking on Home Assistant's satellites
+
+While Assist is on, each of Home Assistant's voice satellites with an area speaks for its room, in Home
+Assistant's voice, as long as no Winston box or screen is connected in that room. Nothing is said
+twice: when the box comes back, the satellite goes quiet again.
+
+- **Announcements** go to every connected speaker and every such satellite, and count as spoken, so
+  Discord is not the fallback. Quiet hours hold for them too.
+- **Nudges** go to the room you are in, as on his boxes: he words it in that room's conversation first,
+  and says the plain line if that takes over 20 s. A satellite announces and stops, so answering
+  "remind me later" needs the wake word.
+- **A state check that fails** (the light did not come on) is said after the reply, on the satellite the
+  request came from, and shown on the Talk page. A typed request from the app shows it there only.
+- A satellite Home Assistant lists as unavailable (an old box's entry left enabled) is never used.
+- Switched off, or with Home Assistant not connected, nothing is said on its satellites.
+
 ## What works and what does not
 
 | Works | Does not |
@@ -59,7 +75,7 @@ Without Home Assistant connected (no token), requests are still answered, with n
 | His memory, tools and extensions, as on every channel | His cloned voice: Home Assistant's own voice speaks |
 | The state check after an action | Talking over him |
 | A question in his reply: the satellite listens again with no wake word | Hearing the reply as it is written: it arrives whole |
-| His reminders | Home Assistant's own timers ringing on a satellite |
+| His reminders and nudges, on the satellite in your room | Home Assistant's own timers ringing on a satellite |
 
 - **Every reply is treated as spoken**: he thinks before a home action and keeps it short, as on his
   own boxes.

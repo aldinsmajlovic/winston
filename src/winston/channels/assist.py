@@ -10,7 +10,9 @@ The protocol as Home Assistant uses it (its components/wyoming, and the wyoming 
   `NotHandled(text)` and speaks the text of either; it never reads `HandledChunk`, so the reply goes whole.
 - Discovery is zeroconf, `_wyoming._tcp.local.`. Wyoming has no authentication, so the switch is off by default.
 """
+import asyncio
 import errno
+import os
 import socket
 import time
 import uuid
@@ -32,7 +34,7 @@ from winston.channels.text import UNREACHABLE, error_text
 from winston.channels.web import WebChat
 from winston.config.schema import WinstonConfig
 from winston.core import directory
-from winston.core.announce import Hub
+from winston.core.announce import Hub, nudge_note
 from winston.core.live import Feed, LiveEvent
 from winston.core.rooms import Rooms, room_for_area
 
@@ -145,20 +147,27 @@ class Listener:
 
 NO_BRAIN = "Sorry, I could not reach my brain."
 FAILED = "Sorry, something went wrong while I answered."
+WORDING_SECS = 20       # a nudge not worded by then is said as its plain line, as on a box
+GONE = ("unavailable", "unknown")
 
 
 class Assist:
     """Answers Home Assistant's requests in winstond: the listener switched by channels.assist, the
-    conversations in a WebChat of their own, and the room each request came from."""
+    conversations in a WebChat of their own, and the room each request came from. While it listens it is
+    the hub's `outside`: Home Assistant's satellites speak announcements, nudges and corrections in rooms
+    with no Winston speaker connected (core/announce.Hub)."""
 
     def __init__(self, cfg: WinstonConfig, feed: Feed, rooms: Rooms, hub: Hub,
                  ha: Callable[[], httpx.AsyncClient]):
-        self.cfg, self.feed, self.rooms, self.hub, self.ha = cfg, feed, rooms, hub, ha
+        self.cfg, self.feed, self.hub, self.ha = cfg, feed, hub, ha
         self.chat = WebChat(cfg, feed, rooms, channel="assist")
         self.listener: Listener | None = None
         self._as: tuple[int, str] | None = None       # (port, name) it listens and is advertised as
         self.last_seen: float | None = None
         self.error: str | None = None
+        self._snap = None                             # the last read of Home Assistant (directory.home)
+        self._read_at = -directory.READ_SECS
+        self._tasks: set[asyncio.Task] = set()
 
     @property
     def listening(self) -> bool:
@@ -186,12 +195,17 @@ class Assist:
                 self.error = (f"Port {a.port} is in use by another program." if e.errno == errno.EADDRINUSE
                               else f"Port {a.port} could not be opened: {e.strerror or e}.")
                 logger.warning(f"assist: {self.error}")
+        self.hub.outside = self if self.listener else None
+        if self.listener:
+            self._read_at = -directory.READ_SECS
+            self.rooms()                              # reads Home Assistant in the background
         await self.chat.reset(cfg)
 
     async def where(self, req: Request) -> str | None:
         """The room the request came from: its device's area in Home Assistant, else its satellite's, as a
         room (core/rooms.room_for_area). None without Home Assistant, its registry, or an area."""
-        snap = await directory.home(self.cfg)
+        snap = self._snap = await directory.home(self.cfg)
+        self._read_at = time.monotonic()
         if snap is None or snap.registry is None:
             return None
         aid = (snap.devices.get(req.device_id or "") or {}).get("area_id")
@@ -210,7 +224,7 @@ class Assist:
             logger.exception("assist: the request's room not found")
         conv = None if room else req.conversation_id
         try:
-            text = await self.chat.reply(req.text, room, conv, notify=self.chat._correction)
+            text = await self.chat.reply(req.text, room, conv, notify=self._notify(req))
         except Exception as e:
             logger.exception("assist: answering failed")
             said = error_text(e)
@@ -229,7 +243,73 @@ class Assist:
             raise Unanswered(FAILED)
         return text, asks(text)
 
+    def _notify(self, req: Request) -> Callable[[str], Awaitable[None]]:
+        """Where a state check's correction goes, after the reply: the Talk page, and the satellite the
+        request came from (a typed request from the app has none, so it is shown only)."""
+        async def notify(text: str):
+            await self.chat._correction(text)
+            if req.satellite_id:
+                self.say([req.satellite_id], text)
+        return notify
+
+    def _spawn(self, coro):
+        t = asyncio.create_task(coro); self._tasks.add(t); t.add_done_callback(self._tasks.discard)
+
+    async def _read(self):
+        try:
+            self._snap = await directory.home(self.cfg)
+        finally:
+            self._read_at = time.monotonic()
+
+    def rooms(self) -> dict[str, list[str]]:
+        """Home Assistant's satellites by room: each assist_satellite with an area that is not unavailable (an
+        old box's entry left enabled), from the last read of Home Assistant; a read older than
+        directory.READ_SECS starts a new one in the background. None without Home Assistant connected."""
+        ha = self.cfg.providers.ha
+        if ha is None or not os.environ.get(ha.token_env):
+            return {}
+        if time.monotonic() - self._read_at > directory.READ_SECS:
+            self._read_at = time.monotonic()          # one read at a time
+            self._spawn(self._read())
+        snap, out = self._snap, {}
+        if snap is None or snap.registry is None:
+            return out
+        for eid, st in snap.states.items():
+            if eid.startswith("assist_satellite.") and st.get("state") not in GONE:
+                _, area_name = snap.area(eid)
+                if area_name:
+                    out.setdefault(room_for_area(self.cfg, area_name), []).append(eid)
+        return out
+
+    def say(self, ids: list[str], text: str) -> None:
+        """Spoken on these satellites in Home Assistant's voice (assist_satellite.announce); a failure is logged."""
+        async def run():
+            try:
+                async with self.ha() as c:
+                    r = await c.post("/api/services/assist_satellite/announce",
+                                     json={"entity_id": ids, "message": text})
+                if r.status_code >= 300:
+                    logger.warning(f"assist: announce on {ids} answered {r.status_code}: {r.text[:200]}")
+            except Exception as e:                                      # noqa: BLE001
+                logger.warning(f"assist: announce on {ids} failed: {e}")
+        self._spawn(run())
+
+    def nudge(self, ids: list[str], ev: dict, room: str) -> None:
+        """A nudge said on the room's satellites: worded by the room's conversation first, as a box does, else
+        its plain line."""
+        async def run():
+            worded = ""
+            try:
+                s = await self.chat.current(room)
+                can = any(t.name == "follow_up" for t in s.brain.tools.standard_tools)
+                worded = await asyncio.wait_for(s.ask(nudge_note(ev, can), timeout=WORDING_SECS), WORDING_SECS + 5)
+            except Exception as e:                                      # noqa: BLE001
+                logger.warning(f"assist: nudge {ev.get('id')} not worded ({e!r}); the plain line")
+            self.say(ids, worded or ev["say"])
+        self._spawn(run())
+
     async def close(self):
+        self.hub.outside = None
         if self.listener:
             await self.listener.stop()
         self.listener, self._as = None, None

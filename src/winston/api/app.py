@@ -606,6 +606,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         d = hub.publish(a)
         feed.publish(LiveEvent(channel=a.source, type="announcement", text=a.text))
         spawn(web.announced(a.text, a.context))
+        spawn(assist.chat.announced(a.text, a.context))
         return d
 
     def ha_announcement(data: dict):
@@ -644,6 +645,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def deliver_nudge(ev: dict, where: str) -> str | None:
         if where == "speakers" and (n := hub.publish_nudge(ev, rooms.recent())):
             spawn(web.noted(nudge_note(ev), ev["say"]))
+            spawn(assist.chat.noted(nudge_note(ev), ev["say"]))
             return f"speakers:{n}"
         links = ev.get("links") or []
         if links:           # its links are its buttons; a tap opens the first
@@ -1021,7 +1023,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def assist_state():
         a = app.state.cfg.channels.assist
         return AssistState(enabled=a.enabled, listening=assist.listening, port=a.port, error=assist.error,
-                           last_seen=assist.last_seen, satellites=0)
+                           last_seen=assist.last_seen,
+                           satellites=sum(len(ids) for ids in assist.rooms().values()) if assist.listening else 0)
 
     @app.get("/api/rooms", response_model=list[RoomState],
              summary="Rooms: the satellite boxes' and any a browser session named, with who has each mic")

@@ -104,7 +104,7 @@ delivers per level shows "Depends on how urgent".
 | `where` | On its page | It goes to |
 | --- | --- | --- |
 | `auto` | Where you are | The speakers while you are home, your phone while you are away |
-| `speakers` | Speakers at home | The speakers in the room you are in (the room last talked in, within 30 minutes: its box, and browser sessions set to it or to no room), else every connected speaker. With none connected, the phone |
+| `speakers` | Speakers at home | The speakers in the room you are in (the room last talked in, within 30 minutes: its box, and browser sessions set to it or to no room), else that room's Home Assistant satellites while [Assist](assist.md) is on, else every connected speaker and satellite. With none, the phone |
 | `phone` | Your phone | The notify service picked on Speaking up (the Home Assistant companion app), with Done and Later buttons; Discord when none is set. It cannot be picked until one of them is |
 
 ## When he holds a nudge

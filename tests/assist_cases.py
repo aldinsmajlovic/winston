@@ -8,9 +8,10 @@ import asyncio
 import json
 import os
 import socket
+from datetime import datetime
 from typing import ClassVar
 
-from harness import expect, finish, free_port, scratch_data, serve, winstond_data
+from harness import expect, finish, free_port, scratch_data, serve, until, winstond_data
 
 DATA = scratch_data("winston-assist-")
 winstond_data(DATA, {"llm": {"model": "x"}})        # the persona and memory the prompt is built from
@@ -191,6 +192,7 @@ async def winstond():
     from winston.api.app import create_app
     from winston.config import load
     from winston.core import directory
+    from winston.core.announce import Announcement
 
     ha_port, api_port, llm_port, port = free_port(), free_port(), free_port(), free_port()
     winstond_data(DATA, {
@@ -198,9 +200,9 @@ async def winstond():
         "channels": {"voice": {"enabled": False}, "satellite": {"enabled": False}, "discord": {"enabled": False}},
         "providers": {"home_assistant": {"url": f"http://127.0.0.1:{ha_port}", "token_env": "HA_TOKEN",
                                          "expose": {"light.taklampa": {}}}},
-        "control": {"port": api_port}})
+        "control": {"port": api_port}, "announce": {"quiet_hours": "03:00-03:01"}})
     runner, seen = await fake_brain(llm_port)
-    async with FakeHA(ha_port):
+    async with FakeHA(ha_port) as fake:
         app = create_app(load(), autostart=False)
         stop = await serve(app, api_port)
         api = httpx.AsyncClient(base_url=f"http://127.0.0.1:{api_port}", timeout=60)
@@ -210,7 +212,7 @@ async def winstond():
         async def save(**assist):
             r = await api.patch("/api/config", json={"changes": [
                 {"path": ["channels", "assist", k], "value": v} for k, v in assist.items()]})
-            saved.append(r.json())
+            saved.append(r.json() if r.status_code < 500 else {"status": r.status_code, "text": r.text})
             return r.status_code, (await api.get("/api/assist")).json()
 
         try:
@@ -246,6 +248,7 @@ async def winstond():
             expect("the Talk page shows the turn under assist",
                    any(e["channel"] == "assist" and e["type"] == "user" for e in feed))
             expect("and the error", any(e["channel"] == "assist" and e["type"] == "error" for e in feed))
+            await speaking(app, api, fake)
 
             taken = socket.socket(); taken.bind(("0.0.0.0", 0)); taken.listen()
             busy = taken.getsockname()[1]
@@ -264,6 +267,8 @@ async def winstond():
                 refused = True
             expect("switched off: closed and withdrawn", (refused, zc.calls[-2:], st["listening"]) ==
                    (True, ["unregister", "close"], False), st)
+            d = app.state.hub.publish(Announcement(text="Anyone home?"))
+            expect("and Home Assistant's satellites say nothing", d.spoken_on == 0, d)
 
             await save(enabled=True, port=port)
             token = os.environ.pop("HA_TOKEN")
@@ -271,6 +276,8 @@ async def winstond():
             ev = await handled(port, "the lights please", conversation_id="sat-2", device_id="dev_satellite")
             expect("Home Assistant not connected: answered, with no room",
                    ev.type == "handled" and "room:" not in last_user(seen), (ev, last_user(seen)))
+            d = app.state.hub.publish(Announcement(text="Anyone home?"))
+            expect("and announcements only on his own speakers", d.spoken_on == 0, d)
             os.environ["HA_TOKEN"] = token
             directory._read = (-directory.READ_SECS, (), None)
         finally:
@@ -279,10 +286,91 @@ async def winstond():
             await runner.cleanup()
 
 
+async def speaking(app, api, fake):
+    """Task 4: announcements, nudges and corrections on Home Assistant's satellites."""
+    from winston.core.announce import Announcement
+    hub = app.state.hub
+
+    def announced() -> list[dict]:
+        return [{k: w[k] for k in ("entity_id", "message")} for w in fake.writes
+                if w["type"] == "service/assist_satellite.announce"]
+
+    async def said(n: int) -> list[dict]:
+        await until(lambda: asyncio.sleep(0, result=len(announced()) >= n), 30)
+        return announced()
+
+    await until(lambda: asyncio.sleep(0, result=bool(hub.outside and hub.outside.rooms())), 10)
+    d = (await api.post("/api/announce", json={"text": "The washing machine is done."})).json()
+    expect("an announcement with only a satellite in the kitchen is said there", await said(1) == [
+        {"entity_id": ["assist_satellite.kitchen_satellite"], "message": "The washing machine is done."}], announced())
+    expect("and counts as spoken, so Discord is not the fallback", (d["spoken_on"], d["discord"]) == (1, False), d)
+    st = (await api.get("/api/assist")).json()
+    expect("the card counts the satellites", st["satellites"] == 1, st)
+
+    box = hub.subscribe("satellite", "Kitchen")
+    d = hub.publish(Announcement(text="The post is here."))
+    await asyncio.sleep(0.3)
+    expect("a room with a Winston speaker: said there, not on the satellite",
+           (box.qsize(), len(announced()), d.spoken_on) == (1, 1, 1), (box.qsize(), announced()))
+    hub.unsubscribe("satellite", box)
+    hub.publish(Announcement(text="The dryer is done."))
+    expect("the speaker gone: the satellite again", (await said(2))[-1]["message"] == "The dryer is done.")
+    d = hub.publish(Announcement(text="Shh."), now=datetime(2026, 1, 1, 3, 0, 30))
+    await asyncio.sleep(0.3)
+    expect("quiet hours: nothing said on a satellite", (len(announced()), d.spoken_on, d.quiet) == (2, 0, True))
+    expect("an unavailable satellite is never a target",
+           not any("assist_satellite.old_box" in w["entity_id"] for w in announced()))
+
+    ev = {"id": "n1", "extension": "parcels", "kind": "delivered", "say": "A parcel came.", "facts": {}}
+    n = hub.publish_nudge(ev, app.state.rooms.recent())
+    expect("a nudge in the room last talked in is worded, then said on its satellite",
+           (n, (await said(3))[-1]) == (1, {"entity_id": ["assist_satellite.kitchen_satellite"],
+                                             "message": "Your parcel has arrived, sir."}), announced())
+
+    s = hub.outside.chat.sessions["kitchen"]
+    await s.notify("I'm afraid the kitchen light did not come on, sir.")
+    w = (await said(4))[-1]
+    expect("a correction is said on the satellite the request came from",
+           w == {"entity_id": ["assist_satellite.kitchen_satellite"],
+                 "message": "I'm afraid the kitchen light did not come on, sir."}, w)
+    feed = app.state.feed.backlog()
+    expect("and shown on the Talk page", any(e.channel == "assist" and e.type == "reply" and
+                                             "did not come on" in (e.text or "") for e in feed))
+
+
+def nudges():
+    """Hub.publish_nudge with a stub outside: a room with a box, a room with only a satellite, no room."""
+    from winston.core.announce import Hub
+    cfg = WinstonConfig.model_validate({"llm": {"model": "x"}})
+
+    class Outside:
+        def __init__(self):
+            self.nudged: list[tuple[list[str], str]] = []
+
+        def rooms(self):
+            return {"Kitchen": ["assist_satellite.k"], "Hall": ["assist_satellite.h"]}
+
+        def nudge(self, ids, ev, room):
+            self.nudged.append((ids, room))
+
+    hub, out = Hub(cfg), Outside()
+    hub.outside = out
+    box = hub.subscribe("satellite", "kitchen")
+    ev = {"id": "n"}
+    expect("a nudge: a room with a box, on the box only", (hub.publish_nudge(ev, "Kitchen"), out.nudged, box.qsize())
+           == (1, [], 1))
+    expect("a room with only a satellite, on it only", (hub.publish_nudge(ev, "hall"), out.nudged, box.qsize())
+           == (1, [(["assist_satellite.h"], "Hall")], 1))
+    out.nudged.clear()
+    expect("no room: every speaker and every free satellite", (hub.publish_nudge(ev, None), out.nudged, box.qsize())
+           == (2, [(["assist_satellite.h"], "Hall")], 2))
+
+
 async def main():
     await protocol()
     await winstond()
 
 pure()
+nudges()
 asyncio.run(main())
 finish()

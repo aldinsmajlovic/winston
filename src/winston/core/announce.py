@@ -3,8 +3,9 @@
 winstond is the hub. Home Assistant (an automation fires `winston_announce` with {text, context}),
 `POST /api/announce` and `winston announce` publish; channel processes subscribe to
 `GET /api/events?channel=voice|satellite|discord&room=...` and deliver. The hub decides where each
-announcement goes: spoken on every connected speaker (browser voice sessions and satellite boxes)
-unless it is quiet hours, and to Discord per `announce.discord`.
+announcement goes: spoken on every connected speaker (browser voice sessions and satellite boxes, and
+Home Assistant's satellites in rooms with neither while Assist listens) unless it is quiet hours, and to
+Discord per `announce.discord`.
 
 The text is spoken as given, never rephrased by the model. Each channel also adds the
 announcement and its context to its conversation, so "how long did it run?" has an answer.
@@ -24,7 +25,7 @@ import uuid
 from collections.abc import AsyncIterator
 from datetime import datetime
 from datetime import time as dtime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from pydantic import BaseModel, Field
@@ -33,6 +34,9 @@ from winston.config import resolve
 from winston.config.schema import WinstonConfig
 from winston.core.common import key, sse
 from winston.core.guard import NOTE_MARK
+
+if TYPE_CHECKING:
+    from winston.channels.assist import Assist
 
 MAX_TEXT = 300
 SPEAKERS = ("voice", "satellite")
@@ -48,7 +52,7 @@ class Announcement(BaseModel):
 
 class Delivery(BaseModel):
     id: str
-    spoken_on: int              # connected speakers it was sent to
+    spoken_on: int              # connected speakers it was sent to, Home Assistant's satellites included
     discord: bool
     quiet: bool
 
@@ -126,6 +130,9 @@ class Hub:
         self._subs: dict[str, dict[asyncio.Queue, str | None]] = {}
         self._media: tuple[dict, set[str | None]] | None = None    # the stream playing, and the rooms that took it
         self._log = resolve(cfg.logging.tool_calls).parent / "announcements.jsonl"
+        # Home Assistant's satellites (channels/assist.py), set while Assist listens: each speaks for its room
+        # only while no Winston speaker is connected there, so nothing is said twice.
+        self.outside: Assist | None = None
 
     def subscribe(self, channel: str, room: str | None = None) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=50)
@@ -145,6 +152,13 @@ class Hub:
     def speakers(self) -> int:
         return sum(self.count(c) for c in SPEAKERS)
 
+    def _free(self) -> dict[str, list[str]]:
+        """Home Assistant's satellites by room, in the rooms with no Winston speaker subscribed."""
+        if self.outside is None:
+            return {}
+        taken = {r for c in SPEAKERS for r in self._subs.get(c, {}).values()}
+        return {room: ids for room, ids in self.outside.rooms().items() if key(room) not in taken}
+
     def _send(self, channel: str, q: asyncio.Queue, ev: dict) -> bool:
         try:
             q.put_nowait(ev)
@@ -154,13 +168,21 @@ class Hub:
             return False
 
     def publish_nudge(self, ev: dict, room: str | None = None) -> int:
-        """A nudge to the speakers of the room you are in (and those in no room), or every speaker when
-        that room has none or no room is known. Returns how many took it."""
+        """A nudge to the speakers of the room you are in (and those in no room); else to that room's Home
+        Assistant satellites; else, with no room known or a room with neither, every speaker and every free
+        satellite. Returns how many took it."""
         k = key(room) if room else None
         targets = [(c, q) for c in SPEAKERS for q, r in self._subs.get(c, {}).items()]
         if k is not None and any(r == k for c in SPEAKERS for r in self._subs.get(c, {}).values()):
             targets = [(c, q) for c, q in targets if self._subs[c][q] in (k, None)]
-        return sum(self._send(c, q, ev) for c, q in targets)
+            return sum(self._send(c, q, ev) for c, q in targets)
+        free = self._free()
+        if here := next(((r, ids) for r, ids in free.items() if k is not None and key(r) == k), None):
+            self.outside.nudge(here[1], ev, here[0])
+            return len(here[1])
+        for r, ids in free.items():
+            self.outside.nudge(ids, ev, r)
+        return sum(self._send(c, q, ev) for c, q in targets) + sum(len(ids) for ids in free.values())
 
     def publish_media(self, ev: dict, room: str | None = None) -> int:
         """A stream to play (or stop) on the satellite boxes: the one in the room you are in, else every
@@ -180,7 +202,8 @@ class Hub:
 
     def publish(self, a: Announcement, now: datetime | None = None) -> Delivery:
         now = now or datetime.now()
-        speakers = self.speakers()
+        satellites = [i for ids in self._free().values() for i in ids]
+        speakers = self.speakers() + len(satellites)
         speak, discord, quiet = route(self.cfg, speakers, now.time())
         discord = discord and self.count("discord") > 0
         ev = {"id": uuid.uuid4().hex[:12], "ts": time.time(), "type": "announcement", "text": a.text,
@@ -188,6 +211,8 @@ class Hub:
         for channel, send in (*((c, speak) for c in SPEAKERS), ("discord", discord)):
             for q in list(self._subs.get(channel, {})) if send else ():
                 self._send(channel, q, ev)
+        if speak and satellites:
+            self.outside.say(satellites, a.text)
         d = Delivery(id=ev["id"], spoken_on=speakers if speak else 0, discord=discord, quiet=quiet)
         self._log.parent.mkdir(parents=True, exist_ok=True)
         with self._log.open("a") as f:

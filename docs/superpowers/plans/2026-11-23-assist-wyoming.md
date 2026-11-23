@@ -193,9 +193,9 @@ expect("switched off: closed and withdrawn", connect_refused and zc.calls[-2:] =
   - `say(ids, text) -> None`: spawns `POST /api/services/assist_satellite/announce` with `{"entity_id": ids, "message": text}` through `self.ha()`; a failure is logged with the status, never raised.
   - `nudge(ids, ev, room) -> None`: spawns: the room's session words it (`self.chat.current(room)`, `ask(nudge_note(ev, follow_up available), timeout=WORDING_SECS)` with `WORDING_SECS = 20`), then `say(ids, worded or ev["say"])`; the wording failing or timing out says the plain line, as a box does.
   - The `notify` passed to `chat.reply` in `answer`: the Talk page's correction line (the chat's own) and, when the request named a satellite, `say([req.satellite_id], text)`. A typed request from the app shows it on the Talk page only (design, Claude's calls).
-- `app.py`: `publish_announcement` also spawns `assist.chat.announced(...)`; `deliver_nudge` also spawns `assist.chat.noted(...)` when speakers took it.
+- `app.py`: `publish_announcement` also spawns `assist.chat.announced(...)`; `deliver_nudge` also spawns `assist.chat.noted(...)` when speakers took it. Built: `Assist` stops keeping the `Rooms` object, which would shadow `rooms()`; `rooms()` is empty without Home Assistant's token, so a cached read never counts a satellite that cannot be reached (Review Focus 6); `speaking-up.md` says where a nudge goes now. The box subscriber in the checks is the hub's own `subscribe`, in process.
 
-- [ ] **Step 1: Failing checks in `tests/assist_cases.py`,** on the same winstond:
+- [x] **Step 1: Failing checks in `tests/assist_cases.py`,** on the same winstond:
 
 ```python
 expect("an announcement with only a satellite in the kitchen is said there", ha_writes_of("assist_satellite.announce") == [{"entity_id": ["assist_satellite.kitchen_satellite"], "message": "The washing machine is done."}])
@@ -210,11 +210,11 @@ expect("a correction is said on the satellite the request came from", correction
 
   And pure checks on `Hub.publish_nudge` with a stub `outside`: room with a box, room with only a satellite, no room.
 
-- [ ] **Step 2: Run to see them fail; implement; run to see them pass.** `uv run winston check unit` (the announcement and speaking-up cases unchanged), ruff, `just lint`.
+- [x] **Step 2: Run to see them fail; implement; run to see them pass.** `uv run winston check unit` (the announcement and speaking-up cases unchanged), ruff, `just lint`.
 
-- [ ] **Step 3: Docs** as listed under Files.
+- [x] **Step 3: Docs** as listed under Files.
 
-- [ ] **Step 4: Commit.** `git commit -s -m "Assist: announcements, nudges and corrections spoken on Home Assistant's satellites"`.
+- [x] **Step 4: Commit.** `git commit -s -m "Assist: announcements, nudges and corrections spoken on Home Assistant's satellites"`.
 
 ---
 

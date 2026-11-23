@@ -1,8 +1,10 @@
 # Announcements
 
 Winston can speak without being spoken to: a chime, then the text as given, on every connected speaker.
-That is a Talk page or wall display while its microphone is on, and each Voice PE box. Extensions speak
-up the same way, with their own rules ([speaking up](speaking-up.md)).
+That is a Talk page or wall display while its microphone is on, and each Voice PE box. While Home
+Assistant Assist is on, Home Assistant's own voice satellites count too, in rooms with neither
+([Home Assistant Assist](assist.md#speaking-on-home-assistants-satellites)). Extensions speak up the
+same way, with their own rules ([speaking up](speaking-up.md)).
 
 ```mermaid
 sequenceDiagram
