@@ -30,6 +30,7 @@ import docker  # noqa: E402
 import yaml  # noqa: E402
 from aiohttp import web  # noqa: E402
 
+from winston.api.options import served_model  # noqa: E402
 from winston.config import repo_root  # noqa: E402
 from winston.config.schema import WinstonConfig  # noqa: E402
 from winston.engines import install  # noqa: E402
@@ -104,11 +105,25 @@ async def token(request):
     return web.json_response({"token": "t0k3n" if ok else "wrong"})
 
 
+OLLAMA = {"have:latest", "have:latest-16k", "bare:latest"}     # bare: pulled before, no 16K copy yet
+ASKED: list = []                                                # what the fake Ollama was asked to do
+
+
 async def tags(request):
-    return web.json_response({"models": [{"name": "have:latest", "model": "have:latest"}]})
+    return web.json_response({"models": [{"name": n, "model": n} for n in sorted(OLLAMA)]})
+
+
+async def create(request):
+    body = await request.json()
+    ASKED.append(("create", body))
+    if body["from"] not in OLLAMA:
+        return web.json_response({"error": f"model '{body['from']}' not found"}, status=404)
+    OLLAMA.add(body["model"])
+    return web.json_response({"status": "success"})
 
 
 async def pull(request):
+    ASKED.append(("pull", (await request.json())["model"]))
     resp = web.StreamResponse(headers={"Content-Type": "application/x-ndjson"})
     await resp.prepare(request)
     for ev in ({"status": "pulling manifest"}, {"digest": "d1", "total": 100, "completed": 50},
@@ -116,6 +131,7 @@ async def pull(request):
                {"status": "success"}):
         await resp.write((json.dumps(ev) + "\n").encode())
         await asyncio.sleep(0.05)
+    OLLAMA.add(ASKED[-1][1])
     return resp
 
 
@@ -126,6 +142,7 @@ app.router.add_get("/v2/{repo:.+}/manifests/{ref}", manifest)
 app.router.add_get("/token", token)
 app.router.add_get("/ollama/api/tags", tags)        # under /ollama, so the brain's address names it
 app.router.add_post("/ollama/api/pull", pull)
+app.router.add_post("/ollama/api/create", create)
 threading.Thread(target=lambda: web.run_app(app, host="127.0.0.1", port=port, handle_signals=False, print=None),
                  daemon=True).start()
 time.sleep(0.5)
@@ -204,7 +221,11 @@ async def main():
     check("a local folder is not the Hub's", len(await install.parts("llm", config({"llm": VLLM}, "/models/mine"))), 1)
     ollama = {"driver": "external", "url": f"http://127.0.0.1:{port}/ollama", "port": port, "health": "/"}
     have = await install.parts("llm", config({"llm": ollama}, "have"))
-    check("an Ollama model it has is installed", [(p.key, p.installed) for p in have], [("ollama:have:latest", True)])
+    check("an Ollama model with its 16K copy is installed", [(p.key, p.installed) for p in have],
+          [("ollama:have:latest", True)])
+    bare = await install.parts("llm", config({"llm": ollama}, "bare"))
+    check("one pulled before but without the copy is not, with nothing to download",
+          [(p.installed, p.size) for p in bare], [(False, None)])
     want = await install.parts("llm", config({"llm": ollama}, f"127.0.0.1:{port}/made-up/small:2"))
     check("one it lacks has its registry size", (want[0].installed, want[0].size), (False, 160))
     check("Ollama's store is not a folder Winston can check", want[0].where, None)
@@ -243,6 +264,21 @@ async def main():
     job = install.start(want[0])
     await watch(job)
     check("an Ollama pull adds up its layers", (job.state, job.done), ("done", 150))
+    small = f"127.0.0.1:{port}/made-up/small:2"
+    check("then the copy is made from it, with a 16K context", ASKED,
+          [("pull", small), ("create", {"model": f"{small}-16k", "from": small, "stream": False,
+                                        "parameters": {"num_ctx": 16384}})])
+    ASKED.clear()
+    job = install.start(bare[0])
+    await watch(job)
+    check("a model already there gets only its copy, not a second pull", (job.state, [a[0] for a in ASKED]),
+          ("done", ["create"]))
+    on = config({"llm": ollama}, "granite4.1:8b")
+    check("requests to Winston's Ollama name the copy", served_model(on), "granite4.1:8b-16k")
+    on.engines["llm"].enabled = False
+    check("an Ollama he does not run gets the name as written", served_model(on), "granite4.1:8b")
+    check("and so does any other server", served_model(config({"llm": LLAMA}, "fake/model-GGUF:Q4_K_M")),
+          "fake/model-GGUF:Q4_K_M")
     big = install.Part("hf:x", "the model", None, 16_400_000_000, False)
     check("a part's line says how far it is", install.line(install.Job(big, done=6_200_000_000)), "the model, 6.2 GB of 16.4 GB")
     check("and nothing yet is nothing", install.line(install.Job(big, done=0)), "the model, 0 MB of 16.4 GB")

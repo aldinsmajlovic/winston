@@ -499,6 +499,7 @@ class WinstonLLM(OpenAILLMService):
 
 
 def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot: int | None = None) -> OpenAILLMService:
+    from winston.api.options import served_model
     c = cfg.llm
     if c.provider != "openai_compatible":
         raise ValueError(f"unsupported llm provider {c.provider}")
@@ -512,7 +513,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
         own=own_answers(cfg) if channel in SPOKEN else None, assistant=cfg.assistant.name,
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
-            model=c.model,
+            model=served_model(cfg),
             system_instruction=persona(cfg, house, channel),   # must live in Settings; a bare kwarg is ignored when settings= is given
             temperature=s.temperature, top_p=s.top_p, presence_penalty=s.presence_penalty,
             max_completion_tokens=max(s.max_tokens, THINK_TOKENS) if thinking_for(cfg, channel) else s.max_tokens,

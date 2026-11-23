@@ -131,10 +131,7 @@ One round with thinking on is 14 requests, so those columns are a first look, no
   the vLLM arguments or pick a smaller model; the Chatterbox server needs 3 GB next to it.
 - **A smaller card, AMD, Apple silicon, or no GPU:** `ollama`. Ollama handles the hardware itself.
   Pull any model whose Ollama page lists `tools`; the default is `granite4.1:8b`, and `qwen3.5:4b`
-  on a card with less than about 8 GB free. Set
-  `OLLAMA_CONTEXT_LENGTH=16384` in Ollama's environment on a card under 24 GB: Ollama gives those
-  4K by default, and Winston's system prompt with its tools is about 12k tokens on its own.
-  Expect less than the 24 GB profiles: the 4B passed 26 of 42 brain trials against the 27B's 42.
+  on a card with less than about 8 GB free. Expect less than the 24 GB profiles: the 4B passed 26 of 42 brain trials against the 27B's 42.
   On a 12 GB card an 8B fits at 16K context: `granite4.1:8b` passed 39 of 42 at 0.8 s and 8 GB
   ([small brains](#small-brains-on-ollama-2026-11-23)).
 - **No local model:** `hosted`. Put the key in `data/.env` as `LLM_API_KEY`, set `llm.model` to
@@ -170,7 +167,11 @@ first real turn then starts from the cache in about 0.15 s.
 
 **Ollama.** Speaks the OpenAI protocol at `/v1`. Thinking is switched per request with
 `reasoning_effort`, which is what `llm.thinking.control: reasoning_effort` sends. Ollama ignores
-`tool_choice`, which Winston does not use.
+`tool_choice`, which Winston does not use. Ollama gives a card under 24 GB a 4K context, and
+Winston's system prompt with its tools is about 12k tokens, which its OpenAI API cannot change per
+request. So after pulling the model Winston makes a copy of it with a 16K context (`granite4.1:8b-16k`,
+the same files, no extra space) and talks to that; Ollama's own docs give the same fix. The Brain
+page lists the model, not the copy.
 
 **Chatterbox-Turbo.** CUDA only, its own venv (`services/tts-chatterbox`) because it pins torch 2.6.
 Clones any clip under `data/voices`; six CC BY 4.0 VCTK samples come bundled. Chatterbox itself

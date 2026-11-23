@@ -620,7 +620,7 @@ def update(version: str | None) -> None:
 def leftovers(cfg: dict, data: Path | None) -> list[str]:
     """What uninstalling leaves, each with its size."""
     import httpx
-    from winston.api.options import llm_engine
+    from winston.api.options import llm_engine, ollama_copy
     from winston.config.presets import presets
     from winston.engines.install import _tree_bytes, gb
     out = [f"The data directory, {data}: {gb(_tree_bytes(data))} (config, memory, voices, logs)"] if data else []
@@ -638,7 +638,8 @@ def leftovers(cfg: dict, data: Path | None) -> list[str]:
         base = (llm.get("url") or f"http://127.0.0.1:{llm.get('port', 11434)}").rstrip("/")
         try:
             tags = httpx.get(f"{base}/api/tags", timeout=3).json().get("models", [])
-            out += [f"Ollama's {m['name']}: {gb(m['size'])} (ollama rm {m['name']})"
+            copy = ollama_copy(model)           # his 16K copy, the same files
+            out += [f"Ollama's {m['name']}: {gb(m['size'])} (ollama rm {m['name']} {copy})"
                     for m in tags if m.get("name") in (model, f"{model}:latest")]
         except (httpx.HTTPError, ValueError):
             pass

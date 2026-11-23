@@ -69,7 +69,7 @@ LLM: list[Fragment] = [
     {
         "id": "ollama", "icon": "ollama", "title": "Ollama (local)", "needs": ["ollama"],
         "hint": "Any graphics card or a CPU. Granite 4.1 8B takes about 8 GB with a 16K context; on a smaller "
-                "card pick qwen3.5:4b. Set OLLAMA_CONTEXT_LENGTH=16384 in Ollama's environment below 24 GB.",
+                "card pick qwen3.5:4b.",
         "engine": {"driver": "external", "url": "http://127.0.0.1:11434", "port": 11434, "health": "/",
                    "startup_timeout": 60},
         "settings": {"llm": {"base_url": "http://127.0.0.1:11434/v1", "api_key_env": None,

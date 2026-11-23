@@ -180,6 +180,7 @@ class Diary:
 
     async def _ask(self, prompt: str, *, talking: Any = None) -> str | None:
         """Call the background model, yielding to conversations."""
+        from winston.api.options import served_model
         from winston.core.brain import api_key, thinking_body
         from winston.extension_host.services import Services
         c = self.cfg.llm
@@ -202,7 +203,7 @@ class Diary:
 
             try:
                 r = await client.chat.completions.create(
-                    model=c.model, messages=[{"role": "user", "content": prompt}],
+                    model=served_model(self.cfg), messages=[{"role": "user", "content": prompt}],
                     max_tokens=512, temperature=0.4, extra_body=extra or None)
                 text = (r.choices[0].message.content or "").strip()
                 if text.startswith("<think>"):

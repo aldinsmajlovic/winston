@@ -364,6 +364,7 @@ class Services:
             logger.info("background model call stopped for a conversation; asked again after it")
 
     async def _ask_once(self, prompt: str, schema: dict | None, max_tokens: int) -> Any:
+        from winston.api.options import served_model
         c = self.cfg.llm
         client = AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=60)
         extra: dict[str, Any] = dict(thinking_body(self.cfg, "voice"))
@@ -375,7 +376,7 @@ class Services:
                                          "json_schema": {"name": "answer", "schema": schema}}
         try:
             r = await client.chat.completions.create(
-                model=c.model, messages=[{"role": "user", "content": prompt}], max_tokens=max_tokens,
+                model=served_model(self.cfg), messages=[{"role": "user", "content": prompt}], max_tokens=max_tokens,
                 temperature=0.2, extra_body=extra or None, **kwargs)
         except Exception as e:
             raise Failed(f"the model did not answer: {e}") from e
