@@ -75,6 +75,10 @@ Every voice's memory, first sound and word errors, side by side: [picking a voic
 fresh conversation. A case passes when every expected tool was called and no forbidden one was. Lights
 the cases touch are put back.
 
+A case with a `nudge` adds a made-up briefing to its first request, the way a real one arrives, and
+checks how he answers it: put off, dismissed, or left alone while you ask for something else. No real
+nudge is touched.
+
 1. Run `winston check brain` (or `uv run python tests/brain_trials.py --runs 3` for spread).
 2. Switch the brain on the Brain page.
 3. Run it again and compare. Each run is saved in `data/logs/brain_trials/`.

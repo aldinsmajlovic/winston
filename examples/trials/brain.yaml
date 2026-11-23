@@ -10,3 +10,13 @@ cases:
      expect: [HassLightSet, GetLiveContext]}
   - {name: follow-up, say: ["Turn the kitchen lights to 40 percent.", "Now make them warmer."], expect: [HassLightSet]}
   - {name: no tool needed, say: ["Tell me one fun fact about octopuses."], forbid: [Hass, web_search]}
+# Answering a nudge: a made-up briefing is added to the first request (see tests/brain_trials.py).
+  - {name: nudge mentioned, say: ["What's the weather like right now?"], nudge: &digest {extension: News, kind: Daily digest, part: briefing,
+       say: "Three stories today: a storm warning for the coast, a rail strike on Friday, a new library opening."},
+     expect: [GetLiveContext], forbid: [follow_up]}
+  - {name: nudge put off, say: ["What time is it?", "Tell me about that tomorrow after work."], nudge: *digest,
+     expect: ["follow_up:later"]}
+  - {name: nudge dismissed, say: ["What time is it?", "I've seen that already, thanks."], nudge: *digest,
+     expect: ["follow_up:dismiss"]}
+  - {name: request after a nudge, say: ["What time is it?", "Turn on the kitchen lights."], nudge: *digest,
+     expect: [HassTurnOn|HassLightSet], forbid: [follow_up]}

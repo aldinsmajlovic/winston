@@ -3,6 +3,10 @@
 through the text channel with thinking off (as over voice), and passes when every expected tool
 was called and no forbidden one. Lights touched by the cases are put back afterwards.
 
+A case with `nudge` adds a made-up one to its first request, the way the briefing and next-talk
+nudges are added (announce.mention_note), and follow_up answers it here, so no real nudge is touched.
+A follow_up call counts as follow_up:<action>, so a case can expect follow_up:later or forbid follow_up.
+
 Cases are personal (entity names, phrasing), so they live in data/trials/brain.yaml;
 examples/trials/brain.yaml is the template. Results go to data/logs/brain_trials/.
 
@@ -27,6 +31,9 @@ from pipecat.observers.base_observer import BaseObserver, FramePushed
 from winston.channels.text import TextSession
 from winston.config import data_dir, load, repo_root
 from winston.config.loader import resolve
+from winston.core import speak_up
+from winston.core.announce import mention_note
+from winston.extension_host import client
 
 p = argparse.ArgumentParser()
 p.add_argument("--runs", type=int, default=1)
@@ -45,6 +52,28 @@ CASES = [c for c in SPEC["cases"] if not args.only or args.only in c["name"]]
 ha = CFG.providers.ha
 HA, H = ha.url.rstrip("/"), {"Authorization": f"Bearer {os.environ[ha.token_env]}"}
 RESTORE = SPEC.get("restore", [])        # entities put back after every case
+NUDGE_ID = "n0trial"
+
+
+def fake_follow_up(cfg, channel):
+    """follow_up as winstond answers it, for the trial's made-up nudge only."""
+    async def follow_up(params):
+        a = params.arguments if isinstance(params.arguments, dict) else {}
+        act, when = str(a.get("action") or "").strip().lower(), str(a.get("when") or "").strip()
+        out = ({"error": f"There is no nudge {a.get('nudge')!r}; use the id it came with."} if a.get("nudge") != NUDGE_ID
+               else {"error": "Say when: \"tomorrow 17:30\", \"in two hours\", \"Monday\"."} if act == "later" and not when
+               else {"put_off_until": when} if act == "later"
+               else {"dismissed": "it"} if act == "dismiss" else {"done": act})
+        await params.result_callback(out)
+    return speak_up.FOLLOW_UP, follow_up
+
+
+if any("nudge" in c for c in CASES):
+    client.make_follow_up_tool = fake_follow_up
+
+    async def _speaking(cfg):
+        return True
+    client.speaking_up = _speaking
 
 
 def snapshot() -> dict:
@@ -98,15 +127,16 @@ async def run_case(case: dict) -> dict:
     s = TextSession(CFG, mentions=False, channel="trial", observers=[watch]); await s.start()
     ts, turns = time.time(), []
     try:
-        for say in case["say"]:
+        for i, say in enumerate(case["say"]):
             watch.arm()
-            reply = await s.ask(say)
+            note = mention_note([{"id": NUDGE_ID, "facts": {}, **case["nudge"]}]) if i == 0 and "nudge" in case else ""
+            reply = await s.ask(say + note)
             turns.append({"say": say, "reply": reply, "first_text_s": watch.first, "done_s": watch.last})
     finally:
         await s.close()
     await asyncio.sleep(0.5)
     log = tool_log_since(ts)
-    called = [d["tool"] for d in log if d["event"] == "call"]
+    called = [d["tool"] + (f":{a}" if (a := (d.get("args") or {}).get("action")) else "") for d in log if d["event"] == "call"]
     missing = [e for e in case.get("expect", []) if not matches(e, called)]
     forbidden = [e for e in case.get("forbid", []) if matches(e, called)]
     restore(before)
