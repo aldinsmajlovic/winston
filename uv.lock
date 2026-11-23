@@ -1978,6 +1978,7 @@ dependencies = [
     { name = "typer" },
     { name = "uvicorn" },
     { name = "winston-sdk" },
+    { name = "wyoming" },
 ]
 
 [package.metadata]
@@ -1997,6 +1998,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", specifier = ">=0.30" },
     { name = "winston-sdk", editable = "sdk" },
+    { name = "wyoming", specifier = "==1.11.0" },
 ]
 
 [[package]]
@@ -2014,6 +2016,15 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", specifier = ">=2.2" },
     { name = "pydantic", specifier = ">=2.7" },
+]
+
+[[package]]
+name = "wyoming"
+version = "1.11.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/b8/f29d8633ff71b148327f31eaa86d18ad5177ef177ec0d0387169f85e8272/wyoming-1.11.0.tar.gz", hash = "sha256:0b4aec998e7410228d1090edadb3ffb09fb37d66fa30746682e6585f89e3dad8", size = 47294, upload-time = "2026-11-02T17:38:45.574Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/ab/913f6ef5384bf1ad3ea6640c14cb89750fbb4ff3361396b08ea2c2ff4b46/wyoming-1.11.0-py3-none-any.whl", hash = "sha256:ece5ef85603d81118bc2d50679ad1aede87bf24f6ac5ea710ad94577d20168dd", size = 45871, upload-time = "2026-11-02T17:38:44.292Z" },
 ]
 
 [[package]]

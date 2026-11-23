@@ -21,6 +21,7 @@ dependencies = [
     "discord-py>=2.7.1",
     "aioesphomeapi>=46.5",
     "winston-sdk",
+    "wyoming==1.11.0",
 ]
 
 [project.scripts]
