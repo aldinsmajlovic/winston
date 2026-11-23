@@ -47,8 +47,8 @@ with other people talking in the background, for 0.09 s more per request
 | | `nvidia-24gb` (2026-09-23) | `ollama`, GPU already full (2026-09-23) | `ollama`, GPU to itself (2026-11-23) |
 |---|---|---|---|
 | End of speech to first audio | 1.2 to 1.3 s median (measured with the 27B brain, streamed TTS) | not measured by voice | not measured by voice |
-| Brain trials, thinking off | 36 of 42 | not run | 23 of 42 |
-| Brain trials, thinking on | not run | not run | 10 of 14 |
+| Brain trials, thinking off | 36 of 42 | not run | 26 of 42 |
+| Brain trials, thinking on | not run | not run | 11 of 14 |
 | Tool call, thinking off | 0.9 s | 3 s with the 4B model split between CPU and GPU | 0.63 s to the first reply text (median) |
 | Tool call, thinking on | 3.5 s | 8 s, same split | 1.84 s to the first reply text (median) |
 | TTS first audio | about 330 ms at any sentence length, streamed | 60 ms, streamed while it generates | not measured |
@@ -89,37 +89,40 @@ trivia.
 ### Small brains on Ollama (2026-11-23)
 
 The same 14 requests, three rounds with thinking off and one with it on, each model alone on the
-RTX 3090 through Ollama 0.40.17 at its default 32K context. No Qwen newer than 3.5 comes at this
-size; the other two were picked as the newest small models on Ollama with tool support.
+RTX 3090 through Ollama 0.40.17. The 3B and 4B ran at Ollama's default 32K context, the 8B and 9B at
+16K, which fits a 12 GB card next to the prompt. No Qwen newer than 3.5 comes below 27B; the others
+were picked as the newest models of their size on Ollama with tool support. Until this day the trial
+file expected the sensors tool by its name before 12 October, so the reading cases failed for every
+model; the numbers below are scored from the logged calls against the current name.
 
-| | `qwen3.5:4b` | `granite4.1:3b` | `nemotron-3.5-bolt:e4b` | Qwen3.8-27B, llama.cpp |
+| Model | Passed, off | Passed, on | First reply text, off / on | VRAM (context) |
 |---|---|---|---|---|
-| Passed, thinking off | 23 of 42 | 21 of 42 | 26 of 42 | 42 of 42 |
-| Passed, thinking on | 10 of 14 | 7 of 14 (no thinking mode, so the same as off) | 10 of 14 | |
-| First reply text, median, off | 0.52 s | 0.48 s | 0.08 s (see below) | 0.94 s |
-| First reply text, median, on | 1.84 s | 0.46 s | 4.46 s | |
-| VRAM | 5.0 GB | 5.1 GB | 8.4 GB | 17.2 GB |
+| `granite4.1:8b` | 39 of 42 | no thinking mode | 0.80 s | 8.0 GB (16K) |
+| `ministral-3:8b` | 33 of 42 | no thinking mode | 0.53 s | 8.3 GB (16K) |
+| `nemotron-3.5-bolt:e4b` | 31 of 42 | 10 of 14 | 0.08 s (see below) / 4.46 s | 8.4 GB (32K) |
+| `mimo-v2.6:9b` | 27 of 42 | 12 of 14 | 0.33 / 1.21 s | 7.1 GB (16K) |
+| `qwen3.5:4b` (the preset) | 26 of 42 | 11 of 14 | 0.52 / 1.84 s | 5.0 GB (32K) |
+| `bonsai-2:9b` | 22 of 42 | 13 of 14 | 0.32 / 1.84 s | 4.2 GB (16K) |
+| `granite4.1:3b` | 21 of 42 | no thinking mode | 0.48 s | 5.1 GB (32K) |
+| `qwen3.5:9b` | 17 of 42 | 14 of 14 | 0.32 / 2.24 s | 7.1 GB (16K) |
+| Qwen3.8-27B, llama.cpp (2026-09-23) | 42 of 42 | | 0.94 s | 17.2 GB |
 
-How they fail, thinking off:
+How they fail:
 
-- **Readings from an extension's tool**, in all three: the phone's battery, alone or after a light
-  change, or a value that is not there. They read the home's live context instead, or call a tool
-  name that does not exist (`sensors_get_readings`). Qwen 9 of 9 attempts, Granite 9, Nemotron 9.
-- **Something he should decline**, in all three: asked to lock or unlock a door, every model tried
-  (3 of 3 each). No lock exists in that home, so nothing happened.
-- **Saying it is done without doing it**: Qwen 4 times on a light request (twice the one with two
-  steps), with no tool called and a reply as if it had been done.
-- **The clock**: Qwen and Nemotron answered the time from the turn's timestamp instead of the clock
-  tool (3 of 3 each), which is a soft miss.
-- **Granite** also gave an empty reply for the weather (3 of 3), answered a question about a recent
-  event from memory instead of searching (3 of 3), and looked up lights asked for by name without
-  switching them on (3 of 3).
-- **Nemotron** says "There you go, sir" before its tool call runs, sometimes before an action that
-  then fails, which is why its first reply text comes so early; it also sent a question that needs
-  no tool to web search once.
+- **Replying as if done, with no tool called**: the Qwen 9B and Bonsai with thinking off, on nearly
+  every light request and follow-up (3 of 3 each); the Qwen 4B 4 times. With thinking on, both 9Bs
+  stop doing it, which is why they gain the most from it.
+- **Something he should decline**: asked to lock or unlock a door, Granite (both sizes), Nemotron
+  and the Qwen 4B tried, 3 of 3 each. That home has no lock, so nothing happened. Granite 8B's only
+  misses are these three.
+- **The clock**: every model but Granite answered the time from the turn's timestamp instead of the
+  clock tool, a soft miss.
+- **Ministral** used the wrong tool for a light asked for by name (3 of 3). **Granite 3B** gave an
+  empty reply for the weather and answered a recent event from memory instead of searching (3 of 3
+  each). **Nemotron** says "There you go, sir" before its tool call runs, sometimes before an action
+  that then fails, which is why its first reply text comes so early.
 
-None comes close to the 27B, and the gap is in what matters most over voice: reading things and not
-claiming an action it did not take.
+One round with thinking on is 14 requests, so those columns are a first look, not a ranking.
 
 ## Choosing
 
@@ -129,9 +132,9 @@ claiming an action it did not take.
 - **A smaller card, AMD, Apple silicon, or no GPU:** `ollama`. Ollama handles the hardware itself.
   Pull any model whose Ollama page lists `tools`; the default is `qwen3.5:4b`. Set
   `OLLAMA_CONTEXT_LENGTH=16384` in Ollama's environment on a card under 24 GB: Ollama gives those
-  4K by default, and Winston's system prompt with its tools is about 9.4k tokens on its own.
-  Expect much less than the 24 GB profiles: the 4B passed 23 of 42 brain trials against the 27B's
-  42, missed most readings from extensions, and sometimes said a light was set without setting it
+  4K by default, and Winston's system prompt with its tools is about 12k tokens on its own.
+  Expect less than the 24 GB profiles: the 4B passed 26 of 42 brain trials against the 27B's 42.
+  On a 12 GB card an 8B fits at 16K context: `granite4.1:8b` passed 39 of 42 at 0.8 s and 8 GB
   ([small brains](#small-brains-on-ollama-2026-11-23)).
 - **No local model:** `hosted`. Put the key in `data/.env` as `LLM_API_KEY`, set `llm.model` to
   the name your provider uses, and check the base URL. Thinking control is `none`, since hosted
@@ -159,8 +162,8 @@ progress on the Brain page and Status; a start then takes about 3 minutes.
 downloads that quant's files into the cache before the first start, where llama.cpp finds them. It runs two conversations at once with 16K of context each and a q8 cache,
 and drafts with the model's own MTP layer (`--spec-type draft-mtp`), which needs a GGUF that keeps
 that layer; remove those two arguments for one that does not. Thinking is switched with the same
-`enable_thinking` template flag as vLLM. The system prompt with its tools is about 9.4k tokens, and
-the 27B reads it cold in 7.5 to 10.6 s, so Winston has it read ahead: a Voice PE box when it connects
+`enable_thinking` template flag as vLLM. The system prompt with its tools was about 9.4k tokens in
+October (about 12k by late November), and the 27B reads it cold in 7.5 to 10.6 s, so Winston has it read ahead: a Voice PE box when it connects
 and again when the prompt changes while it is idle, the browser voice channel when you connect. The
 first real turn then starts from the cache in about 0.15 s.
 
