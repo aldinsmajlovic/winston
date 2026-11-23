@@ -42,6 +42,7 @@ class FakeBox:
         self.port = os.ttyname(slave)
         os.close(slave)      # the client opens it by its path, as a real port
         self.state, self.joined = READY, None
+        self.scan_from = 0.0        # until then its first scan is not done: no networks
         self.received: list[tuple[int, bytes]] = []
         self._stop = threading.Event()
         if answer:
@@ -62,21 +63,41 @@ class FakeBox:
         self._write(f"\x1b[0;36m{line}\x1b[0m\r\n".encode())
 
     def _serve(self):
-        buf = b""
+        """Byte by byte, as ESPHome's improv_serial: a parsed packet stays in the buffer until 100 ms pass
+        with nothing read, so a packet sent sooner lands after it and is dropped."""
+        buf, last = b"", 0.0
         while not self._stop.is_set():
             try:
                 chunk = os.read(self.master, 4096)
             except OSError:          # the client closed its side, or ours closed
                 time.sleep(0.05)
                 continue
-            buf += chunk
-            while (i := buf.find(HEADER)) >= 0 and len(buf) >= i + 9 and len(buf) >= i + 10 + buf[i + 8]:
-                n = buf[i + 8]
-                kind, data = buf[i + 7], buf[i + 9:i + 9 + n]
-                buf = buf[i + 10 + n:]
-                self.received.append((kind, data))
-                if kind == RPC:
-                    self._rpc(data[0], data[2:2 + data[1]])
+            now = time.monotonic()
+            if now - last > 0.1:
+                buf = b""
+            for byte in chunk:
+                buf += bytes([byte])
+                if self._parse(buf):
+                    last = now
+                else:
+                    buf = b""
+
+    def _parse(self, buf: bytes) -> bool:
+        """Whether buf is still a packet after its newest byte; runs the packet once its checksum came."""
+        pos, byte = len(buf) - 1, buf[-1]
+        if pos < 6:
+            return byte == HEADER[pos]
+        if pos == 6:
+            return byte == 1
+        if pos <= 8 or pos <= 8 + buf[8]:
+            return True
+        if pos > 9 + buf[8] or sum(buf[:-1]) & 0xFF != byte:
+            return False
+        kind, data = buf[7], buf[9:-1]
+        self.received.append((kind, data))
+        if kind == RPC:
+            self._rpc(data[0], data[2:2 + data[1]])
+        return True
 
     def _rpc(self, command: int, payload: bytes):
         if command == DEVICE_INFO:
@@ -85,7 +106,7 @@ class FakeBox:
                                                                           "home-assistant-voice-0a1b2c")))
         elif command == SCAN:
             self._log("[D][wifi:123]: Scanning...")
-            for n in self.networks:
+            for n in self.networks if time.monotonic() >= self.scan_from else []:
                 self._write(_packet(RESULT, bytes([SCAN]) + _strings(n.ssid, str(n.rssi), "YES" if n.secured else "NO")))
             self._write(_packet(RESULT, bytes([SCAN, 0])))
         elif command == CURRENT_STATE:

@@ -28,6 +28,7 @@ USB_ID = ("303a", "1001")                                               # Espres
 ESPTOOL = "esptool@5.6.0"
 START_SECS = 20             # for the box to answer again after the flash resets it
 REACH_SECS = 10
+SCAN_SECS = 15              # a box just flashed finishes its first scan about 8 s after it answers
 PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 
 
@@ -190,8 +191,16 @@ async def _flash(f: Flash):
 
 
 async def networks(port: str) -> list[improv.Network]:
-    async with _lock, improv.Box(port) as box:
-        return await box.scan()
+    """What the box saw in its last scan. Until its first scan is done it has none, so an empty list is asked
+    again for SCAN_SECS. A box already on Wi-Fi stops scanning and stays empty."""
+    loop = asyncio.get_running_loop()
+    until = loop.time() + SCAN_SECS
+    while True:
+        async with _lock, improv.Box(port) as box:
+            found = await box.scan()
+        if found or loop.time() > until:
+            return found
+        await asyncio.sleep(1)
 
 
 async def join(port: str, ssid: str, password: str) -> str:

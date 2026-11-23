@@ -19,6 +19,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -299,9 +300,11 @@ async def api():
             while (f := (await c.get("/api/setup/box")).json()["flash"])["stage"] not in ("done", "error"):
                 await asyncio.sleep(0.1)
             check("flashed through the API", (f["stage"], f["percent"], f["error"]), ("done", 100, ""))
+            box.scan_from = time.monotonic() + 2          # just flashed: its first scan not done yet
             nets = (await c.post("/api/setup/box/networks", json={"port": box.port})).json()
             check("the networks it sees", nets, [{"ssid": "Home", "rssi": -50, "secured": True},
                                                  {"ssid": "Cafe", "rssi": -70, "secured": False}])
+            check("asked again until its first scan is done", time.monotonic() >= box.scan_from, True)
             r = await c.post("/api/setup/box/wifi", json={"port": box.port, "ssid": "Home", "password": "wrong one"})
             check("a wrong password, in words", (r.status_code, r.json()["detail"]),
                   (422, "The box could not join Home. Check the password."))

@@ -295,9 +295,10 @@ change his name in his personality too.
    writes it with esptool through `uvx`, erasing the whole flash, and shows the progress ("Writing the
    firmware, 42%"). A box already on Winston's firmware offers Continue, or Flash again.
 3. **Pick its Wi-Fi.** The networks the box sees, strongest first, or Another network by name, and its
-   password. Only 2.4 GHz networks show, which the step says. The password goes to the box over the
-   cable and nowhere else: it is not kept, logged or sent back. A wrong one says "The box could not
-   join Home. Check the password." and is tried again without a new flash.
+   password. Only 2.4 GHz networks show, which the step says. A box just flashed finishes its first scan
+   about 8 s after it starts, so the step asks again for up to 15 s while it sees none. The password
+   goes to the box over the cable and nowhere else: it is not kept, logged or sent back. A wrong one
+   says "The box could not join Home. Check the password." and is tried again without a new flash.
 4. **Winston checks he reaches it.** The box prints its address in its log once it has joined, and
    Winston checks he reaches its ESPHome API there (port 6053). When he cannot, as from another
    network, the step says so ("The box joined Home at 192.168.1.50, but this computer cannot reach it

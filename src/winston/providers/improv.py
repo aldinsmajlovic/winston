@@ -142,7 +142,9 @@ class Box:
 
     def _send(self, command: int, payload: bytes = b""):
         try:
-            os.write(self.fd, packet(RPC, bytes([command, len(payload)]) + payload))
+            # ESPHome keeps a parsed packet in its buffer until 100 ms pass with nothing read, and drops a
+            # packet that lands after it (a join sent as a scan's answer comes). A newline first clears it.
+            os.write(self.fd, b"\n" + packet(RPC, bytes([command, len(payload)]) + payload))
         except OSError:
             raise self._gone() from None
 
