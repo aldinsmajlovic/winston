@@ -78,6 +78,7 @@ class ToolSpec:
     arg_docs: dict[str, str]
     title: str | None = None            # for people: a short verb phrase, "Play music"
     summary: str | None = None          # for people: one sentence on what it does
+    shortcut_only: bool = False         # run by a shortcut, never offered to the model
 
 
 @dataclass
@@ -204,9 +205,10 @@ class Extension:
 
     def tool(self, tier: Tier, name: str | None = None, outside: bool = True, timeout: float = 10,
              filler: str | None = None, filler_after: float = 1, title: str | None = None,
-             summary: str | None = None) -> Callable[[Callable], Callable]:
+             summary: str | None = None, shortcut_only: bool = False) -> Callable[[Callable], Callable]:
         """A tool for the brain; its docstring is what he is told. `title` ("Play music") and `summary` (one
-        sentence) are what people read in settings: the title defaults to the name in words."""
+        sentence) are what people read in settings: the title defaults to the name in words. `shortcut_only`
+        keeps it from the model: only a shortcut runs it, and his prompt does not carry it."""
         if tier not in ("read", "act", "restricted"):
             raise ValueError(f"tier must be read, act or restricted, not {tier!r}")
         if not 0 < timeout <= 60:
@@ -225,7 +227,7 @@ class Extension:
             if not description:
                 raise ValueError(f"tool {tool_name!r} needs a docstring: its first paragraph describes it")
             self.tools[tool_name] = ToolSpec(tool_name, fn, tier, outside, timeout, filler, filler_after,
-                                             description, arg_docs, title, summary)
+                                             description, arg_docs, title, summary, shortcut_only)
             return fn
         return add
 

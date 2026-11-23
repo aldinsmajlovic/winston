@@ -521,7 +521,7 @@ class Host:
                             "parameters": self._resolve_parameters(ext_id, t["input_schema"]),
                             "tier": (choice.tier if choice and choice.tier else t["tier"]),
                             "outside": t["outside"], "filler": t.get("filler"), "filler_after": t.get("filler_after", 1),
-                            "timeout": t.get("timeout", 10)})
+                            "timeout": t.get("timeout", 10), "shortcut_only": t.get("shortcut_only", False)})
         return out
 
     def offered_tools(self) -> list[dict[str, Any]]:

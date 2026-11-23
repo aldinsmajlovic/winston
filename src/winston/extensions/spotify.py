@@ -1495,7 +1495,7 @@ async def _queue(ctx, what: str, by: str | None) -> str:
     return f"Queued {_describe(item)}." + (f" {note}." if note else "")
 
 
-@ext.tool(tier="act", timeout=15, title="Start a party",
+@ext.tool(tier="act", timeout=15, title="Start a party", shortcut_only=True,
           summary="Plays music and starts a light show in Home Assistant with it, then puts the room back.")
 async def party(ctx, what: str, lights: str | None = None, restore: str | None = None,
                 volume: int | None = None, delay: float = 0.0) -> str:

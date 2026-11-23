@@ -26,7 +26,9 @@ flowchart LR
   marks the brain channels for a restart. Its satellite tools (an announcement, timers) act through one of
   Home Assistant's own voice satellites, and it offers them without one: in a home with none they are left
   out, since "announce that dinner is ready" went to the broadcast 5 times in 5 and he said "Announced"
-  for nothing.
+  for nothing. The rest are cut to what the home has, read from it when the channel starts, since every
+  word of them is in his prompt: no `floor` without floors, only the device classes of exposed entities,
+  no `domain` that allows one value (the intent assumes it), and no lock wording without an exposed lock.
 - An exposed script becomes a tool of its own, described by the script's description, so a scene with
   several steps (lamps one after another, music) is one call. Say in the description when to run it, and
   when not, and give it the phrases as aliases: an alias in what was said also makes a spoken request

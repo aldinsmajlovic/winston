@@ -414,7 +414,7 @@ class Runtime:
                           "title": spec.title or spec.name.replace("_", " ").capitalize(),
                           "summary": spec.summary or "",
                           "outside": spec.outside, "timeout": spec.timeout, "filler": spec.filler,
-                          "filler_after": spec.filler_after,
+                          "filler_after": spec.filler_after, "shortcut_only": spec.shortcut_only,
                           "input_schema": t.parameters})
         return {
             "manifest": ext.manifest.model_dump(),

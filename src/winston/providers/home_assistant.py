@@ -9,6 +9,7 @@ entity in Home Assistant, whose names are the household's own. An alias is remov
 earlier config listed it and the new one does not, so aliases a person added in Home Assistant stay.
 An entity id Home Assistant does not know is skipped and reported, never an error for the rest."""
 import asyncio
+import copy
 import os
 import re
 import textwrap
@@ -47,6 +48,7 @@ class Snapshot:
     exposed: set[str] | None = None              # exposed to Assist ("conversation")
     expose_new: bool | None = None               # HA's "expose new entities" for Assist
     areas: dict[str, str] = field(default_factory=dict)     # area_id -> name
+    floors: dict[str, str] | None = None         # floor_id -> name; None when not read
     devices: dict[str, dict] = field(default_factory=dict)  # device_id -> entry
     version: str | None = None
     mcp_server: bool | None = None
@@ -281,6 +283,33 @@ def unusable(names: list[str], snap: "Snapshot | None") -> set[str]:
     return {n for n in names if n.split("__", 1)[-1] in SATELLITE_TOOLS}
 
 
+def trimmed(description: str, properties: dict, snap: "Snapshot | None") -> tuple[str, dict]:
+    """A Home Assistant tool as the brain needs it in this home, everything left out read from the home: no
+    `floor` without floors, only the device classes its entities have, no `domain` that allows one value (the
+    intent assumes it), and no lock wording without a lock. Unchanged when Home Assistant could not be read."""
+    if snap is None:
+        return description, properties
+    props = copy.deepcopy(properties)
+    seen = [eid for eid in snap.states if snap.exposed is None or eid in snap.exposed]
+    if snap.floors == {}:
+        props.pop("floor", None)
+    def values(name: str) -> dict:          # the node holding a parameter's enum: itself, or its items
+        p = props.get(name) or {}
+        return p.get("items", p)
+
+    if "enum" in values("device_class"):
+        have = {(snap.states[eid].get("attributes") or {}).get("device_class") for eid in seen}
+        values("device_class")["enum"] = [c for c in values("device_class")["enum"] if c in have]
+        if not values("device_class")["enum"]:
+            del props["device_class"]
+    if len(values("domain").get("enum") or ()) == 1:
+        del props["domain"]
+    if not any(eid.startswith("lock.") for eid in seen):
+        description = re.sub(r" For locks, [^.]*\.", "", description)
+        description = re.sub(r", ('[^']*'), or '(?:un)?lock'", r", or \1", description)
+    return description, props
+
+
 class HATool(BaseModel):
     label: str              # plain words; tools that do one job share a label and a row
     names: list[str]        # the MCP tool names, "domain__Name"
@@ -359,6 +388,10 @@ class HomeAssistant:
                 except HAError as e:
                     snap.registry = None
                     snap.errors.append(str(e))
+                try:
+                    snap.floors = {f["floor_id"]: f["name"] for f in await ws.call("config/floor_registry/list") or []}
+                except HAError:
+                    pass
         return snap
 
     async def devices(self) -> tuple[list[dict], dict[str, str]]:

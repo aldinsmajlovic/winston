@@ -95,3 +95,14 @@ async def wipe(ctx) -> str:
 async def long(ctx) -> str:
     """A result far too long for one turn."""
     return "x" * 10000
+
+
+@ext.tool(tier="act", outside=False, shortcut_only=True)
+async def scene(ctx, what: str, delay: float | None = None) -> str:
+    """Sets a scene; only a shortcut runs it.
+
+    Args:
+        what: The scene.
+        delay: Seconds to wait first.
+    """
+    return f"scene {what}"

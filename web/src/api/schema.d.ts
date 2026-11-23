@@ -1572,6 +1572,12 @@ export interface components {
              * @default 10
              */
             timeout?: number;
+            /**
+             * Shortcut Only
+             * @description Run by a shortcut only; the model is not offered it
+             * @default false
+             */
+            shortcut_only?: boolean;
         };
         /** Channels */
         Channels: {

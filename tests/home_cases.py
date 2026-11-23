@@ -9,7 +9,8 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 
 from winston.config.schema import WinstonConfig
 from winston.core.brain import acted, build_llm, home_request, name_forms, only_name, own_answers
-from winston.providers.home_assistant import Snapshot, registry_view, tool_description, tool_label, unusable
+from winston.providers.home_assistant import (Snapshot, registry_view, tool_description, tool_label, trimmed,
+                                              unusable)
 
 cfg = WinstonConfig.model_validate({"llm": {"model": "x"}, "providers": {"home_assistant": {
     "url": "http://ha.invalid:8123", "expose": {
@@ -208,6 +209,28 @@ check("no satellite: its tools are left out", unusable(offered, Snapshot(states=
       {"assist_satellite__HassBroadcast", "intent__HassCancelAllTimers"})
 check("a satellite: all kept", unusable(offered, Snapshot(states={"assist_satellite.kitchen": {}})), set())
 check("Home Assistant unread: all kept", unusable(offered, None), set())
+
+# Its tools carry what any home might have; the brain gets what this one has. HassTurnOn as Home Assistant
+# words it (components/intent, 2026-11).
+on = ("Turns on/opens/presses a device or entity. For locks, this performs a 'lock' action. Use for requests "
+      "like 'turn on', 'activate', 'enable', or 'lock'.")
+args = {"name": {"type": "string"}, "area": {"type": "string"}, "floor": {"type": "string"},
+        "domain": {"type": "array", "items": {"type": "string", "enum": ["light"]}},
+        "device_class": {"type": "array", "items": {"type": "string", "enum": ["awning", "outlet", "tv"]}}}
+plain = Snapshot(states={"switch.fan": {"attributes": {"device_class": "outlet"}}, "light.shelf": {"attributes": {}},
+                         "lock.shed": {}}, exposed={"switch.fan", "light.shelf"}, floors={})
+text, props = trimmed(on, args, plain)
+check("no floors, no lock exposed: floor and the lock words go", text,
+      "Turns on/opens/presses a device or entity. Use for requests like 'turn on', 'activate', or 'enable'.")
+check("only the device classes it has; no domain that allows one", (sorted(props), props["device_class"]["items"]["enum"]),
+      (["area", "device_class", "name"], ["outlet"]))
+check("and the tool as Home Assistant gave it is untouched", args["device_class"]["items"]["enum"], ["awning", "outlet", "tv"])
+check("none of its classes: device_class goes too",
+      "device_class" in trimmed(on, args, Snapshot(states={"light.shelf": {}}, floors={}))[1], False)
+full = Snapshot(states={"lock.door": {}, "cover.blind": {"attributes": {"device_class": "awning"}}}, floors={"up": "Upstairs"})
+check("a home with floors and a lock keeps both", (trimmed(on, args, full)[0], "floor" in trimmed(on, args, full)[1]), (on, True))
+check("floors not read (no admin token): floor kept", "floor" in trimmed(on, args, Snapshot(states={}))[1], True)
+check("Home Assistant unread: unchanged", trimmed(on, args, None), (on, args))
 
 # The picker hides Home Assistant's settings and diagnostics, and reads each room by name; buttons, scenes and
 # scripts say when they last ran.

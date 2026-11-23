@@ -11,7 +11,8 @@ Spotify and Web search ([built-in extensions](built-in-extensions.md)). Added wi
 Added on 2026-10-17: a maker's logo as an extension's `icon`, and for the settings pages a title and a
 summary on each tool, a description on each kind, help, units and groups on settings, optional keys,
 and what an extension can reach in words. Added on 2026-10-18: a setting's choices from the extension
-itself (`@ext.choices`), and a status that carries a warning and a quieter line (`Status`).
+itself (`@ext.choices`), and a status that carries a warning and a quieter line (`Status`). Added on
+2026-11-23: `shortcut_only` on a tool.
 
 An extension adds something Winston can do or know: tools he can call, things he keeps an eye on,
 reasons to speak up, and entities for Home Assistant. It is written against one small SDK and runs in
@@ -425,9 +426,11 @@ The options (`deliver`, `where`, `repeat`, `may_be_urgent`, `requested`, `outsid
 
 ### Tool decorator
  `@ext.tool(tier, name=None, outside=True, timeout=10, filler=None, filler_after=1, title=None,
-summary=None)` on `async def f(ctx, arg: T, other: T | None = None)`. `title` is a short verb phrase for
-people ("Play music") and `summary` one sentence on what it does ("Plays a song, artist, album, playlist,
-genre or mood on your speakers."); see [Tools](#tools) for where they show. Arguments are `str`, `int`,
+summary=None, shortcut_only=False)` on `async def f(ctx, arg: T, other: T | None = None)`. `title` is a
+short verb phrase for people ("Play music") and `summary` one sentence on what it does ("Plays a song,
+artist, album, playlist, genre or mood on your speakers."); see [Tools](#tools) for where they show.
+`shortcut_only=True` is for a tool a shortcut runs with fixed arguments (Spotify's party): the model is
+not offered it, so his prompt does not carry its description. Arguments are `str`, `int`,
 `float`, `bool`, a `Literal`, `date`, `datetime`, `When`, or a list of these; `T | None = None` makes one
 optional. A `When` is read by the core as `follow_up` reads times ("at six", "in 20 minutes", "tomorrow
 morning"; the brain sees the date and time with every message) and arrives as an aware `datetime`. The

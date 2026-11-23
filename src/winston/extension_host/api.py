@@ -165,6 +165,7 @@ class BrainTool(BaseModel):
     tool_title: str = Field("", description="Its own title for people, for its line on Talk")
     icon: str | None = Field(None, description="Its extension's icon: a lucide name, or simple-icons:<slug> for a maker's logo")
     timeout: float = 10
+    shortcut_only: bool = Field(False, description="Run by a shortcut only; the model is not offered it")
 
 
 class ToolResult(BaseModel):

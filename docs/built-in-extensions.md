@@ -390,8 +390,8 @@ app fails in go-librespot (`unsupported context type: -`, in 0.10.4 and 0.10.5).
 
 **Parties.** **Start a party** (`spotify_party`) plays a track and runs a Home Assistant light show in
 time with it: the lights start the instant the music does (on go-librespot's own `playing` event, not a
-guessed delay) and the room is put back when it stops. Wire it to a phrase with a
-[shortcut](home-assistant.md): "party time" plays a track on the speakers, the lights hit with the first
+guessed delay) and the room is put back when it stops. Only a shortcut runs it; he is not offered it
+himself. Wire it to a phrase with a [shortcut](home-assistant.md): "party time" plays a track on the speakers, the lights hit with the first
 beat, and when the song ends the room returns to how it was. One party runs at a time: a new party, or
 any song asked for, first ends the one going (its light script stops and its restore scene comes on),
 and a party also ends when its own song does, so the next song Spotify plays does not run under a light

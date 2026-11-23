@@ -344,7 +344,18 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         brain = Brain(app.state.cfg, channel="web")
         await brain.start()
         names = [t.name for t in brain.tools.standard_tools]
-        expect("a brain gets the extension tools after its own", names[-len(tools):] == [t["name"] for t in tools], names)
+        offered = [t["name"] for t in tools if not t["shortcut_only"]]
+        expect("a brain gets the extension tools after its own", names[-len(offered):] == offered, names)
+        expect("but not a shortcut-only one, which it can still run", ("probe_scene" in names,
+               brain.llm.has_function("probe_scene")), (False, True))
+        lean = {t.name: t.properties for t in brain.tools.standard_tools}["probe_state"]
+        expect("its parameters without Pydantic's titles", lean, {"entity_id": {"type": "string"}})
+        expect("and null not offered beside a type when it is only the default",
+               ext_client.lean({"anyOf": [{"type": "number"}, {"type": "null"}], "default": None, "title": "Delay",
+                                "description": "Seconds."}), {"type": "number", "description": "Seconds."})
+        expect("a parameter named title keeps its name",
+               ext_client.lean({"properties": {"title": {"type": "string", "title": "Title"}}}),
+               {"properties": {"title": {"type": "string"}}})
         expect("their tiers are known", guard.tool_tier("probe_seen") == guard.READ
                and guard.tool_tier("probe_switch_off") == guard.ACT and guard.tool_tier("probe_wipe") == guard.ACT)
 

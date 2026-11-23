@@ -66,10 +66,32 @@ async def tools_changed(brain) -> bool:
     return signature(tools, kinds > 0) != brain.tools_signature
 
 
+def lean(node: Any) -> Any:
+    """A parameter's schema without what Pydantic adds for people, which the brain reads as tokens: the title,
+    and null offered beside the type when null is only the default. The extension still checks the full one."""
+    if not isinstance(node, dict):
+        return node
+    choices = node.get("anyOf")
+    if isinstance(choices, list) and len(choices) == 2 and {"type": "null"} in choices \
+            and "default" in node and node["default"] is None:
+        node = {**{k: v for k, v in node.items() if k not in ("anyOf", "default")},
+                **next(c for c in choices if c != {"type": "null"})}
+    node = {k: v for k, v in node.items() if k != "title"}
+    if isinstance(node.get("properties"), dict):
+        node["properties"] = {name: lean(s) for name, s in node["properties"].items()}
+    for k in ("items", "additionalProperties"):
+        if isinstance(node.get(k), dict):
+            node[k] = lean(node[k])
+    if isinstance(node.get("anyOf"), list):
+        node["anyOf"] = [lean(c) for c in node["anyOf"]]
+    return node
+
+
 def schema_of(tool: dict[str, Any]) -> FunctionSchema:
     params = tool.get("parameters") or {}
     return FunctionSchema(name=tool["name"], description=tool["description"],
-                          properties=params.get("properties") or {}, required=params.get("required") or [])
+                          properties={name: lean(s) for name, s in (params.get("properties") or {}).items()},
+                          required=params.get("required") or [])
 
 
 def make_handler(cfg: WinstonConfig, tool: dict[str, Any], channel: str,
@@ -120,7 +142,11 @@ async def register(brain, channel: str) -> list[str]:
     live.know_extension_tools(tools)
     for tool in tools:
         guard.set_tier(tool["name"], guard.READ if tool["tier"] == "read" else guard.ACT)
-        brain.add_tool(schema_of(tool), make_handler(brain.cfg, tool, channel, lambda: brain.on_slow))
+        handler = make_handler(brain.cfg, tool, channel, lambda: brain.on_slow)
+        if tool.get("shortcut_only"):           # a shortcut's call runs it by name; the model is not told of it
+            brain.llm.register_function(tool["name"], handler)
+        else:
+            brain.add_tool(schema_of(tool), handler)
     names = [t["name"] for t in tools]
     brain.tools_signature = signature(tools, speaking)
     if speaking:
