@@ -26,12 +26,12 @@ export function WinstonHeader({ name, state, actions }: Props) {
   const problem = notReady(status.data, config.data, status.isError)
   const attention = needsAttention(status.data)
   return (
-    <header className="mt-4 mb-3.5 flex w-full max-w-3xl items-center gap-3 rounded-2xl border bg-card px-4 py-3 shadow-xs max-sm:w-[calc(100%-1rem)] sm:gap-4">
+    <header className="mt-4 mb-3.5 flex w-full max-w-3xl items-center gap-2 rounded-2xl border bg-card px-4 py-3 shadow-xs max-sm:w-[calc(100%-2rem)] max-sm:px-3 sm:gap-4">
       {/* The name's link covers his presence too; the Status link sits above it. */}
-      <div className="relative flex min-w-0 items-center gap-3 sm:gap-4">
+      <div className="relative flex min-w-0 items-center gap-2.5 sm:gap-4">
         <Presence state={state} className="size-11 shrink-0 sm:size-13" />
         <div className="flex min-w-0 flex-col">
-          <h1 className="text-xl font-bold break-words">
+          <h1 className="text-xl font-bold break-words max-sm:text-lg">
             <Link to="/" aria-label={`Talk to ${name}`} className="after:absolute after:inset-0">
               {name}
             </Link>
@@ -49,7 +49,7 @@ export function WinstonHeader({ name, state, actions }: Props) {
           </span>
         </div>
       </div>
-      <nav className="ml-auto flex shrink-0 items-center gap-1">
+      <nav className="ml-auto flex shrink-0 items-center sm:gap-1">
         {actions}
         {LINKS.map(({ to, label, Icon }) => (
           <Button
