@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from winston.config import data_dir, repo_root
 from winston.config.presets import LLM
-from winston.config.schema import WinstonConfig
+from winston.config.schema import WinstonConfig, server_root
 from winston.core import memory
 from winston.core.common import failure_words
 from winston.core.voices import clones
@@ -176,7 +176,7 @@ def ollama_copy(model: str) -> str:
 
 def served_model(cfg: WinstonConfig) -> str:
     """The model name the brain's requests carry: llm.model, or its copy when Winston runs Ollama."""
-    e = cfg.engines.get("llm")
+    e = cfg.engine_at("llm")
     return ollama_copy(cfg.llm.model) if e and e.enabled and llm_engine(e.model_dump()) == "ollama" \
         else cfg.llm.model
 
@@ -307,9 +307,11 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
         engine = None
     elif not isinstance(engine.get("volumes") or {}, dict):
         engine = {**engine, "volumes": {}}
-    saved = cfg.engines["llm"].model_dump() if "llm" in cfg.engines else None
+    saved = cfg.engine_at("llm").model_dump() if "llm" in cfg.engines else None
     if engine is None:
         engine = saved
+    elif engine.get("driver") == "external" and not engine.get("url"):
+        engine = {**engine, "url": server_root(url)}          # a server on your network: the address on the card
     kind = llm_engine(engine)
     # The folder read is the saved engine's, never one a request names: a GET must not list host paths.
     cache = hf_cache(saved)

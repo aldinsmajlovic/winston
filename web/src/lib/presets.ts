@@ -63,7 +63,7 @@ export function matchPreset(kind: Kind, config: Config, presets: Preset[]): stri
     if (!e) return kind === 'stt' && !engine
     if (!engine || e.driver !== engine.driver) return false
     if (e.image && e.image !== engine.image) return false
-    if (e.url && e.url !== engine.url) return false
+    if ((e.url ?? null) !== (engine.url ?? null)) return false     // none matches none: a server on your network
     if (e.cwd && e.cwd !== engine.cwd) return false
     return true
   })

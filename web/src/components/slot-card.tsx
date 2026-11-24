@@ -36,13 +36,20 @@ const ENGINES: Record<Kind, string[]> = { llm: ['engines', 'llm'], tts: ['engine
 // The slot's own fields How it runs holds whatever runs it: facts about the server that Runs on sets.
 const SERVER: Record<Kind, string[][]> = { llm: [['llm', 'thinking', 'control']], tts: [['tts', 'sample_rate']], stt: [] }
 
+/** A server on your network: an external engine with no address of its own, checked at the API address.
+ * Only you know how it works, so its server fields are on the card, not folded away. */
+function yours(kind: Kind, config: Config): boolean {
+  const e = config.engines?.[kind]
+  return e?.driver === 'external' && !e.url
+}
+
 /** The slot's fields How it runs holds, by path: also the API address while Winston runs the engine
  * (Docker or Process), beside the port it must match. For a hosted server the address is the choice
  * itself, so it stays on the card. */
 function held(kind: Kind, config: Config): string[][] {
   const driver = config.engines?.[kind]?.driver
   const local = driver === 'docker' || driver === 'subprocess'
-  return [...(local ? [[kind, 'base_url']] : []), ...SERVER[kind]]
+  return [...(local ? [[kind, 'base_url']] : []), ...(yours(kind, config) ? [] : SERVER[kind])]
 }
 
 /** The keys of the slot's own section that its card leaves to How it runs, for the card form's omit. */
@@ -148,6 +155,12 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
           ) : null}
         </div>
         {children}
+        {/* A nested server field (how thinking is switched) is not in the card's own form: drawn here. */}
+        {yours(kind, page.value)
+          ? SERVER[kind]
+              .filter((p) => p.length > 2)
+              .map((p) => <SectionForm key={p.join('.')} page={page} path={p.slice(0, -1)} omit={allBut(page.schema, p.slice(0, -1), p.slice(-1))} />)
+          : null}
         <InstallLine page={page} kind={kind} />
         <HowItRuns page={page} kind={kind} presets={presets} setup={setup} />
       </CardContent>

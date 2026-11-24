@@ -165,7 +165,7 @@ and Add a custom engine, which asks a name and how it runs. Log is described wit
 
 The What runs his brain card has, from the top:
 
-- **Runs on**: presets (vLLM, llama.cpp, Ollama, hosted), each with a line on what it is good at and
+- **Runs on**: presets (vLLM, llama.cpp, Ollama, a server on your network, hosted), each with a line on what it is good at and
   what it needs where its name does not say. Picking one rewrites the engine block and the settings
   that go with it, and asks first when you had edited that block.
 - **Model**, from three lists: Running, what the brain's server reports; Downloaded, what the chosen
@@ -252,8 +252,8 @@ modes: a setting is on its page or, for what nobody sets by hand, only in config
 ([settings only in config.yaml](running.md#settings-only-in-configyaml)).
 
 - **A field that does not apply is not shown**: an API key only for a hosted brain or voice (an engine
-  Winston does not run, at an address off this computer, so not Ollama), the voice's Model only for a
-  hosted one, the Streaming settings only when the speech engine's command
+  Winston does not run, at an address off this computer, so not Ollama here), and marked Optional when
+  no key variable is named (a server on your network), the voice's Model only for a hosted one, the Streaming settings only when the speech engine's command
   uses them, engine fields only for their driver.
 - **A feature switched off** (a channel, memory, announcements) keeps its fields visible and editable
   at full contrast. Its switch's line says they wait until it is on, and its keys do not warn.

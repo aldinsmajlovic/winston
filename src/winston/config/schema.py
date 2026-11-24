@@ -56,6 +56,11 @@ def secret(default: str, label: str, help: str | None = None, optional: bool = F
             **({"optional": True} if optional else {})}
 
 
+def server_root(base_url: str) -> str:
+    """A server's own address from its OpenAI API address: http://box:8000/v1 -> http://box:8000."""
+    return base_url.rstrip("/").removesuffix("/v1")
+
+
 # A provider: an engine Winston does not run (or none at all) at an address off this computer, so not Ollama.
 HOSTED = {"engines.{slot}.driver": ["external", None], "remote": True}
 DISCORD_ID = r"^\d{17,20}$"
@@ -149,10 +154,11 @@ class EngineConfig(Model):
                            json_schema_extra=ui(drivers=["docker"],
                                                 help="Some servers need it to share memory between their workers."))
     url: str | None = Field(None, title="Address", description="Where an engine you run yourself answers.",
-                            json_schema_extra=ui(drivers=["external"], help="Where Winston checks that it answers."))
+                            json_schema_extra=ui(drivers=["external"], help="Where Winston checks that it answers. "
+                                                                           "Empty: the API address, without its /v1."))
     health: str = Field("/health", title="Health check path",
-                        description="HTTP path that returns 200 when ready. Empty: no check, the engine counts as up "
-                                    "whenever its process is (hosted APIs).",
+                        description="HTTP path that returns 200 when ready (or 401 or 403: it answers, wanting a key). "
+                                    "Empty: no check, the engine counts as up whenever its process is (hosted APIs).",
                         json_schema_extra=ui(empty_means_off=True))
     startup_timeout: int = Field(600, title="Startup time limit",
                                  description="How long it may take to pass its health check before it counts as "
@@ -906,6 +912,15 @@ class WinstonConfig(Model):
                                       json_schema_extra=ui(restarts=["{brains}"]))   # a list: its items' section is not read
     logging: LoggingConfig = LoggingConfig()
     control: ControlConfig = Field(ControlConfig(), title="Web address")
+
+    def engine_at(self, name: str) -> EngineConfig | None:
+        """The engine block, an external one with no address of its own at its slot's API address (base_url
+        without its /v1): a server on your network is named once, on the card."""
+        e = self.engines.get(name)
+        base = getattr(getattr(self, name, None), "base_url", None)
+        if e and e.driver == "external" and not e.url and isinstance(base, str):
+            return e.model_copy(update={"url": server_root(base)})
+        return e
 
     @model_validator(mode="before")
     @classmethod

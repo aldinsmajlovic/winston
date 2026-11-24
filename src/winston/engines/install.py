@@ -63,7 +63,7 @@ async def parts(name: str, cfg: WinstonConfig) -> list[Part]:
     """What engine `name` of cfg needs here, each installed or not. The network is asked for sizes only;
     offline, what is on disk counts and the rest has no size. A part that cannot be read (Docker not
     running, Ollama not answering) is left out: the engine's own start says what is wrong."""
-    e = cfg.engines.get(name)
+    e = cfg.engine_at(name)
     if not e or not e.enabled:
         return []
     from winston.api.options import llm_engine

@@ -441,6 +441,8 @@ runs fold at the bottom of its slot card, its driver beside the title.
 - The fold starts closed on every load and is never remembered.
 - A custom engine's page is itself its How it runs and draws it open.
 - The setup wizard leaves it out: every pick there is a preset. Its state line stays.
+- A server on your network (an external engine with no address of its own) keeps its server fields,
+  How thinking is switched, on the card: only you know that server.
 - Nothing else is folded to hide settings; a fold elsewhere only shortens a long list.
 
 Above the fold, so a problem is never folded away, the card keeps:

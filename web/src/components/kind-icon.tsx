@@ -32,6 +32,7 @@ import {
   RadioTower,
   RobotVacuum,
   ScrollText,
+  Server,
   Smartphone,
   Speaker,
   Sun,
@@ -86,6 +87,7 @@ const kinds: Record<string, LucideIcon> = {
   pocket: Cpu,
   process: Terminal,
   external: Globe,
+  server: Server,
   // channels
   satellite: RadioTower,
   // where a hint word comes from (stt.hint_words)

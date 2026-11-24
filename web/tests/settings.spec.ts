@@ -295,6 +295,23 @@ test('the model box searches as you type, and a typed name can still be used', a
   await expect(page.locator('#cfg_llm_model')).toContainText('my-own/model')
 })
 
+test('a server on your network: one address, how it switches thinking and an optional key, on the card', async ({ page }) => {
+  await open(page, '/brain')
+  const runsOn = page.getByRole('combobox', { name: 'Runs on' })
+  await runsOn.click()
+  await page.getByRole('option', { name: /^A server on your network/ }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Replace' }).click()      // the copy's brain is its own
+  await expect(runsOn).toContainText('A server on your network')
+  await expect(page.locator('#cfg_llm_base_url')).toBeVisible()
+  await expect(page.getByText('How thinking is switched', { exact: true })).toBeVisible()
+  await expect(page.locator('#cfg_llm_api_key_env__secret')).toHaveAttribute('placeholder', 'Optional')
+  // Only the model says Not set, to be picked from what the server lists; the key does not.
+  await expect(page.getByText('Not set', { exact: true })).toHaveCount(1)
+  await expect(page.getByRole('combobox', { name: 'Model' })).toContainText('Not set')
+  await page.getByRole('button', { name: 'How it runs', exact: true }).click()
+  await expect(page.getByText('How thinking is switched', { exact: true })).toHaveCount(1)
+})
+
 test('the API key is asked for a hosted brain, not for Ollama on this computer', async ({ page }) => {
   await open(page, '/brain')
   const runsOn = page.getByRole('combobox', { name: 'Runs on' })

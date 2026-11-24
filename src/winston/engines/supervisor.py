@@ -127,8 +127,9 @@ class Supervisor:
     @staticmethod
     def _build(cfg: WinstonConfig) -> dict[str, Managed]:
         items: dict[str, Managed] = {}
-        for name, e in cfg.engines.items():
-            if not e.enabled:
+        for name in cfg.engines:
+            e = cfg.engine_at(name)
+            if not e or not e.enabled:
                 continue
             e = _expand_model(e, cfg)
             driver = {"docker": DockerDriver, "subprocess": SubprocessDriver, "external": ExternalDriver}[e.driver](name, e)
@@ -217,7 +218,7 @@ class Supervisor:
             return await m.driver.running()
         try:
             async with httpx.AsyncClient(timeout=3) as c:
-                return (await c.get(m.health_url)).status_code == 200
+                return (await c.get(m.health_url)).status_code in (200, 401, 403)   # 401, 403: up, wants a key
         except Exception:  # noqa: BLE001
             return False
 
@@ -303,7 +304,7 @@ class Supervisor:
             if hub and (now := await asyncio.to_thread(install.hub_bytes, hub)) > seen:
                 seen, deadline = now, max(deadline, time.time() + DOWNLOAD_GRACE_SECS)
                 m.detail = f"downloading, {install.gb(now - first)} so far"
-        hint = ("; nothing answered at its Address, check that it runs" if m.cfg.driver == "external"
+        hint = (f"; nothing answered at {m.health_url}, check that it runs there" if m.cfg.driver == "external"
                 else f"; its download stopped at {install.gb(seen - first)}" if seen > first
                 else "; raise Startup time limit under How it runs if it is slow to load" if m.kind == "engine" else "")
         self._set(m, "error", f"not ready after {m.cfg.startup_timeout} s{hint}")

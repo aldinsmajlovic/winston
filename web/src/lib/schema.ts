@@ -239,7 +239,8 @@ function secretField(field: JsonSchema, meta: SecretMeta, path: Path, config: un
   const current = getIn(config, path)
   const unnamed = typeof current !== 'string' || current.trim() === ''
   const name = unnamed ? meta.default : (current as string).trim()
-  const secret: SecretField = { name, path, unnamed, optional: meta.optional === true, quiet: waits }
+  // No variable named: nothing is sent unless a key is pasted (a server on your network that wants none).
+  const secret: SecretField = { name, path, unnamed, optional: meta.optional === true || unnamed, quiet: waits }
   return {
     type: 'string',
     title: meta.label,

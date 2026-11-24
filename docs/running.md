@@ -106,7 +106,7 @@ responding, Stopped or Failed. An error says why, and stays until you start or s
 - An engine that does not answer its health check within `startup_timeout` says so. While the Hugging
   Face cache grows during a start (a voice fetching its weights the first time), it waits on and says
   "downloading, 1.2 GB so far"; a download that stops says where it stopped. An external server says
-  that nothing answered at its Address. A channel says only that it was not ready.
+  where nothing answered ("nothing answered at http://192.168.1.10:8000/v1/models"). A channel says only that it was not ready.
 
 `winston status` prints an error's reason on the line under it. In the UI, Log shows the end of an
 engine's or channel's log (`GET /api/engines/{name}/log?lines=200`): the log file of a process, the

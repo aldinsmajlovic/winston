@@ -76,6 +76,15 @@ LLM: list[Fragment] = [
                              "model": "granite4.1:8b", "thinking": {"control": "reasoning_effort"}}},
     },
     {
+        "id": "network", "icon": "server", "title": "A server on your network", "needs": [],
+        "hint": "A brain you already run on another computer: Ollama, vLLM, llama.cpp or any OpenAI-compatible "
+                "server, listening on your network. Put its API address below; a key only if it asks for one.",
+        # No address of its own: the API address on the card is the one checked (WinstonConfig.engine_at).
+        "engine": {"driver": "external", "port": 8000, "health": "/v1/models", "startup_timeout": 30},
+        "settings": {"llm": {"base_url": "http://192.168.1.10:8000/v1", "api_key_env": None, "model": "",
+                             "thinking": {"control": "chat_template"}}},
+    },
+    {
         "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI-compatible URL)", "needs": ["internet"],
         "hint": "A cloud model at any OpenAI-compatible address. Needs the provider's key; your requests leave "
                 "your network.",

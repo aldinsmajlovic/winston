@@ -11,7 +11,7 @@ const THINKING = ['llm', 'thinking']
 const SAMPLING = ['llm', 'sampling']
 // Each has its own card below.
 const OWN_CARDS = ['thinking', 'sampling']
-// How thinking is switched is a fact about the server: it sits in How it runs.
+// How thinking is switched is a fact about the server: it sits in How it runs (on the card for a server on your network).
 const SWITCH = ['control']
 
 /** The brain: what runs it and which model with how it runs folded at the bottom, whether he thinks
@@ -36,7 +36,7 @@ export default function BrainPage() {
           <CardHeader>
             <CardTitle>Think before answering</CardTitle>
             <CardDescription>
-              This server has no thinking switch, so it decides by itself. If yours has one, set How thinking is switched under How it runs, above.
+              This server has no thinking switch, so it decides by itself. If yours has one, set How thinking is switched above.
             </CardDescription>
           </CardHeader>
         </Card>

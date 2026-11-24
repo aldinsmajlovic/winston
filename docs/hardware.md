@@ -25,6 +25,9 @@ conversation text to the model provider.
   Any model whose Ollama page lists `tools` works. The default, `granite4.1:8b`, fits a 12 GB card;
   on less than about 8 GB free, pick `qwen3.5:4b`. Expect fewer requests right than on the 24 GB
   profiles ([comparing brains](#comparing-brains)).
+- **A brain you already run on another computer** (Ollama, vLLM, llama.cpp or any OpenAI-compatible
+  server): any profile, then A server on your network under Runs on. See
+  [a server on your network](#a-server-on-your-network).
 - **No local model:** `hosted`. Put the key in `data/.env` as `LLM_API_KEY`, set `llm.model` to
   the name your provider uses, and check the base URL. Thinking control is `none`, since hosted
   APIs have their own switches.
@@ -136,6 +139,7 @@ box the 27B writes 60 to 90 tokens a second with MTP drafting, 44 without.
 | [vLLM](#vllm) | Brain | NVIDIA, in Docker | The fastest tool calls, and images |
 | [llama.cpp](#llamacpp) | Brain | NVIDIA, in Docker | The 27B, fast, and a start in seconds |
 | [Ollama](#ollama) | Brain | Any GPU, Apple silicon or a CPU | A small card, AMD, a Mac, or no GPU |
+| [A server on your network](#a-server-on-your-network) | Brain | Another computer you run it on | A brain you already have, not run twice |
 | [Chatterbox-Turbo](#chatterbox-turbo) | Voice | NVIDIA | A cloned voice that starts quickly |
 | [Pocket TTS](#pocket-tts) | Voice | CPU | No GPU to spare |
 | [Hosted speech](#hosted-speech) | Voice | A provider, with a key | No local voice at all |
@@ -173,6 +177,27 @@ open). Restarting the brain frees it.
   for `granite4.1:8b`) and talks to that. The copy uses the same files and no extra disk, and it is
   made for a model you pulled yourself too.
 - The Brain page lists the model, not the copy.
+
+### A server on your network
+
+For a brain that already runs on another computer, so it is not run twice. Pick A server on your
+network under Runs on, then on the card:
+
+| Field | What to put |
+| --- | --- |
+| API address | The server's, with `/v1`: `http://192.168.1.10:8000/v1` for vLLM or llama.cpp, `http://192.168.1.10:11434/v1` for Ollama |
+| Model | One the server lists, under Running |
+| How thinking is switched | Chat template for vLLM and llama.cpp, Reasoning effort for Ollama, No switch when it has none |
+| API key | Only if the server asks for one; otherwise none is sent |
+
+- **One address.** Winston checks the server at the API address without `/v1` (`/v1/models`), so
+  Status says when it is down. A server that wants a key and answers 401 counts as up.
+- **An Ollama there is still Ollama** (port 11434): Winston pulls the model on it and makes the 16K
+  copy there, as [above](#ollama).
+- **On the server's side,** it listens on the network, not only on itself: `--host 0.0.0.0` for
+  vLLM and llama.cpp, `OLLAMA_HOST=0.0.0.0` for Ollama. It needs a context of at least 16K: his
+  prompt is about 11K tokens, and llama.cpp divides `-c` between its `-np` slots.
+- **Not downloaded by Winston** on vLLM or llama.cpp there: put the model on that server yourself.
 
 ### Chatterbox-Turbo
 
