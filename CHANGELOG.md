@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.7 (unreleased)
+## 0.1.7 (2026-11-24)
 
 - Setup no longer asks to save and restart at every step. Each step saves as you go, and Finish
   restarts whatever needs it.
