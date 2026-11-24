@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.3 (unreleased)
+## 0.1.3 (2026-11-24)
 
 - Winston checks for a new release on his own and shows it on Status with what changed, and Update
   installs it and restarts him.
