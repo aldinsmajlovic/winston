@@ -215,7 +215,7 @@ box says so ("Search, or paste a link"). Anything typed can still be used as is 
 | --- | --- |
 | llama.cpp | The Hub's most downloaded GGUF repos matching every word, each at its 4-bit size (`Q4_K_M`, else the nearest), with downloads and how many sizes it has |
 | Ollama | Ollama's library first (`granite4.2`), then the same Hub repos as `hf.co/repo:quant` |
-| vLLM | The Hub's safetensors repos; Apple's MLX repos are left out |
+| vLLM | The Hub's safetensors repos with the size of their weights; Apple's MLX repos are left out |
 
 - **A repo named exactly** (`unsloth/Qwen3.5-9B-GGUF`) or pasted as a link (`huggingface.co/...`,
   `hf.co/...`, `ollama.com/library/...`) lists every size of it, smallest first, each with its size.
@@ -223,6 +223,11 @@ box says so ("Search, or paste a link"). Anything typed can still be used as is 
   a search result's 4-bit size can be changed.
 - Ollama's library has no search API, so its search page's links are read. If that page changes, it
   finds nothing there and the Hub still answers.
+- **Too big for vLLM**: a vLLM model whose weights plus 2 GB (its context and working memory) are more
+  than vLLM's share of the card (`--gpu-memory-utilization` in How it runs, else vLLM's 0.9, of the
+  card's memory) is greyed: "17.6 GB, too big for the 18.0 GB of graphics memory vLLM may use, with its
+  context". Raising the share in How it runs lists it again. Downloaded repos are greyed the same way.
+  A long context can still not fit; then Status says so when the brain starts.
 - Offline, typing finds nothing and says nothing; a typed name still works.
 - What is typed goes to the Hub (and to ollama.com for Ollama), and nothing else does.
 

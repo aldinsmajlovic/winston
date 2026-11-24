@@ -285,7 +285,37 @@ def downloaded(cache: Path) -> list[tuple[str, str, int]]:
     return out
 
 
-def _downloaded_choices(kind: str, cache: Path) -> list[Choice]:
+# ponytail: a guess at what vLLM needs beside the weights (activations, CUDA graphs, a short context); the real
+# need grows with --max-model-len (Granite 4.2 8B at 32K: 5 GB more), so a model that passes can still not fit.
+VLLM_HEADROOM = 2e9
+
+
+async def vllm_share(engine: dict | None) -> float | None:
+    """Bytes of graphics memory vLLM may use: its --gpu-memory-utilization (vLLM's default 0.9) of the card,
+    None when no single NVIDIA card answers."""
+    from winston.api.app import gpu_status          # lazy: the app imports this module
+    if not (gpu := await asyncio.to_thread(gpu_status)):
+        return None
+    args, share = [str(a) for a in (engine or {}).get("args") or []], 0.9
+    for i, a in enumerate(args):
+        v = args[i + 1] if a == "--gpu-memory-utilization" and i + 1 < len(args) else \
+            a.partition("=")[2] if a.startswith("--gpu-memory-utilization=") else None
+        try:
+            share = float(v) if v is not None else share
+        except ValueError:
+            pass
+    return share * gpu.total_mb * 2 ** 20
+
+
+def _fits(c: Choice, size: int, share: float | None) -> Choice:
+    """The choice greyed, its hint saying why, when its weights leave vLLM no room for a context."""
+    if share and size + VLLM_HEADROOM > share:
+        c.disabled = True
+        c.hint = f"{_size(size)}, too big for the {_size(share)} of graphics memory vLLM may use, with its context"
+    return c
+
+
+def _downloaded_choices(kind: str, cache: Path, share: float | None = None) -> list[Choice]:
     ok, greyed = [], []
     for fmt, value, size in downloaded(cache):
         serves = (fmt == "gguf") == (kind in GGUF_ENGINES)
@@ -298,7 +328,8 @@ def _downloaded_choices(kind: str, cache: Path) -> list[Choice]:
             ok.append(Choice(value=f"hf.co/{value}", label=value, hint=f"{_size(size)}, Ollama pulls its own copy",
                              group="Downloaded"))
         else:
-            ok.append(Choice(value=value, label=value, hint=_size(size), group="Downloaded"))
+            c = _fits(Choice(value=value, label=value, hint=_size(size), group="Downloaded"), size, share)
+            (greyed if c.disabled else ok).append(c)
     return ok + greyed
 
 
@@ -325,7 +356,8 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
     kind = llm_engine(engine)
     # The folder read is the saved engine's, never one a request names: a GET must not list host paths.
     cache = hf_cache(saved)
-    local = _downloaded_choices(kind, cache) if kind else []
+    share = await vllm_share(engine) if kind == "vllm" else None
+    local = _downloaded_choices(kind, cache, share) if kind else []
     sizes = {c.value: c.hint for c in local if not c.disabled}
     headers = {"Authorization": f"Bearer {key}"} if (key := _secret(cfg.llm.api_key_env)) else {}
     running: list[Choice] = []
@@ -350,7 +382,7 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
         source += f"; {ENGINE_NAMES[kind]} models in {cache}"
     if kind:
         have = {c.value for c in choices}
-        choices += [c for c in await _find(kind, (params.get("q") or "").strip(), params.get("model") or cfg.llm.model)
+        choices += [c for c in await _find(kind, (params.get("q") or "").strip(), params.get("model") or cfg.llm.model, share)
                     if c.value not in have]
     return Options(name="llm_models", source=source, choices=choices, ok=ok, served_by=kind)
 
@@ -390,18 +422,22 @@ async def _sizes(kind: str, repo: str, group: str, skip: str = "") -> list[Choic
             for q, n in sorted(sizes.items(), key=lambda x: x[1]) if (v := _gguf_value(kind, repo, q)) != skip]
 
 
-async def _find(kind: str, q: str, model: str) -> list[Choice]:
+async def _find(kind: str, q: str, model: str, share: float | None = None) -> list[Choice]:
     """Models this engine can download, found as you type: the Hub's GGUF repos for llama.cpp and Ollama (each
     at its 4-bit quant) and Ollama's library, or the Hub's safetensors repos for vLLM. A repo named exactly, by
-    its name or a pasted link, lists every quant with its size, as does the GGUF repo picked now ("Other sizes")."""
+    its name or a pasted link, lists every quant with its size, as does the GGUF repo picked now ("Other sizes").
+    A safetensors repo shows its weights' size, greyed when vLLM's share of the card (`share`) cannot hold it."""
     link = LINK.match(q)
     if link and link["ollama"]:
         return [Choice(value=link["ollama"], label=link["ollama"], group="Ollama library", searched=True)]
     named = q.removeprefix("hf.co/").partition(":")[0]
     repo = link["repo"] if link else named if REPO.match(named) else ""
     if kind not in GGUF_ENGINES:
-        return [Choice(value=repo, label=repo, group="Hugging Face", searched=True)] if repo else (
-            await _hub(kind, q) if len(q) >= 2 else [])
+        if repo:
+            n = await _repo_weights(repo)
+            return [_fits(Choice(value=repo, label=repo, group="Hugging Face", searched=True,
+                                 hint=_size(n) if n else None), n, share)]
+        return await _hub(kind, q, share) if len(q) >= 2 else []
     if repo:
         return await _sizes(kind, repo, f"Sizes of {repo}") or await _hub(kind, repo)
     if len(q) < 2:
@@ -411,7 +447,19 @@ async def _find(kind: str, q: str, model: str) -> list[Choice]:
     return found[1] + found[0]
 
 
-async def _hub(kind: str, q: str) -> list[Choice]:
+async def _repo_weights(repo: str) -> int:
+    """Bytes of a safetensors repo's weights from the Hub: its top-level shards, a consolidated copy of the same
+    weights left out. 0 when the Hub does not answer."""
+    from winston.engines.install import _repo_files
+    try:
+        files = await asyncio.wait_for(_repo_files(repo), TIMEOUT)
+    except Exception:                                                   # noqa: BLE001  (offline, or no such repo)
+        return 0
+    top = {f: n for f, n in files.items() if "/" not in f and f.endswith(".safetensors")}
+    return sum(({f: n for f, n in top.items() if not f.startswith("consolidated")} or top).values())
+
+
+async def _hub(kind: str, q: str, share: float | None = None) -> list[Choice]:
     """The Hub's most downloaded repos matching every word, in the format the engine loads."""
     from huggingface_hub import constants
     from huggingface_hub.utils import build_hf_headers
@@ -423,14 +471,16 @@ async def _hub(kind: str, q: str) -> list[Choice]:
         models = r.raise_for_status().json()
     except Exception:                                                   # noqa: BLE001  (offline: typing still works)
         return []
+    models = [m for m in models if "mlx" not in (m.get("tags") or [])]     # Apple's format, which no engine here loads
+    if kind not in GGUF_ENGINES:
+        sizes = await asyncio.gather(*(_repo_weights(m["id"]) for m in models))
+        return [_fits(Choice(value=m["id"], label=m["id"], group="Hugging Face", searched=True,
+                             hint=", ".join([_size(n)] * bool(n) + [_count(m.get("downloads") or 0)])), n, share)
+                for m, n in zip(models, sizes, strict=True)]
     out = []
     for m in models:
         repo, downloads = m["id"], _count(m.get("downloads") or 0)
-        if "mlx" in (m.get("tags") or []):
-            continue                                                    # Apple's format, which no engine here loads
-        if kind not in GGUF_ENGINES:
-            out.append(Choice(value=repo, label=repo, hint=downloads, group="Hugging Face", searched=True))
-        elif quants := _quants(s["rfilename"] for s in m.get("siblings") or []):
+        if quants := _quants(s["rfilename"] for s in m.get("siblings") or []):
             q4 = next((x for x in FOUR_BIT if x in quants), quants[0])
             out.append(Choice(value=_gguf_value(kind, repo, q4), label=f"{repo}:{q4}", group="Hugging Face",
                               hint=f"{downloads}, {len(quants)} size{'s' * (len(quants) > 1)}", searched=True))

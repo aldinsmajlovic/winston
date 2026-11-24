@@ -18,7 +18,7 @@ scratch = scratch_data("winston-engines-data-")         # an empty data folder: 
 
 from winston.config.schema import Channels, DiscordChannel, EngineConfig, WinstonConfig  # noqa: E402  (after WINSTON_DATA is set)
 from winston.engines.drivers import DockerDriver, ExternalDriver, SubprocessDriver  # noqa: E402
-from winston.engines.supervisor import Managed, Supervisor  # noqa: E402
+from winston.engines.supervisor import Managed, Supervisor, _why  # noqa: E402
 
 tmp = Path(tempfile.mkdtemp(prefix="winston-engines-"))
 seen = {}
@@ -108,6 +108,18 @@ check("a server that wants a key is up (401)", asyncio.run(answers(401)), True)
 check("one that answers 200 is up", asyncio.run(answers(200)), True)
 check("one that fails is not (500)", asyncio.run(answers(500)), False)
 
+# The lines vLLM 0.29 logs before it exits, cut from real runs.
+check("vLLM with no room for the context names the share it was given",
+      _why([("(EngineCore pid=150) ERROR [core.py:1374] ValueError: No available memory for the cache blocks. "
+             "Try increasing `gpu_memory_utilization`"), "RuntimeError: Engine core initialization failed."]).split(":")[0],
+      "the model fills all the graphics memory it may use (--gpu-memory-utilization), with none left for its context")
+check("vLLM with too long a context names --max-model-len", "--max-model-len" in _why(
+      [("ValueError: To serve at least one request with the model's max seq len (32768), (5.00 GiB KV cache is "
+        "needed, which is larger than the available KV cache memory (2.10 GiB).")]), True)
+check("a CUDA out-of-memory error reads as one", _why(["torch.OutOfMemoryError: CUDA out of memory."]).startswith(
+      "it ran out of graphics memory"), True)
+check("any other failure is left to the log", _why(["RuntimeError: Engine core initialization failed."]), "")
+
 shutil.rmtree(scratch, ignore_errors=True)
 finish_checks("engines: volume folders made before docker run, failed starts say what to do, a server on your "
-              "network at its API address")
+              "network at its API address, graphics memory running out in words")

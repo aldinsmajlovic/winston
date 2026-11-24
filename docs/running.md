@@ -99,6 +99,11 @@ responding, Stopped or Failed. An error says why, and stays until you start or s
 - A process that exits on its own, during startup or later, shows its exit code and the last line of
   its log, say `exited with code 1: discord.errors.LoginFailure: Improper token has been passed.`
   The full log is `data/logs/<name>.log`.
+- A Docker engine that exits during startup out of graphics memory says so, from its log, naming the
+  setting to change. vLLM's own wording is read: a model with no room left for its context, a context
+  (`--max-model-len`) too long for what is left, other programs already holding the share it asks for
+  (`--gpu-memory-utilization`); any engine's `out of memory` reads as running out. Any other exit says
+  `exited during startup; see docker logs`.
 - A process with no health check (Discord) counts as up only after it has run for 2 seconds.
 - An engine that lacks something it needs is installed first, and says Installing with how far it is
   ("the model, 6.2 GB of 16.4 GB"): its Docker image, its venv under `services/` (`uv sync`, logged to

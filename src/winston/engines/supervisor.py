@@ -103,6 +103,28 @@ def _last_line(driver: Driver, start: int = 0) -> str:
     return lines[-1][:300] if lines else ""
 
 
+# What an engine's log says when graphics memory runs out, most specific first, and the same in words. The
+# settings named are the server's own arguments, as How it runs shows them.
+GPU_MEMORY = (
+    ("No available memory for the cache blocks",                                       # vLLM
+     ("the model fills all the graphics memory it may use (--gpu-memory-utilization), with none left for its "
+      "context: pick a smaller or quantized model")),
+    ("cache is needed, which is larger than the available KV cache memory",           # vLLM
+     "its context (--max-model-len) does not fit beside the model: lower it, or raise --gpu-memory-utilization"),
+    ("is less than desired GPU memory utilization",                                    # vLLM
+     ("other programs already hold the graphics memory it asks for (--gpu-memory-utilization): lower it, or "
+      "stop what else uses the card")),
+    ("out of memory",                                                                  # CUDA, llama.cpp
+     "it ran out of graphics memory: pick a smaller model, or stop what else uses the card"),
+)
+
+
+def _why(lines: list[str]) -> str:
+    """Why an engine stopped, in words, when its log lines say graphics memory ran out; "" otherwise."""
+    text = "\n".join(lines).lower()
+    return next((words for needle, words in GPU_MEMORY if needle.lower() in text), "")
+
+
 def _exited(m: Managed) -> str:
     code, line = _exit_code(m.driver), _last_line(m.driver, m.log_start)
     return f"exited with code {code}" + (f": {line}" if line else "")
@@ -297,7 +319,11 @@ class Supervisor:
                 self._set(m, "healthy"); logger.info(f"{name}: healthy after {took:.0f} s"); return m
             if not await m.driver.running():
                 m.expected = False
-                detail = _exited(m) if _exit_code(m.driver) is not None else "exited during startup; see docker logs"
+                if _exit_code(m.driver) is not None:
+                    detail = _exited(m)
+                else:                               # a container: started afresh, so its log is this run's
+                    why = _why(await asyncio.to_thread(m.driver.tail, 200))
+                    detail = f"exited during startup: {why}" if why else "exited during startup; see docker logs"
                 self._set(m, "error", detail); logger.error(f"{name}: {detail}")
                 return m
             await asyncio.sleep(3)
