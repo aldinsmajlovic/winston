@@ -2,8 +2,8 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
-import { $api, type EngineStatus, type Presets, type SetupState } from '@/api/client'
-import { partName, useEngineActions, useStatus } from '@/api/status'
+import { $api, fetchClient, type EngineStatus, type Presets, type SetupState } from '@/api/client'
+import { partName, pendingRestarts, useEngineActions, useStatus } from '@/api/status'
 import { ClonedVoices } from '@/components/cloned-voices'
 import { LoadError, useTitle } from '@/components/page'
 import { Presence } from '@/components/presence'
@@ -277,6 +277,7 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
   const navigate = useNavigate()
   const client = useQueryClient()
   const finish = $api.useMutation('post', '/api/setup/finish', { onSuccess: (data) => client.setQueryData(setupKey, data) })
+  const { restart } = useEngineActions()
   const [busy, run] = useBusy()
   const [closed, setClosed] = useState(false)
   const host = page.value.control?.host?.trim() ?? '127.0.0.1'
@@ -289,6 +290,11 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
     run(async () => {
       if (!(await page.save())) return
       await finish.mutateAsync({})
+      // The steps saved without restarting: what runs with older settings restarts now. One still
+      // installing reads the saved config when it starts, and a restart would cut its download.
+      const { data } = await fetchClient.GET('/api/status')
+      for (const e of pendingRestarts(data).running.filter((e) => e.state !== 'installing'))
+        restart.mutate({ params: { path: { name: e.name } } })
       if (closing) setClosed(true)
       else void navigate('/')
     })

@@ -85,6 +85,31 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
   })
 }
 
+test('the steps save without restarting; Finish restarts what waits, except one still installing', async ({ page }) => {
+  startSetup({ brain: 'done', home_assistant: 'done', who: 'done', box: 'done' })
+  // The smoke test runs one stand-in engine: two made from it, running with saved changes waiting.
+  await page.route('**/api/status', async (r) => {
+    const status = await (await r.fetch()).json()
+    const [e] = status.engines
+    status.engines = [
+      { ...e, name: 'tts', state: 'healthy', config_changed: true },
+      { ...e, name: 'stt', state: 'installing', config_changed: true },
+    ]
+    await r.fulfill({ json: status })
+  })
+  const restarted: string[] = []
+  await page.route('**/api/engines/*/restart', (r) => {
+    restarted.push(r.request().url().split('/').at(-2)!)
+    return r.fulfill({ json: { ok: true } })
+  })
+  await page.goto('/setup/done')
+  await page.getByRole('button', { name: 'Finish and go to Talk' }).click()
+  await expect(page).toHaveURL(/:\d+\/$/)
+  await expect(page.getByRole('alertdialog')).toHaveCount(0)
+  await expect.poll(() => restarted).toEqual(['tts'])
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
 test('while setup is not finished, his address opens the wizard', async ({ page }) => {
   startSetup()
   await page.goto('/')
@@ -122,7 +147,7 @@ test('the wizard signs in to Home Assistant, which then lists the devices he can
   expect(errors).toEqual([])
 })
 
-test('the wizard renames him, and his personality follows as on the Assistant page', async ({ page }) => {
+test('the wizard renames him without asking, and his personality follows as on the Assistant page', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   const personaFile = join(data, 'persona.md')
@@ -140,11 +165,9 @@ test('the wizard renames him, and his personality follows as on the Assistant pa
     // The smoke test's copy has every engine off.
     await expect(page.getByText('Speaking is off, so a voice cannot be heard.')).toBeVisible()
     await name.fill('Smokey')
+    // The wizard asks nothing: it takes the confirm's default and renames him in his personality too.
     await page.getByRole('button', { name: 'Save and continue' }).click()
-    const dialog = page.getByRole('alertdialog')
-    await expect(dialog.getByRole('heading')).toHaveText('Rename him to Smokey?')
-    await expect(dialog.getByRole('checkbox', { name: `His personality says ${old} in 2 places. Change them to Smokey?` })).toBeChecked()
-    await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByRole('alertdialog')).toHaveCount(0)
     await expect(page).toHaveURL(/\/setup\/box$/)
     await expect.poll(() => readFileSync(personaFile, 'utf8')).toBe(persona.replaceAll(old, 'Smokey'))
     expect(readFileSync(join(data, 'config.yaml'), 'utf8')).toContain('name: Smokey')
@@ -180,7 +203,6 @@ test('a room box added when Home Assistant does not disable its old entry: said,
     await expect(page.getByRole('switch', { name: 'Disable it in Home Assistant' })).toBeChecked()
     await page.getByLabel('Room', { exact: true }).fill('Smoke room')
     await page.getByRole('button', { name: 'Add the box and continue' }).click()
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Save', exact: true }).click()
     await expect(page.getByText(refused)).toBeVisible()
     await expect(page.getByText('A box is in that room already.')).toHaveCount(0)
     await page.getByRole('button', { name: 'Continue' }).click()

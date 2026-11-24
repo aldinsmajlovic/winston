@@ -502,7 +502,10 @@ export function useSettings(): Loading | Ready {
       stopping.length ? `stop ${joinNames(stopping.map(engineLabel))}` : null,
     ].filter((v) => v !== null)
     let restart = false
-    if (costs.length || elsewhere || check) {
+    // The wizard saves each step without asking, taking the confirm's defaults; what waits for a
+    // restart is restarted at Finish (DoneStep).
+    if (pathname.startsWith('/setup')) renamePersona = !!check
+    else if (costs.length || elsewhere || check) {
       const choice = await ask({
         // A rename leads (its restarts are in the lines and the choices), as Save and restart would bury it.
         title: rename ? `Rename him to ${rename.new}?` : verbs.length ? `Save and ${joinNames(verbs)}?` : 'Save these changes?',
