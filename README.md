@@ -68,12 +68,6 @@ Setup, with or without Home Assistant adopting the box: [Voice PE](docs/voice-pe
 
 <sub>Photo: [Home Assistant](https://www.home-assistant.io/voice-pe/), CC BY-NC-SA 4.0.</sub>
 
-## Status
-
-Early. Voice, Home Assistant, the web UI, memory, extensions and the Voice PE work. Not yet: talking
-over him on the Voice PE, Discord against the real Discord, and the setup wizard's Home Assistant
-step against a real one. Progress is in [the plan](docs/plan.md).
-
 ## Documentation
 
 - **Using it:** [setup](docs/setup.md), [running](docs/running.md), [Home Assistant](docs/home-assistant.md),

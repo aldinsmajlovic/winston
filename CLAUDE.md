@@ -50,12 +50,12 @@ A change is not done until the docs say it exists. Follow `docs/writing-docs.md`
 ## The README is a front page, not a changelog
 
 Most changes do not touch `README.md`. Touch it only when the change alters what Winston is at a glance:
-a new channel, a new requirement, a quickstart step, a change in what Status says works.
+a new channel, a new requirement, a quickstart step.
 
 - The Features list stays at about eight lines, each one sentence or two about what the user gets.
   A new feature is folded into an existing line or replaces a weaker one. Never append a bullet for it.
 - No implementation detail (timings per step, config keys, dates, test names, how a guard works).
   That belongs on the topic page.
-- Status is two lines. The plan holds the rest.
+- No Status section: what works and what does not is the plan's, which is kept for working on Winston.
 - When you do edit it, reread the whole file and rewrite it as one page someone cloning today would
   read, the way a well-kept open source README reads. Remove anything no longer true.

@@ -7,7 +7,8 @@ How the docs are kept current and how they should read. Applies to people and to
 A change is not done until the docs say it exists. In the same commit as the code:
 
 - **README**: only when the change alters what Winston is at a glance: a new channel, a new
-  requirement, a quickstart step, a status change. Most features belong on their topic page alone.
+  requirement, a quickstart step. Most features belong on their topic page alone. It has no status:
+  that is the plan's.
   The feature list stays at about eight short lines; a new feature is folded into an existing line or
   replaces a weaker one, never appended. Reread the whole README and rewrite it as one page, not as a
   log of what was added last.
@@ -29,7 +30,7 @@ links to it.
 
 | Page | Owns |
 | --- | --- |
-| `README.md` | Pitch, one screenshot, about eight features, status in two lines, quickstart, links |
+| `README.md` | Pitch, one screenshot, install, about eight features, links |
 | `docs/running.md` | Commands, engines, logs, exposure |
 | `docs/web-ui.md` | The web UI's pages and how settings pages work |
 | `docs/setup.md` | Installing, what needs root, the first-run wizard, updating and removing, releases |
