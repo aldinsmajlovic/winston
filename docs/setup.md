@@ -3,8 +3,8 @@
 One command installs Winston on a Linux computer, and a wizard on his page does the rest the first
 time it opens: the brain and voice for your hardware, Home Assistant, who he is, and a room box.
 
-Until the first release is out, install [from a clone](#from-a-clone), as the README's Quickstart
-does. Where the track stands is in the [plan](plan.md) (Setup track).
+To develop on Winston, install [from a clone](#from-a-clone) instead. Where the track stands is in
+the [plan](plan.md) (Setup track).
 
 ```mermaid
 flowchart LR
