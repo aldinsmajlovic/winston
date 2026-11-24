@@ -848,7 +848,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                     else Response(why, status_code=403, media_type="text/plain"))
         response = await call_next(request)
         if key and request.query_params.get("key"):
-            response.set_cookie(setup_link.COOKIE, key, httponly=True, samesite="strict")
+            # Lax, not Strict: Home Assistant's login sends the browser back here from its own site, and a
+            # Strict cookie stays behind on that navigation (a 403 instead of the sign-in's callback).
+            response.set_cookie(setup_link.COOKIE, key, httponly=True, samesite="lax")
         return response
 
     @app.exception_handler(RequestValidationError)

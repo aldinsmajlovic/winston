@@ -70,6 +70,8 @@ try:
     r = phone.get("/api/setup", params={"key": key})
     check("with the setup link's key it is served, and knows it is another device",
           (r.status_code, r.json()["remote"], setup_link.COOKIE in r.cookies), (200, True, True))
+    check("a Lax cookie, sent on the way back from Home Assistant's login",
+          "samesite=lax" in r.headers["set-cookie"].lower(), True)
     check("then by the cookie it set, without the key", phone.get("/api/status").status_code, 200)
     r = phone.put("/api/secrets/LLM_API_KEY", json={"value": "sk-test-from-the-phone"})
     check("a key pasted there is saved, as on this computer", (r.status_code, "sk-test-from-the-phone" in
