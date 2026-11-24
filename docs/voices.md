@@ -6,7 +6,7 @@ engines, and the names he should hear right. What was measured, run by run, is o
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
-  <img src="images/voice-light.png" alt="The Voice page: Speaking with its voice, streaming and its closed How it runs, then Your voices, with Hearing below" width="720">
+  <img src="images/voice-light.png" alt="The Voice page: Speaking with its voice, streaming and its closed How it runs, then Your voices, and Hearing on Fluid Speech Pro" width="720">
 </picture>
 
 ## Picking a voice

@@ -241,7 +241,7 @@ Off, nothing is read ahead, which saves a hosted brain the extra requests.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
-  <img src="images/voice-light.png" alt="The Voice page: Speaking with its voice, streaming and its closed How it runs, then Your voices, with Hearing below" width="720">
+  <img src="images/voice-light.png" alt="The Voice page: Speaking with its voice, streaming and its closed How it runs, then Your voices, and Hearing on Fluid Speech Pro" width="720">
 </picture>
 
 Voice does for speaking and hearing what Brain does for the brain: what runs each, its model or voice,
