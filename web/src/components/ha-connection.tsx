@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { LoaderCircle } from 'lucide-react'
 import { useSearchParams } from 'react-router'
-import { $api, errorText } from '@/api/client'
+import { toast } from 'sonner'
+import { $api, errorText, fetchClient } from '@/api/client'
 import { StatusLine } from '@/components/status-line'
 import { Button } from '@/components/ui/button'
 import { refreshHomeAssistant, type HAExposure } from '@/hooks/use-home-assistant'
@@ -10,13 +11,29 @@ import { refreshHomeAssistant, type HAExposure } from '@/hooks/use-home-assistan
 /** The page signing in comes back to: the Home Assistant page or the wizard's step. */
 export type SignInBack = '/home-assistant' | '/setup/home_assistant'
 
-/** Starts signing in: winstond keeps the sign-in's state and gives Home Assistant's login, which the browser
- * opens; Home Assistant sends it back to `back` once Winston has his own token there. */
+/** Where the sign-in tab hands its result back to the page that opened it. */
+const SIGNIN_CHANNEL = 'winston-ha-signin'
+
+/** Starts signing in: winstond checks Home Assistant answers at the address, keeps the sign-in's state and
+ * gives its login, which opens in a new tab (this one, if the browser blocks it). Home Assistant sends that
+ * tab back to `back` once Winston has his own token there, and HASignInResult hands the result over here. */
 function useSignIn(back: SignInBack) {
-  const start = $api.useMutation('post', '/api/providers/home_assistant/signin', {
-    onSuccess: (data) => window.location.assign(data.authorize),
-  })
-  return { go: (url: string) => start.mutate({ body: { url: url.trim(), back } }), busy: start.isPending || start.isSuccess }
+  const [busy, setBusy] = useState(false)
+  const go = async (url: string) => {
+    const tab = window.open('', '_blank')       // opened on the click itself, so no popup blocker stops it
+    setBusy(true)
+    const { data, error } = await fetchClient.POST('/api/providers/home_assistant/signin', { body: { url: url.trim(), back } })
+    setBusy(false)
+    if (error || !data) {
+      tab?.close()
+      toast.error(errorText(error))
+      return
+    }
+    if (!tab) return window.location.assign(data.authorize)
+    tab.opener = null
+    tab.location.href = data.authorize
+  }
+  return { go: (url: string) => void go(url), busy }
 }
 
 /** Sign in, beside the address: Home Assistant's own login, after which he has his own token there. */
@@ -54,20 +71,42 @@ export function HADiscovered({ back }: { back: SignInBack }) {
   )
 }
 
-/** How the sign-in went, once, from the address Home Assistant sent the browser back to: whom it signed
- * in as, what that account cannot do, and whether its MCP server was switched on; or why it did not finish. */
-export function HASignInResult() {
-  const [params, setParams] = useSearchParams()
-  const [result] = useState(() => ({
+function readSignIn(params: URLSearchParams) {
+  return {
     done: params.get('signin') === 'done',
     name: params.get('name') || 'Its user',
     admin: params.get('admin') !== '0',
     mcp: params.get('mcp') ?? '',
     error: params.get('signin_error'),
-  }))
+  }
+}
+
+/** How the sign-in went, once, from the address Home Assistant sent the browser back to: whom it signed
+ * in as, what that account cannot do, and whether its MCP server was switched on; or why it did not finish. */
+export function HASignInResult() {
+  const client = useQueryClient()
+  const [params, setParams] = useSearchParams()
+  const [mine] = useState(() => readSignIn(params))
+  const [result, setResult] = useState(mine)
   useEffect(() => {
     if (params.has('signin') || params.has('signin_error')) setParams({}, { replace: true })
   }, [params, setParams])
+  useEffect(() => {
+    const channel = new BroadcastChannel(SIGNIN_CHANNEL)
+    const handing = mine.done || !!mine.error                // this is the sign-in tab, back from Home Assistant
+    channel.onmessage = ({ data }) => {
+      if (data === 'taken') {
+        if (handing) window.close()                         // the page that opened this tab shows it now
+        return
+      }
+      channel.postMessage('taken')
+      setResult(data)
+      void client.invalidateQueries()
+    }
+    // Hand the result to the page that started signing in; with none open it stays here.
+    if (handing) channel.postMessage(mine)
+    return () => channel.close()
+  }, [client, mine])
   if (result.error) return <StatusLine tone="error">{result.error}</StatusLine>
   if (!result.done) return null
   return (

@@ -163,7 +163,8 @@ page is one card, Connect Home Assistant. It offers three ways in:
 2. The Address, with Sign in to Home Assistant under it.
 3. The Access token, to paste instead.
 
-Signing in opens Home Assistant's own login. Back from it, Winston has his own long-lived token there,
+Signing in checks that Home Assistant answers at the address, then opens its own login in a new tab
+(a dead address is said here instead). Back from it, Winston has his own long-lived token there,
 named Winston, saved for him and never shown. An administrator's sign-in also switches on the Model
 Context Protocol Server when it is off ([setup](setup.md#the-steps) has the whole sequence).
 

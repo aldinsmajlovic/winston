@@ -108,8 +108,10 @@ test('the wizard signs in to Home Assistant, which then lists the devices he can
   await page.goto('/setup/home_assistant')
   await expect(page.locator('[data-slot="card-title"]', { hasText: 'Connect Home Assistant' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Continue' })).toHaveCount(0)
-  // Its login (the fake signs in at once) and back, with his own token there.
+  // Its login opens in a new tab (the fake signs in at once), which hands the result back here and closes.
+  const login = page.waitForEvent('popup')
   await page.getByRole('button', { name: 'Sign in to Home Assistant' }).click()
+  await (await login).waitForEvent('close')
   await expect(page.getByText('Signed in as Someone. He has his own token there now, named Winston.')).toBeVisible()
   await expect(page).toHaveURL(/\/setup\/home_assistant$/)
   await expect(page.getByText(/Connected to Home Assistant/)).toBeVisible()

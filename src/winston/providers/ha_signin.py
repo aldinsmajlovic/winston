@@ -5,6 +5,7 @@ account (one made earlier is replaced, since a name is taken once), switches on 
 Protocol Server if it is off and the account is an administrator's, and drops the sign-in's own session.
 The token goes to data/.env and nowhere else: not to a log, a page or an API answer."""
 import asyncio
+import json
 import secrets
 import time
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from urllib.parse import urlencode
 
 import aiohttp
 
+from winston.core.common import failure_words
 from winston.providers.home_assistant import TIMEOUT, _Socket
 
 TOKEN_NAME = "Winston"
@@ -38,6 +40,25 @@ class SignedIn:
 
 
 _pending: dict[str, Pending] = {}
+
+
+async def unreachable(url: str) -> str | None:
+    """Why signing in at url would open a dead page, in words, or None when Home Assistant answers there.
+    winstond needs it too, to turn the code into a token, so its view is the one that counts."""
+    url = url.strip().rstrip("/")
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as s:
+            r = await s.get(f"{url}/manifest.json")
+            body = await r.text()
+    except (aiohttp.ClientError, TimeoutError, ValueError) as e:
+        return f"Nothing answers at {url}: {failure_words(e)}. Check the address."
+    try:
+        manifest = json.loads(body)
+    except ValueError:
+        manifest = None
+    if not isinstance(manifest, dict) or "Home Assistant" not in str(manifest.get("name", "")):
+        return f"Something answers at {url}, but it is not Home Assistant. Check the address and port."
+    return None
 
 
 def start(url: str, origin: str, back: str) -> str:
@@ -130,11 +151,6 @@ async def discover(wait: float = 2.0) -> list[dict]:
         await azc.async_close()
     if not found:
         url = "http://homeassistant.local:8123"
-        try:
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=3)) as s:
-                manifest = await (await s.get(f"{url}/manifest.json")).json(content_type=None)
-            if "Home Assistant" in str(manifest.get("name", "")):
-                found[url] = {"url": url, "name": "homeassistant.local", "version": None}
-        except (aiohttp.ClientError, TimeoutError, ValueError, AttributeError):
-            pass
+        if await unreachable(url) is None:
+            found[url] = {"url": url, "name": "homeassistant.local", "version": None}
     return list(found.values())

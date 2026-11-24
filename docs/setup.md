@@ -259,16 +259,20 @@ only button is Skip for now, and Connect Home Assistant offers:
 
 Signing in:
 
-1. Sign in opens Home Assistant's own login. This page's address is the client id it sends the
-   browser back to.
-2. Back from it, winstond trades the code for a session and makes a long-lived token named Winston on
+1. Sign in first checks that Home Assistant answers at the address. A dead address, or one where
+   something else answers, is said on the page ("Nothing answers at ...") and nothing opens.
+2. Sign in opens Home Assistant's own login in a new tab. This page's address is the client id it
+   sends that tab back to.
+3. Back from it, winstond trades the code for a session and makes a long-lived token named Winston on
    that account, for ten years, as Home Assistant's own page does. A token made by an earlier sign-in
    is replaced, since Home Assistant takes a name once.
-3. When the account is an administrator's, it switches on Home Assistant's Model Context Protocol
+4. When the account is an administrator's, it switches on Home Assistant's Model Context Protocol
    Server with Assist if it is off.
-4. It drops the sign-in's own session, and saves the token in `data/.env` and the address in the
+5. It drops the sign-in's own session, and saves the token in `data/.env` and the address in the
    config, without applying the device list, as a first connect does. The token is in no log, page or
    API answer.
+6. The tab hands the result to the page that opened it and closes. With that page gone, the tab shows
+   the result itself.
 
 The step then says "Signed in as Sam. He has his own token there now, named Winston." and that it
 switched the MCP server on. For an account that is not an administrator's, it says what will not work:

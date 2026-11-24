@@ -135,6 +135,14 @@ async def main():
             check("only the pages that start one are gone back to", (await api.post(
                 "/api/providers/home_assistant/signin", json={"url": fake.url, "back": "https://elsewhere.example/"})).status_code,
                 422)
+            dead = await api.post("/api/providers/home_assistant/signin",
+                                  json={"url": f"http://127.0.0.1:{free_port()}", "back": "/setup/home_assistant"})
+            check("a dead address is refused before the browser goes there",
+                  (dead.status_code, "Nothing answers" in dead.json()["detail"]), (400, True))
+            other = await api.post("/api/providers/home_assistant/signin",
+                                   json={"url": f"http://127.0.0.1:{API}", "back": "/setup/home_assistant"})
+            check("an address that is not Home Assistant is refused too",
+                  (other.status_code, "not Home Assistant" in other.json()["detail"]), (400, True))
 
             # Not an administrator: told so, and its MCP server left to one.
             fake.user["is_admin"], fake.mcp_on = False, False
@@ -149,4 +157,4 @@ async def main():
 asyncio.run(main())
 finish_checks("Home Assistant sign-in: found through zeroconf, signed in, Winston's token saved and never shown, "
               "the MCP server switched on, the session dropped, no list applied, replaced on a second sign-in, a "
-              "wrong or used state refused, a cancel said, a non-administrator warned")
+              "wrong or used state refused, a cancel said, a dead or wrong address refused, a non-administrator warned")

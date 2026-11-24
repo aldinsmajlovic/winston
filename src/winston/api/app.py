@@ -1720,6 +1720,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                       "be pasted only, since it ends with one saved")
     async def signin_home_assistant(body: HASignIn, request: Request):
         secrets.guard(request, [started["control"]["host"], app.state.cfg.control.host], True, ha_token_env())
+        if why := await ha_signin.unreachable(body.url):
+            raise HTTPException(400, why)
         origin = f"{request.url.scheme}://{request.headers.get('host') or request.url.netloc}"
         return HASignInLink(authorize=ha_signin.start(body.url, origin, body.back))
 
