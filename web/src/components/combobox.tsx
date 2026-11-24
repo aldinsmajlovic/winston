@@ -75,6 +75,8 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
   const [search, setSearch] = useState('')
   const current = choices.find((c) => c.value === value)
   const typed = search.trim()
+  // cmdk leaves forceMount items out of its count, so it would hide their group and say Nothing found.
+  const found = choices.some((c) => c.searched)
   // A pasted link is the server's to read, not a value to use as is.
   const offerTyped = custom && typed !== '' && !typed.includes('://') && !choices.some((c) => c.value === typed)
   const type = (text: string) => {
@@ -124,7 +126,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
             <CommandInput placeholder={onSearch ? 'Search, or paste a link' : custom ? 'Search, or type a name' : 'Search'} value={search} onValueChange={type} />
           ) : null}
           <CommandList>
-            <CommandEmpty>{problem ?? 'Nothing found'}</CommandEmpty>
+            {found ? null : <CommandEmpty>{problem ?? 'Nothing found'}</CommandEmpty>}
             {onClear && value ? (
               <CommandGroup>
                 <CommandItem
@@ -139,7 +141,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
               </CommandGroup>
             ) : null}
             {groups(choices).map(([group, items]) => (
-              <CommandGroup key={group} heading={group || undefined}>
+              <CommandGroup key={group} heading={group || undefined} forceMount={items.some((c) => c.searched)}>
                 {items.map((c) => (
                   <CommandItem
                     key={c.value}

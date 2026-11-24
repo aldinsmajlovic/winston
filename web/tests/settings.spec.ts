@@ -285,12 +285,23 @@ test('a field for hosted engines is left out for a local one', async ({ page }) 
 })
 
 test('the model box searches as you type, and a typed name can still be used', async ({ page }) => {
+  // A find whose name does not hold the typed words still shows (cmdk hid it and said Nothing found).
+  await page.route('**/api/options/llm_models?*q=*', (route) =>
+    route.fulfill({
+      json: {
+        name: 'llm_models', ok: true, source: 'fake',
+        choices: [{ value: 'smoke/Found-GGUF:Q4_K_M', label: 'smoke/Found-GGUF:Q4_K_M', group: 'Hugging Face', searched: true }],
+      },
+    }),
+  )
   await open(page, '/brain')
   await page.locator('#cfg_llm_model').click()
   const box = page.getByPlaceholder('Search, or paste a link')
   const asked = page.waitForRequest((r) => /\/api\/options\/llm_models\?.*q=my-own%2Fmodel/.test(r.url()))
   await box.fill('my-own/model')
   await asked
+  await expect(page.getByRole('option', { name: 'smoke/Found-GGUF:Q4_K_M' })).toBeVisible()
+  await expect(page.getByText('Nothing found')).toHaveCount(0)
   await page.getByRole('option', { name: 'Use my-own/model' }).click()
   await expect(page.locator('#cfg_llm_model')).toContainText('my-own/model')
 })
