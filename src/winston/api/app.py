@@ -27,8 +27,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.routing import Route as StarletteRoute
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
-from winston import __version__
-from winston.api import room_box as usb_box, secrets, setup_link
+from winston import __version__, setup as releases
+from winston.api import room_box as usb_box, secrets, setup_link, updates
 from winston.providers import ha_signin, improv
 from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
 from winston.config import load, repo_root, save
@@ -148,6 +148,29 @@ class SetupState(BaseModel):
     remote: bool = Field(description="This request comes from another device, not the computer Winston runs on")
     order: list[str] = Field(description="The wizard's steps before Done, in order")
     steps: dict[str, Literal["done", "skipped"]] = Field(description="The steps done or skipped so far")
+
+
+class Release(BaseModel):
+    version: str
+    date: str = Field(description="As CHANGELOG.md has it; empty when it gives none")
+    items: list[str] = Field(description="What changed, one sentence or two each")
+
+
+class UpdateState(BaseModel):
+    version: str = Field(description="This one; in a git clone what `git describe` says")
+    clone: bool = Field(description="Runs from a git clone, which git updates, not this page")
+    latest: str | None = Field(description="The latest release, once checked")
+    notes: list[Release] = Field(description="The releases newer than this one, newest first")
+    current: Release | None = Field(description="This release's own entry in its CHANGELOG.md")
+    checked: float | None = Field(description="When the latest release was last read, epoch seconds")
+    error: str = Field(description="Why the last check failed, in words")
+    stage: Literal["", "installing", "restarting", "installed", "error"] = Field(
+        description="installed: the new release waits for Winston to be restarted by hand")
+    detail: str = Field(description="The step under way, the version installed, or why the update stopped")
+
+
+class UpdateTo(BaseModel):
+    version: str | None = Field(None, description="A release, e.g. 0.2.0; the latest when left out")
 
 
 class BoxInfo(BaseModel):
@@ -767,6 +790,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         if autostart:
             nudges.start()
             spawn(_diary_loop())
+            spawn(updates.loop())
             await assist.apply(cfg)     # a winstond that only watches never listens; a save still applies it
             await ha_link.apply(cfg)
         async with mcp_out.session_manager.run():
@@ -968,6 +992,28 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             await usb_box.disable(app.state.cfg, body.entry_id)
         except usb_box.BoxError as e:
             raise HTTPException(502, str(e)) from None
+
+    def update_state() -> UpdateState:
+        st, clone = updates.STATE, not releases.release_app()
+        mine = next((r for r in releases.local_changes() if r["version"] == __version__), None)
+        return UpdateState(version=updates.version(), clone=clone, latest=st.latest, checked=st.checked,
+                           notes=[Release(**r) for r in st.notes], current=None if clone else mine,
+                           error=st.error, stage=st.stage, detail=st.detail)
+
+    @app.get("/api/update", response_model=UpdateState,
+             summary="This version, the latest release and what changed since; read again after 15 minutes")
+    async def update_get():
+        await updates.check()
+        return update_state()
+
+    @app.post("/api/update", response_model=UpdateState,
+              summary="Install a release beside this one and restart the service, in the background")
+    async def update_post(body: UpdateTo):
+        try:
+            updates.start(body.version)
+        except releases.UpdateError as e:
+            raise HTTPException(409, str(e)) from None
+        return update_state()
 
     @app.get("/api/status", response_model=Status)
     async def status():

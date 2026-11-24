@@ -346,18 +346,35 @@ http://localhost:8700 on the computer he runs on."
 
 ### Updating
 
+Winston checks for a new release when he starts and every six hours, by reading the latest release's
+`SHA256SUMS` and `CHANGELOG.md` on GitHub. When one is out, the Settings sidebar says "Version 0.2.0 is
+out", and Status shows an Updates card with what is new since yours and an Update button.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/status-update-dark.png">
+  <img src="images/status-update-light.png" alt="Status's Updates card: version 0.1.3 is out, this is 0.1.2, with Update and what is new in 0.1.3" width="720">
+</picture>
+
+Update asks first, then installs the release and restarts the service. The page says how far it got,
+and reloads on the new version once Winston answers again. From a terminal:
+
 ```sh
 winston update          # the latest release
 winston update 0.2.0    # that release
 ```
 
-1. It reads the release's `SHA256SUMS`, downloads its tarball and checks it.
-2. It unpacks it beside the current one and runs `uv sync` there (quick, from uv's cache).
-3. It moves `current` to it in one step and restarts the service if it is running.
+Both do the same steps:
+
+1. Read the release's `SHA256SUMS`, download its tarball and check it.
+2. Unpack it beside the current one and run `uv sync` there (quick, from uv's cache).
+3. Move `current` to it in one step and restart the service if it is running. Without the service,
+   the page says to restart Winston, and `winston update` prints what is new.
 
 The data directory is never touched. The release before stays for going back, `winston update 0.1.0`,
-with nothing downloaded; older ones are removed. In a clone, `winston update` says to `git pull`
-instead.
+with nothing downloaded; older ones are removed.
+
+In a clone, Status shows the version git describes and the latest release, and both the page and
+`winston update` leave updating to `git pull`, `uv sync` and `pnpm build`.
 
 ### Removing
 
@@ -388,16 +405,38 @@ A tag `v*` makes CI (`.github/workflows/release.yml`) build the release:
 | `winston-<version>.tar.gz` | The files git tracks, the UI already built, the tag's version stamped in |
 | `voice-pe-winston-<version>.factory.bin` | Winston's Voice PE firmware, built with ESPHome 2026.9.1, the version `services/voice-pe` pins |
 | `install.sh` | The [install script](#with-the-install-script) |
+| `CHANGELOG.md` | What each release brings, for Status and `winston update` |
 | `SHA256SUMS` | The checksums the script, `winston update` and the wizard check against |
 
-So installing needs neither Node nor a 30 minute firmware compile. Each file has GitHub's build
-attestation:
+So installing needs neither Node nor a 30 minute firmware compile. A release whose `services/voice-pe`
+and `release.yml` are unchanged since the tag before it reuses that release's firmware instead of
+compiling it again, which saves about 8 minutes.
+
+Each file has GitHub's build attestation:
 
 ```sh
 gh attestation verify winston-0.2.0.tar.gz --repo aldinsmajlovic/winston
 ```
 
 The tag is the version. One with a hyphen (`v0.2.0-rc.1`) is a pre-release, which `latest` skips.
+
+### Making one
+
+1. Write what it brings in [`CHANGELOG.md`](../CHANGELOG.md) as you go, under `## 0.2.0 (unreleased)`
+   at the top. Each line says what someone using Winston gets, in a sentence or two, not how.
+2. Run:
+
+   ```sh
+   just release 0.2.0
+   ```
+
+   It checks you are on `main`, with nothing uncommitted and nothing on `origin` you lack; dates the
+   entry and commits it ("Release 0.2.0"); then pushes `main` and the tag `v0.2.0`.
+3. CI builds the release. Its notes on GitHub are that entry, and Winstons installed from a release
+   see it on Status within six hours.
+
+A release without a dated entry fails in CI before anything is published. A pre-release
+(`just release 0.2.0-rc.1`) needs no entry.
 
 To build the same files here (the firmware only when `--firmware` names ESPHome's
 `firmware.factory.bin`):

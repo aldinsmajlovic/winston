@@ -11,6 +11,7 @@ import io
 import json
 import os
 import pwd
+import re
 import shlex
 import shutil
 import socket
@@ -551,54 +552,111 @@ def sums(version: str | None) -> tuple[str, dict[str, str]]:
     return url, {name: digest for digest, _, name in (line.partition("  ") for line in r.text.splitlines()) if name}
 
 
-def release(version: str | None) -> tuple[str, str, str]:
-    """(version, its tarball's address, its SHA-256) from a release's SHA256SUMS: the latest, or `version`."""
-    url, files = sums(version)
+def _tarball(url: str, files: dict[str, str]) -> tuple[str, str, str]:
     for name, digest in files.items():
         if name.startswith("winston-") and name.endswith(".tar.gz"):
             return name.removeprefix("winston-").removesuffix(".tar.gz"), f"{url}/{name}", digest
     raise ValueError(f"no Winston release in {url}/SHA256SUMS")
 
 
-def update(version: str | None) -> None:
-    """The release beside this one, its packages, `current` moved to it and the service restarted. The data
-    directory is not touched; the release before stays, for going back."""
+def release(version: str | None) -> tuple[str, str, str]:
+    """(version, its tarball's address, its SHA-256) from a release's SHA256SUMS: the latest, or `version`."""
+    return _tarball(*sums(version))
+
+
+# ---- What changed: CHANGELOG.md -------------------------------------------------------------------------
+_HEAD = re.compile(r"^## (\S+)(?: \(([^)]*)\))?[ \t]*$", re.MULTILINE)     # "## 0.1.2 (2026-11-24)"
+
+
+def changes(text: str) -> list[dict]:
+    """CHANGELOG.md's releases as written, newest first: {version, date, items}, each bullet one line."""
+    heads = list(_HEAD.finditer(text))
+    out = []
+    for h, end in zip(heads, [n.start() for n in heads[1:]] + [len(text)]):
+        items: list[str] = []
+        for line in text[h.end():end].splitlines():
+            if line.startswith("- "):
+                items.append(line[2:].strip())
+            elif items and line.startswith(" ") and line.strip():
+                items[-1] += " " + line.strip()
+        out.append({"version": h[1], "date": h[2] or "", "items": items})
+    return out
+
+
+def after(releases: list[dict], version: str) -> list[dict]:
+    """The releases newer than `version`; none when it is not among them (going back, or a pre-release)."""
+    versions = [r["version"] for r in releases]
+    return releases[:versions.index(version)] if version in versions else []
+
+
+def local_changes() -> list[dict]:
+    """This copy's CHANGELOG.md, which each release carries."""
+    p = repo_root() / "CHANGELOG.md"
+    return changes(p.read_text()) if p.is_file() else []
+
+
+def latest() -> tuple[str, list[dict]]:
+    """The latest release's version and its CHANGELOG.md, checked against its SHA256SUMS (no releases listed
+    for one made before it shipped the file)."""
+    import httpx
+    url, files = sums(None)
+    version, _, _ = _tarball(url, files)
+    if not (digest := files.get("CHANGELOG.md")):
+        return version, []
+    r = httpx.get(f"{url}/CHANGELOG.md", follow_redirects=True, timeout=30)
+    r.raise_for_status()
+    if hashlib.sha256(r.content).hexdigest() != digest:
+        raise ValueError("its CHANGELOG.md does not match its SHA256SUMS")
+    return version, changes(r.text)
+
+
+# ---- Updating -----------------------------------------------------------------------------------------------
+CLONE = "This is a clone: update it with `git pull`, `uv sync` and `pnpm build` (docs/running.md)."
+
+
+class UpdateError(Exception):
+    """Why an update stopped, as the sentence to show; the running release is unchanged."""
+
+
+def install(version: str | None, say=print) -> str | None:
+    """The release beside this one (the latest, or `version`), its packages, and `current` moved to it.
+    The data directory is not touched; the release before stays, for going back. Returns the version now
+    in `current`, or None when it is this one already. `say` gets each step."""
     import httpx
     from winston import __version__
     from winston.engines.install import _uv, _venv_env
     app = release_app()
     if not app:
-        sys.exit("This is a clone: update it with `git pull`, `uv sync` and `pnpm build` (docs/running.md).")
+        raise UpdateError(CLONE)
     if version and (app / version).is_dir():
         new = version                                # going back to one still here
     else:
         try:
             new, url, digest = release(version)
         except (httpx.HTTPError, ValueError) as e:
-            sys.exit(f"Could not read the release: {e}")
+            raise UpdateError(f"Could not read the release: {e}") from None
     if new == __version__:
-        print(f"Winston {new} is the one here.")
-        return
+        return None
     dest = app / new
     if not dest.is_dir():
-        print(f"Downloading Winston {new}")
+        say(f"Downloading Winston {new}")
         try:
             r = httpx.get(url, follow_redirects=True, timeout=120)
             r.raise_for_status()
         except httpx.HTTPError as e:
-            sys.exit(f"Could not download it: {e}")
+            raise UpdateError(f"Could not download it: {e}") from None
         if hashlib.sha256(r.content).hexdigest() != digest:
-            sys.exit(f"{url.rsplit('/', 1)[1]} does not match its SHA256SUMS, so nothing changed.")
+            raise UpdateError(f"{url.rsplit('/', 1)[1]} does not match its SHA256SUMS, so nothing changed.")
         tmp = app / f".{new}"
         shutil.rmtree(tmp, ignore_errors=True)
         with tarfile.open(fileobj=io.BytesIO(r.content)) as tar:
             tar.extractall(tmp, filter="data")
         (tmp / f"winston-{new}").rename(dest)
         tmp.rmdir()
-    print("Installing its packages")
+    say("Installing its packages")
     uv = _uv() or str(Path.home() / ".local/bin/uv")
     if subprocess.run([uv, "sync", "--frozen", "--quiet"], cwd=dest, env=_venv_env(), check=False).returncode:
-        sys.exit(f"Its packages did not install, so Winston {__version__} stays.")
+        raise UpdateError(f"Its packages did not install, so Winston {__version__} stays.")
     link = app / ".current"
     link.unlink(missing_ok=True)
     link.symlink_to(new)
@@ -607,15 +665,42 @@ def update(version: str | None) -> None:
     for d in app.iterdir():
         if d.name not in (new, old, "current"):
             shutil.rmtree(d, ignore_errors=True)
-    msg = f"Winston {new} is installed; {old} stays in {app} (`winston update {old}` goes back)."
+    return new
+
+
+def service_running() -> bool:
+    return (_unit_path().is_file() and Path("/run/systemd/system").is_dir()
+            and _run(["systemctl", "--user", "is-active", "winston.service"]).stdout.strip() == "active")
+
+
+def restart_service(wait: bool = True) -> str:
+    """Restarts the service; "" when it did, else why not. From inside it, `wait=False` only queues the
+    restart, since stopping the service ends the process asking."""
+    r = _run(["systemctl", "--user", "restart", *([] if wait else ["--no-block"]), "winston.service"])
+    return (r.stderr or r.stdout).strip() if r.returncode else ""
+
+
+def update(version: str | None) -> None:
+    """`winston update`: install(), what changed since this one, and the service restarted if it runs."""
+    from winston import __version__
+    try:
+        new = install(version)
+    except UpdateError as e:
+        sys.exit(str(e))
+    if not new:
+        print(f"Winston {__version__} is the one here.")
+        return
+    app = release_app()
+    for r in after(changes(t.read_text()) if (t := app / new / "CHANGELOG.md").is_file() else [], __version__):
+        print(f"\nWhat is new in {r['version']}:\n" + "".join(f"- {i}\n" for i in r["items"]), end="")
+    msg = f"\nWinston {new} is installed; {__version__} stays in {app} (`winston update {__version__}` goes back)."
     if not (_unit_path().is_file() and Path("/run/systemd/system").is_dir()):
         print(f"{msg}\nRestart `winston up` to run it.")
-    elif _run(["systemctl", "--user", "is-active", "winston.service"]).stdout.strip() != "active":
+    elif not service_running():
         print(f"{msg}\nThe service is not running; its next start runs {new}.")
     else:
-        r = _run(["systemctl", "--user", "restart", "winston.service"])
-        print(f"{msg}\n" + ("The service restarted." if not r.returncode else
-                            f"The service did not restart: {(r.stderr or r.stdout).strip()}"))
+        err = restart_service()
+        print(f"{msg}\n" + (f"The service did not restart: {err}" if err else "The service restarted."))
 
 
 def leftovers(cfg: dict, data: Path | None) -> list[str]:

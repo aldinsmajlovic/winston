@@ -2,7 +2,9 @@ import { Fragment, useEffect } from 'react'
 import { Activity, ArrowLeft, Bell, Bot, Brain, CircleAlert, ListChecks, Mic, Monitor, Moon, Puzzle, Radio, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
+import { $api } from '@/api/client'
 import { needsAttention, useStatus } from '@/api/status'
+import { updateNeedsYou } from '@/api/update'
 import { IconButton } from '@/components/icon-button'
 import { KindIcon } from '@/components/kind-icon'
 import { useDirtyPages } from '@/hooks/use-settings'
@@ -85,6 +87,7 @@ export function AppSidebar() {
   const { pathname } = useLocation()
   const { setOpenMobile } = useSidebar()
   const status = useStatus()
+  const update = $api.useQuery('get', '/api/update')
   const active = (to: string) => pathname.startsWith(to)
   const dirty = useDirtyPages()
   const attention = needsAttention(status.data)
@@ -142,7 +145,14 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="flex-row items-center gap-1 px-3">
         <ThemeMenu />
-        <span className="ml-auto text-xs text-muted-foreground">{status.data?.version}</span>
+        {/* A new release, checked by winstond every few hours, links to Status's Updates. */}
+        {updateNeedsYou(update.data) && update.data?.latest ? (
+          <NavLink to="/status" className="ml-auto text-xs text-primary underline-offset-4 hover:underline">
+            Version {update.data.latest} is out
+          </NavLink>
+        ) : (
+          <span className="ml-auto text-xs text-muted-foreground">{update.data?.version ?? status.data?.version}</span>
+        )}
       </SidebarFooter>
     </Sidebar>
   )

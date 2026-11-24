@@ -136,7 +136,8 @@ print(port)
 EOF
 )"
 
-WINSTON_DATA="$copy" uv run --project "$repo" winston up --no-start --host 127.0.0.1 --port "$port" \
+# Releases from nowhere: the update check never reaches GitHub; the test fakes /api/update.
+WINSTON_RELEASES=http://127.0.0.1:9 WINSTON_DATA="$copy" uv run --project "$repo" winston up --no-start --host 127.0.0.1 --port "$port" \
   >"$copy/winstond.log" 2>&1 &
 pid=$!
 for _ in $(seq 60); do

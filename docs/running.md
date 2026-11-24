@@ -39,8 +39,9 @@ journalctl --user -u winston -f        # follow his log
 ```
 
 Installed from a release (`install.sh`), `winston` is in `~/.local/bin` and runs without `uv run`.
-`winston update` installs the next release and restarts him, and `winston uninstall` removes him and
-keeps the data directory ([setup](setup.md#updating-and-removing)).
+Status says when a new release is out, with what is new and an Update button; `winston update` does
+the same from a terminal. `winston uninstall` removes him and keeps the data directory
+([setup](setup.md#updating-and-removing)).
 
 ## Test scripts
 

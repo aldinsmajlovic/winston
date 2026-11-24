@@ -366,6 +366,40 @@ test('Status lists the custom engines and who can open this page', async ({ page
   await expect(page.getByText('Who can open this page', { exact: true })).toBeVisible()
 })
 
+test('a new release shows in the sidebar and on Status, with what is new, and Update confirms first', async ({ page }) => {
+  const state = {
+    version: '0.1.3',
+    clone: false,
+    latest: '0.1.4',
+    notes: [{ version: '0.1.4', date: '2026-12-01', items: ['Winston checks for a new release on his own.'] }],
+    current: null,
+    checked: Date.now() / 1000 - 600,
+    error: '',
+    stage: '',
+    detail: '',
+  }
+  let posted = 0
+  await page.route('**/api/update', async (route) => {
+    if (route.request().method() === 'POST') {
+      posted++
+      Object.assign(state, { stage: 'installing', detail: 'Downloading Winston 0.1.4' })
+    }
+    await route.fulfill({ json: state })
+  })
+  await open(page, '/assistant')
+  await page.getByRole('link', { name: 'Version 0.1.4 is out', exact: true }).click()
+  await expect(page).toHaveURL(/\/status$/)
+  const card = page.locator('[data-slot="card"]').filter({ has: page.getByText('Updates', { exact: true }) })
+  await expect(card.getByText('Version 0.1.4 is out. This is 0.1.3.')).toBeVisible()
+  await expect(card.getByText('Winston checks for a new release on his own.')).toBeVisible()
+  await card.getByRole('button', { name: 'Update', exact: true }).click()
+  const dialog = page.getByRole('alertdialog')
+  await expect(dialog.getByText('Update to 0.1.4?')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Update', exact: true }).click()
+  await expect(card.getByText('Updating to version 0.1.4: downloading Winston 0.1.4.')).toBeVisible()
+  expect(posted).toBe(1)
+})
+
 test('Save only leaves a Restart button for the running engine', async ({ page }) => {
   await open(page, '/status/engines/smoke')
   const header = page.locator('header')

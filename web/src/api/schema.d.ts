@@ -446,6 +446,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** This version, the latest release and what changed since; read again after 15 minutes */
+        get: operations["update_get_api_update_get"];
+        put?: never;
+        /** Install a release beside this one and restart the service, in the background */
+        post: operations["update_post_api_update_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -2078,7 +2096,7 @@ export interface components {
             url?: string | null;
             /**
              * Health check path
-             * @description HTTP path that returns 200 when ready. Empty: no check, the engine counts as up whenever its process is (hosted APIs).
+             * @description HTTP path that returns 200 when ready (or 401 or 403: it answers, wanting a key). Empty: no check, the engine counts as up whenever its process is (hosted APIs).
              * @default /health
              */
             health?: string;
@@ -3488,6 +3506,21 @@ export interface components {
              */
             currency?: string;
         };
+        /** Release */
+        Release: {
+            /** Version */
+            version: string;
+            /**
+             * Date
+             * @description As CHANGELOG.md has it; empty when it gives none
+             */
+            date: string;
+            /**
+             * Items
+             * @description What changed, one sentence or two each
+             */
+            items: string[];
+        };
         /** RoomState */
         RoomState: {
             /** Name */
@@ -4348,6 +4381,60 @@ export interface components {
              * @default turns
              */
             dir?: string;
+        };
+        /** UpdateState */
+        UpdateState: {
+            /**
+             * Version
+             * @description This one; in a git clone what `git describe` says
+             */
+            version: string;
+            /**
+             * Clone
+             * @description Runs from a git clone, which git updates, not this page
+             */
+            clone: boolean;
+            /**
+             * Latest
+             * @description The latest release, once checked
+             */
+            latest: string | null;
+            /**
+             * Notes
+             * @description The releases newer than this one, newest first
+             */
+            notes: components["schemas"]["Release"][];
+            /** @description This release's own entry in its CHANGELOG.md */
+            current: components["schemas"]["Release"] | null;
+            /**
+             * Checked
+             * @description When the latest release was last read, epoch seconds
+             */
+            checked: number | null;
+            /**
+             * Error
+             * @description Why the last check failed, in words
+             */
+            error: string;
+            /**
+             * Stage
+             * @description installed: the new release waits for Winston to be restarted by hand
+             * @enum {string}
+             */
+            stage: "" | "installing" | "restarting" | "installed" | "error";
+            /**
+             * Detail
+             * @description The step under way, the version installed, or why the update stopped
+             */
+            detail: string;
+        };
+        /** UpdateTo */
+        UpdateTo: {
+            /**
+             * Version
+             * @description A release, e.g. 0.2.0; the latest when left out
+             */
+            version?: string | null;
         };
         /** VADConfig */
         VADConfig: {
@@ -5357,6 +5444,59 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_get_api_update_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateState"];
+                };
+            };
+        };
+    };
+    update_post_api_update_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTo"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateState"];
+                };
             };
             /** @description Validation Error */
             422: {

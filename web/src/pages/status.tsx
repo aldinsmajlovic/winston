@@ -3,6 +3,7 @@ import { Play, Plus, Square } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import { $api, errorText, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView } from '@/api/client'
 import { useConfig } from '@/api/config'
+import { updateNeedsYou, useUpdate } from '@/api/update'
 import { engineLabel, isRunning, notWorking, partName, restartCost, STATE_WORDS, useEngineActions, useStatus } from '@/api/status'
 import { ItemDialog } from '@/components/item-dialog'
 import { KindIcon } from '@/components/kind-icon'
@@ -12,6 +13,7 @@ import { RowMenu } from '@/components/row-menu'
 import { SectionForm } from '@/components/section-form'
 import { DriverLabel, StateIcon } from '@/components/state-icon'
 import { StatusLine } from '@/components/status-line'
+import { UpdateCard } from '@/components/update-card'
 import { DataTable, type Column } from '@/components/templates/list-page'
 import { SettingsPage } from '@/components/templates/settings-page'
 import { Button } from '@/components/ui/button'
@@ -173,6 +175,7 @@ export default function StatusPage() {
   const extensions = $api.useQuery('get', '/api/extensions', undefined, { refetchInterval: 15_000 })
   const rooms = $api.useQuery('get', '/api/rooms')
   const setup = $api.useQuery('get', '/api/setup')
+  const update = useUpdate()
   const ha = saved?.providers?.home_assistant
   const haSetUp = !!ha?.url
   const haOn = haSetUp && ha?.enabled !== false
@@ -453,6 +456,10 @@ export default function StatusPage() {
     void navigate(`/status/engines/${newName}`)
   }
   const host = page.value.control?.host?.trim() ?? '127.0.0.1'
+  // Near the top while there is an update to make or one under way, else after his parts and engines.
+  const updateFirst = updateNeedsYou(update.query.data)
+  const llm = proc('llm')
+  const updateCard = <UpdateCard update={update} name={name} downtime={llm ? restartCost(llm) : 'a moment'} />
 
   return (
     <SettingsPage
@@ -481,6 +488,7 @@ export default function StatusPage() {
           <CardContent className="flex flex-col gap-3">{next}</CardContent>
         </Card>
       ) : null}
+      {updateFirst ? updateCard : null}
       <Card>
         <CardHeader>
           <CardTitle>His parts</CardTitle>
@@ -530,6 +538,7 @@ export default function StatusPage() {
           </CardContent>
         </Card>
       ) : null}
+      {updateFirst ? null : updateCard}
       <SectionForm page={page} path={CONTROL} title="Web address">
         <div className="flex flex-col items-start gap-2">
           {!LOCAL.includes(host) ? (

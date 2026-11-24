@@ -615,6 +615,7 @@ save flow:
 The landing page shows, in order:
 
 - Needs you and Set up next, while they apply;
+- Updates, while a new release is out or an update is under way (else after custom engines);
 - his parts by role, each a row linking to its page, with one text command and a `RowMenu`;
 - graphics memory;
 - custom engines, once there is one;

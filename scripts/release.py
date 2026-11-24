@@ -1,8 +1,9 @@
 """Builds a release into a folder, as CI does on a `v*` tag (.github/workflows/release.yml, docs/setup.md):
 winston-<version>.tar.gz (the files git tracks, the built UI in web/dist, the version stamped in), install.sh,
-the Voice PE firmware when given, and SHA256SUMS over them.
+CHANGELOG.md, the Voice PE firmware when given, and SHA256SUMS over them. A release needs its dated entry in
+CHANGELOG.md (`just release` dates it); --notes writes that entry for the GitHub release's notes.
 
-    python3 scripts/release.py 0.2.0 dist [--firmware services/voice-pe/.esphome/build/.../firmware.factory.bin]
+    python3 scripts/release.py 0.2.0 dist [--notes notes.md] [--firmware services/voice-pe/.esphome/build/.../firmware.factory.bin]
 """
 import argparse
 import hashlib
@@ -48,16 +49,32 @@ def tarball(version: str, out: Path) -> Path:
     return path
 
 
+def notes(version: str) -> str:
+    """The version's entry in CHANGELOG.md, without its heading. A pre-release (a hyphen) may have none."""
+    text = (REPO / "CHANGELOG.md").read_text()
+    m = re.search(rf"^## {re.escape(version)} \((\d{{4}}-\d\d-\d\d)\)[ \t]*\n(.*?)(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
+    if m:
+        return m[2].strip() + "\n"
+    if "-" in version:
+        return "A test build of the next release.\n"
+    sys.exit(f"CHANGELOG.md has no dated entry \"## {version} (YYYY-MM-DD)\": `just release {version}` writes the date")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("version", help="like 0.2.0, the tag without its v")
     ap.add_argument("out", type=Path)
+    ap.add_argument("--notes", type=Path, help="where to write the version's CHANGELOG.md entry")
     ap.add_argument("--firmware", type=Path, help="ESPHome's firmware.factory.bin for the Voice PE")
     a = ap.parse_args()
     if not re.fullmatch(r"\d+\.\d+\.\d+([.-]?[0-9A-Za-z.]+)?", a.version):
         sys.exit(f"{a.version} is not a version like 0.2.0")
+    entry = notes(a.version)
+    if a.notes:
+        a.notes.write_text(entry)
     a.out.mkdir(parents=True, exist_ok=True)
-    made = [tarball(a.version, a.out), Path(shutil.copy(REPO / "scripts/install.sh", a.out / "install.sh"))]
+    made = [tarball(a.version, a.out), Path(shutil.copy(REPO / "scripts/install.sh", a.out / "install.sh")),
+            Path(shutil.copy(REPO / "CHANGELOG.md", a.out / "CHANGELOG.md"))]
     if a.firmware:
         made.append(Path(shutil.copy(a.firmware, a.out / f"voice-pe-winston-{a.version}.factory.bin")))
     sums = "".join(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in made)

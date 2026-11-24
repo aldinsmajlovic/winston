@@ -127,6 +127,11 @@ From the top:
   said once, in the header, with one Restart.
 - **Set up next**, only while one applies: connect Home Assistant, choose the devices he may use, add
   a room box.
+- **Updates**, here while a new release is out or an update is under way, else after Custom engines:
+  this version, the latest, what is new since yours (each release's changes from its `CHANGELOG.md`),
+  and Update with a confirm. While it runs it says how far it got, and the page reloads on the new
+  version. The sidebar's footer says "Version 0.2.0 is out" on every Settings page. See
+  [updating](setup.md#updating).
 - **His parts**: Brain, Speaking, Hearing, Talk page microphone, Room boxes, Discord, Home Assistant
   and Extensions. Each row is described below the list.
 - **Graphics memory**: "23.4 of 24.0 GB in use" and the card's name. The brain and the voices share
