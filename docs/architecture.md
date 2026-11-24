@@ -101,8 +101,8 @@ flowchart TB
   `winston uninstall` serve an install from a release. See [setup](setup.md).
   - Releases: `scripts/install.sh` installs one; `scripts/release.py` builds one, as
     `.github/workflows/release.yml` does on a tag, with its `CHANGELOG.md` entry as the notes.
-  - Updates (`api/updates.py`): winstond reads the latest release every six hours, and Status's
-    Update runs `winston update`'s steps and restarts the service.
+  - Updates (`api/updates.py`): winstond reads the latest release every six hours or on Check now, and
+    Status's Update runs `winston update`'s steps and restarts the service.
   - Setup mode (`api/setup_link.py`): until the wizard (`web/src/pages/setup.tsx`) is done, winstond
     serves another device only with the setup link's key, and starts no engine before Brain and voice.
   - Home Assistant sign-in (`providers/ha_signin.py`): found through zeroconf, its own login, then a

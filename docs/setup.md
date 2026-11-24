@@ -369,11 +369,12 @@ http://localhost:8700 on the computer he runs on."
 
 Winston checks for a new release when he starts and every six hours, by reading the latest release's
 `SHA256SUMS` and `CHANGELOG.md` on GitHub. When one is out, the Settings sidebar says "Version 0.2.0 is
-out", and Status shows an Updates card with what is new since yours and an Update button.
+out", and Status shows an Updates card with what is new since yours and an Update button. Check now
+on the card checks at once.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/status-update-dark.png">
-  <img src="images/status-update-light.png" alt="Status's Updates card: version 0.1.3 is out, this is 0.1.2, with Update and what is new in 0.1.3" width="720">
+  <img src="images/status-update-light.png" alt="Status's Updates card: version 0.1.3 is out, this is 0.1.2, with Check now, Update and what is new in 0.1.3" width="720">
 </picture>
 
 Update asks first, then installs the release and restarts the service. The page says how far it got,

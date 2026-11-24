@@ -3,6 +3,10 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.6 (unreleased)
+
+- Check now on Status's Updates card looks for a new release at once.
+
 ## 0.1.5 (2026-11-24)
 
 - Searching for a brain model on the Brain page and in setup shows what it finds; it said Nothing

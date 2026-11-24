@@ -2,7 +2,9 @@ import { $api, errorText, type Release } from '@/api/client'
 import type { useUpdate } from '@/api/update'
 import { Fold } from '@/components/fold'
 import { StatusLine } from '@/components/status-line'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { LoaderCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useRegion } from '@/hooks/use-region'
 import { since } from '@/lib/format'
@@ -31,6 +33,7 @@ function Changes({ release }: { release: Release }) {
 export function UpdateCard({ update, name, downtime }: { update: ReturnType<typeof useUpdate>; name: string; downtime: string }) {
   const ask = useConfirm()
   const start = $api.useMutation('post', '/api/update', { onSuccess: () => void update.query.refetch() })
+  const check = $api.useMutation('post', '/api/update/check', { onSuccess: () => void update.query.refetch() })
   const u = update.query.data
   if (!u) return null
   const newer = !u.clone && !!u.latest && u.latest !== u.version
@@ -82,6 +85,14 @@ export function UpdateCard({ update, name, downtime }: { update: ReturnType<type
         <CardDescription>
           {name} checks for a new release every few hours{u.checked ? `, last ${since(u.checked)} ago` : ''}.
         </CardDescription>
+        {u.stage === 'installing' || u.stage === 'restarting' || update.waitingFor ? null : (
+          <CardAction>
+            <Button variant="outline" size="sm" disabled={check.isPending} onClick={() => check.mutate({})}>
+              {check.isPending ? <LoaderCircle data-icon="inline-start" className="animate-spin" /> : null}
+              Check now
+            </Button>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {line}

@@ -411,6 +411,20 @@ test('a new release shows in the sidebar and on Status, with what is new, and Up
   expect(posted).toBe(1)
 })
 
+test('Check now asks for the latest release and shows it', async ({ page }) => {
+  const state = { version: '0.1.3', clone: false, latest: '0.1.3', notes: [], current: null, checked: Date.now() / 1000 - 600, error: '', stage: '', detail: '' }
+  await page.route('**/api/update', (route) => route.fulfill({ json: state }))
+  await page.route('**/api/update/check', async (route) => {
+    Object.assign(state, { latest: '0.1.4', checked: Date.now() / 1000 })
+    await route.fulfill({ json: state })
+  })
+  await open(page, '/status')
+  const card = page.locator('[data-slot="card"]').filter({ has: page.getByText('Updates', { exact: true }) })
+  await expect(card.getByText('Version 0.1.3, the latest.')).toBeVisible()
+  await card.getByRole('button', { name: 'Check now' }).click()
+  await expect(card.getByText('Version 0.1.4 is out. This is 0.1.3.')).toBeVisible()
+})
+
 test('Save only leaves a Restart button for the running engine', async ({ page }) => {
   await open(page, '/status/engines/smoke')
   const header = page.locator('header')

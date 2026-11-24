@@ -1008,6 +1008,11 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         await updates.check()
         return update_state()
 
+    @app.post("/api/update/check", response_model=UpdateState, summary="Check for the latest release now")
+    async def update_check():
+        await updates.check(force=True)
+        return update_state()
+
     @app.post("/api/update", response_model=UpdateState,
               summary="Install a release beside this one and restart the service, in the background")
     async def update_post(body: UpdateTo):
