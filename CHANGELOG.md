@@ -3,6 +3,17 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.5 (unreleased)
+
+- Searching for a brain model on the Brain page and in setup shows what it finds; it said Nothing
+  found before.
+- Sign in to Home Assistant checks the address first and says why it cannot use it, instead of
+  opening a dead page. The login opens in a new tab and closes itself when done.
+- Saving a long list names the first three entries and how many more, not every one.
+- On phones, the Talk page's header keeps the same side gap as the microphone row.
+- The example personality no longer mentions locks and alarms, which could make a small brain refuse
+  "wake me at 7".
+
 ## 0.1.4 (2026-11-24)
 
 - Setup no longer asks which setup you want in the terminal: you pick the brain, voice and hearing on
