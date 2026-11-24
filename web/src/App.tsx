@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from 'react'
-import { generatePath, Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router'
+import { generatePath, Navigate, Outlet, Route, Routes, useLocation, useNavigationType, useParams } from 'react-router'
+import { $api } from '@/api/client'
 import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
@@ -40,6 +41,15 @@ function Moved({ to }: { to: string }) {
   return <Navigate to={generatePath(to, params) + search} replace />
 }
 
+/** His address opens the wizard while setup is under way, so typing it in place of the printed setup link
+ * still gets there. Only when the page is opened, not followed to: the wizard's own links still reach Talk. */
+function SetupFirst({ children }: { children: ReactNode }) {
+  const opened = useNavigationType() === 'POP'
+  const setup = $api.useQuery('get', '/api/setup', {}, { enabled: opened })
+  if (opened && setup.isPending) return null
+  return opened && setup.data?.active ? <Navigate to="/setup" replace /> : children
+}
+
 /** A page that failed to render, in place of a blank app. Going to another page clears it; the draft
  * lives above App, so unsaved changes survive. */
 class PageError extends Component<{ path: string; children: ReactNode }, { failed: boolean }> {
@@ -71,7 +81,7 @@ export default function App() {
   return (
     <PageError path={pathname}>
       <Routes>
-        <Route path="/" element={<TalkPage />} />
+        <Route path="/" element={<SetupFirst><TalkPage /></SetupFirst>} />
         <Route path="/history" element={<TurnsPage />} />
         <Route path="/turns" element={<Moved to="/history" />} />
         <Route path="/diary" element={<Moved to="/history" />} />

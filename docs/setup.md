@@ -71,7 +71,8 @@ Docker and its runtimes, Ollama, free disk where the downloads land, the serial 
 IPv6. Then:
 
 1. Picks the profile for the hardware ([below](#picking-for-your-hardware)) and creates the data
-   directory, `~/.local/share/winston`, as `winston init` does. An existing one is kept with its config.
+   directory, `~/.local/share/winston`, as `winston init` does. An existing one is kept with its config,
+   and with it no wizard: to start over, `winston uninstall --data`, then install again.
 2. Runs what needs root for that config, each command shown first and run only on yes
    ([below](#what-needs-root)).
 3. Installs a systemd user service, `winston.service`, that runs `winston up`, and starts it. Without
@@ -180,8 +181,11 @@ refused from Finish on, and from Winston's next start he listens on this compute
 ### While setup is under way
 
 Until Brain and voice is done, winstond starts none of his engines, since starting one downloads what
-it lacks. Nothing is downloaded before you have seen the picks and their sizes. Status says "Setup is
-not finished." with Continue setup, and Talk says his brain is stopped.
+it lacks. Nothing is downloaded before you have seen the picks and their sizes.
+
+Opening his address, http://localhost:8700, opens the wizard, so the setup link need not be typed
+exactly. Other pages open as they are: Status says "Setup is not finished." with Continue setup, and
+Talk, reached from the wizard, says his brain is stopped.
 
 ### The steps
 

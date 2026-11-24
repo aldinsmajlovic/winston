@@ -83,6 +83,12 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
   })
 }
 
+test('while setup is not finished, his address opens the wizard', async ({ page }) => {
+  startSetup()
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/setup\/brain$/)
+})
+
 test('while setup is not finished, Status says so and leads back to it', async ({ page }) => {
   startSetup()
   await page.goto('/status')

@@ -467,7 +467,8 @@ def run(yes: bool, profile: str | None) -> None:
     config = data / "config.yaml"
     fresh = not config.is_file()
     if not fresh:
-        print(f"\nKeeping {config}: the brain and voice stay as they are (change them on his pages).")
+        print(f"\nKeeping {config}: the brain and voice stay as they are (change them on his pages). To start "
+              "over with the wizard instead: `winston uninstall --data`, then install again.")
     else:
         from winston.config.presets import profile as get_profile
         if profile:
