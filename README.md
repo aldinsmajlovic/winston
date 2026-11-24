@@ -15,6 +15,22 @@ by default, and any part can be swapped for a hosted service.
   <img src="docs/images/talk-light.png" alt="The Talk page: an announcement from Home Assistant, a typed request that dims the lights, a spoken reminder from a room box, and a question about the weather" width="720">
 </picture>
 
+## Install
+
+Needs Linux and Home Assistant. Any of the [hardware profiles](docs/hardware.md) works: a 24 GB
+NVIDIA card, Ollama on any GPU or CPU, or a hosted model.
+
+```sh
+curl -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
+```
+
+The script installs the latest release (and uv, if it is missing), then runs setup. Setup reads the
+computer, picks the profile for it, asks before anything that needs root (Docker, NVIDIA's container
+toolkit, Ollama) and starts Winston as a service. Open the link it prints, on this computer or a
+phone: a wizard downloads his brain and voice, signs in to Home Assistant, lets you name him, and can
+set up a Voice PE plugged in over USB. To read the script first, or to install from a clone, see
+[setup](docs/setup.md).
+
 ## Features
 
 - **Local first.** The language model and the voice share one GPU and speech recognition runs on the
@@ -57,22 +73,6 @@ Setup, with or without Home Assistant adopting the box: [Voice PE](docs/voice-pe
 Early. Voice, Home Assistant, the web UI, memory, extensions and the Voice PE work. Not yet: talking
 over him on the Voice PE, Discord against the real Discord, and the setup wizard's Home Assistant
 step against a real one. Progress is in [the plan](docs/plan.md).
-
-## Quickstart
-
-Needs Linux and Home Assistant. Any of the [hardware profiles](docs/hardware.md) works: a 24 GB
-NVIDIA card, Ollama on any GPU or CPU, or a hosted model.
-
-```sh
-curl -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
-```
-
-The script installs the latest release (and uv, if it is missing), then runs setup. Setup reads the
-computer, picks the profile for it, asks before anything that needs root (Docker, NVIDIA's container
-toolkit, Ollama) and starts Winston as a service. Open the link it prints, on this computer or a
-phone: a wizard downloads his brain and voice, signs in to Home Assistant, lets you name him, and can
-set up a Voice PE plugged in over USB. To read the script first, or to install from a clone, see
-[setup](docs/setup.md).
 
 ## Documentation
 
