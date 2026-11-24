@@ -6,44 +6,54 @@ assistant:
 engines:
   llm:
     driver: docker
-    image: vllm/vllm-openai:v0.29.0
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda-v1.0.0-b12359-b1b770d
     port: 8000
     health: /health
-    startup_timeout: 600
+    startup_timeout: 900
     gpu: true
     runtime: nvidia            # explicit: this host's CDI spec is stale, see docs/decisions.md
-    ipc_host: true
     env:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
-      ~/.cache/huggingface: /root/.cache/huggingface
+      ~/.cache/huggingface: /root/.cache/huggingface   # llama.cpp reads the HF cache
     args:
+      - -hf
       - "{model}"                # the brain's model (llm.model below), so it is set in one place
-      - --max-model-len
-      - "32768"
-      - --max-num-seqs
-      - "8"
-      - --gpu-memory-utilization
-      - "0.70"
-      - --limit-mm-per-prompt
-      - '{"image": 1, "video": 0}'
-      - --default-chat-template-kwargs
-      - '{"enable_thinking": false}'
-      - --reasoning-parser
-      - qwen3
-      - --enable-auto-tool-choice
-      - --tool-call-parser
-      - qwen3_coder
-      - --trust-remote-code
+      - --alias
+      - "{model}"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - -ngl
+      - "99"
+      - -fa
+      - "on"
+      - -c
+      - "32768"                  # 16k per slot: the bare prompt is 9.4k, a long session 11.4k
+      - -np
+      - "2"
+      - -ctk
+      - q8_0
+      - -ctv
+      - q8_0
+      - --no-mmproj              # text only; the vision projector is another 0.9 GB
+      - --jinja
+      - --cache-ram
+      - "2048"
+      - --spec-type              # the GGUF's own MTP layer: 44 -> 60-80 tokens/s
+      - draft-mtp
+      - --spec-draft-n-max
+      - "2"
   tts:
     driver: subprocess
     port: 8880
     health: /health
-    startup_timeout: 180
-    cwd: "{repo}/services/tts-chatterbox"
+    startup_timeout: 300
+    cwd: "{repo}/services/tts-breeze2"
     cmd:
-      - "{repo}/services/tts-chatterbox/.venv/bin/python"
+      - "{repo}/services/tts-breeze2/.venv/bin/python"
       - server.py
       - --voice
       - "{data}/voices/vctk/p254_023.wav"   # any clip under {data}/voices; six CC BY 4.0 samples are bundled
@@ -51,26 +61,24 @@ engines:
       - "{data}/voices"
       - --port
       - "8880"
-      - --stream                             # the Streaming settings under tts: below
-      - "{tts.streaming.enabled}"
-      - --chunk-secs
-      - "{tts.streaming.chunk_secs}"
-      - --first-secs
-      - "{tts.streaming.first_secs}"
-      - --lookahead-secs
-      - "{tts.streaming.lookahead_secs}"
+      - --fast
+      - backbone_decode
+      - depth_decoder
+      - codec
+      - --text-encoder-bits
+      - "8"
 
 llm:
   provider: openai_compatible
   base_url: http://127.0.0.1:8000/v1
-  model: QuantTrio/Qwen3.5-9B-AWQ
+  model: unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S
   sampling: {temperature: 0.3, top_p: 0.8, presence_penalty: 0.0, max_tokens: 512}
   thinking: {spoken: home, typed: always, home_effort: medium, control: chat_template}   # control: reasoning_effort for Ollama, none for hosted
 
 stt: {provider: parakeet, model: FluidVoice-Labs/fluid-speech-pro-onnx, quantization: int8}
 tts:
   {provider: openai_speech, base_url: http://127.0.0.1:8880/v1, voice: vctk/p254_023, sample_rate: 24000,
-   streaming: {enabled: true, chunk_secs: 1.6, first_secs: 0.96, lookahead_secs: 0.32}}   # Chatterbox; longer chunks are smoother
+   streaming: {enabled: true, chunk_secs: 1.6, first_secs: 0.96, lookahead_secs: 0.32}}   # Breeze TTS 2; streaming applies to Chatterbox
 vad: {provider: silero, stop_secs: 0.3, unfinished_stop_secs: 2.5}
 
 channels:

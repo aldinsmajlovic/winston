@@ -175,11 +175,8 @@ TTS: list[Fragment] = [
 ]
 
 PROFILES: list[Fragment] = [
-    {"id": "nvidia-24gb", "title": "NVIDIA, 24 GB", "presets": {"llm": "vllm", "tts": "chatterbox"},
-     "hint": "The reference setup: vLLM and Chatterbox share one card."},
-    {"id": "nvidia-24gb-27b", "title": "NVIDIA, 24 GB, bigger brain", "presets": {"llm": "llamacpp", "tts": "chatterbox"},
-     "hint": "Qwen3.8-27B through llama.cpp instead of the 9B through vLLM: better at multi-part requests, "
-             "same speed to the first word, no vision."},
+    {"id": "nvidia-24gb", "title": "NVIDIA, 24 GB", "presets": {"llm": "llamacpp", "tts": "breeze2"},
+     "hint": "Qwen3.8-27B through llama.cpp and Breeze TTS 2 share one card (about 23 GB); hearing on the CPU."},
     {"id": "ollama", "title": "Ollama, any GPU or CPU", "presets": {"llm": "ollama", "tts": "pocket"},
      "hint": "Ollama serves the model, Pocket TTS speaks on the CPU. Small cards, AMD, Apple silicon, no Docker."},
     {"id": "hosted", "icon": "cloud", "title": "Hosted LLM", "presets": {"llm": "hosted", "tts": "pocket"},

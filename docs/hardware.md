@@ -7,8 +7,7 @@ table below), or switch any slot later on the Brain and Voice pages.
 
 | Profile | Needs | Brain | Voice | Hearing |
 |---|---|---|---|---|
-| `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | vLLM in Docker, Qwen3.5-9B AWQ | Chatterbox-Turbo on the GPU, voice cloning from a clip | Fluid Speech Pro on the CPU |
-| `nvidia-24gb-27b` | The same | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Chatterbox-Turbo on the GPU | Fluid Speech Pro on the CPU |
+| `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Breeze TTS 2 on the GPU, voice cloning from a clip | Fluid Speech Pro on the CPU |
 | `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `granite4.2:8b` | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 | `hosted` | Internet and an API key | Any OpenAI-compatible endpoint | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 
@@ -18,14 +17,15 @@ conversation text to the model provider.
 
 ## Choosing
 
-- **NVIDIA with 24 GB, where multi-part requests matter more than vision:** `nvidia-24gb-27b`.
-- **NVIDIA with 16 GB or more:** `nvidia-24gb`. Below 24 GB, lower `--gpu-memory-utilization` in
-  the vLLM arguments or pick a smaller model; the Chatterbox server needs about 4 GB next to it.
+- **NVIDIA with 24 GB:** `nvidia-24gb`, what the reference box runs
+  ([below](#recommended-on-a-24-gb-card)). Breeze's weights are for non-commercial use only; for
+  anything else pick Chatterbox-Turbo on the Voice page. For a brain that sees images, pick vLLM
+  (Qwen3.5-9B) on the Brain page: it got fewer requests right than the 27B.
 - **A smaller card, AMD, Apple silicon, or no GPU:** `ollama`. Ollama handles the hardware itself.
   Any model that `ollama show` lists with the `tools` capability works; the tags on its Ollama
   page can leave it out (Granite 4.2 has none). The default, `granite4.2:8b`, fits a 12 GB card;
-  on less than about 8 GB free, pick `qwen3.5:4b`. Expect fewer requests right than on the 24 GB
-  profiles ([comparing brains](#comparing-brains)).
+  on less than about 8 GB free, pick `qwen3.5:4b` (3.4 GB). How they compare:
+  [comparing brains](#comparing-brains).
 - **A brain you already run on another computer** (Ollama, vLLM, llama.cpp or any OpenAI-compatible
   server): any profile, then A server on your network under Runs on. See
   [a server on your network](#a-server-on-your-network).
@@ -57,11 +57,8 @@ With all three, the card sits at 22.9 of 24.6 GB. On a Voice PE box, from the en
 first sound: 1.3 s for a plain question, 2.4 s when he uses a tool, and 2.3 s to confirm a home
 request (medians).
 
-No profile sets this up, since Breeze's weights are for research and non-commercial use only:
-
-1. Start from `nvidia-24gb-27b`.
-2. Clone Breeze's inference code with the command at the top of `services/tts-breeze2/server.py`.
-3. Pick Breeze TTS 2 on the Voice page, which installs its packages.
+This is the `nvidia-24gb` profile. Installing it clones Breeze's inference code at a pinned commit
+and installs its packages. Breeze's weights are for research and non-commercial use only.
 
 The reference box also runs huihui-ai's abliterated build of the same 27B (refusals removed, MTP
 layer kept): the same brain trials and speed, for 0.25 GB more.

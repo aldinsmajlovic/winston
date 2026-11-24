@@ -114,7 +114,7 @@ the distribution's guide and offers the Ollama or hosted profile.
 
 | Found | Profile |
 | --- | --- |
-| NVIDIA with 24 GB or more | `nvidia-24gb-27b` |
+| NVIDIA with 24 GB or more | `nvidia-24gb` |
 | A smaller NVIDIA card, another GPU, or none | `ollama` |
 | No usable local model, or your choice | `hosted` |
 

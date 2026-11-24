@@ -261,7 +261,7 @@ def describe(m: Machine) -> list[str]:
 # ---- What to do --------------------------------------------------------------------------------------
 
 def pick(m: Machine) -> str:
-    return "nvidia-24gb-27b" if any(mib >= GPU_24GB_MIB for _, mib, _ in m.gpus) else "ollama"
+    return "nvidia-24gb" if any(mib >= GPU_24GB_MIB for _, mib, _ in m.gpus) else "ollama"
 
 
 def needs(config: dict) -> set[str]:

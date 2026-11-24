@@ -165,14 +165,21 @@ def _venv_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in ("VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT")}
 
 
+def _meta(svc: Path) -> dict:
+    """The service's [tool.winston] table: installed-gb, and upstream = {url, commit} for code cloned beside it."""
+    return tomllib.loads((svc / "pyproject.toml").read_text()).get("tool", {}).get("winston", {})
+
+
 def _venv(svc: Path) -> Part:
     uv, key = _uv(), f"venv:{svc}"
     # uv holds the project's lock while it syncs, so asking it then would wait out the whole install.
     syncing = (job := JOBS.get(key)) is not None and job.state == "running"
     have = not syncing and (svc / ".venv/bin/python").exists() and bool(uv) and subprocess.run(
         [uv, "sync", "--frozen", "--check"], cwd=svc, env=_venv_env(), capture_output=True, check=False).returncode == 0
+    meta = _meta(svc)
+    have = have and ("upstream" not in meta or (svc / "upstream" / ".git").is_dir())
     # ponytail: measured once per service (pyproject's tool.winston.installed-gb); re-measure when uv.lock changes.
-    size = tomllib.loads((svc / "pyproject.toml").read_text()).get("tool", {}).get("winston", {}).get("installed-gb")
+    size = meta.get("installed-gb")
     return Part(key, "its Python packages", str(svc), None if have or size is None else int(size * GB), have)
 
 
@@ -369,6 +376,8 @@ async def _sync(job: Job) -> None:
         raise RuntimeError("uv is not installed")
     log = data_dir() / "logs" / f"install-{svc.name}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
+    if (up := _meta(svc).get("upstream")) and not (svc / "upstream" / ".git").is_dir():
+        await _clone(up["url"], up["commit"], svc / "upstream", log)
     with open(log, "ab") as f:     # noqa: ASYNC230  (a local file; the process keeps its own copy)
         proc = await asyncio.create_subprocess_exec(uv, "sync", "--frozen", cwd=svc, env=_venv_env(), stdout=f, stderr=f)
     try:
@@ -384,6 +393,16 @@ async def _sync(job: Job) -> None:
     if proc.returncode:
         lines = [x for x in log.read_text(errors="replace").splitlines() if x.strip()]
         raise RuntimeError(f"uv sync exited with code {proc.returncode}" + (f": {lines[-1][:300]}" if lines else ""))
+
+
+async def _clone(url: str, commit: str, dest: Path, log: Path) -> None:
+    """The service's inference code at its pinned commit, into dest (gitignored)."""
+    shutil.rmtree(dest, ignore_errors=True)         # a clone cut short
+    for cmd in (["git", "clone", "--quiet", url, str(dest)], ["git", "-C", str(dest), "checkout", "--quiet", commit]):
+        with open(log, "ab") as f:                   # noqa: ASYNC230
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=f, stderr=f)
+        if await proc.wait():
+            raise RuntimeError(f"{' '.join(cmd[:3])} exited with code {proc.returncode}")
 
 
 async def _download(job: Job) -> None:

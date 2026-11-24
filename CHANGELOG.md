@@ -10,6 +10,8 @@ you update, and `winston update` prints them after.
 - Each release has notes you can read here, on GitHub and on Status.
 - Hearing is now Fluid Speech Pro, a retrained Parakeet that makes far fewer mistakes when other people
   are talking, still on the CPU. Parakeet stays a choice under Hearing.
+- One profile for a 24 GB NVIDIA card: the 27B brain with Breeze TTS 2, which setup installs in full. The
+  9B on vLLM and Chatterbox stay choices on the Brain and Voice pages.
 - The Ollama profile's brain is now Granite 4.2 8B, which got every request right in Winston's trials.
 
 ## 0.1.2 (2026-11-24)

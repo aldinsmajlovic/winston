@@ -53,9 +53,9 @@ def machine(**kw) -> setup.Machine:
     return m
 
 
-check("a 24 GB card gets the 27B", setup.pick(machine(gpus=desk)), "nvidia-24gb-27b")
+check("a 24 GB card gets the 27B", setup.pick(machine(gpus=desk)), "nvidia-24gb")
 check("so does a 4090's 24564 MiB", setup.pick(machine(gpus=[("NVIDIA GeForce RTX 4090", 24564, "580.95.05")])),
-      "nvidia-24gb-27b")
+      "nvidia-24gb")
 check("a smaller card, or none, gets Ollama",
       [setup.pick(machine(gpus=[("NVIDIA GeForce RTX 4060", 8188, "580.95.05")])), setup.pick(machine())],
       ["ollama", "ollama"])
@@ -72,8 +72,8 @@ check("a socket it may not open is denied", setup.docker_state(
 # ---- What each profile needs, and the root steps ----
 example = yaml.safe_load((repo_root() / "examples/config.yaml").read_text())
 check("what each profile needs from the computer",
-      {p: setup.needs(apply_profile(example, p)) for p in ("nvidia-24gb", "nvidia-24gb-27b", "ollama", "hosted")},
-      {"nvidia-24gb": {"docker", "nvidia"}, "nvidia-24gb-27b": {"docker", "nvidia"}, "ollama": {"ollama"},
+      {p: setup.needs(apply_profile(example, p)) for p in ("nvidia-24gb", "ollama", "hosted")},
+      {"nvidia-24gb": {"docker", "nvidia"}, "ollama": {"ollama"},
        "hosted": set()})
 
 bare = machine(docker_bin=False, docker="down")

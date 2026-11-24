@@ -33,3 +33,5 @@ explicit = true
 [tool.winston]
 # The venv on disk, measured 2026-10-23 (du); measure again when uv.lock changes.
 installed-gb = 7.8
+# The inference code is not a package: the install clones it into upstream/ at this commit.
+upstream = { url = "https://github.com/breezeblue-ai/breeze-tts", commit = "58ec70ce5fa4cc361bdebf77ec40d1365da00ab2" }

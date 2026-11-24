@@ -82,8 +82,8 @@ flags for that request only; fields it leaves out keep the startup values.
 ### Breeze TTS 2
 
 Breeze's weights are for research and non-commercial use only, and its inference code is not a
-package: `services/tts-breeze2` clones [breeze-tts](https://github.com/breezeblue-ai/breeze-tts) at a
-pinned commit, with the command at the top of its `server.py`. The preset keeps the backbone and
+package: installing the preset clones [breeze-tts](https://github.com/breezeblue-ai/breeze-tts) into
+`services/tts-breeze2/upstream` at the commit its `pyproject.toml` pins (`[tool.winston] upstream`). The preset keeps the backbone and
 depth decoder in bf16, puts the text encoder in 8 bits and captures the per-frame work as CUDA
 graphs. Its codec encoder runs on the CPU and its decoder in fp16, which keeps it at about 5.4 GB.
 
