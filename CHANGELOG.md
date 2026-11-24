@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.8 (unreleased)
+## 0.1.8 (2026-11-24)
 
 - Searching for a vLLM brain model shows each model's size, and greys out one too big for the
   graphics memory vLLM may use, saying so. Before, it could be picked and the brain failed to start.
