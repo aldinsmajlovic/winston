@@ -30,6 +30,11 @@ export function joinNames(names: string[]): string {
   return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
+/** "Desk lamp, Porch light and 16 more": up to three names, else two and how many more. */
+export function fewNames(names: string[]): string {
+  return joinNames(names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} more`] : names)
+}
+
 export type Clock = 'auto' | '24h' | '12h'
 export type DateOrder = 'auto' | 'day_month' | 'month_day'
 

@@ -298,7 +298,8 @@ Save sends only the changed fields (`PATCH /api/config` with the version the edi
 asks first when something starts, stops or restarts, or when the edits reach past the current page. Its
 confirm lists:
 
-- the changes, by page;
+- the changes, by page, naming up to three entries of a list ("Devices he can use: Desk lamp, Porch
+  light and 16 more");
 - what the save starts, stops and restarts, with roughly how long each takes;
 - a model download;
 - what Home Assistant would change.

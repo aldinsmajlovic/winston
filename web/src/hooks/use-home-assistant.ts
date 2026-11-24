@@ -4,7 +4,7 @@ import { $api } from '@/api/client'
 import type { ExposedEntity } from '@/api/client'
 import type { components } from '@/api/schema'
 import type { ActionItem } from '@/components/action-list'
-import { humanize, joinNames } from '@/lib/format'
+import { fewNames, humanize } from '@/lib/format'
 
 export type HAEntity = components['schemas']['HAEntity']
 export type HAExposure = components['schemas']['HAExposure']
@@ -113,7 +113,7 @@ export function useApplyNow() {
  * `name` (haNames) it names up to three of what stops being exposed. */
 export function planParts(plan: ExposurePlan, name?: (id: string) => string): string[] {
   const off = plan.unexpose ?? []
-  const named = name && off.length ? ` (${joinNames(off.length > 3 ? [...off.slice(0, 2).map(name), `${off.length - 2} more`] : off.map(name))})` : ''
+  const named = name && off.length ? ` (${fewNames(off.map(name))})` : ''
   const exposure = [
     plan.expose?.length ? `exposes ${plan.expose.length}` : null,
     off.length ? `stops exposing ${off.length}` : null,

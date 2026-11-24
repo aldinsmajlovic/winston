@@ -20,7 +20,7 @@ import { useDraft } from '@/hooks/use-draft'
 import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
 import { haNames, planParts, refreshHomeAssistant, toastSaved, type ExposurePlan, type HAApply } from '@/hooks/use-home-assistant'
 import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
-import { humanize, joinNames } from '@/lib/format'
+import { fewNames, humanize, joinNames } from '@/lib/format'
 import { presetSwitches } from '@/lib/presets'
 import { deepEqual, deref, getIn, isRecord, SECRET_SUFFIX, section, type JsonSchema, type Path } from '@/lib/schema'
 
@@ -271,7 +271,7 @@ function summary(names: Names, edits: ConfigChange[], keys: string[], switches: 
     add((path && pagesOf(path)[0]?.label) || 'Keys', path ? keyLabel(root, path, name) : name)
   }
   const line = (labels: Map<string, Set<string>>) => {
-    const named = [...labels].map(([label, entries]) => (entries.size ? `${label}: ${[...entries].join(', ')}` : label))
+    const named = [...labels].map(([label, entries]) => (entries.size ? `${label}: ${fewNames([...entries])}` : label))
     // Labels that list entries are kept apart by semicolons, so an entry never reads as a field.
     return named.join([...labels.values()].some((e) => e.size) ? '; ' : ', ')
   }
