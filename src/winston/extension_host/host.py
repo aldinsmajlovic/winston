@@ -125,6 +125,7 @@ class Host:
         self.mcp_tools: dict[str, list[dict[str, Any]]] = {}
         self.tokens: dict[str, str] = {}                # token -> extension id
         self.entities: dict[tuple[str, str, str | None], dict[str, Any]] = {}
+        self.on_entity: Callable[[], None] | None = None     # an entity's value changed (api/ha_link.py)
         self.errors: dict[str, list[dict[str, Any]]] = {}
         self.pending: dict[str, Pending] = {}
         self.on_feed: Callable[[dict[str, Any]], None] | None = None    # the live feed, set by winstond
@@ -720,3 +721,5 @@ class Host:
 
     def set_entity(self, ext_id: str, key: str, entry: str | None, value: Any, attributes: dict[str, Any]) -> None:
         self.entities[(ext_id, key, entry)] = {"value": value, "attributes": attributes, "at": time.time()}
+        if self.on_entity:
+            self.on_entity()

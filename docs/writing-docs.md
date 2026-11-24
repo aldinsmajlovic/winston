@@ -43,7 +43,7 @@ links to it.
 | `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
 | `docs/computer.md` | The computer server: opening things, status, logs and updates on each computer |
-| `docs/home-assistant.md`, `docs/assist.md`, `docs/announcements.md`, `docs/discord.md` | Their one subject |
+| `docs/home-assistant.md`, `docs/assist.md`, `docs/ha-integration.md`, `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: what one is, permissions, writing one |
 | `docs/extension-sdk.md` | The SDK reference |
 | `docs/speaking-up.md` | Nudges: how extensions speak up, the rules, the Speaking up page |

@@ -394,10 +394,10 @@ volume as its `args`.
 
 ## Home Assistant entities
 
-An extension's entities reach Home Assistant through Winston's own integration (UI track step 3 in
-the [plan](plan.md)), as one device per extension with unique ids. So they keep their history and can
-be renamed, put in areas, shown on dashboards and used in automations. Until the integration exists,
-entities show under Readings on its page and through the API only.
+An extension's entities reach Home Assistant through [Winston's integration](ha-integration.md), as
+one device per extension with unique ids. So they keep their history and can be renamed, put in areas,
+shown on dashboards and used in automations. Without the integration they show under Readings on its
+page and through the API only; the Readings card's Show in Home Assistant switch keeps one out.
 
 - Switches, buttons, numbers, selects and text let Home Assistant drive an extension: a "chore done"
   button, a cheap-charging switch.

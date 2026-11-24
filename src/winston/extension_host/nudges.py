@@ -472,7 +472,8 @@ class Nudges:
         if self.feed:
             self.feed({"type": "nudge", "channel": "extensions", "call": rec["id"], "text": rec["say"],
                        "label": f"{self.ext_name(rec['ext'])}: {spec['title']}", "name": via,
-                       "links": rec.get("links") or None})
+                       "links": rec.get("links") or None,
+                       "ext": rec["ext"], "kind": rec["kind"], "level": rec.get("level")})     # for api/ha_link.py
         if rec["source"] == "pushed":
             rec["ended_at"] = self.clock()          # done, kept a while for a follow-up; listed as said
 

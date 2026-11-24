@@ -56,7 +56,25 @@ test('Ways to talk: Home Assistant Assist switched on shows its port, and off ag
   await expect(card.getByText('anyone on your network could ask him to act')).toBeVisible()
   await expect(card.getByText('Home Assistant reached him')).toHaveCount(0)
   await toggle.click()
-  await expect(card.getByRole('spinbutton', { name: 'Port' })).toHaveValue('10800')
+  await expect(card.getByRole('spinbutton', { name: 'Port' })).toBeVisible()  // the copy moves every port
+  await expect(saveButton).toBeEnabled()
+  await toggle.click()
+  await expect(saveButton).toBeDisabled()
+  expect(errors).toEqual([])
+})
+
+// Switched on in the draft only, as above: a save would open the copy's port and announce it.
+test('Ways to talk: the Home Assistant integration switched on shows its port, and off again leaves nothing to save', async ({ page }) => {
+  const errors = watchErrors(page)
+  await open(page, '/ways-to-talk')
+  const card = page.locator('[data-slot="card"]', { hasText: 'Home Assistant integration' }).last()
+  const toggle = card.getByRole('switch', { name: 'Show him in Home Assistant' })
+  const saveButton = page.locator('header').getByRole('button', { name: 'Save', exact: true })
+  await expect(toggle).not.toBeChecked()
+  await expect(card.getByText('only a paired Home Assistant can use')).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Pair' })).toHaveCount(0)
+  await toggle.click()
+  await expect(card.getByRole('spinbutton', { name: 'Port' })).toBeVisible()  // the copy moves every port
   await expect(saveButton).toBeEnabled()
   await toggle.click()
   await expect(saveButton).toBeDisabled()

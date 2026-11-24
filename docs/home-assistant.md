@@ -5,7 +5,8 @@ Winston sees and controls only what is on his list (Devices he can use on the Ho
 his picture of the home.
 
 The other way round, Home Assistant's own Assist (its app, its chat and its voice satellites) can use
-him as its conversation agent: see [Home Assistant Assist](assist.md).
+him as its conversation agent: see [Home Assistant Assist](assist.md). And Winston's integration shows
+his state and his extensions' readings as entities there: see [Home Assistant integration](ha-integration.md).
 
 ## From a device to what he sees and does
 

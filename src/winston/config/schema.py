@@ -441,6 +441,17 @@ class AssistChannel(Model):
                       description="Where Home Assistant reaches him; it finds him on its own while this is on.")
 
 
+class HAIntegrationChannel(Model):
+    """Winston's Home Assistant integration (api/ha_link.py): applied on save, no restart."""
+    model_config = section(enabled_by="enabled", icon="homeassistant",
+                           help="His state and his extensions' readings as entities in Home Assistant, through "
+                                "Winston's integration there.")
+    enabled: bool = Field(False, title="Show him in Home Assistant",
+                          json_schema_extra=ui(help="Opens a port that only a paired Home Assistant can use."))
+    port: int = Field(8710, ge=1024, le=65535, title="Port",
+                      description="Where Home Assistant's Winston integration reaches him.")
+
+
 class SatelliteDevice(Model):
     model_config = section("satellite")
     host: str = Field(title="Address",
@@ -553,6 +564,7 @@ class Channels(Model):
     satellite: SatelliteChannel = Field(SatelliteChannel(), title="Room boxes")
     web: WebChannel = WebChannel()
     assist: AssistChannel = Field(AssistChannel(), title="Home Assistant Assist")
+    ha_integration: HAIntegrationChannel = Field(HAIntegrationChannel(), title="Home Assistant integration")
 
 
 class ExposedEntity(Model):
@@ -727,6 +739,9 @@ class ExtensionConfig(Model):
     tools: dict[str, ExtensionTool] = Field(default_factory=dict, title="Actions",
                                             description="Your choices for each action, by its own name. For an MCP "
                                                         "server, only the actions listed here are offered.")
+    publish: bool = Field(True, title="Show in Home Assistant",
+                          json_schema_extra=ui(help="Its readings and buttons, as one device in Home Assistant, "
+                                                    "when Winston's integration is added there."))
     memory_mb: int = Field(500, ge=50, le=16000, title="Memory limit",
                            json_schema_extra=ui(unit="MB", help="Past this, it is stopped and this page says why."))
     mcp: McpServer | None = Field(None, title="MCP server", description="Set for an MCP server added as a "

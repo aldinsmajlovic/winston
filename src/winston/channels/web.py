@@ -55,7 +55,7 @@ class WebChat:
         async with self._lock:
             s = self.sessions.get(k)
             if s is None:
-                obs = LiveObserver(self.channel, self.feed.publish)
+                obs = LiveObserver(self.channel, self.feed.publish, room=room if in_room else None)
                 link = RoomLink(room, f"{self.channel}:{uuid.uuid4().hex[:8]}", local_sync(self.rooms)) \
                     if in_room else None
                 # The Talk page's brain is the typed one; another channel's brain is its own (core/brain.HEARD).
@@ -84,7 +84,7 @@ class WebChat:
         if (why := self._why.pop(k, None)) is not None:
             self.feed.publish(LiveEvent(channel=self.channel, type="conversation", room=room, text=why))
         self.feed.publish(LiveEvent(channel=self.channel, type="user", room=room, text=text))
-        self.feed.publish(LiveEvent(channel=self.channel, type="state", state="thinking"))
+        self.feed.publish(LiveEvent(channel=self.channel, type="state", state="thinking", room=room))
         s = await self.current(room, conversation)
         if notify is not None:
             s.notify = notify
@@ -96,7 +96,7 @@ class WebChat:
         except Exception as e:                                          # noqa: BLE001
             logger.exception(f"{self.channel} chat failed")
             self.feed.publish(LiveEvent(channel=self.channel, type="error", text=error_text(e)))
-            self.feed.publish(LiveEvent(channel=self.channel, type="state", state="idle"))
+            self.feed.publish(LiveEvent(channel=self.channel, type="state", state="idle", room=room))
 
     async def _correction(self, text: str):
         """A state check's correction (core/verify.py), shown on the Talk page as a reply of his."""

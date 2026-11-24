@@ -1,0 +1,13 @@
+{
+  "domain": "winston",
+  "name": "Winston",
+  "codeowners": ["@aldinsmajlovic"],
+  "config_flow": true,
+  "documentation": "https://github.com/aldinsmajlovic/winston/blob/main/docs/ha-integration.md",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/aldinsmajlovic/winston/issues",
+  "requirements": [],
+  "version": "0.1.0",
+  "zeroconf": ["_winston._tcp.local."]
+}

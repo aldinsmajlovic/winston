@@ -259,7 +259,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
         observers=[brain.verifier.observer, UserBotLatencyObserver(), TranscriptionLogObserver(),
-                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True), watch,
+                   ToolCallLogObserver(CFG, channel="voice"), LiveObserver("voice", FEED.put, spoken=True, room=room), watch,
                    turns],
         idle_timeout_secs=None,
     )
@@ -339,7 +339,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
             listener.cancel()
         if follower:
             follower.cancel()
-        FEED.put(LiveEvent(channel="voice", type="state", state="idle"))
+        FEED.put(LiveEvent(channel="voice", type="state", state="idle", room=room))
         turns.flush()
         await worker.cancel()
         await brain.close()

@@ -1,0 +1,37 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add Winston",
+        "description": "On Winston's Ways to talk page, switch on Show him in Home Assistant and select Pair. Type his computer's address and the code it shows.",
+        "data": {"host": "Address", "port": "Port", "code": "Pairing code"},
+        "data_description": {
+          "host": "The address of the computer Winston runs on.",
+          "port": "Shown on the Ways to talk page under Home Assistant integration.",
+          "code": "Six digits, good for ten minutes."
+        }
+      },
+      "pair": {
+        "title": "Pair with {name}",
+        "description": "Found {name} at {host}. On his Ways to talk page, select Pair and type the code it shows.",
+        "data": {"code": "Pairing code"}
+      },
+      "reauth_confirm": {
+        "title": "Pair with {name} again",
+        "description": "{name} no longer knows this Home Assistant. On his Ways to talk page, select Pair and type the new code.",
+        "data": {"code": "Pairing code"}
+      }
+    },
+    "error": {
+      "invalid_code": "That code is wrong or expired. Make a new one on Winston's Ways to talk page.",
+      "cannot_connect": "Winston did not answer at that address and port. Check that Show him in Home Assistant is on, and that a firewall lets Home Assistant reach the port."
+    },
+    "abort": {
+      "already_configured": "This Winston is already added. Its address and pairing are updated.",
+      "reauth_successful": "Paired again.",
+      "not_winston": "This is not a Winston.",
+      "wrong_winston": "That code is from a different Winston."
+    }
+  }
+}

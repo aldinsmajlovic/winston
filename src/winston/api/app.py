@@ -6,6 +6,7 @@ import dataclasses
 import html
 import json
 import re
+import time
 import uuid
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
@@ -35,6 +36,7 @@ from winston.config.loader import apply_changes, get_in, version as file_version
 from winston.config.presets import LLM, PROFILES, TTS, stt_presets
 from winston.config.restarts import BRAIN_CHANNELS, control_sections, restarts_for
 from winston.config.schema import LLMConfig, TTSStreamingConfig, WinstonConfig
+from winston.api.ha_link import TOKEN_ENV as HA_TOKEN_ENV, HALink
 from winston.channels.assist import Assist
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
@@ -265,6 +267,18 @@ class AssistState(BaseModel):
                                                       "not since winstond started.")
     satellites: int = Field(0, description="Home Assistant satellites he speaks on (in rooms with no Winston "
                                            "speaker of their own).")
+
+
+class HAIntegrationState(BaseModel):
+    enabled: bool
+    listening: bool = Field(description="The port is open and he is announced on the network.")
+    port: int
+    error: str | None = Field(None, description="Why the port could not be opened.")
+    paired: bool = Field(description="A Home Assistant holds a token from a pairing.")
+    last_seen: float | None = Field(None, description="When Home Assistant last reached him (epoch seconds); None: "
+                                                      "not since winstond started.")
+    code: str | None = Field(None, description="The pairing code to type in Home Assistant, while one is open.")
+    code_until: float | None = Field(None, description="When the code stops working (epoch seconds).")
 
 
 class TurnMarkBody(BaseModel):
@@ -568,6 +582,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     extension_services = ExtensionServices(extensions)
     extension_services.talking = feed.talking             # background model calls yield to conversations
     assist = Assist(cfg, feed, rooms, hub, extension_services._ha_client)
+    ha_link = HALink(cfg, feed, extensions, sup)
+    extensions.on_entity = ha_link.changed
 
     def llm_up() -> bool:
         """The brain's server (engines.llm) is healthy, or Winston neither runs nor checks one."""
@@ -607,6 +623,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         feed.publish(LiveEvent(channel=a.source, type="announcement", text=a.text))
         spawn(web.announced(a.text, a.context))
         spawn(assist.chat.announced(a.text, a.context))
+        ha_link.announced(a.text)
         return d
 
     def ha_announcement(data: dict):
@@ -696,7 +713,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     box_volume: dict[str, float] = {}           # room -> its box's volume, as each box last reported it
 
     nudges = Nudges(extensions, deliver=deliver_nudge, busy=feed.talking, home=home_now,
-                    feed=lambda ev: feed.publish(LiveEvent(**ev)))
+                    feed=lambda ev: (feed.publish(LiveEvent(**ev)), ha_link.nudged(ev)))
     extensions.nudges = nudges
 
     def confirm_on_phone(p: Pending):
@@ -751,6 +768,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             nudges.start()
             spawn(_diary_loop())
             await assist.apply(cfg)     # a winstond that only watches never listens; a save still applies it
+            await ha_link.apply(cfg)
         async with mcp_out.session_manager.run():
             yield
         await nudges.stop()
@@ -758,6 +776,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         await extensions.stop_all()
         await web.close()
         await assist.close()
+        await ha_link.stop()
         await sup.stop_all(owned_only=True)
 
     app = FastAPI(title="winstond", version=__version__, lifespan=lifespan)
@@ -1025,6 +1044,32 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return AssistState(enabled=a.enabled, listening=assist.listening, port=a.port, error=assist.error,
                            last_seen=assist.last_seen,
                            satellites=sum(len(ids) for ids in assist.rooms().values()) if assist.listening else 0)
+
+    def ha_integration_state() -> HAIntegrationState:
+        h, p = app.state.cfg.channels.ha_integration, ha_link.pairing
+        live = p.code is not None and time.time() < p.until
+        return HAIntegrationState(enabled=h.enabled, listening=ha_link.listening, port=h.port, error=ha_link.error,
+                                  paired=secrets.is_set(HA_TOKEN_ENV), last_seen=ha_link.last_seen,
+                                  code=p.code if live else None, code_until=p.until if live else None)
+
+    @app.get("/api/ha_integration", response_model=HAIntegrationState,
+             summary="Winston's Home Assistant integration: whether it listens, is paired, and the open pairing code")
+    async def ha_integration():
+        return ha_integration_state()
+
+    @app.post("/api/ha_integration/code", response_model=HAIntegrationState,
+              summary="A new pairing code for Home Assistant's Winston integration, good for ten minutes")
+    async def ha_integration_code():
+        ha_link.pairing.new()
+        logger.info("home assistant: a pairing code made")
+        return ha_integration_state()
+
+    @app.delete("/api/ha_integration/pairing", response_model=HAIntegrationState,
+                summary="Forget the paired Home Assistant: its token stops working and it asks to pair again")
+    async def ha_integration_unpair():
+        ha_link.unpair()
+        logger.info("home assistant: unpaired")
+        return ha_integration_state()
 
     @app.get("/api/rooms", response_model=list[RoomState],
              summary="Rooms: the satellite boxes' and any a browser session named, with who has each mic")
@@ -1407,6 +1452,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         sup.settle(lambda base: restarts_for(base, new_d, schema))     # a change undone needs no restart
         await web.reset(new)
         await assist.apply(new)
+        await ha_link.apply(new)
         response.headers["ETag"] = _etag(app.state.version)
         return ConfigResult(saved=True, restarts=restarts, version=app.state.version, ha_apply=ha_apply,
                             persona_rename=rename)

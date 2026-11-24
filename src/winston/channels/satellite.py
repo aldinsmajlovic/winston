@@ -206,7 +206,7 @@ class Conversation(TextSession):
         super().__init__(cfg, channel="satellite", brain_channel="satellite", tools=tools,
                          room=RoomLink(room, f"box:{room}:{uuid.uuid4().hex[:6]}", http_sync(cfg)),
                          area=area(cfg, room), outputs=[build_tts(cfg), self.speaker],
-                         observers=[LiveObserver("satellite", feed.put, spoken=True), self.turns])
+                         observers=[LiveObserver("satellite", feed.put, spoken=True, room=room), self.turns])
         self.used = False       # handed to a request or an announcement (Satellite._conversation)
 
     def key(self) -> tuple[str, str | None]:
@@ -915,7 +915,7 @@ class Satellite:
                 building = self._build(warm=True)       # a stale conversation is rebuilt and warmed while he speaks
                 self._event(Ev.VOICE_ASSISTANT_RUN_START, {"url": url})
                 self._event(Ev.VOICE_ASSISTANT_STT_START)
-                self.feed.put(LiveEvent(channel="satellite", type="state", state="listening"))
+                self.feed.put(LiveEvent(channel="satellite", type="state", state="listening", room=self.room))
                 listened = await self._listen(run)
                 self._event(Ev.VOICE_ASSISTANT_STT_VAD_END)          # the box stops its mic and waits
                 pcm, guess = listened or (None, None)
@@ -947,7 +947,7 @@ class Satellite:
                     self._event(Ev.VOICE_ASSISTANT_ERROR, {"code": "stt-no-text-recognized",
                                                            "message": "No speech recognized"})
                     self._event(Ev.VOICE_ASSISTANT_RUN_END)
-                    self.feed.put(LiveEvent(channel="satellite", type="state", state="idle"))
+                    self.feed.put(LiveEvent(channel="satellite", type="state", state="idle", room=self.room))
                     return
                 self._event(Ev.VOICE_ASSISTANT_STT_END, {"text": heard})
                 self._event(Ev.VOICE_ASSISTANT_INTENT_START)
@@ -994,7 +994,7 @@ class Satellite:
                 logger.info(f"{self.room}: said {said!r}")
         except asyncio.CancelledError:
             logger.info(f"{self.room}: run {run.id} stopped")
-            self.feed.put(LiveEvent(channel="satellite", type="state", state="idle"))
+            self.feed.put(LiveEvent(channel="satellite", type="state", state="idle", room=self.room))
             run.out.put_nowait(None)
             if turn:
                 turn.outcome = "interrupted" if run.interrupted else "cut_short"

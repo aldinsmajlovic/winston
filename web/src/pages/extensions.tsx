@@ -516,11 +516,12 @@ function SpeaksUp({ e, page }: Props) {
   )
 }
 
-function Readings({ e }: { e: ExtensionView }) {
+/** What it reads and sets (its entities), and whether they show in Home Assistant. */
+function Readings({ e, page }: Props) {
   const values = (e.entities ?? []).flatMap((x) =>
     (x.values ?? []).map((v) => ({ key: `${x.key}:${v.entry ?? ''}`, name: v.entry ? x.name.replace('{entry}', v.entry) : x.name, value: v.value, unit: x.unit })),
   )
-  if (!values.length) return null
+  if (!(e.entities ?? []).length) return null
   return (
     <Card>
       <CardHeader>
@@ -536,6 +537,8 @@ function Readings({ e }: { e: ExtensionView }) {
             </span>
           </div>
         ))}
+        {values.length ? null : <p className="text-muted-foreground">None yet.</p>}
+        <SectionForm page={page} path={[...EXTENSIONS, e.id]} omit={NOT_PUBLISH} />
       </CardContent>
     </Card>
   )
@@ -545,7 +548,8 @@ function Readings({ e }: { e: ExtensionView }) {
 const slows = (chars: number) => (chars >= 5000 ? 'slows his first word noticeably' : chars >= 1000 ? 'slows his first word a little' : null)
 
 /** Everything in extensions.<id> but its memory limit, for the limit's own form. */
-const NOT_MEMORY = ['enabled', 'settings', 'kinds', 'tools', 'mcp']
+const NOT_MEMORY = ['enabled', 'settings', 'kinds', 'tools', 'mcp', 'publish']
+const NOT_PUBLISH = ['enabled', 'settings', 'kinds', 'tools', 'mcp', 'memory_mb']
 
 /** When it runs next, what it costs every request, its memory while it runs, and its memory limit. An MCP
  * server over HTTP runs elsewhere, so it has no memory limit here. */
@@ -619,7 +623,7 @@ export function ExtensionPage() {
       <Settings e={e} page={page} />
       <Actions e={e} page={page} />
       <SpeaksUp e={e} page={page} />
-      <Readings e={e} />
+      <Readings e={e} page={page} />
       <HowItRuns e={e} page={page} />
       <LogDialog title={`Log of ${e.name}`} open={log} onOpenChange={setLog} lines={lines.data?.lines} loading={lines.isLoading} />
     </SettingsPage>

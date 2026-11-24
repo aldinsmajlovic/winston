@@ -31,6 +31,7 @@ const VOICE = ['channels', 'voice']
 const WEB = ['channels', 'web']
 const DISCORD = ['channels', 'discord']
 const ASSIST = ['channels', 'assist']
+const HA_INTEGRATION = ['channels', 'ha_integration']
 const SATELLITE = ['channels', 'satellite']
 const DEVICES = [...SATELLITE, 'devices']
 const NOT_DEVICES = ['devices']
@@ -293,6 +294,9 @@ export default function WaysToTalkPage() {
       <RoomBoxes page={page} />
       <SectionForm page={page} path={DISCORD} title="Discord" status={<ChannelState name="discord" />} />
       <AssistCard page={page} />
+      <SectionForm page={page} path={HA_INTEGRATION} title="Home Assistant integration">
+        <IntegrationStatus />
+      </SectionForm>
     </SettingsPage>
   )
 }
@@ -332,6 +336,59 @@ function AssistStatus() {
           Speaks on {n} Home Assistant {n === 1 ? 'satellite' : 'satellites'}.
         </p>
       ) : null}
+    </div>
+  )
+}
+
+/** Pairing Winston's integration in Home Assistant: the code to type there while one is open, whether a Home
+ * Assistant is paired and last reached him, and forgetting it. Nothing while it is off. */
+function IntegrationStatus() {
+  const q = $api.useQuery('get', '/api/ha_integration', undefined, { refetchInterval: 5_000 })
+  const pair = $api.useMutation('post', '/api/ha_integration/code', { onSuccess: () => q.refetch() })
+  const forget = $api.useMutation('delete', '/api/ha_integration/pairing', { onSuccess: () => q.refetch() })
+  const ask = useConfirm()
+  const region = useRegion()
+  const st = q.data
+  if (!st?.enabled) return null
+  if (st.error) return <p className="text-sm text-destructive">{st.error}</p>
+  const when = (t: number) =>
+    new Date(t * 1000).toDateString() === new Date().toDateString() ? region.time(t) : `${region.day(t)}, ${region.time(t)}`
+  const unpair = async () => {
+    const yes = await ask({
+      title: 'Forget the paired Home Assistant?',
+      lines: ['Its Winston entities go unavailable until you pair it again with a new code.'],
+      choices: [{ label: 'Forget it', value: 'yes', destructive: true }],
+    })
+    if (yes) forget.mutate({}, { onSuccess: () => toast.success('Home Assistant forgotten.') })
+  }
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      {st.code ? (
+        <div className="flex flex-col gap-1">
+          <p>Type this code in Home Assistant, under Settings, Devices and services, Winston:</p>
+          <p className="text-2xl font-semibold tracking-widest tabular-nums">{st.code}</p>
+          <p className="text-muted-foreground">Works until {region.time(st.code_until ?? 0)}, once.</p>
+        </div>
+      ) : st.paired ? (
+        <p>
+          Paired.{' '}
+          {st.last_seen ? `Home Assistant reached him at ${when(st.last_seen)}.` : 'Not reached since Winston started.'}
+        </p>
+      ) : (
+        <p className="text-muted-foreground">
+          Not paired. Add Winston from Home Assistant's Marketplace (HACS before 2026.11), then select Pair and type the code there. Home Assistant finds him on its own, or asks for this computer's address and the port.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" disabled={pair.isPending} onClick={() => pair.mutate({})}>
+          {st.code ? 'New code' : st.paired ? 'Pair again' : 'Pair'}
+        </Button>
+        {st.paired ? (
+          <Button variant="outline" size="sm" disabled={forget.isPending} onClick={unpair}>
+            Forget Home Assistant
+          </Button>
+        ) : null}
+      </div>
     </div>
   )
 }

@@ -617,6 +617,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ha_integration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Winston's Home Assistant integration: whether it listens, is paired, and the open pairing code */
+        get: operations["ha_integration_api_ha_integration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ha_integration/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** A new pairing code for Home Assistant's Winston integration, good for ten minutes */
+        post: operations["ha_integration_code_api_ha_integration_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ha_integration/pairing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Forget the paired Home Assistant: its token stops working and it asks to pair again */
+        delete: operations["ha_integration_unpair_api_ha_integration_pairing_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rooms": {
         parameters: {
             query?: never;
@@ -1696,6 +1747,14 @@ export interface components {
              *     }
              */
             assist?: components["schemas"]["AssistChannel"];
+            /**
+             * Home Assistant integration
+             * @default {
+             *       "enabled": false,
+             *       "port": 8710
+             *     }
+             */
+            ha_integration?: components["schemas"]["HAIntegrationChannel"];
         };
         /** ChatMessage */
         ChatMessage: {
@@ -2213,6 +2272,11 @@ export interface components {
                 [key: string]: components["schemas"]["ExtensionTool"];
             };
             /**
+             * Show in Home Assistant
+             * @default true
+             */
+            publish?: boolean;
+            /**
              * Memory limit
              * @default 500
              */
@@ -2609,6 +2673,60 @@ export interface components {
             drift?: components["schemas"]["HAEntity"][];
             pending?: components["schemas"]["ExposurePlan"] | null;
         };
+        /**
+         * HAIntegrationChannel
+         * @description Winston's Home Assistant integration (api/ha_link.py): applied on save, no restart.
+         */
+        HAIntegrationChannel: {
+            /**
+             * Show him in Home Assistant
+             * @default false
+             */
+            enabled?: boolean;
+            /**
+             * Port
+             * @description Where Home Assistant's Winston integration reaches him.
+             * @default 8710
+             */
+            port?: number;
+        };
+        /** HAIntegrationState */
+        HAIntegrationState: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Listening
+             * @description The port is open and he is announced on the network.
+             */
+            listening: boolean;
+            /** Port */
+            port: number;
+            /**
+             * Error
+             * @description Why the port could not be opened.
+             */
+            error?: string | null;
+            /**
+             * Paired
+             * @description A Home Assistant holds a token from a pairing.
+             */
+            paired: boolean;
+            /**
+             * Last Seen
+             * @description When Home Assistant last reached him (epoch seconds); None: not since winstond started.
+             */
+            last_seen?: number | null;
+            /**
+             * Code
+             * @description The pairing code to type in Home Assistant, while one is open.
+             */
+            code?: string | null;
+            /**
+             * Code Until
+             * @description When the code stops working (epoch seconds).
+             */
+            code_until?: number | null;
+        };
         /** HARegistry */
         HARegistry: {
             /** Ok */
@@ -2930,7 +3048,7 @@ export interface components {
         /**
          * LiveEvent
          * @description One thing that happened. Which fields are set depends on `type`:
-         *     state: state. user: text, room (where it was said, when a room is known). reply: reply, text (a piece). reply_end: reply.
+         *     state: state, room (when the channel is in one). user: text, room (where it was said, when a room is known). reply: reply, text (a piece). reply_end: reply.
          *     tool: call, name, status, label, ms, icon (an extension's). announcement: text. error: text.
          *     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
          *     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
@@ -4405,6 +4523,10 @@ export interface components {
              *       "assist": {
              *         "enabled": false,
              *         "port": 10800
+             *       },
+             *       "ha_integration": {
+             *         "enabled": false,
+             *         "port": 8710
              *       }
              *     }
              */
@@ -5548,6 +5670,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssistState"];
+                };
+            };
+        };
+    };
+    ha_integration_api_ha_integration_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HAIntegrationState"];
+                };
+            };
+        };
+    };
+    ha_integration_code_api_ha_integration_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HAIntegrationState"];
+                };
+            };
+        };
+    };
+    ha_integration_unpair_api_ha_integration_pairing_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HAIntegrationState"];
                 };
             };
         };

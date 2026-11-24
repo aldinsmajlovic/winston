@@ -38,7 +38,7 @@ State = Literal["idle", "listening", "thinking", "speaking"]
 
 class LiveEvent(BaseModel):
     """One thing that happened. Which fields are set depends on `type`:
-    state: state. user: text, room (where it was said, when a room is known). reply: reply, text (a piece). reply_end: reply.
+    state: state, room (when the channel is in one). user: text, room (where it was said, when a room is known). reply: reply, text (a piece). reply_end: reply.
     tool: call, name, status, label, ms, icon (an extension's). announcement: text. error: text.
     mic: room, held_by (who has the room's mic; absent when nobody has it, core/rooms.py).
     confirm: call (the confirmation's id), name (the tool), label (what it would do), status (waiting, then
@@ -198,9 +198,10 @@ class LiveObserver(BaseObserver):
     states from the bot's audio; text channels are idle when the reply ends and no tool is running.
     The reply is what the pipeline's ReplyFilter lets through."""
 
-    def __init__(self, channel: str, sink: Callable[[LiveEvent], object], spoken: bool = False):
+    def __init__(self, channel: str, sink: Callable[[LiveEvent], object], spoken: bool = False,
+                 room: str | None = None):
         super().__init__()
-        self.channel, self._sink, self._spoken = channel, sink, spoken
+        self.channel, self._sink, self._spoken, self.room = channel, sink, spoken, room
         self._first = Once(256)                         # observers see a frame once per pipeline hop
         self._heard: list[str] = []
         self._reply: str | None = None
@@ -211,7 +212,7 @@ class LiveObserver(BaseObserver):
         self._sink(LiveEvent(channel=self.channel, type=type_, **fields))
 
     def _state(self, s: State):
-        self._emit("state", state=s)
+        self._emit("state", state=s, room=self.room)      # the room's state in Home Assistant (core/ha_link.py)
 
     def _end_reply(self):
         if self._reply:

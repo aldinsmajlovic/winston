@@ -229,7 +229,7 @@ class Assist:
             logger.exception("assist: answering failed")
             said = error_text(e)
             self.feed.publish(LiveEvent(channel="assist", type="error", text=said))
-            self.feed.publish(LiveEvent(channel="assist", type="state", state="idle"))
+            self.feed.publish(LiveEvent(channel="assist", type="state", state="idle", room=room))
             raise Unanswered(NO_BRAIN if said == UNREACHABLE else FAILED) from e
         s = self.chat.sessions.get(self.chat._key(room, conv))
         llm = s.brain.llm if s else None
@@ -239,7 +239,7 @@ class Assist:
         if not text and not quiet:
             logger.warning("assist: no reply within the time limit")
             self.feed.publish(LiveEvent(channel="assist", type="error", text="He did not answer in time."))
-            self.feed.publish(LiveEvent(channel="assist", type="state", state="idle"))
+            self.feed.publish(LiveEvent(channel="assist", type="state", state="idle", room=room))
             raise Unanswered(FAILED)
         return text, asks(text)
 
