@@ -320,7 +320,8 @@ other men talking 10 dB under the voice
 
 | Preset | Runs on | Memory | Takes hint words | Word errors, quiet / with talkers | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Parakeet (built in, CPU) | inside the voice process, onnx-asr | none | no, fixed afterwards | 1.6% / 15.5% | The default; about 0.2 s a request |
+| Fluid Speech Pro (built in, CPU) | the same, from Hugging Face | none | no, fixed afterwards | not measured on these lines | The default since 24 November; Parakeet retrained, a quarter of its errors with talkers on FLEURS; about 0.4 s a request |
+| Parakeet (built in, CPU) | inside the voice process, onnx-asr | none | no, fixed afterwards | 1.6% / 15.5% | About 0.2 s a request |
 | Qwen3-ASR 0.6B on GPU | `services/stt-qwen3-asr` on port 8001 | about 2.2 GB | yes, as its context | 2.2% / 6.3% | Fits beside the 27B brain and Chatterbox; about 0.29 s a request |
 | Qwen3-ASR 1.7B on GPU | the same service | about 5 GB | yes | not measured | Beside the 27B brain it needs Pocket TTS instead of Chatterbox |
 | Hosted | any server speaking OpenAI's transcription API | none | as its prompt | not measured | `STT_API_KEY` in `.env`; your speech leaves the LAN |
@@ -328,6 +329,11 @@ other men talking 10 dB under the voice
 - **Parakeet** runs in int8 (`stt.quantization`, config.yaml only), faster on the CPU at no audible
   accuracy cost; empty is full precision. Its Hearing card has no How it runs, since it runs inside
   Winston.
+- **Fluid Speech Pro** is [FluidVoice's retrain of Parakeet v3](https://huggingface.co/FluidVoice-Labs/fluid-speech-pro-onnx)
+  (CC-BY-4.0, the same 25 languages), run by the same adapter. `stt.model` can be any Hugging Face repo
+  in onnx-asr's layout: the adapter downloads it once as plain files to `~/.cache/huggingface/onnx-asr/`,
+  since onnxruntime refuses weights reached through the Hub cache's links. Delete that folder to fetch a
+  newer version ([measurement](voice-benchmarks.md#parakeet-against-fluid-speech-pro-24-november)).
 - **Qwen3-ASR and hosted servers** get a How it runs, holding the API address while Winston runs the
   engine. The Qwen3-ASR service has its own venv, which Winston installs the first time it is
   picked; the model downloads on its first start.

@@ -3,7 +3,7 @@
 # copied clips, wait until it answers, run bench.py against it, stop it. Its log goes to
 # work/logs/NAME.log. Extra arguments go to bench.py (--sentences 3 for a quick try).
 #
-#   tests/tts_bench/candidate.sh qwen3 | voxcpm2 | gepard | gepard-1.0 | breeze2 | breeze2-fast | breeze2-int4 | pocket [bench.py args]
+#   tests/tts_bench/candidate.sh qwen3 | voxcpm2 | gepard | gepard-1.0 | breeze2 | breeze2-fast | breeze2-int4 | breeze2-voice | chatterbox | zonos3 | pocket [bench.py args]
 #
 # The GPU candidates need the live Chatterbox stopped first (see README.md): the script refuses to
 # start one while less than 5 GB of the card is free, so it never pushes the brain out of memory.
@@ -12,7 +12,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 work="$here/work"
 voices="$work/voices"
-name="${1:?usage: candidate.sh qwen3|voxcpm2|gepard|gepard-1.0|breeze2|breeze2-fast|breeze2-int4|pocket [bench.py args]}"
+name="${1:?usage: candidate.sh qwen3|voxcpm2|gepard|gepard-1.0|breeze2|breeze2-fast|breeze2-int4|breeze2-voice|chatterbox|zonos3|pocket [bench.py args]}"
 shift
 default="$voices/librivox/clifton_fatherbrown.wav"   # the voice Winston speaks in now
 gpu=1
@@ -26,6 +26,9 @@ case "$name" in
   breeze2-fast) dir=breeze2; port=8897; args=(--fast backbone_decode depth_decoder codec) ;;
   breeze2-int4) dir=breeze2; port=8898; args=(--fast backbone_decode depth_decoder codec --backbone-bits 4 --text-encoder-bits 4) ;;
   breeze2-b4g32t8) dir=breeze2; port=8898; args=(--fast backbone_decode depth_decoder codec --backbone-bits 4 --int4-group 32 --text-encoder-bits 8) ;;
+  breeze2-voice) dir=breeze2; port=8897; args=(--fast backbone_decode depth_decoder codec --text-encoder-bits 8) ;;  # the breeze2 Voice preset
+  chatterbox) dir=chatterbox; port=8890; args=(--stream true --chunk-secs 1.6 --first-secs 0.96 --lookahead-secs 0.32) ;;  # Turbo, streamed as Winston ran it
+  zonos3)     dir=zonos3;    port=8899; args=(--memory-ratio 0.12) ;;  # its default half of the card is mostly a KV cache a voice never fills
   pocket)     dir=pocket;    port=8895; gpu=0 ;;
   *) echo "unknown candidate $name"; exit 2 ;;
 esac

@@ -133,7 +133,7 @@ measured on real requests, and the variable each key is stored under. To change 
 | Setting | Default | What it is |
 | --- | --- | --- |
 | `assistant.persona` | `persona.md` | The file in the data folder his personality is read from; its words are edited on Assistant, Personality |
-| `stt.quantization` | `int8` | Parakeet's precision: int8 is faster on the CPU at no audible cost, empty is full precision ([voices](voices.md#hearing-engines)) |
+| `stt.quantization` | `int8` | The built-in hearing's precision: int8 is faster on the CPU at no audible cost, empty is full precision ([voices](voices.md#hearing-engines)) |
 | `tts.streaming.first_secs` | 0.96 s | The first chunk of streamed speech; shorter starts sooner, below about 0.9 s the second can arrive late |
 | `tts.streaming.lookahead_secs` | 0.32 s | Audio held back at the end of each chunk until what follows is known; shorter than the first chunk |
 | `vad.stop_secs` | 0.3 s | Silence before he answers on the Talk page |

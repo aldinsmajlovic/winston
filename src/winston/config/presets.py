@@ -68,12 +68,12 @@ LLM: list[Fragment] = [
     },
     {
         "id": "ollama", "icon": "ollama", "title": "Ollama (local)", "needs": ["ollama"],
-        "hint": "Any graphics card or a CPU. Granite 4.1 8B takes about 8 GB with a 16K context; on a smaller "
+        "hint": "Any graphics card or a CPU. Granite 4.2 8B takes about 7 GB with a 16K context; on a smaller "
                 "card pick qwen3.5:4b.",
         "engine": {"driver": "external", "url": "http://127.0.0.1:11434", "port": 11434, "health": "/",
                    "startup_timeout": 60},
         "settings": {"llm": {"base_url": "http://127.0.0.1:11434/v1", "api_key_env": None,
-                             "model": "granite4.1:8b", "thinking": {"control": "reasoning_effort"}}},
+                             "model": "granite4.2:8b", "thinking": {"control": "reasoning_effort"}}},
     },
     {
         "id": "network", "icon": "server", "title": "A server on your network", "needs": [],
@@ -205,8 +205,16 @@ def _qwen3_asr(size: str, hint: str) -> Fragment:
 
 STT: list[Fragment] = [
     {
+        "id": "fluid-speech-pro", "icon": "huggingface", "title": "Fluid Speech Pro (built in, CPU)", "needs": [],
+        "hint": "The default. Parakeet retrained by FluidVoice: the same 25 languages and still on the CPU, with far fewer errors "
+                "when other people talk, at about 0.4 s a sentence. The first start downloads it (about 800 MB).",
+        "engine": None,
+        "settings": {"stt": {"provider": "parakeet", "base_url": None, "api_key_env": None,
+                             "model": "FluidVoice-Labs/fluid-speech-pro-onnx", "quantization": "int8"}},
+    },
+    {
         "id": "parakeet", "icon": "parakeet", "title": "Parakeet (built in, CPU)", "needs": [],
-        "hint": "Runs on the CPU in about 0.2 s a sentence, so the graphics card stays free. Understands 25 "
+        "hint": "The original Fluid was retrained from. Runs on the CPU in about 0.2 s a sentence, so the graphics card stays free. Understands 25 "
                 "European languages; misheard names are corrected afterwards, not known in advance.",
         "engine": None,
         "settings": {"stt": {"provider": "parakeet", "base_url": None, "api_key_env": None,

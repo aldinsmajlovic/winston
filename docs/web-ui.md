@@ -213,7 +213,7 @@ box says so ("Search, or paste a link"). Anything typed can still be used as is 
 | Engine | What typing finds |
 | --- | --- |
 | llama.cpp | The Hub's most downloaded GGUF repos matching every word, each at its 4-bit size (`Q4_K_M`, else the nearest), with downloads and how many sizes it has |
-| Ollama | Ollama's library first (`granite4.1`), then the same Hub repos as `hf.co/repo:quant` |
+| Ollama | Ollama's library first (`granite4.2`), then the same Hub repos as `hf.co/repo:quant` |
 | vLLM | The Hub's safetensors repos; Apple's MLX repos are left out |
 
 - **A repo named exactly** (`unsloth/Qwen3.5-9B-GGUF`) or pasted as a link (`huggingface.co/...`,

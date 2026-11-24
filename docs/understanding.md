@@ -215,12 +215,18 @@ does not end a sentence, gets more time, so a pause to think does not cut you of
 
   | Model | Average WER (Open ASR) | Takes context | Hears Swedish as Swedish | Licence |
   | --- | --- | --- | --- | --- |
-  | Parakeet TDT 0.6B v3 (the default) | 6.34 | No | Yes, language not reported | CC-BY-4.0 |
-  | [Qwen3-ASR 1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B) | 5.76 | Yes, as its `prompt` | Yes, and reports it (98.7% on FLEURS) | Apache-2.0 |
-  | [Granite Speech 4.1 2B](https://huggingface.co/ibm-granite/granite-speech-4.1-2b) | 5.33, the best | Yes, a keyword list | No: six languages, no Swedish | Apache-2.0 |
+  | Parakeet TDT 0.6B v3 | 7.04 | No | Yes, language not reported | CC-BY-4.0 |
+  | [Fluid Speech Pro](https://huggingface.co/FluidVoice-Labs/fluid-speech-pro), Parakeet retrained (the default since 24 November) | 6.06, the best of these | No | Yes, language not reported | CC-BY-4.0 |
+  | [Qwen3-ASR 1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B) | 6.15 | Yes, as its `prompt` | Yes, and reports it (98.7% on FLEURS) | Apache-2.0 |
+  | [Granite Speech 5.0 2B](https://huggingface.co/ibm-granite/granite-speech-5.0-2b) | 6.68 | Yes, a keyword list of up to 2,000 | No: six languages, no Swedish | Apache-2.0 |
+
+  The leaderboard's results data is not public, so the scores are as quoted on
+  [Fluid Speech Pro's card](https://huggingface.co/FluidVoice-Labs/fluid-speech-pro) in November.
+  Since 2 November the average leaves out LibriSpeech, so older scores are not comparable: on the
+  scale before, Qwen3-ASR had 5.40 and Granite Speech 5.0 5.68 (IBM's chart, 21 October).
 
   Qwen3-ASR leads: it adds names given in advance, and Swedish recognised as Swedish so it can be
-  left alone. Granite is scored beside it as the best English-only engine. On the GPU, 3.7 GB is left
+  left alone. Granite is scored beside it for English. On the GPU, 3.7 GB is left
   beside the 27B brain (17.2 GB) and the voice (3.1 GB); 0.6B is the fallback if 1.7B does not fit.
 
 ## 4. For him?

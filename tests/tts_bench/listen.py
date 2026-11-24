@@ -1,7 +1,9 @@
-"""The blind listening page: pairs of the baseline and each candidate on the same line in the same voice.
+"""The blind listening page: pairs of the baseline and each candidate on the same line in the same voice, or with
+--abc, every named engine side by side on the same line (A/B/C).
 
     uv run python tests/tts_bench/listen.py                    # work/listen.html from work/results.json
     uv run python tests/tts_bench/listen.py --pairs 8 --baseline turbo --seed 7
+    uv run python tests/tts_bench/listen.py --abc breeze2-voice,zonos3,chatterbox --pairs 12
 
 For every candidate in results.json, --pairs sentences are drawn (each clip in turn), and each pair
 plays the baseline and the candidate as A and B in a random order; the pairs are shuffled across
@@ -70,13 +72,39 @@ def build_pairs(results: dict, baseline: str, per: int, rng: random.Random, only
                 continue
             (cand, ref), sid = pick, pick[0]["sid"]
             used.update({sid, (clip, sid)})
-            swap = rng.random() < 0.5
-            a, b = (cand, ref) if swap else (ref, cand)
+            opts = [(name, cand), (baseline, ref)]
+            rng.shuffle(opts)
             pairs.append({"candidate": name, "sid": sid, "clip": clip, "text": ref["text"],
-                          "a": a["file"], "b": b["file"], "baseline_is": "B" if swap else "A",
+                          "files": [r["file"] for _, r in opts], "engines": [n for n, _ in opts],
                           "same_voice": not builtin})
     rng.shuffle(pairs)
     return pairs
+
+
+def build_rounds(results: dict, names: list[str], per: int, rng: random.Random, lines: set[str] = frozenset()) -> list[dict]:
+    """per rounds of every named engine on one line in one clip, in a random order: the A/B/C test. Each clip in
+    turn, a line once across clips unless lines are given (then each in every clip)."""
+    have = [{(r["clip"], r["sid"]): r for r in results[n]["rows"]} for n in names]
+    shared = sorted(set.intersection(*(set(h) for h in have)), key=lambda k: (CLIPS.index(k[0]) if k[0] in CLIPS else 99, k[1]))
+    if lines:
+        shared = [k for k in shared if k[1] in lines]
+    rng.shuffle(shared)
+    clips = sorted({c for c, _ in shared}, key=lambda c: CLIPS.index(c) if c in CLIPS else 99)
+    rounds, used = [], set()
+    for i in range(per * max(1, len(clips))):
+        if len(rounds) >= per or not clips:
+            break
+        clip = clips[i % len(clips)]
+        k = next((k for k in shared if k[0] == clip and k not in used and (lines or k[1] not in used)), None)
+        if k is None:
+            continue
+        used.update({k, k[1]})
+        opts = [(n, h[k]) for n, h in zip(names, have)]
+        rng.shuffle(opts)
+        rounds.append({"candidate": "/".join(names), "sid": k[1], "clip": clip, "text": opts[0][1]["text"],
+                       "files": [r["file"] for _, r in opts], "engines": [n for n, _ in opts], "same_voice": True})
+    rng.shuffle(rounds)
+    return rounds
 
 
 PAGE = """<!doctype html>
@@ -108,12 +136,12 @@ textarea { width: 100%; min-height: 160px; margin-top: 16px; font: inherit; font
 </style></head>
 <body><main>
 <h1>Which sounds more like a person talking?</h1>
-<p>Play both, then pick. Keys: 1 and 2 play A and B, a, b and s answer, arrows move.</p>
+<p>Play each, then pick. Keys: 1, 2, 3 play A, B, C; a, b, c and s answer; arrows move.</p>
 <div class="progress"><div id="bar"></div></div>
 <div id="count"></div>
 <div class="line" id="text"></div>
-<div class="row"><button class="play" id="playA">Play A</button><button class="play" id="playB">Play B</button></div>
-<div class="row"><button id="ansA">A</button><button id="ansB">B</button><button id="ansS">Same</button></div>
+<div class="row" id="plays"></div>
+<div class="row" id="answers"></div>
 <div class="nav"><button id="prev">Back</button><button id="copy">Copy results</button><button id="next">Next</button></div>
 <p id="done" class="hidden">All answered. Copy the results and paste them back.</p>
 <textarea id="out" class="hidden" readonly></textarea>
@@ -126,17 +154,31 @@ const KEY = JSON.parse(atob("__KEY__"));
 const answers = new Array(PAIRS.length).fill(null);
 let i = 0, player = null;
 const $ = id => document.getElementById(id);
-function play(side) {
+const L = "ABCDEFGH";
+function play(k) {
+  if (k >= PAIRS[i].opts.length) return;
   if (player) player.pause();
-  player = new Audio("data:audio/wav;base64," + AUDIO[PAIRS[i][side === "A" ? "a" : "b"]]);
+  player = new Audio("data:audio/wav;base64," + AUDIO[PAIRS[i].opts[k]]);
   player.play();
+}
+function buttons() {
+  const n = PAIRS[i].opts.length;
+  $("plays").innerHTML = ""; $("answers").innerHTML = "";
+  for (let k = 0; k < n; k++) {
+    const b = document.createElement("button"); b.className = "play"; b.textContent = "Play " + L[k]; b.onclick = () => play(k);
+    $("plays").appendChild(b);
+    const c = document.createElement("button"); c.textContent = L[k]; c.onclick = () => answer(L[k]);
+    c.classList.toggle("chosen", answers[i] === L[k]); $("answers").appendChild(c);
+  }
+  const s = document.createElement("button"); s.textContent = "Same"; s.onclick = () => answer("Same");
+  s.classList.toggle("chosen", answers[i] === "Same"); $("answers").appendChild(s);
 }
 function show() {
   const p = PAIRS[i];
-  $("count").textContent = "Pair " + (i + 1) + " of " + PAIRS.length;
+  $("count").textContent = (p.opts.length > 2 ? "Round " : "Pair ") + (i + 1) + " of " + PAIRS.length;
   $("text").textContent = p.text;
   $("bar").style.width = (100 * answers.filter(a => a).length / PAIRS.length) + "%";
-  for (const [id, v] of [["ansA", "A"], ["ansB", "B"], ["ansS", "Same"]]) $(id).classList.toggle("chosen", answers[i] === v);
+  buttons();
   $("prev").disabled = i === 0;
   $("next").disabled = i === PAIRS.length - 1;
   $("done").classList.toggle("hidden", answers.some(a => !a));
@@ -153,13 +195,12 @@ function results() {
   const lines = [];
   KEY.forEach((p, k) => {
     const a = answers[k];
-    const pick = !a ? "unanswered" : a === "Same" ? "same" : a === p.baseline_is ? "baseline" : "candidate";
-    per[p.candidate] = per[p.candidate] || {candidate: 0, baseline: 0, same: 0, unanswered: 0};
-    per[p.candidate][pick]++;
+    const pick = !a ? "unanswered" : a === "Same" ? "same" : p.engines[L.indexOf(a)];
+    const n = per[p.candidate] = per[p.candidate] || {};
+    n[pick] = (n[pick] || 0) + 1;
     lines.push([p.candidate, p.sid, p.clip, p.same_voice ? "same voice" : "own voice", pick].join(" "));
   });
-  const head = Object.entries(per).map(([c, n]) => c + ": candidate " + n.candidate + ", baseline " + n.baseline
-    + ", same " + n.same + (n.unanswered ? ", unanswered " + n.unanswered : ""));
+  const head = Object.entries(per).map(([c, n]) => c + ": " + Object.entries(n).map(([e, v]) => e + " " + v).join(", "));
   return "Listening results (" + new Date().toISOString().slice(0, 16) + ", baseline __BASELINE__)\\n"
     + head.join("\\n") + "\\n\\n" + lines.join("\\n") + "\\n";
 }
@@ -171,19 +212,16 @@ async function copy() {
   catch (e) { $("out").select(); document.execCommand("copy"); $("copy").textContent = "Copied"; }
   setTimeout(() => { $("copy").textContent = "Copy results"; }, 2000);
 }
-$("playA").onclick = () => play("A");
-$("playB").onclick = () => play("B");
-$("ansA").onclick = () => answer("A");
-$("ansB").onclick = () => answer("B");
-$("ansS").onclick = () => answer("Same");
 $("prev").onclick = () => { if (i > 0) { i--; show(); } };
 $("next").onclick = () => { if (i < PAIRS.length - 1) { i++; show(); } };
 $("copy").onclick = copy;
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "TEXTAREA") return;
   const k = e.key.toLowerCase();
-  if (k === "1") play("A"); else if (k === "2") play("B");
-  else if (k === "a") answer("A"); else if (k === "b") answer("B"); else if (k === "s") answer("Same");
+  const n = PAIRS[i].opts.length;
+  if (k >= "1" && k <= "8") play(+k - 1);
+  else if (k === "s") answer("Same");
+  else if (k.length === 1 && L.toLowerCase().indexOf(k) >= 0 && L.toLowerCase().indexOf(k) < n) answer(k.toUpperCase());
   else if (k === "arrowleft") $("prev").click(); else if (k === "arrowright") $("next").click();
 });
 show();
@@ -198,33 +236,38 @@ def main():
     ap.add_argument("--seed", type=int, default=None, help="for the same draw and order again")
     ap.add_argument("--candidates", default="", help="comma-separated names to pair; default every one but the baseline")
     ap.add_argument("--lines", default="", help="comma-separated line ids (s15,s18) to pair, each in every clip")
+    ap.add_argument("--abc", default="", help="comma-separated names heard side by side on each line (A/B/C...), "
+                                              "instead of pairs against the baseline; --pairs is then the rounds")
     ap.add_argument("--out", default=str(WORK / "listen.html"))
     args = ap.parse_args()
     results = json.loads(RESULTS.read_text())
-    if args.baseline not in results:
-        raise SystemExit(f"no {args.baseline!r} in {RESULTS}; run bench.py with it first")
+    abc = [c.strip() for c in args.abc.split(",") if c.strip()]
+    for n in abc or [args.baseline]:
+        if n not in results:
+            raise SystemExit(f"no {n!r} in {RESULTS}; run bench.py with it first")
     only = {c.strip() for c in args.candidates.split(",") if c.strip()}
     rng = random.Random(args.seed)
     lines = {x.strip() for x in args.lines.split(",") if x.strip()}
-    pairs = build_pairs(results, args.baseline, args.pairs, rng, only, lines)
+    pairs = (build_rounds(results, abc, args.pairs, rng, lines) if abc
+             else build_pairs(results, args.baseline, args.pairs, rng, only, lines))
     if not pairs:
         raise SystemExit("no candidate shares a sentence and clip with the baseline")
-    audio = {f: levelled_wav(WORK / f) for p in pairs for f in (p["a"], p["b"])}
+    audio = {f: levelled_wav(WORK / f) for p in pairs for f in p["files"]}
     # the page only needs what it shows and what the copied results say; file names would give the engines away
     order = sorted(audio)
     rng.shuffle(order)             # ids in path order would sort the engines by name
     ids = {f: f"c{k}" for k, f in enumerate(order)}
-    shown = [{"text": p["text"], "a": ids[p["a"]], "b": ids[p["b"]]} for p in pairs]
-    key = [{k: p[k] for k in ("candidate", "sid", "clip", "same_voice", "baseline_is")} for p in pairs]
+    shown = [{"text": p["text"], "opts": [ids[f] for f in p["files"]]} for p in pairs]
+    key = [{k: p[k] for k in ("candidate", "sid", "clip", "same_voice", "engines")} for p in pairs]
     page = (PAGE.replace("__PAIRS__", json.dumps(shown))
             .replace("__KEY__", base64.b64encode(json.dumps(key).encode()).decode())
             .replace("__AUDIO__", json.dumps({ids[f]: b for f, b in audio.items()}))
-            .replace("__BASELINE__", html.escape(args.baseline)))
+            .replace("__BASELINE__", html.escape("none, side by side" if abc else args.baseline)))
     Path(args.out).write_text(page, encoding="utf-8")
     per = {}
     for p in pairs:
         per[p["candidate"]] = per.get(p["candidate"], 0) + 1
-    print(f"{len(pairs)} pairs ({', '.join(f'{c} {n}' for c, n in per.items())}), "
+    print(f"{len(pairs)} {'rounds' if abc else 'pairs'} ({', '.join(f'{c} {n}' for c, n in per.items())}), "
           f"{Path(args.out).stat().st_size / 1e6:.1f} MB: {args.out}")
 
 

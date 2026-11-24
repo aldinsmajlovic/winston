@@ -99,7 +99,7 @@ def chime_first(a: np.ndarray) -> bool:
 
 
 async def main():
-    stt = Parakeet.load_model(STTConfig())               # Parakeet hears the playback, whatever is set
+    stt = Parakeet.load_model(STTConfig())               # the default hearing hears the playback, whatever is set
     hear = lambda a: stt.recognize(a, sample_rate=16000).strip()   # noqa: E731
     question = speech("How long did it run?")
     mic, ear = Mic(), Ear()

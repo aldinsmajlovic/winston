@@ -7,12 +7,12 @@ table below), or switch any slot later on the Brain and Voice pages.
 
 | Profile | Needs | Brain | Voice | Hearing |
 |---|---|---|---|---|
-| `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | vLLM in Docker, Qwen3.5-9B AWQ | Chatterbox-Turbo on the GPU, voice cloning from a clip | Parakeet on the CPU |
-| `nvidia-24gb-27b` | The same | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Chatterbox-Turbo on the GPU | Parakeet on the CPU |
-| `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `granite4.1:8b` | Pocket TTS on the CPU | Parakeet on the CPU |
-| `hosted` | Internet and an API key | Any OpenAI-compatible endpoint | Pocket TTS on the CPU | Parakeet on the CPU |
+| `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | vLLM in Docker, Qwen3.5-9B AWQ | Chatterbox-Turbo on the GPU, voice cloning from a clip | Fluid Speech Pro on the CPU |
+| `nvidia-24gb-27b` | The same | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Chatterbox-Turbo on the GPU | Fluid Speech Pro on the CPU |
+| `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `granite4.2:8b` | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
+| `hosted` | Internet and an API key | Any OpenAI-compatible endpoint | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 
-In every profile, hearing (Parakeet TDT 0.6B v3 through ONNX), voice activity, turn taking and the
+In every profile, hearing (Fluid Speech Pro, a retrained Parakeet TDT 0.6B v3, through ONNX), voice activity, turn taking and the
 wake word run on the CPU. Home control never leaves the LAN; the hosted profile sends only the
 conversation text to the model provider.
 
@@ -22,7 +22,8 @@ conversation text to the model provider.
 - **NVIDIA with 16 GB or more:** `nvidia-24gb`. Below 24 GB, lower `--gpu-memory-utilization` in
   the vLLM arguments or pick a smaller model; the Chatterbox server needs about 4 GB next to it.
 - **A smaller card, AMD, Apple silicon, or no GPU:** `ollama`. Ollama handles the hardware itself.
-  Any model whose Ollama page lists `tools` works. The default, `granite4.1:8b`, fits a 12 GB card;
+  Any model that `ollama show` lists with the `tools` capability works; the tags on its Ollama
+  page can leave it out (Granite 4.2 has none). The default, `granite4.2:8b`, fits a 12 GB card;
   on less than about 8 GB free, pick `qwen3.5:4b`. Expect fewer requests right than on the 24 GB
   profiles ([comparing brains](#comparing-brains)).
 - **A brain you already run on another computer** (Ollama, vLLM, llama.cpp or any OpenAI-compatible
@@ -50,7 +51,7 @@ What the reference box (an RTX 3090) runs, each slot measured against what fits 
 |---|---|---|---|---|
 | Brain | Qwen3.8-27B at 4 bits on llama.cpp (`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`), MTP drafting, 32K context, thinking only before a home action | 17 GB | Qwen3.5-9B on vLLM | More requests right ([comparing brains](#comparing-brains)), at about the same speed. No vision. |
 | Voice | Breeze TTS 2 (Voice preset `breeze2`) | 5.4 GB | Chatterbox-Turbo, streamed (4 GB) | Won 9 of 10 blind pairs; first sound in 0.18 s against 0.45 s ([voice benchmarks](voice-benchmarks.md#breeze-tts-2-as-the-voice-10-october)) |
-| Hearing | Parakeet TDT 0.6B v3, int8, on the CPU | none | Qwen3-ASR 0.6B (2.2 GB) | Qwen3-ASR hears better but does not fit beside Breeze |
+| Hearing | Fluid Speech Pro (retrained Parakeet v3), int8, on the CPU | none | Qwen3-ASR 0.6B (2.2 GB) | Qwen3-ASR hears better but does not fit beside Breeze |
 
 With all three, the card sits at 22.9 of 24.6 GB. On a Voice PE box, from the end of speech to the
 first sound: 1.3 s for a plain question, 2.4 s when he uses a tool, and 2.3 s to confirm a home
@@ -67,7 +68,7 @@ layer kept): the same brain trials and speed, for 0.25 GB more.
 
 **With 2 GB more** (a 32 GB card, or a second GPU for hearing), add Qwen3-ASR 0.6B. It hears hint
 words and speech over background talk much better than Parakeet, for 0.09 s more per request
-([voices](voices.md#hearing-engines)).
+([voices](voices.md#hearing-engines)); it has not been measured against Fluid Speech Pro.
 
 Every voice's memory, first sound and word errors, side by side: [picking a voice](voices.md#picking-a-voice).
 
@@ -99,7 +100,7 @@ xychart-beta
 | Model | Engine | Passed, thinking off | Passed, thinking on | First reply text, off / on | VRAM (context) |
 |---|---|---|---|---|---|
 | Qwen3.8-27B, 4 bits (abliterated) | llama.cpp | 39 of 42 | | 0.79 s | 17.3 GB (32K) |
-| `granite4.1:8b` (the Ollama preset) | Ollama | 39 of 42 | no thinking mode | 0.80 s | 8.0 GB (16K) |
+| `granite4.1:8b` (the Ollama preset until 24 November) | Ollama | 39 of 42 | no thinking mode | 0.80 s | 8.0 GB (16K) |
 | `ministral-3:8b` | Ollama | 33 of 42 | no thinking mode | 0.53 s | 8.3 GB (16K) |
 | `nemotron-3.5-bolt:e4b` | Ollama | 31 of 42 | 10 of 14 | 0.08 s (see below) / 4.46 s | 8.4 GB (32K) |
 | `mimo-v2.6:9b` | Ollama | 27 of 42 | 12 of 14 | 0.33 / 1.21 s | 7.1 GB (16K) |
@@ -109,8 +110,28 @@ xychart-beta
 | `qwen3.5:9b` | Ollama | 17 of 42 | 14 of 14 | 0.32 / 2.24 s | 7.1 GB (16K) |
 
 The thinking-on column is one round of 14, so it is a first look, not a ranking. Each Ollama model
-had the RTX 3090 to itself. No Qwen newer than 3.5 comes below 27B; the others are the newest models
-of their size on Ollama with tool support.
+had the RTX 3090 to itself. No Qwen newer than 3.5 comes below 27B. This list was taken from Ollama's search for models
+tagged `tools`, which misses models whose page has no tags; those are in the table below.
+
+On 24 November, with the four nudge cases added (18 requests, three times each, so 54), the models
+the first list missed, and `granite4.1:8b` and `qwen3.5:4b` again on the same day. The 4B did far
+better than on 23 November (26 of 42); what changed between the runs is not known. Its four
+failures here are the nudge it should mention (three) and a missing sensor value (one):
+
+| Model | Passed, thinking off | Passed, thinking on (one round) | First reply text, off / on | VRAM (16K) |
+|---|---|---|---|---|
+| `granite4.2:8b` (the Ollama preset) | 54 of 54 | 17 of 18 | 1.04 / 11.6 s | 6.8 GB |
+| `gemma4:12b` | 51 of 54 | 14 of 18 | 0.63 / 3.49 s | not measured |
+| `qwen3.5:4b` | 50 of 54 | 17 of 18 | 0.60 / 1.31 s | 3.4 GB |
+| `granite4.1:8b` | 46 of 54 | no thinking mode | 0.74 s | 6.8 GB |
+| `granite4.2:3b` | 44 of 54 | 14 of 18 | 0.86 / 10.9 s | 3.0 GB |
+| `lfm2.5:8b` | 40 of 54 | 14 of 18 | 0.11 / 0.12 s (replies done in 2.55 / 3.56 s) | 5.4 GB |
+| `gemma4:e4b` | 39 of 54 | 16 of 18 | 0.31 / 2.66 s | not measured |
+| `nemotron-3-nano:4b` | 6 of 54 | 12 of 18 | 0.27 / 2.61 s | 3.0 GB |
+
+VRAM is what `ollama ps` reported; for Gemma 4 it reported under 1.3 GB, which cannot hold the
+weights, so it is left out. `bonsai-2:27b` was not run: its download fails on a leftover partial
+file only root can remove.
 
 The default profile's brain, Qwen3.5-9B AWQ on vLLM, was compared with the 27B on an earlier version
 of the same requests: 36 of 42 against 42 of 42, first reply text in 0.87 s against 0.94 s, 15.6 GB
@@ -173,8 +194,8 @@ open). Restarting the brain frees it.
 - Winston talks to it over its OpenAI API at `/v1` and switches thinking per request, which the
   preset sets up.
 - Ollama gives a card under 24 GB only 4K of context, and Winston's prompt is about 11K tokens. So
-  when the brain starts, Winston makes a copy of the model with a 16K context (`granite4.1:8b-16k`
-  for `granite4.1:8b`) and talks to that. The copy uses the same files and no extra disk, and it is
+  when the brain starts, Winston makes a copy of the model with a 16K context (`granite4.2:8b-16k`
+  for `granite4.2:8b`) and talks to that. The copy uses the same files and no extra disk, and it is
   made for a model you pulled yourself too.
 - The Brain page lists the model, not the copy.
 
@@ -227,6 +248,6 @@ To clone from a clip (the same clips Chatterbox uses):
 
 ## What is not covered
 
-vLLM on AMD (ROCm images exist, untested here), Windows, and a brain smaller than 4B. Parakeet's
+vLLM on AMD (ROCm images exist, untested here), Windows, and a brain smaller than 4B. The hearing's
 INT8 ONNX build wants a few CPU cores; on a Raspberry Pi class satellite the plan keeps hearing on
 the brain box, not the satellite.

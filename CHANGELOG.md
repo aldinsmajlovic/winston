@@ -8,6 +8,9 @@ you update, and `winston update` prints them after.
 - Winston checks for a new release on his own and shows it on Status with what changed, and Update
   installs it and restarts him.
 - Each release has notes you can read here, on GitHub and on Status.
+- Hearing is now Fluid Speech Pro, a retrained Parakeet that makes far fewer mistakes when other people
+  are talking, still on the CPU. Parakeet stays a choice under Hearing.
+- The Ollama profile's brain is now Granite 4.2 8B, which got every request right in Winston's trials.
 
 ## 0.1.2 (2026-11-24)
 

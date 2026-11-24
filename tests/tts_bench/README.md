@@ -30,6 +30,7 @@ guard; start its server by hand with candidate.sh's arguments and run `bench.py 
 | `breeze2` | Breeze TTS 2, eager | 8896 | GPU, about 8.6 GB |
 | `breeze2-fast` | Breeze TTS 2, decoding as CUDA graphs | 8897 | GPU, about 9.1 GB |
 | `breeze2-int4` | the same, 4-bit backbone and text encoder | 8898 | GPU, about 3.8 GB, beside the brain |
+| `zonos3` | ZONOS3-Mini, `services/tts-zonos3`, clones from the clip alone | 8899 | GPU, not measured yet |
 
 ## What is measured
 

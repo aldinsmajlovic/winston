@@ -11,7 +11,7 @@ Self-hosted, full-duplex voice assistant for Home Assistant. Read `docs/architec
 - `sdk/`: `winston.sdk`, the only import an extension needs. Its own package and tests.
 - `services/`: things with their own venv or build: `speech_server.py` (the voices' shared protocol),
   `tts-chatterbox` (GPU voice, torch pins), `tts-pocket` (CPU voice), `tts-qwen3`, `tts-voxcpm2`,
-  `tts-gepard` (other GPU voices), `stt-qwen3-asr` (Qwen3-ASR hearing), `voice-pe` (the satellite
+  `tts-gepard`, `tts-zonos3` (other GPU voices), `stt-qwen3-asr` (Qwen3-ASR hearing), `voice-pe` (the satellite
   firmware config).
 - `web/`: the UI (Vite + React + shadcn/ui), following `docs/ui-guide.md`. `pnpm api` regenerates
   the client after an API change.

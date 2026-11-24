@@ -288,9 +288,10 @@ class STTConfig(Model):
                                     json_schema_extra=ui(hidden=True, when={**TRANSCRIPTION, **HOSTED},
                                                          secret=secret("STT_API_KEY", "API key",
                                                                        "From your provider's account page.")))
-    model: str = Field("nemo-parakeet-tdt-0.6b-v3", title="Model",
-                       description="For Parakeet, v3 understands 25 European languages and v2 only English; for a "
-                                   "server, the model name it knows.",
+    model: str = Field("FluidVoice-Labs/fluid-speech-pro-onnx", title="Model",
+                       description="Built in: Fluid Speech Pro (the default, Parakeet v3 retrained) or Parakeet, both 25 "
+                                   "European languages, or any Hugging Face repo in onnx-asr's layout; for a server, "
+                                   "the model name it knows.",
                        json_schema_extra=ui(options="stt_models"))
     quantization: str | None = Field("int8", title="Precision",
                                      description="int8 is faster on the CPU at no audible accuracy cost; empty for "

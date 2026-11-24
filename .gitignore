@@ -24,3 +24,6 @@ tests/tts_bench/work/
 
 # Breeze TTS 2 inference code, cloned at a pinned commit (services/tts-breeze2/server.py)
 services/tts-breeze2/upstream/
+
+# ZONOS3-Mini's runtime, cloned at a pinned commit (services/tts-zonos3/server.py)
+services/tts-zonos3/upstream/

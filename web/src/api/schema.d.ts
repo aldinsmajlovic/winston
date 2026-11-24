@@ -3582,8 +3582,8 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Model
-             * @description For Parakeet, v3 understands 25 European languages and v2 only English; for a server, the model name it knows.
-             * @default nemo-parakeet-tdt-0.6b-v3
+             * @description Built in: Fluid Speech Pro (the default, Parakeet v3 retrained) or Parakeet, both 25 European languages, or any Hugging Face repo in onnx-asr's layout; for a server, the model name it knows.
+             * @default FluidVoice-Labs/fluid-speech-pro-onnx
              */
             model?: string;
             /**
@@ -4545,7 +4545,7 @@ export interface components {
              * Hearing
              * @default {
              *       "provider": "parakeet",
-             *       "model": "nemo-parakeet-tdt-0.6b-v3",
+             *       "model": "FluidVoice-Labs/fluid-speech-pro-onnx",
              *       "quantization": "int8",
              *       "fix_misspellings": true,
              *       "hint_words": [],

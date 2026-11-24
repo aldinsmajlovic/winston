@@ -72,6 +72,10 @@ def _sounds(cfg: WinstonConfig, params: dict) -> Options:
     return Options(name="sounds", choices=choices, source="assets/sounds and the data directory's sounds/")
 
 
+# Hub repos in onnx-asr's layout that the Parakeet adapter loads (docs/voices.md#hearing-engines)
+HUB_PARAKEETS = [("FluidVoice-Labs/fluid-speech-pro-onnx", "Fluid Speech Pro (retrained Parakeet v3)")]
+
+
 async def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
     """A speech-to-text server's models (base_url, the draft's or the saved one), else onnx-asr's for Parakeet."""
     saved = cfg.stt.base_url if cfg.stt.provider == "openai_transcription" else None
@@ -100,6 +104,12 @@ async def _stt_models(cfg: WinstonConfig, params: dict) -> Options:
         here = any(stem in c for c in cached)
         choices.append(Choice(value=n, label=n, hint="downloaded" if here else None,
                               group="Parakeet" if "parakeet" in n else "Other"))
+    # Parakeet fine-tunes on the Hub, kept as real files by the adapter (plugins/stt/parakeet.py: local_repo)
+    for repo, label in HUB_PARAKEETS:
+        here = (cache.parent / "onnx-asr" / repo.replace("/", "--") / "config.json").is_file()
+        choices.insert(0, Choice(value=repo, label=label, hint="downloaded" if here else None, group="Parakeet"))
+    if cfg.stt.model not in {c.value for c in choices}:                  # a repo typed into config.yaml
+        choices.insert(0, Choice(value=cfg.stt.model, label=cfg.stt.model, group="Parakeet"))
     return Options(name="stt_models", choices=choices, source="onnx-asr")
 
 

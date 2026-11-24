@@ -263,6 +263,26 @@ With Winston up the card went from 24092 to 23387 of 24576 MB. Tried on the brai
 `-ub 256` (48 MB); both gave the same text at the same speed. The brain's 17.1 GB is 14.4 GB of
 weights, 1.1 GB of attention cache, 0.9 GB of recurrent state for the two slots, and buffers.
 
+### ZONOS3-Mini, 24 November
+
+[ZONOS3-Mini](https://huggingface.co/Zyphra/ZONOS3-Mini) (`services/tts-zonos3`) against the Voice
+preset and Chatterbox-Turbo streamed, each alone on the RTX 3090: 20 of Winston's lines in each of
+three cloned voices (`tests/tts_bench/candidate.sh`).
+
+| | Breeze TTS 2 (Voice preset) | Chatterbox-Turbo | ZONOS3-Mini |
+| --- | --- | --- | --- |
+| First sound, median | 0.18 s | 0.45 s | 0.46 s |
+| Real-time factor | 0.38 | 0.35 | 0.07 |
+| Word errors | 3.0% | 2.9% | 1.8% |
+| GPU memory, peak | 5.5 GB | 4.1 GB | 19.0 GB |
+
+ZONOS3 ran out of memory at its own default, half the card for its cache; it ran with
+`--memory-ratio 0.12` and still peaked at 19 GB, so it does not fit beside the 27B brain.
+
+In a blind ranking of 12 lines (ties allowed, the same loudness and the silence at each end trimmed),
+Aldin's average places were Breeze 1.42, ZONOS3 1.75 and Chatterbox 2.00. In the Voice preset's own
+clip the three tied in three of four rounds. Breeze stays the voice.
+
 ## Reference clips
 
 ### Clarity in noise, by reference voice, 8 October
@@ -310,3 +330,21 @@ Six requests in three VCTK voices, the brain and Chatterbox running, with a made
 | A fan-like hum 5 dB under it | 13.8% (12.4%) | 4.5% |
 | The hint word right | 6 of 9 | 9 of 9 |
 | Time per request | about 0.2 s | about 0.29 s |
+
+### Parakeet against Fluid Speech Pro, 24 November
+
+Both int8 on the CPU through onnx-asr 0.12.0, 150 FLEURS sentences per row. Talkers are four other
+FLEURS voices 10 dB under the speaker; the hum is 50 to 200 Hz with brown noise, 5 dB under.
+
+| | Parakeet | Fluid Speech Pro |
+| --- | --- | --- |
+| English, clean | 6.5% word errors | 5.3% |
+| English, four other people talking | 19.8% | 5.4% |
+| English, under a hum | 6.8% | 5.2% |
+| Swedish, clean | 20.3% | 14.0% |
+| Time per request, 14 recorded box turns (median) | 0.21 s | 0.40 s |
+
+On the box turns, with no reference text, the two transcripts were shown side by side, blind. Of six
+that differed, Fluid had two right that Parakeet had wrong (a one-word "Stop." that Parakeet wrote as
+"S.", and a dropped "to"), Parakeet had one right that Fluid misheard ("up" as "off"), and neither had
+the one in Swedish right.
