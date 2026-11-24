@@ -3,6 +3,13 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.7 (unreleased)
+
+- Setup no longer asks to save and restart at every step. Each step saves as you go, and Finish
+  restarts whatever needs it.
+- Downloads show a bar that moves as they go. A Docker image says when it is unpacking, which can take
+  minutes after the download, instead of sitting at "8.7 GB of 8.7 GB".
+
 ## 0.1.6 (2026-11-24)
 
 - Check now on Status's Updates card looks for a new release at once.
