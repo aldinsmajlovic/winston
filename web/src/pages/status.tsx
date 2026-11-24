@@ -1,4 +1,4 @@
-import { useState, type ComponentProps, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Play, Plus, Square } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import { $api, errorText, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView } from '@/api/client'
@@ -176,6 +176,14 @@ export default function StatusPage() {
   const rooms = $api.useQuery('get', '/api/rooms')
   const setup = $api.useQuery('get', '/api/setup')
   const update = useUpdate()
+  // Check now can find a release, which moves the card from the bottom to the top: the page follows it.
+  const updateFirst = updateNeedsYou(update.query.data)
+  const wasFirst = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!update.query.data) return
+    if (wasFirst.current === false && updateFirst) document.getElementById('updates')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    wasFirst.current = updateFirst
+  }, [update.query.data, updateFirst])
   const ha = saved?.providers?.home_assistant
   const haSetUp = !!ha?.url
   const haOn = haSetUp && ha?.enabled !== false
@@ -456,8 +464,7 @@ export default function StatusPage() {
     void navigate(`/status/engines/${newName}`)
   }
   const host = page.value.control?.host?.trim() ?? '127.0.0.1'
-  // Near the top while there is an update to make or one under way, else after his parts and engines.
-  const updateFirst = updateNeedsYou(update.query.data)
+  // Near the top while there is an update to make or one under way (updateFirst), else after his parts and engines.
   const llm = proc('llm')
   const updateCard = <UpdateCard update={update} name={name} downtime={llm ? restartCost(llm) : 'a moment'} />
 

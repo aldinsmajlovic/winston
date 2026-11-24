@@ -79,7 +79,7 @@ export function UpdateCard({ update, name, downtime }: { update: ReturnType<type
   }
 
   return (
-    <Card>
+    <Card id="updates">
       <CardHeader>
         <CardTitle>Updates</CardTitle>
         <CardDescription>

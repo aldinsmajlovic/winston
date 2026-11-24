@@ -423,6 +423,8 @@ test('Check now asks for the latest release and shows it', async ({ page }) => {
   await expect(card.getByText('Version 0.1.3, the latest.')).toBeVisible()
   await card.getByRole('button', { name: 'Check now' }).click()
   await expect(card.getByText('Version 0.1.4 is out. This is 0.1.3.')).toBeVisible()
+  // The card moves from the bottom to the top of the page, and the page follows it.
+  await expect(card.getByRole('button', { name: 'Update', exact: true })).toBeInViewport()
 })
 
 test('Save only leaves a Restart button for the running engine', async ({ page }) => {
