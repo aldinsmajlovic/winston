@@ -10,6 +10,11 @@
 #
 # Everything is in main, called on the last line, so a download cut short runs nothing.
 
+# A step in bold on a terminal, plain otherwise or with NO_COLOR set.
+say() {
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then printf '\033[1m%s\033[0m\n' "$*"; else printf '%s\n' "$*"; fi
+}
+
 main() {
     set -eu
     uv_version=0.10.6
@@ -32,9 +37,9 @@ main() {
     version=${version%.tar.gz}
 
     if [ -d "$app/$version" ]; then
-        echo "Winston $version is already here."
+        say "Winston $version is already here."
     else
-        echo "Downloading Winston $version"
+        say "Downloading Winston $version"
         get "$name"
         if ! (cd "$tmp" && grep "  $name\$" SHA256SUMS | sha256sum -c --status); then
             echo "$name does not match its SHA256SUMS, so nothing was installed. Try again, and if it happens" \
@@ -52,12 +57,12 @@ main() {
     elif [ -x "$bin/uv" ]; then
         uv=$bin/uv
     else
-        echo "Installing uv $uv_version"
+        say "Installing uv $uv_version"
         curl --proto '=https' -fsSL "https://astral.sh/uv/$uv_version/install.sh" -o "$tmp/uv.sh"
         UV_INSTALL_DIR=$bin sh "$tmp/uv.sh" --quiet
         uv=$bin/uv
     fi
-    echo "Installing Winston's packages (a minute or two the first time)"
+    say "Installing Winston's packages (a minute or two the first time)"
     (cd "$app/$version" && "$uv" sync --frozen --quiet)
 
     ln -sfn "$version" "$app/current"

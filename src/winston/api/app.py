@@ -543,6 +543,8 @@ class Presets(BaseModel):
     tts: list[Preset]
     stt: list[Preset]
     profiles: list[Profile]
+    have: list[str] = Field(description="What presets can need (their `needs`) that this computer has now; a pick "
+                                        "needing anything else needs `winston setup system` first")
 
 
 def gpu_status() -> GpuStatus | None:
@@ -1679,7 +1681,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     @app.get("/api/presets", response_model=Presets,
              summary="Engine and model presets the UI offers per slot, and the hardware profiles")
     async def get_presets():
-        return Presets(llm=LLM, tts=TTS, stt=stt_presets(), profiles=PROFILES)
+        from winston import setup
+        have = sorted(await asyncio.to_thread(setup.have_now))
+        return Presets(llm=LLM, tts=TTS, stt=stt_presets(), profiles=PROFILES, have=have)
 
     @app.get("/api/options/{name}", response_model=Options,
              summary="Live choices for a dropdown: " + ", ".join(OPTION_NAMES))

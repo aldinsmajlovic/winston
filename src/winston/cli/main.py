@@ -50,21 +50,31 @@ def init(force: bool = typer.Option(False, help="Overwrite existing files."),
     print(f"\ndata directory: {d}\nnext: edit {d / 'config.yaml'} and {d / '.env'}, then `winston up`")
 
 
-setup_app = typer.Typer(help="Set up this computer: what needs root (shown first), the profile, the data directory, "
-                             "the service, the setup link.")
+setup_app = typer.Typer(help="Set up this computer: the data directory, what needs root, the service, the setup "
+                             "link.")
 app.add_typer(setup_app, name="setup")
 
 
 @setup_app.callback(invoke_without_command=True)
 def setup(ctx: typer.Context, yes: bool = typer.Option(False, "--yes", help="Yes to everything, the root steps too."),
-          profile: str = typer.Option(None, help="Skip the pick; see `winston init --list`.")):
-    """Set up this computer: what needs root (shown first), the profile, the data directory, the service, and the
-    setup link for the wizard."""
+          profile: str = typer.Option(None, help="Start from this profile instead of the one that suits this computer; "
+                                                 "see `winston init --list`.")):
+    """Set up this computer: the data directory (starting from the profile that suits it), what needs root, the
+    service, and the setup link for the wizard, where the brain and voice are picked."""
     if ctx.invoked_subcommand:
         return
     from winston.setup import run
     _quiet()
     run(yes, profile)
+
+
+@setup_app.command("system")
+def setup_system(yes: bool = typer.Option(False, "--yes", help="Yes to every root step.")):
+    """Install what the saved brain, voice and hearing need as root (Docker, NVIDIA's toolkit, Ollama), after
+    picking one on the pages that this computer lacks. Settings are not touched."""
+    from winston.setup import system
+    _quiet()
+    system(yes)
 
 
 @setup_app.command("link")

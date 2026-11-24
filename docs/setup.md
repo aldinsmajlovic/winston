@@ -70,9 +70,11 @@ It reads the computer and says what it found: the distribution, the graphics car
 Docker and its runtimes, Ollama, free disk where the downloads land, the serial group, lingering and
 IPv6. Then:
 
-1. Picks the profile for the hardware ([below](#picking-for-your-hardware)) and creates the data
-   directory, `~/.local/share/winston`, as `winston init` does. An existing one is kept with its config,
-   and with it no wizard: to start over, `winston uninstall --data`, then install again.
+1. Creates the data directory, `~/.local/share/winston`, starting from the profile that suits the
+   hardware ([below](#picking-for-your-hardware)), as `winston init` does. It asks nothing here: the
+   brain, voice and hearing are picked in the wizard's first step. An existing data directory is kept
+   with its config, and with it no wizard: to start over, `winston uninstall --data`, then install
+   again.
 2. Runs what needs root for that config, each command shown first and run only on yes
    ([below](#what-needs-root)).
 3. Installs a systemd user service, `winston.service`, that runs `winston up`, and starts it. Without
@@ -89,7 +91,22 @@ Setup does not install the engines (brain, voice, hearing). The wizard does, wit
 | Flag | What it does |
 | --- | --- |
 | `--yes` | Answers yes to everything, the root steps too, for scripts and tests |
-| `--profile NAME` | Skips the pick (`winston init --list` names the profiles) |
+| `--profile NAME` | Starts from that profile instead of the one that suits the hardware (`winston init --list` names them) |
+
+The output is grouped under headings (This computer, Your settings, each root step, Running him,
+Next), with a tick for what is in place and a "!" for what is missing. It is in colour on a terminal,
+and plain when piped or with `NO_COLOR` set.
+
+#### After a pick that needs root
+
+A page cannot run anything as root, so setup installs as root only what its starting profile needs. A
+pick in the wizard or on the Brain and Voice pages that needs more (Ollama on a computer set up for
+NVIDIA, or llama.cpp where Docker is missing) says so on its card: "Ollama is not on this computer
+yet, and installing it needs root. Save, then in a terminal here run: winston setup system".
+`winston setup system` runs only the root steps for the saved brain, voice and hearing (Docker, its
+group, NVIDIA's container toolkit, Ollama), each shown first and run on yes, and leaves the settings
+alone. Then start the engine again on Status. A card that needs an NVIDIA graphics card without one
+answering says that instead, since setup never installs drivers.
 
 ## What needs root
 
@@ -98,17 +115,17 @@ on no with what then will not work.
 
 | Part | When | What it runs |
 | --- | --- | --- |
-| Docker | An NVIDIA profile, and Docker is missing | The distribution's own package (`docker.io` on Debian and Ubuntu, `moby-engine` on Fedora, `docker` on openSUSE and Arch), enabled and started |
+| Docker | The brain runs in Docker (the NVIDIA profile), and Docker is missing | The distribution's own package (`docker.io` on Debian and Ubuntu, `moby-engine` on Fedora, `docker` on openSUSE and Arch), enabled and started |
 | Docker started | Docker is there but not running | `systemctl enable --now docker` |
 | Your user in the `docker` group | Docker is there and you cannot reach it | `usermod -aG docker`. It takes effect at your next login, so setup asks you to log out and in and run it again, and carries on where it stopped |
-| NVIDIA container toolkit | An NVIDIA profile, and `docker info` lists no `nvidia` runtime | NVIDIA's package (from NVIDIA's repository; Arch has its own), `nvidia-ctk runtime configure --runtime=docker`, Docker restarted |
-| Ollama | The Ollama profile, and Ollama is missing | Ollama's own install script |
+| NVIDIA container toolkit | The brain runs in Docker on the GPU, and `docker info` lists no `nvidia` runtime | NVIDIA's package (from NVIDIA's repository; Arch has its own), `nvidia-ctk runtime configure --runtime=docker`, Docker restarted |
+| Ollama | The brain runs on Ollama, and Ollama is missing | Ollama's own install script |
 | Your user in the serial group | Not in it yet | `usermod -aG dialout` (`uucp` on Arch, the group made if missing), so a Voice PE on USB can be set up. The service has it after a restart of the computer |
 | Lingering | With systemd | `loginctl enable-linger`, so the service runs without you logged in |
 | IPv4 first | IPv6 addresses sort first and never connect, as behind a VPN that drops IPv6 | `precedence ::ffff:0:0/96 100` in `/etc/gai.conf`, so nothing waits out an IPv6 address before trying IPv4 |
 
 Graphics drivers are never installed. Without `nvidia-smi` on an NVIDIA card, setup says so, links
-the distribution's guide and offers the Ollama or hosted profile.
+the distribution's guide and starts from the Ollama profile.
 
 ## Picking for your hardware
 

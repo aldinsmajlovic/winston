@@ -89,6 +89,7 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
   const ask = useConfirm()
   const current = matchPreset(kind, page.value, presets)
   const preset = presets.find((p) => p.id === current)
+  const have = $api.useQuery('get', '/api/presets').data?.have
   const choose = async (id: string) => {
     const p = presets.find((x) => x.id === id)
     if (!p) return
@@ -145,6 +146,7 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
             </SelectContent>
           </Select>
           <p className="text-sm text-muted-foreground">{preset?.hint ?? 'Your own setup; change it under How it runs below.'}</p>
+          <Lacking needs={preset?.needs ?? []} have={have} />
           {page.value.engines?.[kind]?.enabled === false ? (
             <StatusLine
               tone="muted"
@@ -165,6 +167,24 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
         <HowItRuns page={page} kind={kind} presets={presets} setup={setup} />
       </CardContent>
     </Card>
+  )
+}
+
+// What setup installs as root, in words; a card without its driver it cannot install.
+const SYSTEM: Record<string, string> = { docker: 'Docker', nvidia: "NVIDIA's container toolkit", ollama: 'Ollama' }
+
+/** When the pick needs something this computer does not have yet: what, and the one command that installs it,
+ * since a page cannot run anything as root. */
+function Lacking({ needs, have }: { needs: string[]; have?: string[] }) {
+  if (!have) return null
+  if (needs.includes('cuda') && !have.includes('cuda'))
+    return <StatusLine tone="warning">This needs an NVIDIA graphics card with its driver, and none answers on this computer.</StatusLine>
+  const lacking = needs.filter((n) => n in SYSTEM && !have.includes(n)).map((n) => SYSTEM[n])
+  if (!lacking.length) return null
+  return (
+    <StatusLine tone="warning">
+      {`${joinNames(lacking)} ${lacking.length > 1 ? 'are' : 'is'} not on this computer yet, and installing ${lacking.length > 1 ? 'them' : 'it'} needs root. Save, then in a terminal here run: winston setup system`}
+    </StatusLine>
   )
 }
 

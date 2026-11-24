@@ -3432,6 +3432,11 @@ export interface components {
             stt: components["schemas"]["Preset"][];
             /** Profiles */
             profiles: components["schemas"]["Profile"][];
+            /**
+             * Have
+             * @description What presets can need (their `needs`) that this computer has now; a pick needing anything else needs `winston setup system` first
+             */
+            have: string[];
         };
         /** Profile */
         Profile: {

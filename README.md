@@ -7,8 +7,8 @@
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-MCP-18bcf2?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/integrations/mcp_server/)
 
 A self-hosted voice assistant for Home Assistant. Talk to your home; Winston answers in a natural
-voice, does what you asked, and can be interrupted mid-sentence. Everything runs on your own machine
-by default, and any part can be swapped for a hosted service.
+voice, does what you asked, and stops when you say his name over him. Everything runs on your own
+machine by default, and any part can be swapped for a hosted service.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/talk-dark.png">
@@ -35,7 +35,7 @@ set up a Voice PE plugged in over USB. To read the script first, or to install f
 
 - **Local first.** The language model and the voice share one GPU and speech recognition runs on the
   CPU, or everything runs on Ollama and the CPU. Each can point at a hosted API instead.
-- **Fast.** About 1.3 s from the end of a plain question to his first word, and you can talk over him.
+- **Fast.** About 1.3 s from the end of a plain question to his first word.
 - **Controls your home** through Home Assistant's MCP server, then checks the device really changed
   and corrects himself when it did not. Home Assistant's own Assist, its app, chat and voice
   satellites, can pick him as its agent too.

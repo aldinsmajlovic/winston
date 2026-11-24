@@ -4,7 +4,7 @@ One command runs everything: `winston up` starts the engines from `data/config.y
 to be healthy, starts the voice channel and serves the control API. Ctrl-C stops all of it.
 
 ```sh
-uv run winston setup           # once: reads the computer, root steps on yes, the profile, data/, the service
+uv run winston setup           # once: reads the computer, data/, root steps on yes, the service
 uv run winston setup link      # a new setup link for another device while the wizard is not done
 uv run winston init            # or only data/, from the examples (--profile ollama | hosted; --list)
 uv run winston up              # engines + voice channel + API on :8700

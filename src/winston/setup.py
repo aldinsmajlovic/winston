@@ -27,6 +27,32 @@ import yaml
 from winston.config import data_dir, repo_root
 
 GPU_24GB_MIB = 23000       # the 24 GB cards report 24564 or 24576 MiB
+
+
+# ---- Talking in the terminal ------------------------------------------------------------------------------
+# Colour only on a terminal (click strips it otherwise) and never with NO_COLOR set.
+
+def say(text: str = "", **style) -> None:
+    typer.echo(typer.style(text, **style) if style else text, color=False if os.environ.get("NO_COLOR") else None)
+
+
+def heading(text: str) -> None:
+    say()
+    say(text, bold=True)
+
+
+def item(ok: bool | None, text: str) -> None:
+    """A line under a heading: a green tick, a yellow '!' for something missing, or nothing."""
+    mark = {True: typer.style("✓", fg="green"), False: typer.style("!", fg="yellow"), None: " "}[ok]
+    say(f"  {mark} {text}")
+
+
+def note(text: str, indent: int = 2, **style) -> None:
+    """Dim help text, wrapped to the terminal."""
+    import textwrap
+    width = max(40, min(shutil.get_terminal_size().columns, 100)) - indent
+    for line in textwrap.wrap(text, width) or [""]:
+        say(" " * indent + line, **({"dim": True} | style))
 FAMILIES = {"debian": "apt", "ubuntu": "apt", "fedora": "dnf", "rhel": "dnf", "centos": "dnf",
             "opensuse": "zypper", "arch": "pacman"}
 DRIVER_GUIDES = {
@@ -216,6 +242,23 @@ def read() -> Machine:
     return m
 
 
+def have_now() -> set[str]:
+    """What presets can need (their `needs`) that this computer has now, for the pages to warn about the rest.
+    A quick read: no network, no group lookups."""
+    out = {"internet"}
+    if shutil.which("nvidia-smi") and gpus(_run(["nvidia-smi", "--query-gpu=name,memory.total,driver_version",
+                                                 "--format=csv,noheader,nounits"]).stdout):
+        out.add("cuda")
+    if shutil.which("docker"):
+        r = _run(["docker", "info", "--format", "{{json .}}"])
+        state, runtimes, _ = docker_state(r.stdout, r.stderr)
+        out |= {"docker"} if state == "ok" else set()
+        out |= {"nvidia"} if state == "ok" and "nvidia" in runtimes else set()
+    if shutil.which("ollama") or _answers(11434):
+        out.add("ollama")
+    return out
+
+
 def _group_exists(name: str) -> bool:
     try:
         grp.getgrnam(name)
@@ -230,31 +273,39 @@ def _free(path: Path) -> str:
     return f"{shutil.disk_usage(path).free / 1e9:.0f} GB free"
 
 
-def describe(m: Machine) -> list[str]:
-    lines = [m.release.get("PRETTY_NAME") or "An unknown Linux"]
+def _home(p: Path | str) -> str:
+    """A path with the home directory as ~, shorter to read."""
+    p, home = str(p), str(Path.home())
+    return "~" + p[len(home):] if p == home or p.startswith(home + "/") else p
+
+
+def describe(m: Machine) -> list[tuple[bool | None, str]]:
+    """What setup found, each with whether it is fine (True), missing (False) or just so (None)."""
+    lines: list[tuple[bool | None, str]] = [(None, m.release.get("PRETTY_NAME") or "An unknown Linux")]
     for name, mib, driver in m.gpus:
-        lines.append(f"{name}, {mib / 1024:.0f} GB, driver {driver}")
+        lines.append((True, f"{name}, {mib / 1024:.0f} GB, driver {driver}"))
     if m.nvidia_card and not m.gpus:
-        lines.append("An NVIDIA graphics card without its driver (no nvidia-smi)")
+        lines.append((False, "An NVIDIA graphics card without its driver (no nvidia-smi)"))
     if not m.nvidia_card:
-        lines.append("No NVIDIA graphics card")
+        lines.append((None, "No NVIDIA graphics card"))
     if not m.docker_bin:
-        lines.append("Docker: not installed")
+        lines.append((None, "Docker: not installed"))
     else:
-        lines.append({"ok": "Docker" + (", with the NVIDIA runtime" if "nvidia" in m.runtimes else ", no NVIDIA runtime")
-                            + (f", images on {m.docker_root} ({_free(Path(m.docker_root))})" if m.docker_root else ""),
-                      "denied": f"Docker: installed, but {m.user} may not use it",
-                      "down": "Docker: installed, not running"}[m.docker])
-    lines.append("Ollama: " + ("there" if m.ollama else "not installed"))
+        lines.append({"ok": (True, "Docker" + (", with the NVIDIA runtime" if "nvidia" in m.runtimes else "")
+                             + (f", images on {m.docker_root} ({_free(Path(m.docker_root))})" if m.docker_root else "")),
+                      "denied": (False, f"Docker: installed, but {m.user} may not use it"),
+                      "down": (False, "Docker: installed, not running")}[m.docker])
+    lines.append((True, "Ollama") if m.ollama else (None, "Ollama: not installed"))
     hf = Path(os.environ.get("HF_HOME") or Path.home() / ".cache/huggingface")
-    lines.append(f"Models go to {hf} ({_free(hf)})")
-    lines.append(f"USB serial ({m.serial_group}): " + ("yes" if m.in_serial else f"{m.user} is not in the group"))
+    lines.append((True, f"Models go to {_home(hf)} ({_free(hf)})"))
+    lines.append((True, "USB serial, for setting up a Voice PE") if m.in_serial
+                 else (False, f"USB serial: {m.user} is not in the {m.serial_group} group"))
     if not m.systemd:
-        lines.append("No systemd running: no service, start him with `winston up`")
+        lines.append((False, "No systemd running: no service, start him with `winston up`"))
     elif not m.linger:
-        lines.append("Lingering: off, so a service stops when you log out")
+        lines.append((False, "Lingering is off, so a service stops when you log out"))
     if m.ipv6_broken:
-        lines.append("IPv6: its addresses come first here and never connect")
+        lines.append((False, "IPv6: its addresses come first here and never connect"))
     return lines
 
 
@@ -319,43 +370,27 @@ def steps(m: Machine, need: set[str]) -> list[Step]:
 
 
 def _do(step: Step, m: Machine, yes: bool) -> bool:
-    print(f"\n{step.title}. As root, this runs:")
+    heading(step.title)
+    note("Needs root. This runs:")
     for c in step.cmds:
-        print(f"    {c}")
+        say(f"    {c}", fg="cyan")
     if not m.root and not m.sudo:
-        print(f"  There is no sudo here: run those as root, then `winston setup` again. Until then {step.skipped}.")
+        note(f"There is no sudo here: run those as root, then `winston setup` again. Until then {step.skipped}.",
+             fg="yellow")
         return False
     if not (yes or typer.confirm("  Run it?", default=True)):
-        print(f"  Skipped: {step.skipped}.")
+        note(f"Skipped, so {step.skipped}.", fg="yellow")
         return False
     for c in step.cmds:
         if c.startswith("systemctl") and not m.systemd:
-            print(f"  (no systemd here, so not: {c})")
+            note(f"(no systemd here, so not: {c})")
             continue
         r = subprocess.run(["sh", "-c", c] if m.root else ["sudo", "sh", "-c", c], check=False)
         if r.returncode:
-            print(f"  That failed ({c}, exit {r.returncode}), so {step.skipped}.")
+            note(f"That failed ({c}, exit {r.returncode}), so {step.skipped}.", fg="yellow")
             return False
+    item(True, "Done")
     return True
-
-
-def choose(m: Machine, yes: bool) -> str:
-    from winston.config.presets import PROFILES
-    rec = pick(m)
-    if m.nvidia_card and not m.gpus:
-        guide = DRIVER_GUIDES.get(m.base, "your distribution's guide")
-        print(f"\nThis NVIDIA card needs its driver for a local brain, and setup does not install drivers: {guide}. "
-              "Until then Ollama runs on the processor, or a hosted brain works anywhere.")
-    if yes:
-        return rec
-    print("\nWhich setup?")
-    for i, p in enumerate(PROFILES, 1):
-        print(f"  {i}. {p['title']}{' (recommended)' if p['id'] == rec else ''}: {p['hint']}")
-    default = next(i for i, p in enumerate(PROFILES, 1) if p["id"] == rec)
-    while True:
-        n = typer.prompt("Number", default=str(default))
-        if n.isdigit() and 1 <= int(n) <= len(PROFILES):
-            return PROFILES[int(n) - 1]["id"]
 
 
 # ---- The data directory and the service -----------------------------------------------------------------
@@ -369,7 +404,7 @@ def target() -> Path:
     return Path.home() / ".local/share/winston"
 
 
-def make_data_dir(profile: str, force: bool = False) -> Path:
+def make_data_dir(profile: str, force: bool = False, print=print) -> Path:   # setup passes a quiet print
     """The data directory from the examples: the profile's config, the persona, the bundled voices."""
     from winston.config.presets import apply_profile
     from winston.config.schema import WinstonConfig
@@ -434,9 +469,10 @@ def _service(data: Path, start: bool) -> bool:
                 ["systemctl", "--user", "enable", *(["--now"] if start else []), "winston.service"]):
         r = _run(cmd)
         if r.returncode:
-            print(f"\nThe service is in {path}, but `{' '.join(cmd)}` failed: {(r.stderr or r.stdout).strip()}")
+            item(False, f"The service is in {_home(path)}, but `{' '.join(cmd)}` failed: "
+                        f"{(r.stderr or r.stdout).strip()}")
             return False
-    print(f"\nThe service {path.name} is enabled" + (" and starting." if start else "."))
+    item(True, f"The service {path.name} is enabled" + (" and starting." if start else "."))
     return True
 
 
@@ -459,7 +495,10 @@ def _winstond(port: int) -> bool:
 
 def run(yes: bool, profile: str | None) -> None:
     m = read()
-    print("This computer:\n" + "\n".join(f"  {line}" for line in describe(m)))
+    say("Winston setup", bold=True)
+    heading("This computer")
+    for ok, line in describe(m):
+        item(ok, line)
 
     data = target()
     os.environ["WINSTON_DATA"] = str(data)
@@ -468,14 +507,24 @@ def run(yes: bool, profile: str | None) -> None:
     config = data / "config.yaml"
     fresh = not config.is_file()
     if not fresh:
-        print(f"\nKeeping {config}: the brain and voice stay as they are (change them on his pages). To start "
-              "over with the wizard instead: `winston uninstall --data`, then install again.")
+        heading("Your settings")
+        item(True, f"Kept, in {_home(data)}")
+        note("The brain and voice stay as they are; change them on his Brain and Voice pages. To start over with "
+             "the wizard instead: `winston uninstall --data`, then install again.")
     else:
         from winston.config.presets import profile as get_profile
-        if profile:
-            get_profile(profile)               # a typo fails before anything is made
-        print()
-        make_data_dir(profile or choose(m, yes))
+        chosen = get_profile(profile or pick(m))              # a typo in --profile fails before anything is made
+        make_data_dir(chosen["id"], print=lambda *a, **k: None)
+        heading("Your settings")
+        item(True, f"Made in {_home(data)}, starting from {chosen['title']}"
+                   + ("" if profile else ", which suits this computer"))
+        note("You pick the brain, the voice and the hearing on the setup page. They can be changed any time "
+             "later on the Brain and Voice pages; if a pick there needs something installed as root, the page "
+             "says so and `winston setup system` installs it.")
+        if m.nvidia_card and not m.gpus:
+            guide = DRIVER_GUIDES.get(m.base, "your distribution's guide")
+            note(f"This NVIDIA card needs its driver for a local brain, and setup does not install drivers: {guide}. "
+                 "Until then Ollama runs on the processor, or a hosted brain works anywhere.", fg="yellow")
     # Setup mode for a new data directory, and a new link each run until the wizard is done. Before the service
     # starts, which then listens on the network for it.
     key = setup_link.new_key() if fresh or setup_link.active() else None
@@ -484,38 +533,68 @@ def run(yes: bool, profile: str | None) -> None:
     need = needs(cfg)
     done = {s.key for s in steps(m, need) if _do(s, m, yes)}
     if "docker" in need and not m.root and ("docker-group" in done or (m.docker == "denied" and m.docker_member)):
-        print("\nYou can use Docker from your next login. Log out and back in (or restart the computer), then run "
-              "`winston setup` again: it carries on from here.")
+        say()
+        note("You can use Docker from your next login. Log out and back in (or restart the computer), then run "
+             "`winston setup` again: it carries on from here.", fg="yellow")
         return
 
     control = cfg.get("control") or {}
     port, host = control.get("port", 8700), control.get("host", "127.0.0.1")
     running, taken = _winstond(port), _answers(port)
+    heading("Running him")
     if running:
-        print(f"\nWinston is already running on port {port}, so the service waits for the next start.")
+        item(True, f"Winston is already running on port {port}, so the service waits for the next start.")
     elif taken:
-        print(f"\nSomething else answers on port {port}; Winston needs it (control.port in {config}).")
+        item(False, f"Something else answers on port {port}; Winston needs it (control.port in {_home(config)}).")
     else:
         busy = [f"{p} ({name})" for name, e in (cfg.get("engines") or {}).items()
                 if e.get("enabled", True) and e.get("driver") != "external" and (p := e.get("port")) and _answers(p)]
         if busy:
-            print("\nAlready in use, so these cannot start until they are free: " + ", ".join(busy))
+            item(False, "Already in use, so these cannot start until they are free: " + ", ".join(busy))
     service = m.systemd and _service(data, start=not taken)
 
-    first = "Open" if service or running else "Start him with `winston up`, then open"
+    heading("Next: open the setup page" if key else "Next: open Winston")
+    if not (service or running):
+        note("Start him with `winston up` first.")
     if key:
-        print(f"\n{first} {_links(key, port)}")
+        for line in _links(key, port):
+            say(f"  {line}")
         return
-    also = ""
+    say("  " + typer.style(f"http://localhost:{port}", fg="cyan", bold=True) + "  on this computer")
     if host not in ("127.0.0.1", "localhost", "::1") and (ip := _lan_address()):
-        also = f", or http://{ip}:{port} from another device here"
-    print(f"\n{first} http://localhost:{port} on this computer{also}.")
+        say("  " + typer.style(f"http://{ip}:{port}", fg="cyan", bold=True) + "  from another device here")
 
 
-def _links(key: str, port: int) -> str:
-    """The setup link for another device, and this computer's, which needs no key."""
-    there = f"http://{ip}:{port}/setup?key={key} from any device here,\nor " if (ip := _lan_address()) else ""
-    return f"{there}http://localhost:{port}/setup on this computer."
+SYSTEM_KEYS = ("docker", "docker-start", "docker-group", "nvidia", "ollama")   # the steps engines need
+
+
+def system(yes: bool) -> None:
+    """`winston setup system`: the root steps for what the saved brain, voice and hearing run, after a pick on
+    the pages that needs something this computer lacks. Settings are not touched."""
+    config = target() / "config.yaml"
+    if not config.is_file():
+        sys.exit("Nothing is set up here yet: run `winston setup` first.")
+    m = read()
+    todo = [s for s in steps(m, needs(yaml.safe_load(config.read_text()) or {})) if s.key in SYSTEM_KEYS]
+    if not todo:
+        item(True, "This computer has what the saved brain and voice need.")
+        return
+    done = {s.key for s in todo if _do(s, m, yes)}
+    say()
+    if "docker-group" in done and not m.root:
+        note("You can use Docker from your next login: restart the computer (the service needs it too), then "
+             "start the brain on Status.", fg="yellow")
+    elif done:
+        item(True, "Done. Start the brain or voice again on Status.")
+
+
+def _links(key: str, port: int) -> list[str]:
+    """The setup link for this computer, which needs no key, and for another device."""
+    url = lambda u: typer.style(u, fg="cyan", bold=True)                       # noqa: E731
+    out = [url(f"http://localhost:{port}/setup") + "  on this computer"]
+    if ip := _lan_address():
+        out.append(url(f"http://{ip}:{port}/setup?key={key}") + "  from any device here")
+    return out
 
 
 def link() -> None:
@@ -531,7 +610,10 @@ def link() -> None:
         port = (yaml.safe_load((data / "config.yaml").read_text()) or {}).get("control", {}).get("port", 8700)
     except OSError:
         port = 8700
-    print(f"Open {_links(setup_link.new_key(), port)}\nThe link before this one no longer works.")
+    say("Open", bold=True)
+    for line in _links(setup_link.new_key(), port):
+        say(f"  {line}")
+    note("The link before this one no longer works.")
 
 
 # ---- Updating and removing --------------------------------------------------------------------------------
@@ -684,23 +766,27 @@ def update(version: str | None) -> None:
     """`winston update`: install(), what changed since this one, and the service restarted if it runs."""
     from winston import __version__
     try:
-        new = install(version)
+        new = install(version, say=lambda t: say(t, bold=True))
     except UpdateError as e:
         sys.exit(str(e))
     if not new:
-        print(f"Winston {__version__} is the one here.")
+        item(True, f"Winston {__version__} is the latest.")
         return
     app = release_app()
     for r in after(changes(t.read_text()) if (t := app / new / "CHANGELOG.md").is_file() else [], __version__):
-        print(f"\nWhat is new in {r['version']}:\n" + "".join(f"- {i}\n" for i in r["items"]), end="")
-    msg = f"\nWinston {new} is installed; {__version__} stays in {app} (`winston update {__version__}` goes back)."
+        heading(f"New in {r['version']}")
+        for i in r["items"]:
+            note("- " + i, fg=None, dim=False)
+    say()
+    item(True, f"Winston {new} is installed.")
+    note(f"{__version__} stays in {_home(app)}: `winston update {__version__}` goes back.")
     if not (_unit_path().is_file() and Path("/run/systemd/system").is_dir()):
-        print(f"{msg}\nRestart `winston up` to run it.")
+        item(None, "Restart `winston up` to run it.")
     elif not service_running():
-        print(f"{msg}\nThe service is not running; its next start runs {new}.")
+        item(None, f"The service is not running; its next start runs {new}.")
     else:
         err = restart_service()
-        print(f"{msg}\n" + (f"The service did not restart: {err}" if err else "The service restarted."))
+        item(False, f"The service did not restart: {err}") if err else item(True, "The service restarted.")
 
 
 def leftovers(cfg: dict, data: Path | None) -> list[str]:
@@ -709,7 +795,7 @@ def leftovers(cfg: dict, data: Path | None) -> list[str]:
     from winston.api.options import llm_engine, ollama_copy
     from winston.config.presets import presets
     from winston.engines.install import _tree_bytes, gb
-    out = [f"The data directory, {data}: {gb(_tree_bytes(data))} (config, memory, voices, logs)"] if data else []
+    out = [f"The data directory, {_home(data)}: {gb(_tree_bytes(data))} (config, memory, voices, logs)"] if data else []
     engines = cfg.get("engines") or {}
     images = {e.get("image") for e in engines.values()} | {
         (f.get("engine") or {}).get("image") for kind in ("llm", "tts", "stt") for f in presets(kind)}
@@ -733,7 +819,7 @@ def leftovers(cfg: dict, data: Path | None) -> list[str]:
                     ("uv's cache", Path(os.environ.get("UV_CACHE_DIR") or Path.home() / ".cache/uv")),
                     ("uv's Python", Path.home() / ".local/share/uv/python")):
         if p.is_dir():
-            out.append(f"{what}, {p}: {gb(_tree_bytes(p))}" + (", his models and any other program's"
+            out.append(f"{what}, {_home(p)}: {gb(_tree_bytes(p))}" + (", his models and any other program's"
                                                               if what.endswith("Face cache") else ""))
     return out
 
@@ -746,9 +832,14 @@ def uninstall(remove_data: bool, yes: bool) -> None:
     except OSError:
         cfg = {}
     gone = [p for p in (path, app, data if remove_data else None) if p and p.exists()]
-    print("This removes:\n" + "\n".join(f"  {p}" for p in gone) if gone else "Nothing of Winston's to remove here.")
+    if gone:
+        say("This removes", bold=True)
+        for p in gone:
+            say(f"  {_home(p)}")
+    else:
+        say("Nothing of Winston's to remove here.")
     if not app:
-        print(f"This clone stays: delete {repo_root()} yourself.")
+        note(f"This clone stays: delete {_home(repo_root())} yourself.")
     if gone and not (yes or typer.confirm("Remove it?", default=False)):
         return
     systemd = Path("/run/systemd/system").is_dir()
@@ -769,5 +860,10 @@ def uninstall(remove_data: bool, yes: bool) -> None:
         shutil.rmtree(app)
     if remove_data:
         shutil.rmtree(data, ignore_errors=True)
-    print("Removed. Left on this computer:\n" + "\n".join(f"  {line}" for line in left)
-          + "\n  " + ROOT_LEFT.format(user=pwd.getpwuid(os.getuid()).pw_name))
+    item(True, "Removed.")
+    heading("Left on this computer")
+    note("Delete these yourself if nothing else needs them.")
+    for line in left:
+        say(f"  - {line}")
+    say()
+    note(ROOT_LEFT.format(user=pwd.getpwuid(os.getuid()).pw_name) + ".")

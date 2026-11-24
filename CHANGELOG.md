@@ -3,6 +3,14 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.4 (unreleased)
+
+- Setup no longer asks which setup you want in the terminal: you pick the brain, voice and hearing on
+  the setup page. If a pick needs something installed first, like Ollama or Docker, its card says so
+  and the one command that installs it.
+- Setup, update and uninstall read better in the terminal: grouped, in colour, with what is missing
+  marked.
+
 ## 0.1.3 (2026-11-24)
 
 - Winston checks for a new release on his own and shows it on Status with what changed, and Update
