@@ -65,11 +65,19 @@ export const SECRET_SUFFIX = '__secret'
 
 type Walk = { path?: Path; slot?: string }
 
+const LOCAL_HOST = /^\w+:\/\/(localhost|127\.[\d.]+|\[::1\])(:|\/|$)/i
+
 /** Whether a field's `when` holds for the draft: every entry must. A key is a dotted path from the
  * config root with `{slot}` replaced by the enclosing section's slot; null in the allowed values
- * matches a missing value. `cmd_uses` holds when the slot's engine command mentions `{<prefix>`. */
+ * matches a missing value. `cmd_uses` holds when the slot's engine command mentions `{<prefix>`;
+ * `remote` when the slot's API address is not on this computer (Ollama is not a provider to pay). */
 export function holds(when: Record<string, unknown>, config: unknown, slot?: string): boolean {
   return Object.entries(when).every(([key, allowed]) => {
+    if (key === 'remote') {
+      if (!slot) return true
+      const url = getIn(config, [slot, 'base_url'])
+      return typeof url !== 'string' || !LOCAL_HOST.test(url)
+    }
     if (key === 'cmd_uses') {
       if (!slot) return true
       const engine = getIn(config, ['engines', slot])

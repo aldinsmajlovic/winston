@@ -284,6 +284,31 @@ test('a field for hosted engines is left out for a local one', async ({ page }) 
   await expect(page.getByText('Key variable', { exact: true })).toHaveCount(0)
 })
 
+test('the model box searches as you type, and a typed name can still be used', async ({ page }) => {
+  await open(page, '/brain')
+  await page.locator('#cfg_llm_model').click()
+  const box = page.getByPlaceholder('Search, or paste a link')
+  const asked = page.waitForRequest((r) => /\/api\/options\/llm_models\?.*q=my-own%2Fmodel/.test(r.url()))
+  await box.fill('my-own/model')
+  await asked
+  await page.getByRole('option', { name: 'Use my-own/model' }).click()
+  await expect(page.locator('#cfg_llm_model')).toContainText('my-own/model')
+})
+
+test('the API key is asked for a hosted brain, not for Ollama on this computer', async ({ page }) => {
+  await open(page, '/brain')
+  const runsOn = page.getByRole('combobox', { name: 'Runs on' })
+  await runsOn.click()
+  await page.getByRole('option', { name: /^Ollama/ }).click()
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Replace' }).click()      // the copy's brain is its own
+  await expect(runsOn).toContainText('Ollama')
+  await expect(page.getByText('API address', { exact: true })).toBeVisible()
+  await expect(page.getByText('API key', { exact: true })).toHaveCount(0)
+  await runsOn.click()
+  await page.getByRole('option', { name: /^Hosted/ }).click()
+  await expect(page.getByText('API key', { exact: true })).toBeVisible()
+})
+
 test('a refused save opens the How it runs that holds the field', async ({ page }) => {
   const msg = 'Input should be greater than or equal to 10'
   await page.route('**/api/config?*dry_run=true*', (route) =>

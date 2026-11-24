@@ -136,7 +136,7 @@ registry. A venv's size is measured once and kept beside its lock (`tool.winston
 service's `pyproject.toml`).
 
 Picking something not installed, on the Brain and Voice pages or in the wizard, shows what it needs:
-"Needs 16.4 GB downloaded before it can run: the model (16.4 GB). 210 GB free." with Download. Then
+"Still to download: the model (16.4 GB). 210 GB free." with Download. Then
 it shows the progress per part, or why it failed with Try again.
 
 - It downloads in winstond, so it carries on with the page closed, and the engine that runs now keeps
@@ -212,7 +212,8 @@ and voice: skipped during setup." with Set it up) after the wizard ends.
 </picture>
 
 The profile's picks, preselected, on the cards of the Brain and Voice pages: Runs on, the brain's
-model and its own settings, and each one's size against the free space, with Download.
+model and its own settings, and each one's size against the free space, with Download. How it runs is
+left out: every pick here is a preset, and the Brain and Voice pages keep it for later.
 
 - **Download and continue** saves a changed pick and confirms the sizes ("24.2 GB in all. Brain: its
   Docker image (2.6 GB) and the model (15.4 GB). Speaking: its Python packages (6.3 GB).").
@@ -236,8 +237,8 @@ only button is Skip for now, and Connect Home Assistant offers:
   http://192.168.1.5:8123"). It is found from its `_home-assistant._tcp` announcement and the address
   it gives there, else at `homeassistant.local` where the system resolves it. mDNS does not cross from
   one network to another, so for a Home Assistant on another subnet you type the address.
-- The address, with Sign in to Home Assistant under it.
-- The access token to paste instead.
+- The address, with Sign in to Home Assistant under it, which makes his own token: nothing to paste.
+- "Or, instead of signing in, paste a token", with the access token field.
 
 Signing in:
 
@@ -268,7 +269,9 @@ applied in Home Assistant) and goes on.
   <img src="images/setup-who-light.png" alt="The setup wizard's Who he is step: his name and reply language, then his personality as a list of rules" width="720">
 </picture>
 
-- **His name and reply language**, as on the Assistant page.
+- **His name and reply language**, as on the Assistant page. The reply language only changes what he
+  answers in, not his voice or hearing, and the field says so: an English-only voice reads other
+  languages badly.
 - **His personality**, as on its own page. It is the same document: each rule edited, deleted or
   added saves at once, with Undo.
 - **His voice**, as on the Voice page, with Hear this voice beside it and Your voices under it. The
@@ -329,12 +332,15 @@ When something is in the way:
 
 #### 5. Done
 
+- It opens with what Finish does: "Last, who can open his pages from now on. Finish ends setup and
+  takes you to Talk, where you talk to him."
 - Who can open this page from now on, as on Status, with the same warning when it is the whole network.
 - What was skipped.
-- **Finish** saves, ends setup mode and opens Talk.
+- **Finish and go to Talk** saves, ends setup mode and opens Talk.
 
-From another device that only this computer may open afterwards, the step says so before Finish, and
-after it that he is opened on the computer he runs on.
+From another device that only this computer may open afterwards, the step says so before Finish (its
+button is then Finish), and after it gives the address to open there: "Setup is done. From now on, open
+http://localhost:8700 on the computer he runs on."
 
 ## Updating and removing
 

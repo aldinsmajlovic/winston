@@ -1,3 +1,4 @@
+import { keepPreviousData } from '@tanstack/react-query'
 import { $api, type Config, type Options } from '@/api/client'
 import { useConfig } from '@/api/config'
 import { useDraft } from '@/hooks/use-draft'
@@ -28,11 +29,16 @@ function engine(name: string, config: Config | undefined): string | undefined {
  * the read tool they must have (extension_tools), the extension and which of its own lists (extension_choices). */
 export type OptionsQuery = { domain?: string; q?: string; tool?: string; extension?: string; choices?: string }
 
+/** llm_models lists the draft model's other sizes. */
+function model(name: string, config: Config | undefined): string | undefined {
+  return name === 'llm_models' ? config?.llm?.model : undefined
+}
+
 export function optionsParams(name: string, config: Config | undefined, query?: OptionsQuery) {
   return {
     params: {
       path: { name },
-      query: { ...query, base_url: baseUrl(name, config), engine: engine(name, config) },
+      query: { ...query, base_url: baseUrl(name, config), engine: engine(name, config), model: model(name, config) },
     },
   }
 }
@@ -64,11 +70,12 @@ export function useOptions(name: string, query?: OptionsQuery, enabled = true) {
     staleTime: 30_000,
     enabled: enabled && name !== '',
     refetchInterval: down ? 5_000 : false,      // listed as soon as the engine is up
+    placeholderData: keepPreviousData,          // a search typed on keeps the list it had meanwhile
   })
   const data = result.data
   return {
     choices: data?.choices ?? [],
-    loading: result.isLoading,
+    loading: result.isLoading || (result.isPlaceholderData && result.isFetching),
     problem: data && !data.ok && !down ? data.source : undefined,
     /** Where the list came from; for some lists a note to show (hint_words: what the engine does with them). */
     source: data?.ok ? data.source : undefined,

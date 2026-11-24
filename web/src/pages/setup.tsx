@@ -87,7 +87,7 @@ export default function SetupPage() {
   }
   return (
     <Frame name={name} state={state} order={order} current={step}>
-      <p className="text-muted-foreground">{step === DONE ? 'Who can open this page from now on.' : SETUP_STEPS[step].intro}</p>
+      <p className="text-muted-foreground">{step === DONE ? 'Last, who can open his pages from now on. Finish ends setup and takes you to Talk, where you talk to him.' : SETUP_STEPS[step].intro}</p>
       {step === 'brain' ? <BrainStep page={s.page} presets={presets.data} next={next} /> : null}
       {step === 'home_assistant' ? <HomeAssistantStep page={s.page} next={next} /> : null}
       {step === 'who' ? <WhoStep page={s.page} next={next} /> : null}
@@ -211,11 +211,11 @@ function BrainStep({ page, presets, next }: StepProps) {
     })
   return (
     <>
-      <SlotCard page={page} kind="llm" title="What runs his brain" presets={presets.llm} quietWhenStopped>
+      <SlotCard page={page} kind="llm" title="What runs his brain" presets={presets.llm} setup>
         <SectionForm page={page} path={LLM} omit={[...OWN_CARDS, ...runsHere('llm', page.value)]} />
       </SlotCard>
-      <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts} quietWhenStopped />
-      <SlotCard page={page} kind="stt" title="Hearing" presets={presets.stt} quietWhenStopped />
+      <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts} setup />
+      <SlotCard page={page} kind="stt" title="Hearing" presets={presets.stt} setup />
       <StepActions label={waiting.length ? 'Download and continue' : 'Continue'} busy={busy || page.saving} onClick={() => void go()} onSkip={() => void run(() => next('skipped'))} />
     </>
   )
@@ -280,6 +280,7 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
   const [busy, run] = useBusy()
   const [closed, setClosed] = useState(false)
   const host = page.value.control?.host?.trim() ?? '127.0.0.1'
+  const port = page.value.control?.port ?? 8700
   const haSetUp = !!page.value.providers?.home_assistant?.url
   const closing = state.remote && LOCAL.includes(host)
   const him = name ?? 'he'
@@ -291,7 +292,7 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
       if (closing) setClosed(true)
       else void navigate('/')
     })
-  if (closed) return <p>Setup is done. From now on, open this page on the computer {him} runs on.</p>
+  if (closed) return <p>Setup is done. From now on, open http://localhost:{port} on the computer {him} runs on.</p>
   return (
     <>
       {/* As on Status, but it applies at Finish: winstond already listens on the network for setup. */}
@@ -311,7 +312,7 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
           {`${SETUP_STEPS[id].title} was skipped. It waits under Set up next on Status.`}
         </StatusLine>
       ))}
-      <StepActions label="Finish" busy={busy || page.saving} onClick={() => void go()} />
+      <StepActions label={closing ? 'Finish' : 'Finish and go to Talk'} busy={busy || page.saving} onClick={() => void go()} />
     </>
   )
 }

@@ -1638,13 +1638,15 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def get_options(name: str,
                           base_url: str | None = Query(None, description="Server to ask instead of the saved one, for an unsaved draft"),
                           domain: str | None = Query(None, description="ha_entities: comma-separated domains to keep"),
-                          q: str | None = Query(None, description="discord_users: a user id to look up"),
+                          q: str | None = Query(None, description="discord_users: a user id to look up; llm_models: "
+                                                                  "text or a link to find models to download by"),
+                          model: str | None = Query(None, description="llm_models: the draft model, for its other sizes"),
                           engine: str | None = Query(None, description="llm_models: the draft brain engine block as JSON, "
                                                                        "to list the downloads it can load"),
                           tool: str | None = Query(None, description="extension_tools: the read tool they must have"),
                           extension: str | None = Query(None, description="extension_choices: the extension to ask"),
                           choices: str | None = Query(None, description="extension_choices: its @ext.choices list")):
-        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q, "engine": engine,
+        out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q, "engine": engine, "model": model,
                                                   "tool": tool, "extension": extension, "choices": choices,
                                                   "extensions": extensions})
         if out is None:

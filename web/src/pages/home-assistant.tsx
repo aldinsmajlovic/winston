@@ -123,6 +123,7 @@ export function HomeAssistantSections({ page, back }: { page: SettingsState; bac
           {/* The address with Sign in under it, then the token to paste instead. */}
           <SectionForm page={page} path={HA} omit={allBut(page.schema, HA, ['url'])} />
           <HASignInButton url={ha?.url} back={back} />
+          <p className="text-sm font-medium">Or, instead of signing in, paste a token</p>
           <SectionForm page={page} path={HA} omit={allBut(page.schema, HA, ['token_env'])} />
           {token ? <HACheck url={ha?.url} token={token} /> : null}
           <p className="text-sm text-muted-foreground">

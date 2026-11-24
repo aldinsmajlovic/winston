@@ -9,10 +9,10 @@ Restart metadata lives on the field when one field is special, else on the model
 
 The rest of the metadata tells the form what to draw (docs/architecture.md, "Config metadata"):
 - `empty_means_off`: a cleared text field saves "" (which means none or never), not the default.
-- `when`: {"<dotted config path>": [values]} or {"cmd_uses": "<prefix>"}; the field or section is left out
-  of the form unless every condition holds. "{slot}" in a path is the section's `slot` (llm, tts, stt);
-  null in the values matches a missing key. cmd_uses holds when the slot's engine args or cmd contain
-  "{<prefix>".
+- `when`: {"<dotted config path>": [values]}, {"cmd_uses": "<prefix>"} or {"remote": True}; the field or
+  section is left out of the form unless every condition holds. "{slot}" in a path is the section's `slot`
+  (llm, tts, stt); null in the values matches a missing key. cmd_uses holds when the slot's engine args or
+  cmd contain "{<prefix>"; remote when the slot's base_url is not on this computer.
 - `enabled_by` (on a section): the sibling switch that turns the section on; while it is off the other
   fields wait for it but stay editable.
 - `hidden`: never drawn, config.yaml only (a variable's name, an address, a port, a path, a Literal with one
@@ -30,7 +30,8 @@ The rest of the metadata tells the form what to draw (docs/architecture.md, "Con
   special values, keyed by the value as text ({"0": "Off"}).
 - `widget`: "slider" for a number felt rather than typed, "args" for a command line (one argument per line),
   "time", "time_range", "hint_words".
-- `group`: fields of one section with the same group get one heading before the first of them."""
+- `group`: fields of one section with the same group get one heading before the first of them.
+- `options_search`: with `options`, what is typed is sent as `q`, so the server can search further."""
 import os
 from typing import Annotated, Any, Literal
 
@@ -55,7 +56,8 @@ def secret(default: str, label: str, help: str | None = None, optional: bool = F
             **({"optional": True} if optional else {})}
 
 
-HOSTED = {"engines.{slot}.driver": ["external", None]}     # an engine Winston does not run, or none at all
+# A provider: an engine Winston does not run (or none at all) at an address off this computer, so not Ollama.
+HOSTED = {"engines.{slot}.driver": ["external", None], "remote": True}
 DISCORD_ID = r"^\d{17,20}$"
 
 
@@ -68,15 +70,18 @@ class AssistantConfig(Model):
     name: str = Field("Winston", title="Name",
                       description="His name in the prompt, the consent line and the names he should hear right. "
                                   "Renaming offers to change it in his personality too.",
-                      json_schema_extra=ui(help="What he is called. A room box's wake word is set under Ways to "
-                                                "talk."))
+                      json_schema_extra=ui(help="Saving a new name offers to change it in his personality too. A "
+                                                "room box's wake word is set under Ways to talk."))
     persona: str = Field("persona.md", title="Personality file",
                          description="The file in the data folder his personality is read from. Edit its words "
                                      "under Assistant, Personality.",
                          json_schema_extra=ui(hidden=True))
     language: str = Field("English", title="Reply language",
-                          json_schema_extra=ui(help="He always answers in this language, whatever you speak to him "
-                                                    "in. Check on Voice that his voice speaks it."))
+                          description="Only his instructions change: he understands what you say in any language "
+                                      "his hearing knows and answers in this one. His voice is picked on its own, "
+                                      "and an English-only voice reads other languages badly.",
+                          json_schema_extra=ui(help="What he answers in. It does not change his voice or hearing: "
+                                                    "pick a voice that speaks it."))
 
 
 class RegionConfig(Model):
@@ -238,10 +243,13 @@ class LLMConfig(Model):
                                                          secret=secret("LLM_API_KEY", "API key",
                                                                        "From your provider's account page.")))
     model: str = Field(title="Model",
-                       description="Downloaded lists the models the engine can load from this computer.",
-                       json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models",
-                                            help="One not on this computer is downloaded before the brain starts. Download "
-                                                 "gets it now, while he keeps answering."))
+                       description="Downloaded lists the models the engine can load from this computer. Typing "
+                                   "searches Hugging Face for what the engine loads (and Ollama's library for "
+                                   "Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are "
+                                   "listed once it is picked or named exactly.",
+                       json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models", options_search=True,
+                                            help="Type to search for more, or paste a model's link. One not on this "
+                                                 "computer is downloaded before the brain starts."))
     warm_up: bool = Field(True, title="Ready before the first question",
                           description="He has the brain read his instructions and tools when it starts, when a box "
                                       "connects and when the Talk page microphone opens. Without it the first answer "

@@ -1,4 +1,4 @@
-import { createContext, Fragment, useContext, useState, type ReactNode } from 'react'
+import { createContext, Fragment, useContext, useEffect, useState, type ReactNode } from 'react'
 import { getDefaultRegistry } from '@rjsf/core'
 import Form, { Widgets } from '@rjsf/shadcn'
 import validator from '@rjsf/validator-ajv8'
@@ -59,6 +59,7 @@ export type FormContext = {
 type Meta = JsonSchema & {
   options?: string
   options_query?: OptionsQuery
+  options_search?: boolean
   labels?: Record<string, string>
   icons?: Record<string, string>
   widget?: string
@@ -282,7 +283,13 @@ function PlainInput({ id, value, disabled, readonly, autofocus, placeholder, onC
 /** A string field whose schema names a live list: a searchable dropdown that also takes a typed value. */
 function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: WidgetProps) {
   const meta = schema as Meta
-  const { choices, loading, problem } = useOptions(meta.options ?? '', meta.options_query)
+  const [typed, setTyped] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setQ(typed.trim()), 300)
+    return () => clearTimeout(t)
+  }, [typed])
+  const { choices, loading, problem } = useOptions(meta.options ?? '', q ? { ...meta.options_query, q } : meta.options_query)
   // A list that could not be fetched (no token yet, server down) leaves a text box and says why,
   // unless its section is off and nothing is expected to work yet.
   if (problem && !loading && choices.length === 0) {
@@ -311,6 +318,7 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
       onChange={(v) => onChange(v)}
       onClear={schema.default === null ? () => onChange(undefined) : undefined}
       placeholder={meta.placeholder}
+      onSearch={meta.options_search ? setTyped : undefined}
     />
   )
 }

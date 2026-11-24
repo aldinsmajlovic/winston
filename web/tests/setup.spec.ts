@@ -44,6 +44,8 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     for (const title of ['What runs his brain', 'Speaking', 'Hearing']) {
       await expect(page.locator('[data-slot="card-title"]', { hasText: title })).toBeVisible()
     }
+    // Every pick there is a preset: How it runs stays on the Brain and Voice pages.
+    await expect(page.getByRole('button', { name: 'How it runs', exact: true })).toHaveCount(0)
     await fits(page, width, 'Brain and voice')
 
     await page.getByRole('button', { name: 'Skip for now' }).click()
@@ -70,7 +72,7 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await expect(page.getByText('Who can open this page', { exact: true })).toBeVisible()
     await fits(page, width, 'Done')
 
-    await page.getByRole('button', { name: 'Finish' }).click()
+    await page.getByRole('button', { name: 'Finish and go to Talk' }).click()
     await expect(page).toHaveURL(/:\d+\/$/)
 
     // Status keeps the skipped step under Set up next, and its button opens the step again.

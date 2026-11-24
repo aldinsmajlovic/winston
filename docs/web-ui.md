@@ -170,7 +170,8 @@ The What runs his brain card has, from the top:
   that go with it, and asks first when you had edited that block.
 - **Model**, from three lists: Running, what the brain's server reports; Downloaded, what the chosen
   engine can load from the Hugging Face cache on this machine; and Suggested, the presets' models for
-  that engine, not downloaded yet. A pick that is not on this computer says what it needs downloaded,
+  that engine, not downloaded yet. Typing searches for more, and a pasted model link is read as its
+  name ([finding a model](#finding-a-model)). A pick that is not on this computer says what it needs downloaded,
   its size and the free space, with Download, which gets it while the brain that runs now keeps
   answering ([setup](setup.md#winston-installs-his-engines)).
 - **Ready before the first question** (`llm.warm_up`, on): the brain reads his instructions and tools
@@ -198,6 +199,28 @@ A model the engine cannot load is greyed with the reason ("vLLM only"). Speech m
 Parakeet, Pocket TTS, a model card tagged text-to-speech) are left out. When Save changes the brain's
 model to one that is neither running nor downloaded, the confirm says the restart downloads it first,
 size unknown, and may take many minutes; the brain is offline until the download ends.
+
+#### Finding a model
+
+Typing two or more letters in Model's search searches for models the engine can download, and the
+box says so ("Search, or paste a link"). Anything typed can still be used as is ("Use ...").
+
+| Engine | What typing finds |
+| --- | --- |
+| llama.cpp | The Hub's most downloaded GGUF repos matching every word, each at its 4-bit size (`Q4_K_M`, else the nearest), with downloads and how many sizes it has |
+| Ollama | Ollama's library first (`granite4.1`), then the same Hub repos as `hf.co/repo:quant` |
+| vLLM | The Hub's safetensors repos; Apple's MLX repos are left out |
+
+- **A repo named exactly** (`unsloth/Qwen3.5-9B-GGUF`) or pasted as a link (`huggingface.co/...`,
+  `hf.co/...`, `ollama.com/library/...`) lists every size of it, smallest first, each with its size.
+- **Other sizes of this model**: with nothing typed, the GGUF repo picked now lists its other sizes, so
+  a search result's 4-bit size can be changed.
+- Ollama's library has no search API, so its search page's links are read. If that page changes, it
+  finds nothing there and the Hub still answers.
+- Offline, typing finds nothing and says nothing; a typed name still works.
+- What is typed goes to the Hub (and to ollama.com for Ollama), and nothing else does.
+
+Checked by `tests/model_search_cases.py`, against a fake Hub and Ollama page.
 
 #### Ready before the first question
 
@@ -228,8 +251,9 @@ under it where the label cannot say it all, and an (i) beside it for the backgro
 modes: a setting is on its page or, for what nobody sets by hand, only in config.yaml
 ([settings only in config.yaml](running.md#settings-only-in-configyaml)).
 
-- **A field that does not apply is not shown**: an API key only for a hosted brain or voice, the
-  voice's Model only for a hosted one, the Streaming settings only when the speech engine's command
+- **A field that does not apply is not shown**: an API key only for a hosted brain or voice (an engine
+  Winston does not run, at an address off this computer, so not Ollama), the voice's Model only for a
+  hosted one, the Streaming settings only when the speech engine's command
   uses them, engine fields only for their driver.
 - **A feature switched off** (a channel, memory, announcements) keeps its fields visible and editable
   at full contrast. Its switch's line says they wait until it is on, and its keys do not warn.
@@ -251,7 +275,7 @@ down) leaves a plain text box with the reason in a line under it.
 
 | Field | Filled from |
 | --- | --- |
-| Brain model | Running: the brain's server (`/models`), following an unsaved base URL. Downloaded: the Hugging Face cache the engine reads, with each model's size on disk ([which models are listed](#which-models-are-listed)). Suggested: the presets' models for that engine |
+| Brain model | Running: the brain's server (`/models`), following an unsaved base URL. Downloaded: the Hugging Face cache the engine reads, with each model's size on disk ([which models are listed](#which-models-are-listed)). Suggested: the presets' models for that engine. Typed: the Hub and Ollama's library ([finding a model](#finding-a-model)) |
 | Voice | Clips in `data/voices/`, your cloned voices and the TTS server's built-in voices |
 | Speech-to-text model | The models onnx-asr knows, downloaded ones marked |
 | Home Assistant entities, sensors, domains | Home Assistant's states, with each entity's name, state and an icon for its type |

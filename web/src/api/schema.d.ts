@@ -1556,6 +1556,7 @@ export interface components {
             persona?: string;
             /**
              * Reply language
+             * @description Only his instructions change: he understands what you say in any language his hearing knows and answers in this one. His voice is picked on its own, and an English-only voice reads other languages badly.
              * @default English
              */
             language?: string;
@@ -1794,6 +1795,11 @@ export interface components {
              * @default false
              */
             disabled?: boolean;
+            /**
+             * Searched
+             * @default false
+             */
+            searched?: boolean;
             /** Image */
             image?: string | null;
         };
@@ -3016,7 +3022,7 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Model
-             * @description Downloaded lists the models the engine can load from this computer.
+             * @description Downloaded lists the models the engine can load from this computer. Typing searches Hugging Face for what the engine loads (and Ollama's library for Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are listed once it is picked or named exactly.
              */
             model: string;
             /**
@@ -7059,8 +7065,10 @@ export interface operations {
                 base_url?: string | null;
                 /** @description ha_entities: comma-separated domains to keep */
                 domain?: string | null;
-                /** @description discord_users: a user id to look up */
+                /** @description discord_users: a user id to look up; llm_models: text or a link to find models to download by */
                 q?: string | null;
+                /** @description llm_models: the draft model, for its other sizes */
+                model?: string | null;
                 /** @description llm_models: the draft brain engine block as JSON, to list the downloads it can load */
                 engine?: string | null;
                 /** @description extension_tools: the read tool they must have */

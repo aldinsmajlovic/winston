@@ -4,6 +4,7 @@ truth lives (the brain's server, Home Assistant, the data directory, a provider'
 nothing is typed by hand that a machine already knows. Secrets never leave: no list holds a key's
 value. Every provider answers with a reason in `source` rather than an error, so a dropdown still takes
 a typed value when its source is down."""
+import asyncio
 import inspect
 import json
 import os
@@ -33,6 +34,7 @@ class Choice(BaseModel):
     icon: str | None = None     # a brand or kind the UI draws, such as an HA domain
     group: str | None = None
     disabled: bool = False      # listed for the record but not pickable, the hint says why
+    searched: bool = False      # found by the server for the typed text, so the page shows it unfiltered
     image: str | None = None    # a picture's address (an extension's own list: a playlist's cover)
 
 
@@ -334,7 +336,110 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
             choices.append(Choice(value=m, label=m, hint="not downloaded yet", group="Suggested"))
     if kind and ok:
         source += f"; {ENGINE_NAMES[kind]} models in {cache}"
+    if kind:
+        have = {c.value for c in choices}
+        choices += [c for c in await _find(kind, (params.get("q") or "").strip(), params.get("model") or cfg.llm.model)
+                    if c.value not in have]
     return Options(name="llm_models", source=source, choices=choices, ok=ok, served_by=kind)
+
+
+# A model page pasted for its name: huggingface.co/<repo>/..., hf.co/<repo>, ollama.com/library/<name>.
+LINK = re.compile(r"^(?:https?://)?(?:www\.)?(?:(?:huggingface|hf)\.co/(?P<repo>[\w.-]+/[\w.-]+)"
+                  r"|ollama\.com/(?:library/)?(?P<ollama>[\w.-]+(?:/[\w.-]+)?))", re.IGNORECASE)
+REPO = re.compile(r"^[\w.-]+/[\w.-]+$")
+# The size a GGUF search result is offered at: the usual 4-bit one, else the first there is.
+FOUR_BIT = ("Q4_K_M", "UD-Q4_K_XL", "Q4_K_S", "UD-Q4_K_S", "IQ4_XS", "Q4_0")
+OLLAMA_SEARCH = "https://ollama.com/search"
+
+
+def _quants(files) -> list[str]:
+    """The quants among a GGUF repo's file names, split files as one, vision projectors left out."""
+    out = set()
+    for f in files:
+        name = Path(f).name
+        if name.endswith(".gguf") and "mmproj" not in name.lower() and (m := QUANT.search(SPLIT.sub("", name[:-5]))):
+            out.add(m.group(1))
+    return sorted(out)
+
+
+def _gguf_value(kind: str, repo: str, quant: str) -> str:
+    return f"hf.co/{repo}:{quant}" if kind == "ollama" else f"{repo}:{quant}"     # Ollama pulls from the Hub so
+
+
+async def _sizes(kind: str, repo: str, group: str, skip: str = "") -> list[Choice]:
+    """Every quant of one GGUF repo with its size, from the Hub."""
+    from winston.engines.install import _gguf, _repo_files
+    try:
+        files = await asyncio.wait_for(_repo_files(repo), TIMEOUT)
+    except Exception:                                                   # noqa: BLE001  (offline, or no such repo)
+        return []
+    sizes = {q: sum(files[f] for f in _gguf(list(files), q)) for q in _quants(files)}
+    return [Choice(value=v, label=f"{repo}:{q}", group=group, searched=True, hint=_size(n))
+            for q, n in sorted(sizes.items(), key=lambda x: x[1]) if (v := _gguf_value(kind, repo, q)) != skip]
+
+
+async def _find(kind: str, q: str, model: str) -> list[Choice]:
+    """Models this engine can download, found as you type: the Hub's GGUF repos for llama.cpp and Ollama (each
+    at its 4-bit quant) and Ollama's library, or the Hub's safetensors repos for vLLM. A repo named exactly, by
+    its name or a pasted link, lists every quant with its size, as does the GGUF repo picked now ("Other sizes")."""
+    link = LINK.match(q)
+    if link and link["ollama"]:
+        return [Choice(value=link["ollama"], label=link["ollama"], group="Ollama library", searched=True)]
+    named = q.removeprefix("hf.co/").partition(":")[0]
+    repo = link["repo"] if link else named if REPO.match(named) else ""
+    if kind not in GGUF_ENGINES:
+        return [Choice(value=repo, label=repo, group="Hugging Face", searched=True)] if repo else (
+            await _hub(kind, q) if len(q) >= 2 else [])
+    if repo:
+        return await _sizes(kind, repo, f"Sizes of {repo}") or await _hub(kind, repo)
+    if len(q) < 2:
+        picked = model.removeprefix("hf.co/").partition(":")[0]
+        return await _sizes(kind, picked, "Other sizes of this model", skip=model) if REPO.match(picked) else []
+    found = await asyncio.gather(_hub(kind, q), _ollama_library(q) if kind == "ollama" else asyncio.sleep(0, []))
+    return found[1] + found[0]
+
+
+async def _hub(kind: str, q: str) -> list[Choice]:
+    """The Hub's most downloaded repos matching every word, in the format the engine loads."""
+    from huggingface_hub import constants
+    from huggingface_hub.utils import build_hf_headers
+    params = {"search": q, "filter": "gguf" if kind in GGUF_ENGINES else "safetensors", "sort": "downloads",
+              "limit": 12, "expand[]": ["siblings", "downloads", "tags"]}
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT) as c:
+            r = await c.get(f"{constants.ENDPOINT}/api/models", params=params, headers=build_hf_headers())
+        models = r.raise_for_status().json()
+    except Exception:                                                   # noqa: BLE001  (offline: typing still works)
+        return []
+    out = []
+    for m in models:
+        repo, downloads = m["id"], _count(m.get("downloads") or 0)
+        if "mlx" in (m.get("tags") or []):
+            continue                                                    # Apple's format, which no engine here loads
+        if kind not in GGUF_ENGINES:
+            out.append(Choice(value=repo, label=repo, hint=downloads, group="Hugging Face", searched=True))
+        elif quants := _quants(s["rfilename"] for s in m.get("siblings") or []):
+            q4 = next((x for x in FOUR_BIT if x in quants), quants[0])
+            out.append(Choice(value=_gguf_value(kind, repo, q4), label=f"{repo}:{q4}", group="Hugging Face",
+                              hint=f"{downloads}, {len(quants)} size{'s' * (len(quants) > 1)}", searched=True))
+    return out
+
+
+def _count(n: int) -> str:
+    """ "2.3M downloads", "41k downloads", "12 downloads"."""
+    return f"{n / 1e6:.1f}M downloads" if n >= 1e6 else f"{n // 1000}k downloads" if n >= 1000 else f"{n} downloads"
+
+
+async def _ollama_library(q: str) -> list[Choice]:
+    """Ollama's library: its search page's links, as it has no search API."""
+    # ponytail: reads the page's /library/<name> links; if the page changes this finds nothing, the Hub still does.
+    try:
+        async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as c:
+            r = await c.get(OLLAMA_SEARCH, params={"q": q})
+        names = dict.fromkeys(re.findall(r'href="/library/([\w.-]+)"', r.raise_for_status().text))
+    except Exception:                                                   # noqa: BLE001
+        return []
+    return [Choice(value=n, label=n, group="Ollama library", searched=True) for n in list(names)[:8]]
 
 
 async def _voices(cfg: WinstonConfig, params: dict) -> Options:

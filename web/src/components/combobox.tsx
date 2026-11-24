@@ -17,6 +17,8 @@ export type Choice = {
   group?: string | null
   /** Listed but not pickable (greyed); the hint says why. */
   disabled?: boolean
+  /** Found by the server for the typed text: shown as is, not filtered again. */
+  searched?: boolean
 }
 
 type Props = {
@@ -33,6 +35,8 @@ type Props = {
   placeholder?: string
   /** Offer a None entry that unsets the field. */
   onClear?: () => void
+  /** The typed text, for a server that searches further (its finds come back `searched`). */
+  onSearch?: (text: string) => void
 }
 
 const SEARCH_FROM = 8
@@ -66,16 +70,21 @@ export function ChoiceName({ text, className }: { text: string; className?: stri
 
 /** A dropdown of choices fetched from somewhere, searchable when long; with `custom` a typed
  * value that is not listed can be used as is. */
-export function Combobox({ id, value, choices, onChange, custom, loading, problem, disabled, placeholder, onClear }: Props) {
+export function Combobox({ id, value, choices, onChange, custom, loading, problem, disabled, placeholder, onClear, onSearch }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const current = choices.find((c) => c.value === value)
   const typed = search.trim()
-  const offerTyped = custom && typed !== '' && !choices.some((c) => c.value === typed)
+  // A pasted link is the server's to read, not a value to use as is.
+  const offerTyped = custom && typed !== '' && !typed.includes('://') && !choices.some((c) => c.value === typed)
+  const type = (text: string) => {
+    setSearch(text)
+    onSearch?.(text)
+  }
   const pick = (v: string) => {
     onChange(v)
     setOpen(false)
-    setSearch('')
+    type('')
   }
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -112,7 +121,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
       <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
         <Command filter={filter}>
           {choices.length >= SEARCH_FROM || custom ? (
-            <CommandInput placeholder="Search" value={search} onValueChange={setSearch} />
+            <CommandInput placeholder={onSearch ? 'Search, or paste a link' : custom ? 'Search, or type a name' : 'Search'} value={search} onValueChange={type} />
           ) : null}
           <CommandList>
             <CommandEmpty>{problem ?? 'Nothing found'}</CommandEmpty>
@@ -134,6 +143,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
                 {items.map((c) => (
                   <CommandItem
                     key={c.value}
+                    forceMount={c.searched}
                     value={`${c.label} ${c.value}`}
                     data-checked={c.value === value}
                     disabled={c.disabled}

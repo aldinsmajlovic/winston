@@ -24,8 +24,9 @@ type Props = {
   kind: Kind
   title: string
   presets: Preset[]
-  /** Says nothing while the engine is merely stopped: the setup wizard, which starts it when you go on. */
-  quietWhenStopped?: boolean
+  /** The setup wizard: nothing said while the engine is merely stopped, since going on starts it, and no How
+   * it runs, since every pick there is a preset (the Brain and Voice pages keep it). */
+  setup?: boolean
   children?: ReactNode
 }
 
@@ -77,7 +78,7 @@ function runsAsPreset(page: SettingsState, kind: Kind, preset: Preset): boolean 
 /** One slot (brain, speaking, hearing): what it runs on as a dropdown of presets, each with what it needs,
  * then the slot's own controls and, last, its closed How it runs. Picking a preset rewrites the engine
  * block and the settings that go with it, after asking when the engine block was changed by hand. */
-export function SlotCard({ page, kind, title, presets, quietWhenStopped, children }: Props) {
+export function SlotCard({ page, kind, title, presets, setup, children }: Props) {
   const ask = useConfirm()
   const current = matchPreset(kind, page.value, presets)
   const preset = presets.find((p) => p.id === current)
@@ -148,7 +149,7 @@ export function SlotCard({ page, kind, title, presets, quietWhenStopped, childre
         </div>
         {children}
         <InstallLine page={page} kind={kind} />
-        <HowItRuns page={page} kind={kind} presets={presets} quietWhenStopped={quietWhenStopped} />
+        <HowItRuns page={page} kind={kind} presets={presets} setup={setup} />
       </CardContent>
     </Card>
   )
@@ -187,7 +188,7 @@ function InstallLine({ page, kind }: { page: SettingsState; kind: Kind }) {
   const free = plan.data?.free != null ? ` ${size(plan.data.free)} free.` : ''
   return (
     <StatusLine tone="muted" action={{ label: 'Download', onClick: () => void go() }}>
-      {`Needs ${amount}downloaded before it can run: ${joinNames(missing.map(before))}.${free}`}
+      {`Still to download: ${joinNames(missing.map(before))}.${free}`}
     </StatusLine>
   )
 }
@@ -207,8 +208,8 @@ function stateText(e: EngineStatus): string {
  * state while Running, the engine form for its driver ("Reset to the preset" on the command line while
  * the block differs from the preset it matches), then the slot's fields it holds. It is there when the
  * slot has an engine block or one of those fields to draw, and an error from a refused save under it
- * opens it. */
-function HowItRuns({ page, kind, presets, quietWhenStopped }: Omit<Props, 'children' | 'title'>) {
+ * opens it. In setup only the state line. */
+function HowItRuns({ page, kind, presets, setup }: Omit<Props, 'children' | 'title'>) {
   const status = useStatus()
   const actions = useEngineActions()
   const ask = useConfirm()
@@ -228,7 +229,7 @@ function HowItRuns({ page, kind, presets, quietWhenStopped }: Omit<Props, 'child
   const engine = block ? status.data?.engines.find((e) => e.name === kind) : undefined
   // Installing is said once, by the download line above with its progress; stopped, in setup, not at all.
   const downloading = install.missing.some((p) => p.state === 'running')
-  const quiet = (e: EngineStatus) => (e.state === 'installing' && downloading) || (quietWhenStopped && e.state === 'stopped')
+  const quiet = (e: EngineStatus) => (e.state === 'installing' && downloading) || (setup && e.state === 'stopped')
   const byName = { params: { path: { name: kind } } }
 
   const restart = async (e: EngineStatus) => {
@@ -265,6 +266,7 @@ function HowItRuns({ page, kind, presets, quietWhenStopped }: Omit<Props, 'child
   return (
     <>
       {engine && engine.state !== 'healthy' && block?.enabled !== false && !quiet(engine) ? stateLine(engine) : null}
+      {setup ? null : (
       <Fold title="How it runs" summary={drivers.find((d) => d.value === block?.driver)?.label} forceOpen={errors}>
         <div className="flex flex-col gap-4 pt-2">
           {engine?.state === 'healthy' ? stateLine(engine) : null}
@@ -275,6 +277,7 @@ function HowItRuns({ page, kind, presets, quietWhenStopped }: Omit<Props, 'child
           ))}
         </div>
       </Fold>
+      )}
       <LogDialog title={`Log of ${engineLabel(kind)}`} open={log} onOpenChange={setLog} lines={lines.data?.lines} loading={lines.isLoading} />
     </>
   )
