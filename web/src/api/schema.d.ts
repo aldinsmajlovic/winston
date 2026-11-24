@@ -2932,6 +2932,12 @@ export interface components {
              */
             done?: number;
             /**
+             * Stage
+             * @description "unpacking" once a Docker image is all downloaded: done counts the unpacking
+             * @default
+             */
+            stage?: string;
+            /**
              * Error
              * @default
              */

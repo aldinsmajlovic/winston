@@ -715,3 +715,34 @@ test('Memory shows the example topics, dated facts, and folds and clears the exp
   expect(readFileSync(plans, 'utf8')).toContain('The user had a haircut booked. (noted 2026-01-01, until 2026-01-02)')
   expect(errors).toEqual([])
 })
+
+test('a download on a slot card is a bar that moves each second, then says Unpacking', async ({ page }) => {
+  // The smoke test's engines are off: the brain shown on, with its image downloading as winstond reports it.
+  await page.route('**/api/config', async (route) => {
+    if (route.request().method() !== 'GET') return route.fallback()
+    const config = await (await route.fetch()).json()
+    config.engines.llm = { ...config.engines.llm, enabled: true }
+    await route.fulfill({ json: config })
+  })
+  const GB = 1_000_000_000
+  let polls = 0
+  await page.route('**/api/install/plan', async (route) => {
+    polls++
+    const unpacking = polls > 3
+    const done = unpacking ? 2 * GB : Math.min(polls * 2 * GB, 8 * GB)
+    await route.fulfill({
+      json: {
+        parts: [{ key: 'image:x', title: 'its Docker image', size: 8 * GB, installed: false, state: 'running', done, stage: unpacking ? 'unpacking' : '', error: '' }],
+        free: 100 * GB,
+        short: '',
+      },
+    })
+  })
+  await open(page, '/brain')
+  const bar = page.getByRole('progressbar', { name: /^Downloading its Docker image/ })
+  await expect(bar).toBeVisible()
+  const first = Number(await bar.getAttribute('aria-valuenow'))
+  await expect.poll(async () => Number(await bar.getAttribute('aria-valuenow')), { timeout: 4000 }).toBeGreaterThan(first)
+  await expect(page.getByRole('progressbar', { name: /^Unpacking its Docker image, 2\.0 GB of 8\.0 GB/ })).toBeVisible({ timeout: 6000 })
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})

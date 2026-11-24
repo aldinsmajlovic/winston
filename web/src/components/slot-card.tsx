@@ -10,12 +10,14 @@ import { StatusLine } from '@/components/status-line'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useDrivers } from '@/hooks/use-drivers'
 import { amountOf, before, useInstall, type InstallPart } from '@/hooks/use-install'
 import type { SettingsState } from '@/hooks/use-settings'
 import { capitalize, joinNames, since, size } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import { applyPreset, CUSTOM, matchPreset, presetFacts, type Kind } from '@/lib/presets'
 import { allBut, deepEqual, hasFields, isRecord, section, setIn } from '@/lib/schema'
 
@@ -210,7 +212,31 @@ function InstallLine({ page, kind }: { page: SettingsState; kind: Kind }) {
     if (choice) download.mutate({ body })
   }
   if (download.error) return <StatusLine tone="error">{errorText(download.error)}</StatusLine>
-  if (running.length) return <StatusLine tone="muted">{`Downloading ${joinNames(running.map(during))}.`}</StatusLine>
+  if (running.length)
+    return (
+      <div className="flex flex-col gap-3">
+        {running.map((p) => {
+          const what = `${p.stage === 'unpacking' ? 'Unpacking' : 'Downloading'} ${during(p)}`
+          return (
+            <div key={p.key} className="flex flex-col gap-2">
+              <span className="text-sm">{`${what}.`}</span>
+              {/* Polled every second: the bar glides over each step, and pulses while unpacking, which
+                  containerd's image store counts by layer, not by byte. */}
+              {p.size ? (
+                <Progress
+                  value={Math.min(100, ((p.done ?? 0) / p.size) * 100)}
+                  aria-label={what}
+                  className={cn(
+                    '*:data-[slot=progress-indicator]:duration-1000 *:data-[slot=progress-indicator]:ease-linear',
+                    p.stage === 'unpacking' && '*:data-[slot=progress-indicator]:animate-pulse',
+                  )}
+                />
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
+    )
   if (failed.length)
     return (
       <StatusLine tone="error" action={{ label: 'Try again', onClick: () => void go() }}>

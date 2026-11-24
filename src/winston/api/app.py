@@ -85,6 +85,7 @@ class InstallPart(BaseModel):
     installed: bool
     state: Literal["running", "done", "error"] | None = Field(None, description="Its install, once one ran")
     done: int = Field(0, description="Bytes so far")
+    stage: str = Field("", description='"unpacking" once a Docker image is all downloaded: done counts the unpacking')
     error: str = ""
 
 
@@ -1659,7 +1660,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         for p in found:
             job = install.JOBS.get(p.key)
             out.append(InstallPart(key=p.key, title=p.title, size=p.size, installed=p.installed or bool(job and job.state == "done"),
-                                   state=job.state if job else None, done=job.done if job else 0,
+                                   state=job.state if job else None, done=job.done if job else 0, stage=job.stage if job else "",
                                    error=job.error if job else ""))
         missing = [p for p, v in zip(found, out) if not v.installed]
         where = next((p.where for p in missing if p.where), None)

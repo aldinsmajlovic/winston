@@ -46,6 +46,7 @@ class Job:
     part: Part
     state: str = "running"   # running | done | error
     done: int = 0            # bytes so far
+    stage: str = ""          # "unpacking" once a Docker image is all downloaded; done then counts again
     error: str = ""
 
 
@@ -322,7 +323,7 @@ def line(job: Job) -> str:
     if job.state == "error":
         return f"{p.title}: {job.error}"
     if p.size:
-        return f"{p.title}, {gb(min(job.done, p.size))} of {gb(p.size)}"
+        return f"{p.title}, {job.stage + ', ' if job.stage else ''}{gb(min(job.done, p.size))} of {gb(p.size)}"
     return f"{p.title}, {gb(job.done)} so far" if job.done else p.title
 
 
@@ -346,16 +347,32 @@ async def _pull(job: Job) -> None:
     name, tag = ref.rsplit(":", 1) if ":" in ref.rsplit("/", 1)[-1] else (ref, "latest")
 
     def go():
-        layers: dict[str, list[int]] = {}           # id: [bytes so far, size]
+        layers: dict[str, list[int]] = {}           # id: [size, downloaded, unpacked]
+        fetched: set[str] = set()
         for ev in docker.from_env().api.pull(name, tag=tag, stream=True, decode=True):
             if "error" in ev:
                 raise RuntimeError(ev["error"])
-            d, lid = ev.get("progressDetail") or {}, ev.get("id", "")
-            if ev.get("status") == "Downloading" and d.get("total"):
-                layers[lid] = [d.get("current", 0), d["total"]]
-            elif ev.get("status") in ("Download complete", "Pull complete") and lid in layers:
-                layers[lid][0] = layers[lid][1]
-            job.done = sum(x[0] for x in layers.values())
+            s, d, lid = ev.get("status"), ev.get("progressDetail") or {}, ev.get("id", "")
+            if s == "Pulling fs layer":
+                layers.setdefault(lid, [0, 0, 0])
+            if lid not in layers:
+                continue
+            x = layers[lid]
+            if s == "Downloading" and d.get("total"):
+                x[0], x[1] = d["total"], d.get("current", 0)
+            elif s == "Download complete":
+                fetched.add(lid)
+                x[1] = x[0]
+            elif s == "Extracting" and d.get("total") and "units" not in d:   # bytes on overlay2; containerd's store counts seconds
+                x[2] = d.get("current", 0)
+            elif s == "Pull complete":
+                fetched.add(lid)
+                x[1] = x[2] = x[0]
+            # Unpacking takes minutes after the last byte: counted again, so the line does not sit at the end.
+            if fetched >= layers.keys():
+                job.stage, job.done = "unpacking", sum(x[2] for x in layers.values())
+            else:
+                job.done = sum(x[1] for x in layers.values())
     await asyncio.to_thread(go)
 
 

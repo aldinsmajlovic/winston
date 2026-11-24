@@ -154,7 +154,12 @@ service's `pyproject.toml`).
 
 Picking something not installed, on the Brain and Voice pages or in the wizard, shows what it needs:
 "Still to download: the model (16.4 GB). 210 GB free." with Download. Then
-it shows the progress per part, or why it failed with Try again.
+each part gets a bar, updated every second ("Downloading its Docker image, 6.2 GB of 8.7 GB."), or
+why it failed with Try again.
+
+- A Docker image is then unpacked, which can take minutes after the last byte: its line says Unpacking
+  and the bar counts again. On Docker's containerd image store (the default since Docker 29) it moves
+  a layer at a time and pulses in between, since Docker reports unpacking there in seconds, not bytes.
 
 - It downloads in winstond, so it carries on with the page closed, and the engine that runs now keeps
   running.
@@ -210,6 +215,10 @@ The wizard is its own page, `/setup`: his logo, "Set up" and his name, "Step 1 o
 and the steps, with a check for each one done and "(skipped)" for each one skipped. Under them is the
 step, with Skip for now and its own button at the bottom.
 
+Each step saves without asking, and nothing restarts while you go through them: what a step changed
+in a running engine (a new voice, say) waits, and Finish restarts it. One still installing is left
+alone, since it reads the saved settings when it starts.
+
 Each step can be skipped and picked up later. A skipped one stays in Set up next on Status ("Brain
 and voice: skipped during setup." with Set it up) after the wizard ends.
 
@@ -217,7 +226,7 @@ and voice: skipped during setup." with Set it up) after the wizard ends.
 | --- | --- | --- |
 | [1. Brain and voice](#1-brain-and-voice) | The brain and the voice engines, preselected for your hardware | Saves a changed pick and starts the engines, which download what they lack |
 | [2. Home Assistant](#2-home-assistant) | Sign in to Home Assistant or paste a token, then the devices he may use and whether Assist may use him | Makes him his own token there, switches its MCP server on for an administrator, saves the device list |
-| [3. Who he is](#3-who-he-is) | His name, reply language, personality and voice | Saves them, his name in his personality too if you say so |
+| [3. Who he is](#3-who-he-is) | His name, reply language, personality and voice | Saves them, and his new name in his personality too |
 | [4. A room box](#4-a-room-box) | A Voice PE on USB-C, its Wi-Fi and its room | Flashes Winston's firmware, gives it Wi-Fi, adds it as a room box |
 | [5. Done](#5-done) | Who can open this page from now on | Ends setup mode and opens Talk |
 
@@ -303,8 +312,8 @@ Until speaking runs, the step says why a voice cannot be heard yet: "Speaking is
 Python packages, 0.4 of 1.0 GB). You can hear a voice once it runs.", "Speaking is starting.", or that
 speaking is off or not running.
 
-Its button saves. A new name goes through the same confirm as on the Assistant page, which offers to
-change his name in his personality too.
+Its button saves. A new name is changed in his personality too, as the Assistant page's confirm does
+by default, without asking.
 
 #### 4. A room box
 
@@ -334,8 +343,7 @@ change his name in his personality too.
    it was not flashed, is said to need a flash.
 5. **Choose its room** and Home Assistant area. When his name is not Winston, also pick a stock wake
    word (Okay Nabu, Hey Jarvis or Hey Mycroft), since the box knows Okay Winston and those three.
-6. **Add the box and continue** saves it as a room box and switches the room boxes on, through the
-   same confirm as Ways to talk.
+6. **Add the box and continue** saves it as a room box and switches the room boxes on.
 
 A box Home Assistant had adopted loses its key with the flash and would come back as a new device
 there. The step says so, with Disable it in Home Assistant, on by default; enable its ESPHome entry
@@ -357,7 +365,7 @@ When something is in the way:
   takes you to Talk, where you talk to him."
 - Who can open this page from now on, as on Status, with the same warning when it is the whole network.
 - What was skipped.
-- **Finish and go to Talk** saves, ends setup mode and opens Talk.
+- **Finish and go to Talk** saves, ends setup mode, restarts what waits for a restart and opens Talk.
 
 From another device that only this computer may open afterwards, the step says so before Finish (its
 button is then Finish), and after it gives the address to open there: "Setup is done. From now on, open

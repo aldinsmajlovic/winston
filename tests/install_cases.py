@@ -159,12 +159,26 @@ class Images:
 
 class API:
     def pull(self, name, tag, stream, decode):
+        # As Docker 29 sends them: every layer announced first, then downloads, then unpacking, counted in
+        # seconds on containerd's image store (l1) and in bytes on overlay2 (l2).
+        yield {"status": "Pulling from made-up/llama.cpp", "id": "1.0"}
+        yield {"status": "Already exists", "id": "l0", "progressDetail": {"hidecounts": True}}
+        for lid in ("l1", "l2"):
+            yield {"status": "Pulling fs layer", "id": lid, "progressDetail": {}}
         for cur in (0, 2_000_000, 4_000_000):
             yield {"status": "Downloading", "id": "l1", "progressDetail": {"current": cur, "total": 4_000_000}}
             time.sleep(0.2)
-        yield {"status": "Download complete", "id": "l1"}
+        yield {"status": "Download complete", "id": "l1", "progressDetail": {"hidecounts": True}}
         yield {"status": "Downloading", "id": "l2", "progressDetail": {"current": 6_000_000, "total": 6_000_000}}
-        yield {"status": "Pull complete", "id": "l2"}
+        yield {"status": "Download complete", "id": "l2", "progressDetail": {"hidecounts": True}}
+        for sec in (1, 2):
+            yield {"status": "Extracting", "id": "l1", "progressDetail": {"current": sec, "units": "s"}}
+            time.sleep(0.2)
+        yield {"status": "Pull complete", "id": "l1", "progressDetail": {"hidecounts": True}}
+        for cur in (3_000_000, 6_000_000):
+            yield {"status": "Extracting", "id": "l2", "progressDetail": {"current": cur, "total": 6_000_000}}
+            time.sleep(0.2)
+        yield {"status": "Pull complete", "id": "l2", "progressDetail": {"hidecounts": True}}
         IMAGES.add(f"{name}:{tag}")
 
 
@@ -184,11 +198,13 @@ def config(engines: dict, model: str = "x") -> WinstonConfig:
     return WinstonConfig.model_validate({**base, "engines": engines, "llm": {**base["llm"], "model": model}})
 
 
-async def watch(job, until=60):
-    """The bytes a job reports while it runs, so a test can see it move."""
+async def watch(job, until=60, stages=None):
+    """The bytes a job reports while it runs, so a test can see it move; with `stages`, each (stage, bytes) too."""
     marks, t = [], time.time()
     while job.state == "running" and time.time() - t < until:
         marks.append(job.done)
+        if stages is not None:
+            stages.append((job.stage, job.done))
         await asyncio.sleep(0.05)
     return marks
 
@@ -242,9 +258,18 @@ async def main():
     # ---- Getting it: progress per part ----
     jobs = [install.start(p) for p in parts]
     check("starting the same part again is the same job", install.start(parts[0]) is jobs[0], True)
-    image_marks, model_marks = await asyncio.gather(watch(jobs[0]), watch(jobs[1]))
+    image_stages: list = []
+    image_marks, model_marks = await asyncio.gather(watch(jobs[0], stages=image_stages), watch(jobs[1]))
     check("both installed", [j.state for j in jobs], ["done", "done"])
     check("the image's pull reported its layers as they came", (len(set(image_marks)) > 1, jobs[0].done), (True, 10_000_000))
+    downloading = sorted({d for st, d in image_stages if st == ""})
+    unpacking = [d for st, d in image_stages if st == "unpacking"]
+    check("its download counted up as it came", (downloading[0] < 4_000_000, downloading[-1] >= 4_000_000), (True, True))
+    # Seconds on containerd's store count nothing until the layer is done; overlay2's bytes count as they go.
+    check("then its unpacking counted again from nothing, to the whole image",
+          (unpacking[0], 7_000_000 in unpacking, jobs[0].done), (0, True, 10_000_000))
+    check("and the line says so", install.line(install.Job(parts[0], done=4_000_000, stage="unpacking")),
+          "its Docker image, unpacking, 4 MB of 10 MB")
     check("the model's bytes went up as it downloaded", len(set(model_marks)) > 2, True)
     again = await install.parts("llm", config({"llm": LLAMA}, "fake/model-GGUF:Q4_K_M"))
     check("then both count as installed, the model from the cache", [p.installed for p in again], [True, True])

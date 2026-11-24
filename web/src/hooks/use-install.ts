@@ -25,7 +25,7 @@ export function useInstall(page: SettingsState, kind: Kind) {
   const plan = $api.useQuery('post', '/api/install/plan', { body }, {
     enabled: !!block && block.enabled !== false,
     retry: false,
-    refetchInterval: (q) => (q.state.data?.parts.some((p) => p.state === 'running') ? 2000 : false),
+    refetchInterval: (q) => (q.state.data?.parts.some((p) => p.state === 'running') ? 1000 : false),
   })
   const download = $api.useMutation('post', '/api/install', { onSettled: () => client.invalidateQueries({ queryKey: planKey }) })
   const missing = (plan.data?.parts ?? []).filter((p) => !p.installed)
