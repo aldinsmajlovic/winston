@@ -3,6 +3,12 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.10 (unreleased)
+
+- `winston update` no longer stops with an error after installing, and restarts the running service
+  again. Updating from 0.1.9 or earlier still shows that error once; the new release is installed
+  all the same.
+
 ## 0.1.9 (2026-11-25)
 
 - A setting you changed but have not saved says so under it, with the value still in effect ("Not
