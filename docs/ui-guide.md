@@ -306,7 +306,7 @@ The wall display (`/wall?room=`) is set up from Ways to talk, on the Talk page c
   it is a sheet that closes when you pick a page.
 - **A page's header**, in order: on a sub-page the parent as a breadcrumb ("Extensions / Spotify",
   `back`), the title, page commands as outline text buttons (`commands`), what waits for a restart,
-  Discard and Save. In a narrow header two or more commands fold into one More menu and the breadcrumb
+  how many changes are unsaved (in a wide header), Discard and Save. In a narrow header two or more commands fold into one More menu and the breadcrumb
   gives way. Below `sm`, Discard and Save are a bar along the bottom ("2 unsaved changes") while there
   is something to save.
 - **No view modes**: a field is drawn or it is `hidden`.
@@ -462,7 +462,9 @@ Drawn by: `SlotCard`, `HowItRuns`, `Fold`.
   [Copy](#copy)).
 - **The Save confirm** also lists what starts, restarts and stops ("Discord: stops now"), a model
   download, and Home Assistant's exposure plan, with Save only beside Save and restart.
-- **Unsaved edits**: a dot in the sidebar, and on a store tile, marks them.
+- **Unsaved edits**: "Not saved yet: still 512 tokens" under each edited field, naming what is in
+  effect until Save; "1 unsaved change" beside Save; a dot in the sidebar, and on a store tile. The
+  wizard, which saves on Next, shows none of these on its fields.
 - **A saved change that waits for a restart** is a few words beside Save ("Waiting for a restart: the
   brain", or "2 parts") with one Restart whose confirm names each part and its cost; the icon opens the
   details.

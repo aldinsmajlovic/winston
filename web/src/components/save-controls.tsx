@@ -100,11 +100,14 @@ function PendingRestart() {
 
 const changeCount = (n: number) => (n === 1 ? '1 unsaved change' : `${n} unsaved changes`)
 
-/** Discard and Save in the header. On a phone they move to the SaveBar. */
+/** How many changes wait, Discard and Save in the header. On a phone they move to the SaveBar. */
 export function SaveControls({ page }: { page: SettingsState }) {
   return (
     <>
       <PendingRestart />
+      {page.dirty ? (
+        <span className="shrink-0 text-sm whitespace-nowrap text-warning max-sm:hidden @max-lg/header:hidden">{changeCount(page.changes)}</span>
+      ) : null}
       {page.dirty ? (
         <Button variant="ghost" size="sm" className="max-sm:hidden" disabled={page.saving} onClick={page.reset}>
           Discard

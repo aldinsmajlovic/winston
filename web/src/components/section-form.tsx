@@ -1,4 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { useLocation } from 'react-router'
+import { useConfig } from '@/api/config'
 import { fieldId, useSectionErrors } from '@/api/field-errors'
 import { KindIcon } from '@/components/kind-icon'
 import { SchemaForm, type FormContext } from '@/components/schema-form'
@@ -44,6 +46,9 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
     [schema, path],
   )
   const errors = useSectionErrors(path, isObject)
+  // The wizard saves each step on Next, so its fields never say they are not saved yet.
+  const wizard = useLocation().pathname.startsWith('/setup')
+  const saved = useConfig().data
   // rjsf skips redrawing a field whose props are deep-equal and counts every function as equal, so a
   // field can hold an old setAt; it reaches the current page through the ref.
   const latest = useRef(page)
@@ -55,8 +60,10 @@ export function SectionForm({ page, path, title, omit, driver, icon: iconName, s
       setAt: (at, next) => latest.current.update((c) => setIn(c, at, next)),
       config: value,
       titleErrors: errors.byTitle,
+      saved: wizard ? undefined : saved,
+      path,
     }),
-    [value, errors.byTitle],
+    [value, errors.byTitle, saved, path, wizard],
   )
   const byId = Object.fromEntries(Object.entries(adornments ?? {}).map(([key, node]) => [fieldId([...path, ...key.split('.')]), node]))
   const own = errors.own.map((msg) => (

@@ -39,7 +39,7 @@ import { Adornments } from '@/lib/adornments'
 import { humanize } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useOptions, type OptionsQuery } from '@/hooks/use-options'
-import { type AccountField as AccountFieldMeta, deepEqual, isKeyedMap, type JsonSchema, type Path, type SecretField as SecretMeta } from '@/lib/schema'
+import { type AccountField as AccountFieldMeta, deepEqual, getIn, isKeyedMap, isRecord, type JsonSchema, type Path, type SecretField as SecretMeta } from '@/lib/schema'
 
 // The theme's own checkbox list, for multiple choice fields.
 const CheckboxesWidget = Widgets.CheckboxesWidget
@@ -54,6 +54,9 @@ export type FormContext = {
   config?: unknown
   /** Errors about a nested object, by the id of its title, shown beside the title. */
   titleErrors?: Record<string, string[]>
+  /** The saved config and where this form sits in it, so an edited field says it is not saved yet. */
+  saved?: unknown
+  path?: Path
 }
 
 type Meta = JsonSchema & {
@@ -85,6 +88,23 @@ function enumChoices(schema: Meta): Choice[] {
 
 const WAITING = 'Off. These settings wait until you switch it on.'
 
+/** "Not saved yet: still Ollama" under an edited field, naming what is in effect until Save. A list or a
+ * nested section says only that it is not saved; its entries and fields carry their own line. */
+function Unsaved({ schema, at, context }: { schema: Meta; at: Path; context?: FormContext }) {
+  if (!context?.path || schema.type === 'object' || !isRecord(context.saved)) return null
+  const full = [...context.path, ...at]
+  const before = getIn(context.saved, full)
+  const now = getIn(context.config, full)
+  if ((before == null && now == null) || deepEqual(before, now)) return null
+  const still =
+    typeof before === 'boolean'
+      ? before ? 'on' : 'off'
+      : typeof before === 'string' || typeof before === 'number'
+        ? `${schema.labels?.[String(before)] ?? (schema.enum ? humanize(String(before)) : before)}${schema.unit ? ` ${schema.unit}` : ''}`
+        : undefined
+  return <p className="text-sm text-warning">{still === undefined || still === '' ? 'Not saved yet' : `Not saved yet: still ${still}`}</p>
+}
+
 /** Switch, label and (i), the help under the label. A section's own switch with no help of its own
  * says, while off, that the rest of the section waits for it. */
 function SwitchWidget({ id, value, label, disabled, readonly, onChange, schema }: WidgetProps) {
@@ -112,6 +132,7 @@ function FieldTemplate(props: FieldTemplateProps) {
   if (hidden) return <div className="hidden">{children}</div>
   // An entry of a plain list (arguments, domains) is its value alone; the list carries the label.
   const inList = typeof props.fieldPathId?.path.at(-1) === 'number'
+  const context = props.registry.formContext as FormContext | undefined
   const ownLabel = inList || schema.type === 'boolean' || uiSchema?.['ui:widget'] === 'checkbox'
   // A switch draws its help under its label; a section or a map under its heading; the names field
   // under its own label, above the words it adds by itself.
@@ -135,6 +156,7 @@ function FieldTemplate(props: FieldTemplateProps) {
         children
       )}
       {ownHelp ? null : <Help text={(schema as Meta).help} />}
+      {inList ? null : <Unsaved schema={schema as Meta} at={props.fieldPathId?.path ?? []} context={context} />}
       {errors}
     </div>
   )

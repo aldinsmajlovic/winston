@@ -361,6 +361,21 @@ test('a refused save opens the How it runs that holds the field', async ({ page 
   expect(errors).toEqual([])
 })
 
+test('an edited field says it is not saved yet and what is still in effect', async ({ page }) => {
+  const errors = watchErrors(page)
+  await open(page, '/brain')
+  const field = page.locator('#cfg_llm_sampling_max_tokens')
+  const before = await field.inputValue()
+  await field.fill('777')
+  await expect(page.getByText(`Not saved yet: still ${before}`)).toBeVisible()
+  await expect(page.locator('header').getByText('1 unsaved change', { exact: true })).toBeVisible()
+  // Back to the saved value, it is no longer an edit.
+  await field.fill(before)
+  await expect(page.getByText(/^Not saved yet/)).toHaveCount(0)
+  await expect(page.locator('header').getByText(/unsaved change/)).toHaveCount(0)
+  expect(errors).toEqual([])
+})
+
 test('Status lists the custom engines and who can open this page', async ({ page }) => {
   await open(page, '/status')
   // A custom engine has no row in His parts, so its card shows while there is one.

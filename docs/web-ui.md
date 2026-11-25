@@ -296,9 +296,16 @@ down) leaves a plain text box with the reason in a line under it.
 
 ### Saving
 
-Edits are one draft across all pages until saved or discarded. A dot in the sidebar marks each page
-with unsaved edits, and closing the tab asks first. On a phone, Discard and Save sit in a bar along the
-bottom while there are unsaved changes.
+Edits are one draft across all pages until saved or discarded. Each edited field says "Not saved yet"
+under it, with the saved value still in effect ("still 512 tokens"). Beside Save the header counts them
+("1 unsaved change"), and a dot in the sidebar marks each page with unsaved edits. Closing the tab asks
+first. On a phone, Discard and Save sit in a bar along the bottom while there are unsaved changes. The
+setup wizard saves each step on Next, so its fields never say it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/unsaved-dark.png">
+  <img src="images/unsaved-light.png" alt="How he picks his words with Longest reply changed to 1024 tokens, and under it: Not saved yet: still 512 tokens" width="560">
+</picture>
 
 Save sends only the changed fields (`PATCH /api/config` with the version the edits started from). It
 asks first when something starts, stops or restarts, or when the edits reach past the current page. Its
