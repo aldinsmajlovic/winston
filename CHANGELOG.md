@@ -3,6 +3,17 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.11 (unreleased)
+
+- Home Assistant's app, Assist chat and voice satellites can talk to Winston through his integration,
+  with his reply streamed so a satellite starts speaking sooner. Pick Winston as the conversation agent
+  in a voice assistant pipeline. Its satellites also speak his announcements and reminders, as with
+  Assist.
+- Adding the integration is two buttons on Ways to talk, also offered in the setup wizard: Download in
+  Home Assistant opens it in Home Assistant's Marketplace or HACS, and Add to Home Assistant adds him
+  there with no code to type. Pairing with a code still works.
+- Home Assistant shows the integration's real version, the same as Winston's.
+
 ## 0.1.10 (2026-11-25)
 
 - `winston update` no longer stops with an error after installing, and restarts the running service
