@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.9 (unreleased)
+## 0.1.9 (2026-11-25)
 
 - A setting you changed but have not saved says so under it, with the value still in effect ("Not
   saved yet: still 512 tokens"), and the page header counts unsaved changes beside Save.
