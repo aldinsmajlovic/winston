@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.11 (unreleased)
+## 0.1.11 (2026-11-25)
 
 - Home Assistant's app, Assist chat and voice satellites can talk to Winston through his integration,
   with his reply streamed so a satellite starts speaking sooner. Pick Winston as the conversation agent
