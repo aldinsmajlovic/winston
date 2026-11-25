@@ -31,7 +31,7 @@ engines:
       - -fa
       - "on"
       - -c
-      - "32768"                  # 16k per slot: the bare prompt is 9.4k, a long session 11.4k
+      - "{llm.context_both}"     # llm.context per slot (-np 2): his prompt alone is 10.5k
       - -np
       - "2"
       - -ctk

@@ -13,7 +13,7 @@ Fragment = dict[str, Any]
 
 _VLLM_ARGS = [
     "{model}",                                   # expands to llm.model, so the model lives in one place
-    "--max-model-len", "32768",
+    "--max-model-len", "{llm.context}",
     "--max-num-seqs", "8",
     "--gpu-memory-utilization", "0.70",
     "--limit-mm-per-prompt", '{"image": 1, "video": 0}',
@@ -28,7 +28,7 @@ _LLAMACPP_ARGS = [
     "-hf", "{model}", "--alias", "{model}",      # repo:quant from the HF cache, served under the same name
     "--host", "0.0.0.0", "--port", "8000",
     "-ngl", "99", "-fa", "on",
-    "-c", "32768", "-np", "2",                   # 16k per slot: the bare prompt is 9.4k, a long session 11.4k
+    "-c", "{llm.context_both}", "-np", "2",      # llm.context per slot: his prompt alone is 10.5k
     "-ctk", "q8_0", "-ctv", "q8_0",
     "--no-mmproj",                               # text only; the vision projector is another 0.9 GB
     "--jinja",

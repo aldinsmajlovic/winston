@@ -240,12 +240,17 @@ and voice: skipped during setup." with Set it up) after the wizard ends.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/setup-dark.png">
-  <img src="images/setup-light.png" alt="The setup wizard's Brain and voice step: llama.cpp with the 27B, which needs 17.9 GB downloaded, and Speaking" width="720">
+  <img src="images/setup-light.png" alt="The setup wizard's Brain and voice step: the graphics memory bar at 92% with the picks recommended for the card, then llama.cpp with the 27B" width="720">
 </picture>
 
 The profile's picks, preselected, on the cards of the Brain and Voice pages: Runs on, the brain's
 model and its own settings, and each one's size against the free space, with Download. How it runs is
 left out: every pick here is a preset, and the Brain and Voice pages keep it for later.
+
+On an NVIDIA card, a **Graphics memory** bar sits on top and stays in view
+([web UI](web-ui.md#graphics-memory)). Here it also says whether the picks are the ones recommended
+for this card, with **Use the recommendation** once you have changed one. The recommendation is the
+profile setup picked, with the context filled last ([hardware](hardware.md#context-filled-last)).
 
 - **Download and continue** saves a changed pick and confirms the sizes ("24.2 GB in all. Brain: its
   Docker image (2.6 GB) and the model (15.4 GB). Speaking: its Python packages (6.3 GB).").

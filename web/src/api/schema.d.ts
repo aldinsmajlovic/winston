@@ -1323,6 +1323,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/graphics-memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Graphics memory: the card, what other programs hold, the draft brain's memory by context, each voice's and hearing's, and the picks recommended for the card */
+        post: operations["get_graphics_memory_api_graphics_memory_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/presets": {
         parameters: {
             query?: never;
@@ -1690,6 +1707,27 @@ export interface components {
              * @default
              */
             password?: string;
+        };
+        /** BrainMemory */
+        BrainMemory: {
+            /**
+             * Points
+             * @description MiB at each context, in K tokens per conversation; a line between and past them
+             */
+            points?: [
+                number,
+                number
+            ][] | null;
+            /**
+             * Measured
+             * @description Measured, or estimated from the size of its weights
+             */
+            measured: boolean;
+            /**
+             * Share
+             * @description vLLM: the share of the card it takes, whatever the model
+             */
+            share?: number | null;
         };
         /** BrainTool */
         BrainTool: {
@@ -3090,6 +3128,12 @@ export interface components {
              */
             warm_up?: boolean;
             /**
+             * How much he keeps in mind
+             * @description The tokens one conversation holds: his instructions and tools take about 10.5K, and an exchange about 500 more. When a conversation outgrows it he starts a fresh one. A brain he runs here holds it in graphics memory; for one elsewhere it is that server's own setting.
+             * @default 16384
+             */
+            context?: number;
+            /**
              * How he picks his words
              * @default {
              *       "temperature": 0.3,
@@ -3256,6 +3300,58 @@ export interface components {
              * @default false
              */
             expired?: boolean;
+        };
+        /** MemoryPlan */
+        MemoryPlan: {
+            /**
+             * Gpu
+             * @description The largest NVIDIA card's name; none without one
+             */
+            gpu: string | null;
+            /**
+             * Total Mb
+             * @default 0
+             */
+            total_mb?: number;
+            /**
+             * Other Mb
+             * @description What programs other than his engines hold on it now
+             * @default 0
+             */
+            other_mb?: number;
+            /** @description Setup's picks for this card and what is free */
+            recommended?: components["schemas"]["Recommended"] | null;
+            brain: components["schemas"]["BrainMemory"];
+            /**
+             * Voices
+             * @description MiB by voice preset; one not named takes none
+             */
+            voices: {
+                [key: string]: number;
+            };
+            /**
+             * Hearing
+             * @description MiB by hearing preset; one not named takes none
+             */
+            hearing: {
+                [key: string]: number;
+            };
+            /**
+             * Green
+             * @description Under this share of the card the bar is green
+             */
+            green: number;
+            /**
+             * Fill
+             * @description The recommendation grows the context up to this share
+             */
+            fill: number;
+            /** Min K */
+            min_k: number;
+            /** Max K */
+            max_k: number;
+            /** Step K */
+            step_k: number;
         };
         /** MemoryTopic */
         MemoryTopic: {
@@ -3513,6 +3609,33 @@ export interface components {
              * @description The hosts it may reach, this computer as one
              */
             hosts?: string[];
+        };
+        /** Recommended */
+        Recommended: {
+            /** Profile */
+            profile: string;
+            /**
+             * Llm
+             * @description The brain's preset
+             */
+            llm: string;
+            /** Model */
+            model: string;
+            /**
+             * Tts
+             * @description The voice's preset
+             */
+            tts: string | null;
+            /**
+             * Stt
+             * @description Hearing's preset
+             */
+            stt: string;
+            /**
+             * Context
+             * @description Tokens per conversation, filled last up to `fill` of the card
+             */
+            context: number;
         };
         /** RegionConfig */
         RegionConfig: {
@@ -7250,6 +7373,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InstallPlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_graphics_memory_api_graphics_memory_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryPlan"];
                 };
             };
             /** @description Validation Error */

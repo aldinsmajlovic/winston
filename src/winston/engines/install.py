@@ -39,6 +39,7 @@ class Part:
     installed: bool
     files: list[str] = field(default_factory=list)      # Hugging Face: the files the engine loads
     source: str = ""                                     # Ollama: the server that pulls it
+    context: int = 16384                                 # Ollama: his copy's context (llm.context)
 
 
 @dataclass
@@ -79,7 +80,8 @@ async def parts(name: str, cfg: WinstonConfig) -> list[Part]:
             if kind in ("vllm", "llamacpp"):
                 found.append(await _hf(cfg.llm.model, kind, e))
             elif kind == "ollama":
-                found.append(await _ollama(cfg.llm.model, (e.url or f"http://127.0.0.1:{e.port}").rstrip("/")))
+                found.append(await _ollama(cfg.llm.model, (e.url or f"http://127.0.0.1:{e.port}").rstrip("/"),
+                                           cfg.llm.context))
     except Exception as x:  # noqa: BLE001
         logger.info(f"{name}: what it needs could not be read ({x}); its start will say")
     return [p for p in found if p]
@@ -244,8 +246,8 @@ async def _ollama_tags(c: httpx.AsyncClient, base: str) -> set[str]:
     return {n for t in tags for n in (t.get("name"), t.get("model")) if n}
 
 
-async def _ollama(model: str, base: str) -> Part | None:
-    """The model and his 16K copy of it (ollama_copy): installed when the copy is there."""
+async def _ollama(model: str, base: str, context: int) -> Part | None:
+    """The model and his copy of it with llm.context (ollama_copy): installed when the copy is there."""
     from winston.api.options import ollama_copy
     name = model if ":" in model.rsplit("/", 1)[-1] else f"{model}:latest"
     try:
@@ -253,14 +255,14 @@ async def _ollama(model: str, base: str) -> Part | None:
             tags = await _ollama_tags(c, base)
     except Exception:  # noqa: BLE001
         return None
-    have = ollama_copy(name) in tags
+    have = ollama_copy(name, context) in tags
     size = None
     if name not in tags:
         path, tag = name.rsplit(":", 1)
         first, _, rest = path.partition("/")
-        host, repo = (first, rest) if "." in first else ("registry.ollama.ai", path if rest else f"library/{path}")
+        host, repo = (first, rest) if rest and "." in first else ("registry.ollama.ai", path if rest else f"library/{path}")
         size = await _manifest_size(host, repo, tag, "ollama")
-    return Part(f"ollama:{name}", "the model", None, size, have, source=base)
+    return Part(f"ollama:{name}", "the model", None, size, have, source=base, context=context)
 
 
 # ---- Space ---------------------------------------------------------------------------------------------
@@ -444,7 +446,7 @@ async def _download(job: Job) -> None:
 
 
 async def _ollama_pull(job: Job) -> None:
-    from winston.api.options import OLLAMA_CONTEXT, ollama_copy
+    from winston.api.options import ollama_copy
     name, base = job.part.key.removeprefix("ollama:"), job.part.source
     got: dict[str, int] = {}
     async with httpx.AsyncClient(timeout=httpx.Timeout(30, read=None)) as c:
@@ -458,10 +460,11 @@ async def _ollama_pull(job: Job) -> None:
                     if ev.get("digest") and ev.get("completed") is not None:
                         got[ev["digest"]] = ev["completed"]
                         job.done = sum(got.values())
-        r = await c.post(base + "/api/create", json={"model": ollama_copy(name), "from": name, "stream": False,
-                                                     "parameters": {"num_ctx": OLLAMA_CONTEXT}})
+        ctx = job.part.context
+        r = await c.post(base + "/api/create", json={"model": ollama_copy(name, ctx), "from": name, "stream": False,
+                                                     "parameters": {"num_ctx": ctx}})
         if r.is_error:
-            raise RuntimeError(f"Ollama could not make the {OLLAMA_CONTEXT // 1024}K copy: {r.text}")
+            raise RuntimeError(f"Ollama could not make the {ctx // 1024}K copy: {r.text}")
 
 
 # ---- A first start that downloads ----------------------------------------------------------------------

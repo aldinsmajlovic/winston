@@ -3,6 +3,13 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.13 (unreleased)
+
+- A graphics memory bar on the Brain and Voice pages and in the setup wizard shows how full your card
+  would be with your picks, in green, amber or red, as you change them.
+- How much he keeps in mind is now a slider on the Brain page. Setup gives a card with memory to spare
+  longer conversations, and the wizard can take you back to the picks recommended for your card.
+
 ## 0.1.12 (2026-11-25)
 
 - Setup picks the brain and voice to fit your graphics card: 8, 12 and 16 GB NVIDIA cards now each get

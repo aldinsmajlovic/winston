@@ -95,6 +95,37 @@ class InstallPlan(BaseModel):
     short: str = Field("", description='What does not fit: "needs 19.4 GB on /home, 12.1 GB free"')
 
 
+class BrainMemory(BaseModel):
+    points: list[tuple[int, int]] | None = Field(None, description="MiB at each context, in K tokens per "
+                                                                    "conversation; a line between and past them")
+    measured: bool = Field(description="Measured, or estimated from the size of its weights")
+    share: float | None = Field(None, description="vLLM: the share of the card it takes, whatever the model")
+
+
+class Recommended(BaseModel):
+    profile: str
+    llm: str = Field(description="The brain's preset")
+    model: str
+    tts: str | None = Field(description="The voice's preset")
+    stt: str = Field(description="Hearing's preset")
+    context: int = Field(description="Tokens per conversation, filled last up to `fill` of the card")
+
+
+class MemoryPlan(BaseModel):
+    gpu: str | None = Field(description="The largest NVIDIA card's name; none without one")
+    total_mb: int = 0
+    other_mb: int = Field(0, description="What programs other than his engines hold on it now")
+    recommended: Recommended | None = Field(None, description="Setup's picks for this card and what is free")
+    brain: BrainMemory
+    voices: dict[str, int] = Field(description="MiB by voice preset; one not named takes none")
+    hearing: dict[str, int] = Field(description="MiB by hearing preset; one not named takes none")
+    green: float = Field(description="Under this share of the card the bar is green")
+    fill: float = Field(description="The recommendation grows the context up to this share")
+    min_k: int
+    max_k: int
+    step_k: int
+
+
 class GpuStatus(BaseModel):
     name: str
     used_mb: int
@@ -1697,6 +1728,24 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         for p in missing:
             install.start(p)
         return install_plan(found)
+
+    @app.post("/api/graphics-memory", response_model=MemoryPlan,
+              summary="Graphics memory: the card, what other programs hold, the draft brain's memory by context, "
+                      "each voice's and hearing's, and the picks recommended for the card")
+    async def get_graphics_memory(req: InstallRequest):
+        from winston.api.options import llm_engine
+        from winston.config import memory as vram
+        saved = app.state.cfg
+        block = req.block or (e.model_dump() if (e := saved.engine_at("llm")) else {})
+        base = (block.get("url") or f"http://127.0.0.1:{block.get('port', 11434)}").rstrip("/")
+        brain = await vram.brain(req.model or saved.llm.model, llm_engine(block), base)
+        gpu = await asyncio.to_thread(gpu_status)
+        other = await asyncio.to_thread(vram.other, gpu.used_mb) if gpu else 0
+        return MemoryPlan(
+            gpu=gpu.name if gpu else None, total_mb=gpu.total_mb if gpu else 0, other_mb=other,
+            recommended=Recommended(**vram.recommend(gpu.total_mb, other)) if gpu else None,
+            brain=BrainMemory(**brain), voices=vram.VOICES, hearing=vram.HEARING, green=vram.GREEN,
+            fill=vram.FILL, min_k=vram.MIN_K, max_k=vram.MAX_K, step_k=vram.STEP_K)
 
     @app.get("/api/presets", response_model=Presets,
              summary="Engine and model presets the UI offers per slot, and the hardware profiles")

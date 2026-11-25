@@ -81,13 +81,35 @@ fits the largest card:
 On an 8 GB card Granite would need all but 1.4 GB, so the 4B is the safe pick there; Qwen 4B with
 Chatterbox (7.4 GB) leaves too little too. None of these has yet been checked on a card of that size.
 
+### Context, filled last
+
+How much one conversation holds is `llm.context`, in tokens. His instructions and tools take 10.5K,
+and an exchange about 510 (the news alone about 1,300), so 16K holds about a dozen exchanges. Past
+that he starts a fresh conversation. 16K is the floor.
+
+After the brain and voice are picked, setup grows the context in 4K steps while the card stays under
+90%, up to 128K. Each brain's memory by context, measured the same way:
+
+| Brain | 16K | 32K | 64K |
+| --- | --- | --- | --- |
+| `qwen3.5:4b` | 4.1 GB | 4.5 GB | 5.5 GB |
+| `granite4.2:8b` | 6.6 GB | 8.0 GB | 10.8 GB |
+| Qwen3.8-27B (huihui) | 16.9 GB | 18.2 GB | 20.8 GB |
+
+Between and past these, a straight line. A brain not in the table is estimated from its weights plus
+1.5 GB, and 85 MB per 1K of context. vLLM takes its share of the card (70%) at any context.
+
+So an 8 GB card gets 112K, a 12 GB card 20K, a 16 GB card 40K and a 24 GB card 16K. The numbers live
+in `src/winston/config/memory.py`; the memory bar in the wizard and on the Brain and Voice pages reads
+the same ones ([web UI](web-ui.md#graphics-memory)).
+
 ## Recommended on a 24 GB card
 
 What the reference box (an RTX 3090) runs, each slot measured against what fits beside the other two:
 
 | Slot | Pick | VRAM | Instead of | Why |
 |---|---|---|---|---|
-| Brain | Qwen3.8-27B at 4 bits on llama.cpp (`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`), MTP drafting, 32K context, thinking only before a home action | 17 GB | Qwen3.5-9B on vLLM | More requests right ([comparing brains](#comparing-brains)), at about the same speed. No vision. |
+| Brain | Qwen3.8-27B at 4 bits on llama.cpp (`unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`), MTP drafting, 16K context per conversation, thinking only before a home action | 17 GB | Qwen3.5-9B on vLLM | More requests right ([comparing brains](#comparing-brains)), at about the same speed. No vision. |
 | Voice | Breeze TTS 2 (Voice preset `breeze2`) | 5.4 GB | Chatterbox-Turbo, streamed (4 GB) | Won 9 of 10 blind pairs; first sound in 0.18 s against 0.45 s ([voice benchmarks](voice-benchmarks.md#breeze-tts-2-as-the-voice-10-october)) |
 | Hearing | Fluid Speech Pro (retrained Parakeet v3), int8, on the CPU | none | Qwen3-ASR 0.6B (2.2 GB) | Qwen3-ASR hears better but does not fit beside Breeze |
 
@@ -213,7 +235,7 @@ box the 27B writes 60 to 90 tokens a second with MTP drafting, 44 without.
 - Runs the official `server-cuda` image, pinned to one release in the preset.
 - The model is a Hugging Face repo and quant, such as `unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`. Before
   the first start Winston downloads that quant into `~/.cache/huggingface`, the same cache vLLM uses.
-- Holds two conversations at once, with 16K of context each.
+- Holds two conversations at once, each with `llm.context` (16K by default, the Brain page's slider).
 - Drafts with the model's own MTP layer, which is where most of its speed comes from. That needs a
   GGUF that keeps the layer. For one that does not, remove `--spec-type draft-mtp` and
   `--spec-draft-n-max 2` in How it runs.

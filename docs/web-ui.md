@@ -166,8 +166,23 @@ and Add a custom engine, which asks a name and how it runs. Log is described wit
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/brain-dark.png">
-  <img src="images/brain-light.png" alt="The Brain page: llama.cpp with the 27B, Ready before the first question switched on, and Think before answering" width="720">
+  <img src="images/brain-light.png" alt="The Brain page: the graphics memory bar at 92%, then llama.cpp with the 27B, Ready before the first question switched on, and the context slider at 16K" width="720">
 </picture>
+
+#### Graphics memory
+
+On a computer with an NVIDIA card, a bar on top of the Brain and Voice pages (and the wizard's first
+step) shows how full the card would be with the picks on the page, before saving:
+
+- **Parts**: other programs, the brain, More to keep in mind (what the context adds past 16K), the
+  voice and hearing on the card. Each part's size is in the legend.
+- **Colour**: green under 80%, amber to 100%, red past it.
+- **Verdict**: "22.1 of 24.0 GB, 92%. Fits, only just." Past 100%, Ollama runs part of the brain on
+  the processor, about three times slower, and the other engines do not start.
+
+It moves as you change a pick or the context slider. Other programs are read again every 15 seconds.
+The sizes are the measured ones in [hardware](hardware.md#context-filled-last); a brain not measured is
+estimated from its weights, and the bar says so. It stays pinned while you scroll, except on a phone.
 
 The What runs his brain card has, from the top:
 
@@ -182,6 +197,8 @@ The What runs his brain card has, from the top:
   answering ([setup](setup.md#winston-installs-his-engines)).
 - **Ready before the first question** (`llm.warm_up`, on): the brain reads his instructions and tools
   before anyone asks. See [below](#ready-before-the-first-question).
+- **How much he keeps in mind** (`llm.context`), for a brain on this computer: a slider from 16K to
+  128K in 4K steps, with about how many exchanges that is and how much more memory it takes than 16K.
 - **How it runs**, closed at the bottom: the engine block (Runs as, Start with Winston, port, image,
   arguments and the rest), its state with Log and Restart while it runs, Reset to the preset while the
   block differs from the preset, the API address while Winston runs the engine, and How thinking is
@@ -247,11 +264,11 @@ Off, nothing is read ahead, which saves a hosted brain the extra requests.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
-  <img src="images/voice-light.png" alt="The Voice page: Speaking with its voice, streaming and its closed How it runs, then Your voices, and Hearing on Fluid Speech Pro" width="720">
+  <img src="images/voice-light.png" alt="The Voice page: the graphics memory bar, Speaking with its voice and its closed How it runs, then Your voices, and Hearing on Fluid Speech Pro" width="720">
 </picture>
 
-Voice does for speaking and hearing what Brain does for the brain: what runs each, its model or voice,
-and How it runs. The voices, cloning and hearing engines are in [voices](voices.md).
+Voice does for speaking and hearing what Brain does for the brain: the [graphics memory](#graphics-memory)
+bar, what runs each, its model or voice, and How it runs. The voices, cloning and hearing engines are in [voices](voices.md).
 
 ## How settings pages work
 

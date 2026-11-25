@@ -173,21 +173,19 @@ def llm_engine(engine: dict | None) -> str | None:
     return None
 
 
-# ponytail: one size for every machine; his prompt is about 12k tokens, and 16K fits an 8B on a 12 GB card.
-OLLAMA_CONTEXT = 16384
-COPY = f"-{OLLAMA_CONTEXT // 1024}k"
+COPY = re.compile(r"-\d+k$")        # his copies' suffix: granite4.2:8b-16k
 
 
-def ollama_copy(model: str) -> str:
-    """The copy of an Ollama model he talks to: the same weights with a 16K context. Ollama's OpenAI API
-    cannot set the context per request, and gives cards under 24 GB 4K, less than his prompt."""
-    return (model if ":" in model.rsplit("/", 1)[-1] else f"{model}:latest") + COPY
+def ollama_copy(model: str, context: int = 16384) -> str:
+    """The copy of an Ollama model he talks to: the same weights with llm.context. Ollama's OpenAI API cannot
+    set the context per request, and gives cards under 24 GB 4K, less than his prompt."""
+    return (model if ":" in model.rsplit("/", 1)[-1] else f"{model}:latest") + f"-{context // 1024}k"
 
 
 def served_model(cfg: WinstonConfig) -> str:
     """The model name the brain's requests carry: llm.model, or its copy when Winston runs Ollama."""
     e = cfg.engine_at("llm")
-    return ollama_copy(cfg.llm.model) if e and e.enabled and llm_engine(e.model_dump()) == "ollama" \
+    return ollama_copy(cfg.llm.model, cfg.llm.context) if e and e.enabled and llm_engine(e.model_dump()) == "ollama" \
         else cfg.llm.model
 
 
@@ -366,7 +364,7 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
             r = await c.get(url + "/models", headers=headers)
         r.raise_for_status()
         ids = sorted(i for m in r.json().get("data", []) if (i := m.get("id"))
-                     and not (kind == "ollama" and i.endswith(COPY)))         # his own copies, not a pick
+                     and not (kind == "ollama" and COPY.search(i)))         # his own copies, not a pick
         running = [Choice(value=i, label=i, hint=sizes.get(i), group="Running") for i in ids]
         source, ok = url, True
     except Exception as e:                                              # noqa: BLE001

@@ -7,6 +7,7 @@ import { partName, pendingRestarts, useEngineActions, useStatus } from '@/api/st
 import { ClonedVoices } from '@/components/cloned-voices'
 import { LoadError, useTitle } from '@/components/page'
 import { Presence } from '@/components/presence'
+import { MemoryBar } from '@/components/memory-bar'
 import { SectionForm } from '@/components/section-form'
 import { runsHere, SlotCard } from '@/components/slot-card'
 import { StatusLine } from '@/components/status-line'
@@ -217,6 +218,7 @@ function BrainStep({ page, presets, next }: StepProps) {
     })
   return (
     <>
+      <MemoryBar page={page} presets={presets} recommend />
       <SlotCard page={page} kind="llm" title="What runs his brain" presets={presets.llm} setup>
         <SectionForm page={page} path={LLM} omit={[...OWN_CARDS, ...runsHere('llm', page.value)]} />
       </SlotCard>

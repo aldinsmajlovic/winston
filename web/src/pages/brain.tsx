@@ -1,4 +1,5 @@
 import { $api } from '@/api/client'
+import { MemoryBar } from '@/components/memory-bar'
 import { PageSkeleton } from '@/components/page'
 import { SectionForm } from '@/components/section-form'
 import { runsHere, SlotCard } from '@/components/slot-card'
@@ -27,6 +28,7 @@ export default function BrainPage() {
       intro="How he thinks: which model, and whether he thinks before answering."
       page={page}
     >
+      <MemoryBar page={page} presets={presets.data} />
       <SlotCard page={page} kind="llm" title="What runs his brain" presets={presets.data.llm}>
         <SectionForm page={page} path={LLM} omit={[...OWN_CARDS, ...runsHere('llm', page.value)]} />
       </SlotCard>

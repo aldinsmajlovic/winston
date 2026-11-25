@@ -1,5 +1,6 @@
 import { $api, type Presets } from '@/api/client'
 import { ClonedVoices } from '@/components/cloned-voices'
+import { MemoryBar } from '@/components/memory-bar'
 import { PageSkeleton } from '@/components/page'
 import { SectionForm } from '@/components/section-form'
 import { runsHere, SlotCard } from '@/components/slot-card'
@@ -24,6 +25,7 @@ function Voice({ page, presets }: { page: SettingsState; presets: Presets }) {
   const previews = useVoicePreviews(page)
   return (
     <SettingsPage title="Voice" intro="How he sounds and how he hears you." page={page}>
+      <MemoryBar page={page} presets={presets} />
       <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts}>
         <SectionForm page={page} path={TTS} omit={runsHere('tts', page.value)} adornments={previews} />
       </SlotCard>

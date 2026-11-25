@@ -5,6 +5,7 @@ import { engineLabel, isRunning, restartCost, STATE_WORDS, useEngineActions, use
 import { Fold } from '@/components/fold'
 import { KindIcon } from '@/components/kind-icon'
 import { LogDialog } from '@/components/log-dialog'
+import { ContextSlider } from '@/components/memory-bar'
 import { SectionForm } from '@/components/section-form'
 import { StatusLine } from '@/components/status-line'
 import { Button } from '@/components/ui/button'
@@ -91,7 +92,8 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
   const ask = useConfirm()
   const current = matchPreset(kind, page.value, presets)
   const preset = presets.find((p) => p.id === current)
-  const have = $api.useQuery('get', '/api/presets').data?.have
+  const presetsAll = $api.useQuery('get', '/api/presets').data
+  const have = presetsAll?.have
   const choose = async (id: string) => {
     const p = presets.find((x) => x.id === id)
     if (!p) return
@@ -159,6 +161,7 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
           ) : null}
         </div>
         {children}
+        {kind === 'llm' && presetsAll ? <ContextSlider page={page} presets={presetsAll} /> : null}
         {/* A nested server field (how thinking is switched) is not in the card's own form: drawn here. */}
         {yours(kind, page.value)
           ? SERVER[kind]

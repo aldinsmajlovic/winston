@@ -320,9 +320,18 @@ def describe(m: Machine) -> list[tuple[bool | None, str]]:
 
 def pick(m: Machine) -> str:
     """The profile for the largest NVIDIA card; without one, Ollama, which sizes itself to what it finds."""
-    if not m.gpus:
-        return "ollama"
-    card = max(mib for _, mib, _ in m.gpus)
+    return pick_for(max(mib for _, mib, _ in m.gpus)) if m.gpus else "ollama"
+
+
+def _used(name: str) -> int:
+    """MiB other programs hold on the card named name now, 0 when it cannot be read."""
+    out = _run(["nvidia-smi", "--query-gpu=name,memory.used", "--format=csv,noheader,nounits"]).stdout
+    return next((int(u) for n, _, u in (line.rpartition(",") for line in out.splitlines())
+                 if n.strip() == name and u.strip().isdigit()), 0)
+
+
+def pick_for(card: int) -> str:
+    """The profile for an NVIDIA card of card MiB."""
     return next((p for p, need in FITS if card >= need), "nvidia-8gb")
 
 
@@ -415,7 +424,7 @@ def target() -> Path:
     return Path.home() / ".local/share/winston"
 
 
-def make_data_dir(profile: str, force: bool = False, print=print) -> Path:   # setup passes a quiet print
+def make_data_dir(profile: str, force: bool = False, print=print, context: int | None = None) -> Path:   # setup: quiet
     """The data directory from the examples: the profile's config, the persona, the bundled voices."""
     from winston.config.presets import apply_profile
     from winston.config.schema import WinstonConfig
@@ -426,8 +435,11 @@ def make_data_dir(profile: str, force: bool = False, print=print) -> Path:   # s
         src, dst = ex / (name if name != ".env" else "env.example"), d / name
         if dst.exists() and not force:
             print(f"keep   {dst}")
-        elif name == "config.yaml" and profile != "nvidia-24gb":
-            cfg = WinstonConfig.model_validate(apply_profile(yaml.safe_load(src.read_text()), profile))
+        elif name == "config.yaml" and (profile != "nvidia-24gb" or context):
+            cfg = apply_profile(yaml.safe_load(src.read_text()), profile)
+            if context:                                     # what memory.recommend filled for this card
+                cfg = {**cfg, "llm": {**cfg.get("llm", {}), "context": context}}
+            cfg = WinstonConfig.model_validate(cfg)
             dst.write_text(yaml.safe_dump(cfg.model_dump(mode="json", exclude_none=True), sort_keys=False,
                                           allow_unicode=True))
             print(f"create {dst} (profile {profile})")
@@ -526,7 +538,12 @@ def run(yes: bool, profile: str | None) -> None:
     else:
         from winston.config.presets import profile as get_profile
         chosen = get_profile(profile or pick(m))              # a typo in --profile fails before anything is made
-        make_data_dir(chosen["id"], print=lambda *a, **k: None)
+        context = None
+        if not profile and m.gpus:                            # the context filled last, for what is free now
+            from winston.config.memory import recommend
+            card = max(m.gpus, key=lambda g: g[1])
+            context = recommend(card[1], _used(card[0]))["context"]
+        make_data_dir(chosen["id"], print=lambda *a, **k: None, context=context)
         heading("Your settings")
         item(True, f"Made in {_home(data)}, starting from {chosen['title']}"
                    + ("" if profile else ", which suits this computer"))
@@ -822,7 +839,7 @@ def leftovers(cfg: dict, data: Path | None) -> list[str]:
         base = (llm.get("url") or f"http://127.0.0.1:{llm.get('port', 11434)}").rstrip("/")
         try:
             tags = httpx.get(f"{base}/api/tags", timeout=3).json().get("models", [])
-            copy = ollama_copy(model)           # his 16K copy, the same files
+            copy = ollama_copy(model, (cfg.get("llm") or {}).get("context", 16384))   # his copy, the same files
             out += [f"Ollama's {m['name']}: {gb(m['size'])} (ollama rm {m['name']} {copy})"
                     for m in tags if m.get("name") in (model, f"{model}:latest")]
         except (httpx.HTTPError, ValueError):

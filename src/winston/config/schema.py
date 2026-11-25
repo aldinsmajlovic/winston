@@ -264,8 +264,19 @@ class LLMConfig(Model):
                           json_schema_extra=ui(restarts=["voice", "satellite"],    # winstond reads the saved config
                                                help="The first answer comes as quickly as the rest. Off saves a "
                                                     "hosted brain the extra reads."))
+    context: int = Field(16384, ge=16384, le=262144, title="How much he keeps in mind",
+                         description="The tokens one conversation holds: his instructions and tools take about "
+                                     "10.5K, and an exchange about 500 more. When a conversation outgrows it he "
+                                     "starts a fresh one. A brain he runs here holds it in graphics memory; for "
+                                     "one elsewhere it is that server's own setting.",
+                         json_schema_extra=ui(hidden=True, unit="tokens", restarts=["llm", "{brains}"]))
     sampling: Sampling = Field(Sampling(), title="How he picks his words")
     thinking: Thinking = Field(Thinking(), title="Thinking")
+
+    @property
+    def context_both(self) -> int:
+        """llm.context for each of llama.cpp's two slots (`-np 2`), one conversation each: its `-c`."""
+        return self.context * 2
 
 
 TRANSCRIPTION = {"stt.provider": ["openai_transcription"]}     # speech to text on a server
@@ -865,6 +876,21 @@ class Shortcut(Model):
                                                         "worked, he says nothing more."))
 
 
+def _context_to_setting(data: dict[str, Any]) -> dict[str, Any]:
+    """A brain's context written into its args (llama.cpp's `-c`, vLLM's `--max-model-len`) becomes llm.context,
+    with the args naming it, so the Brain page's slider reaches the engine."""
+    e = (data.get("engines") or {}).get("llm")
+    args = list(e.get("args") or []) if isinstance(e, dict) else []
+    for flag, place, per in (("-c", "{llm.context_both}", 2), ("--max-model-len", "{llm.context}", 1)):
+        if flag in args[:-1] and (i := args.index(flag) + 1) and args[i].isdigit():
+            n = int(args[i]) // per
+            args[i] = place
+            llm = dict(data.get("llm") or {})
+            llm.setdefault("context", max(16384, n))
+            return {**data, "llm": llm, "engines": {**data["engines"], "llm": {**e, "args": args}}}
+    return data
+
+
 def _tools_to_extensions(data: dict[str, Any]) -> dict[str, Any]:
     """Version 2 (2026-10-12): the tools section became the built-in extensions sensors, web and claude, with the
     same settings. A Claude API key in the environment, without a token, stays the key Ask Claude uses."""
@@ -929,4 +955,6 @@ class WinstonConfig(Model):
         """An older file's settings in today's places, so it loads; the next save writes it as today's."""
         if isinstance(data, dict) and int(data.get("version", 1)) < 2:
             data = _tools_to_extensions(dict(data))
+        if isinstance(data, dict):
+            data = _context_to_setting(data)
         return data
