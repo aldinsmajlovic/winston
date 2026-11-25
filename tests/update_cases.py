@@ -163,6 +163,8 @@ check("unpacked beside this one, packages synced there, `current` moved",
       ((app / "9.9.9/CHANGELOG.md").is_file(), Path(f"{tmp}/uv-ran-in").read_text().strip(),
        os.readlink(app / "current"), (app / __version__).is_dir()),
       (True, str(app / "9.9.9"), "9.9.9", True))
+check("still a release once `current` points at the new one (update prints its notes, restarts)",
+      setup.release_app(), app)
 (app / "current").unlink()
 (app / "current").symlink_to(__version__)
 try:

@@ -437,9 +437,10 @@ def make_data_dir(profile: str, force: bool = False, print=print) -> Path:   # s
 
 
 def release_app() -> Path | None:
-    """Where install.sh puts each release (~/.local/share/winston-app), when this is one; None in a clone."""
+    """Where install.sh puts each release (~/.local/share/winston-app), when this is one; None in a clone.
+    `current` may already point at another release beside this one: `winston update` moves it, then goes on."""
     current = repo_root().parent / "current"
-    return current.parent if current.is_symlink() and current.resolve() == repo_root() else None
+    return current.parent if current.is_symlink() and current.resolve().parent == current.parent else None
 
 
 def unit(data: Path) -> str:
