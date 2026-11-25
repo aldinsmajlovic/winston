@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.13 (unreleased)
+## 0.1.13 (2026-11-25)
 
 - A graphics memory bar on the Brain and Voice pages and in the setup wizard shows how full your card
   would be with your picks, in green, amber or red, as you change them.
