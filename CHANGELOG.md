@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.10 (unreleased)
+## 0.1.10 (2026-11-25)
 
 - `winston update` no longer stops with an error after installing, and restarts the running service
   again. Updating from 0.1.9 or earlier still shows that error once; the new release is installed
