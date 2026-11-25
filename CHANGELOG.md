@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.14 (unreleased)
+## 0.1.14 (2026-11-25)
 
 - The memory bar now also works without an NVIDIA card: on an AMD card it shows the card's memory, and
   on a computer with no graphics card the computer's own, and setup sizes the brain to it.
