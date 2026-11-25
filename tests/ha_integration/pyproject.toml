@@ -3,7 +3,11 @@ name = "winston-ha-integration-tests"
 version = "0"
 description = "Tests for custom_components/winston in Home Assistant's own test kit (its own venv: Home Assistant pins its own versions)."
 requires-python = ">=3.14.2"
-dependencies = ["pytest-homeassistant-custom-component==0.13.375"]
+dependencies = [
+    "pytest-homeassistant-custom-component==0.13.375",
+    # the conversation component's own requirements (its manifest.json in Home Assistant 2026.10.4)
+    "gazetteer-matcher==1.1.0", "hassil==3.12.1", "home-assistant-intents==2026.10.6",
+]
 
 [tool.uv]
 package = false

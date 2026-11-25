@@ -59,7 +59,8 @@ flowchart TB
   ([Home Assistant Assist](assist.md)).
 - **Home Assistant integration** (`api/ha_link.py`, `custom_components/winston`): a second port in
   winstond, reached only with a paired token, streams his rooms' states, his engines and the
-  extensions' entities to Winston's integration in Home Assistant ([Home Assistant integration](ha-integration.md)).
+  extensions' entities to Winston's integration in Home Assistant, and answers its conversation agent
+  as Assist does, the reply streamed back ([Home Assistant integration](ha-integration.md)).
 - **Live feed** (`core/live.py`): what Winston hears, says and does, as events (state, what you said,
   reply pieces, tool calls, announcements). The voice process posts them to `POST /api/live`, web chat
   publishes in process, and pages read `GET /api/live`. The browser's voice connects through

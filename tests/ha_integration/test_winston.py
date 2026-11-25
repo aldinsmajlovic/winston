@@ -43,20 +43,25 @@ SNAPSHOT = {
 
 
 class FakeWinston:
-    """/pair, /stream and /set, as winstond's listener answers them."""
+    """/pair, /stream, /set and /converse, as winstond's listener answers them."""
 
     def __init__(self):
         self.snapshot = copy.deepcopy(SNAPSHOT)
         self.token = TOKEN
         self.sets: list[dict] = []
         self.set_answer = {"ok": True}
+        self.asked: list[dict] = []
+        self.gone = False                                   # /converse answers 404, as before it existed
+        self.answer: list[dict] = [{"text": "The lights "}, {"text": "are on. Anything else?"},
+                                   {"done": True, "text": "The lights are on. Anything else?", "continue": True}]
         self.queues: list[asyncio.Queue] = []
         self.runner = None
         self.port = 0
 
     async def start(self):
         app = web.Application()
-        app.add_routes([web.post("/pair", self.pair), web.get("/stream", self.stream), web.post("/set", self.set)])
+        app.add_routes([web.post("/pair", self.pair), web.get("/stream", self.stream), web.post("/set", self.set),
+                        web.post("/converse", self.converse)])
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         site = web.TCPSite(self.runner, "127.0.0.1", 0)
@@ -102,6 +107,19 @@ class FakeWinston:
             return web.json_response({"error": "not paired"}, status=401)
         self.sets.append(await request.json())
         return web.json_response(self.set_answer, status=200 if self.set_answer.get("ok") else 500)
+
+
+    async def converse(self, request):
+        if not self.authorized(request):
+            return web.json_response({"error": "not paired"}, status=401)
+        if self.gone:
+            return web.json_response({}, status=404)
+        self.asked.append(await request.json())
+        r = web.StreamResponse(headers={"Content-Type": "application/x-ndjson"})
+        await r.prepare(request)
+        for line in self.answer:
+            await r.write((json.dumps(line) + "\n").encode())
+        return r
 
 
 @pytest.fixture
@@ -305,4 +323,64 @@ async def test_unpaired_asks_to_pair_again(hass: HomeAssistant, fake):
     assert r["type"] is FlowResultType.ABORT and r["reason"] == "reauth_successful"
     await hass.async_block_till_done()
     assert await until(lambda: hass.states.get("switch.chores_cheap_charging").state == "off")
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+# his brain as the conversation agent
+
+async def ask(hass: HomeAssistant, text: str, **kw):
+    from homeassistant.components import conversation
+    from homeassistant.core import Context
+    return await conversation.async_converse(hass, text, kw.pop("conversation_id", None), Context(),
+                                             agent_id="conversation.winston", **kw)
+
+
+async def test_conversation_streams_his_reply(hass: HomeAssistant, fake):
+    from homeassistant.components import conversation
+    from homeassistant.helpers import area_registry as ar
+    entry = await add(hass, fake)
+    state = hass.states.get("conversation.winston")
+    assert state is not None and state.state != STATE_UNAVAILABLE
+    ent = hass.data["entity_components"]["conversation"].get_entity("conversation.winston")
+    assert ent.supports_streaming and ent.supported_languages == "*"
+    devs = dr.async_get(hass)
+    assert ents_device(hass, "conversation.winston") == devs.async_get_device_by_identifier((DOMAIN, INSTANCE), entry.entry_id).id
+
+    kitchen = ar.async_get(hass).async_create("Kitchen")
+    speaker = devs.async_get_or_create(config_entry_id=entry.entry_id, identifiers={("test", "speaker")}, name="Speaker")
+    devs.async_update_device(speaker.id, area_id=kitchen.id)
+    r = await ask(hass, "Turn on the lights", device_id=speaker.id)
+    assert r.response.speech["plain"]["speech"] == "The lights are on. Anything else?"
+    assert r.continue_conversation is True
+    sent = fake.asked[-1]
+    assert (sent["text"], sent["area"], sent["device_id"]) == ("Turn on the lights", "Kitchen", speaker.id)
+    assert sent["conversation_id"] == r.conversation_id
+
+    fake.answer = [{"done": True, "text": "", "continue": False}]            # a scene that speaks for itself
+    r = await ask(hass, "Movie night", conversation_id=r.conversation_id)
+    assert r.response.speech["plain"]["speech"] == "" and fake.asked[-1]["area"] is None
+    assert fake.asked[-1]["conversation_id"] == r.conversation_id
+
+    fake.answer = [{"error": "Sorry, I could not reach my brain."}]
+    r = await ask(hass, "Hello")
+    assert r.response.speech["plain"]["speech"] == "Sorry, I could not reach my brain."
+    assert isinstance(r, conversation.ConversationResult)
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+def ents_device(hass: HomeAssistant, entity_id: str) -> str | None:
+    return er.async_get(hass).async_get(entity_id).device_id
+
+
+async def test_conversation_when_he_cannot_answer(hass: HomeAssistant, fake):
+    entry = await add(hass, fake)
+    fake.token = "another"                              # forgotten on Ways to talk
+    r = await ask(hass, "Hello")
+    assert "Pair it again" in r.response.speech["plain"]["speech"]
+    assert await until(lambda: bool(hass.config_entries.flow.async_progress_by_handler(DOMAIN)))
+    fake.token = TOKEN
+
+    fake.gone = True                                    # an older Winston, without /converse
+    r = await ask(hass, "Hello")
+    assert "Update him" in r.response.speech["plain"]["speech"]
     await hass.config_entries.async_unload(entry.entry_id)

@@ -141,6 +141,8 @@ class FakeHA:
         self.areas, self.devices, self.entities = SEEDS[seed]
         self.user = {"id": "user_1", "name": "Someone", "is_owner": True, "is_admin": True}
         self.mcp_on = mcp_on
+        self.winston_installed = True       # Winston's integration downloaded there (HACS, the Marketplace)
+        self.winston_reachable = True       # false: a firewall drops its connection to Winston's port
         self.reset()
         self.app = web.Application()
         self.app.add_routes([
@@ -153,6 +155,7 @@ class FakeHA:
             web.get("/auth/authorize", self.authorize), web.post("/auth/token", self.auth_token),
             web.post("/auth/revoke", self.revoke), web.post("/api/config/config_entries/flow", self.flow_start),
             web.post("/api/config/config_entries/flow/{flow_id}", self.flow_step),
+            web.delete("/api/config/config_entries/flow/{flow_id}", self.flow_delete),
         ])
         self.subscribers: dict[web.WebSocketResponse, dict[int, str]] = {}
         self.runner: web.AppRunner | None = None
@@ -230,6 +233,9 @@ class FakeHA:
         if not self.user["is_admin"]:
             raise web.HTTPUnauthorized()
         body = await request.json()
+        if body.get("handler") == "winston" and self.winston_installed:
+            return web.json_response({"type": "form", "flow_id": "flow_w", "handler": "winston", "step_id": "user",
+                                      "errors": {}})
         if body.get("handler") != "mcp_server":
             return web.json_response({"message": "Invalid handler specified"}, status=404)
         if self.mcp_on:
@@ -240,11 +246,35 @@ class FakeHA:
     async def flow_step(self, request):
         await self._gate(request)
         body = await request.json()
+        if request.match_info["flow_id"] == "flow_w":
+            return await self._winston_step(body)
         if request.match_info["flow_id"] != "flow_1" or not body.get("llm_hass_api"):
             return web.json_response({"message": "Invalid flow"}, status=400)
         self.mcp_on = True
         self.writes.append({"type": "config_entries/mcp_server", **body})
         return web.json_response({"type": "create_entry", "flow_id": "flow_1", "title": "Assist"})
+
+    async def _winston_step(self, body: dict):
+        """Winston's integration's user step, as custom_components/winston does it: pairs at the address given."""
+        import aiohttp
+        if not self.winston_reachable:
+            return web.json_response({"type": "form", "flow_id": "flow_w", "errors": {"base": "cannot_connect"}})
+        try:
+            async with aiohttp.ClientSession() as c, c.post(f"http://{body['host']}:{body['port']}/pair",
+                                                             json={"code": body["code"]}) as r:
+                if r.status == 403:
+                    return web.json_response({"type": "form", "flow_id": "flow_w", "errors": {"base": "invalid_code"}})
+                paired = await r.json()
+        except aiohttp.ClientError:
+            return web.json_response({"type": "form", "flow_id": "flow_w", "errors": {"base": "cannot_connect"}})
+        self.writes.append({"type": "config_entries/winston", "host": body["host"], "port": body["port"],
+                            "token": paired["token"]})
+        return web.json_response({"type": "create_entry", "flow_id": "flow_w", "title": paired["name"]})
+
+    async def flow_delete(self, request):
+        await self._gate(request)
+        self.writes.append({"type": "config_entries/flow_delete", "flow_id": request.match_info["flow_id"]})
+        return web.json_response({})
 
     async def api_root(self, request):
         await self._gate(request)

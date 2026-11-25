@@ -686,6 +686,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ha_integration/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add him in Home Assistant from here, with Winston's own Home Assistant token: no code to type */
+        post: operations["ha_integration_add_api_ha_integration_add_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ha_integration/pairing": {
         parameters: {
             query?: never;
@@ -5889,6 +5906,26 @@ export interface operations {
         };
     };
     ha_integration_code_api_ha_integration_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HAIntegrationState"];
+                };
+            };
+        };
+    };
+    ha_integration_add_api_ha_integration_add_post: {
         parameters: {
             query?: never;
             header?: never;

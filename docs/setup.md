@@ -288,9 +288,11 @@ switched the MCP server on. For an account that is not an administrator's, it sa
 rooms and names, the device list, switching the MCP server on. A sign-in that does not finish says
 why.
 
-Then come the devices he can use, as on the Home Assistant page, and the Home Assistant Assist switch
-from Ways to talk, off by default ([Home Assistant Assist](assist.md)). Continue saves both (the list is
-applied in Home Assistant) and goes on.
+Then come the devices he can use, as on the Home Assistant page, and the two ways Home Assistant talks to
+him, from Ways to talk, both off by default: Winston's integration, with Download in Home Assistant and Add
+to Home Assistant ([Home Assistant integration](ha-integration.md#adding-him)), and the Assist switch
+([Home Assistant Assist](assist.md)). Continue saves them all (the list is applied in Home Assistant) and
+goes on.
 
 #### 3. Who he is
 

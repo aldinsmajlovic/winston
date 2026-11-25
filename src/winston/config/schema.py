@@ -448,7 +448,7 @@ class AssistChannel(Model):
     """Home Assistant's Assist over Wyoming (channels/assist.py): applied on save, no restart."""
     model_config = section(enabled_by="enabled", icon="homeassistant",
                            help="Home Assistant's app, chat and voice satellites can use him as their conversation "
-                                "agent.")
+                                "agent, with nothing to install there.")
     enabled: bool = Field(False, title="Answer Home Assistant's Assist",
                           json_schema_extra=ui(help="The port has no password: anyone on your network could ask him "
                                                     "to act."))
@@ -459,8 +459,8 @@ class AssistChannel(Model):
 class HAIntegrationChannel(Model):
     """Winston's Home Assistant integration (api/ha_link.py): applied on save, no restart."""
     model_config = section(enabled_by="enabled", icon="homeassistant",
-                           help="His state and his extensions' readings as entities in Home Assistant, through "
-                                "Winston's integration there.")
+                           help="Home Assistant's app, chat and satellites talk to him through it, and his state "
+                                "and his extensions' readings show there as entities.")
     enabled: bool = Field(False, title="Show him in Home Assistant",
                           json_schema_extra=ui(help="Opens a port that only a paired Home Assistant can use."))
     port: int = Field(8710, ge=1024, le=65535, title="Port",

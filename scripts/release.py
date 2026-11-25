@@ -1,6 +1,7 @@
 """Builds a release into a folder, as CI does on a `v*` tag (.github/workflows/release.yml, docs/setup.md):
-winston-<version>.tar.gz (the files git tracks, the built UI in web/dist, the version stamped in), install.sh,
-CHANGELOG.md, the Voice PE firmware when given, and SHA256SUMS over them. A release needs its dated entry in
+winston-<version>.tar.gz (the files git tracks, the built UI in web/dist, the version stamped in), winston-ha.zip
+(the Home Assistant integration, custom_components/winston with the version stamped in: what HACS and the
+Marketplace install, hacs.json), install.sh, CHANGELOG.md, the Voice PE firmware when given, and SHA256SUMS over them. A release needs its dated entry in
 CHANGELOG.md (`just release` dates it); --notes writes that entry for the GitHub release's notes.
 
     python3 scripts/release.py 0.2.0 dist [--notes notes.md] [--firmware services/voice-pe/.esphome/build/.../firmware.factory.bin]
@@ -13,10 +14,23 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-STAMPS = {"pyproject.toml": "version = ", "src/winston/__init__.py": "__version__ = "}   # the line the version is on
+# the line the version is on, by its start (after any indent)
+STAMPS = {"pyproject.toml": "version = ", "src/winston/__init__.py": "__version__ = ",
+          "custom_components/winston/manifest.json": '"version": '}
+INTEGRATION = "custom_components/winston"
+
+
+def stamped(f: str, data: bytes, version: str) -> bytes:
+    if f not in STAMPS:
+        return data
+    text, n = re.subn(rf'(?m)^(\s*{re.escape(STAMPS[f])})"[^"]+"', rf'\g<1>"{version}"', data.decode())
+    if n != 1:
+        sys.exit(f"{f}: no line {STAMPS[f]}\"...\" for the version")
+    return text.encode()
 
 
 def files() -> list[str]:
@@ -37,15 +51,19 @@ def tarball(version: str, out: Path) -> Path:
             info = tar.gettarinfo(REPO / f, f"{top}/{f}")
             info.uid = info.gid = 0
             info.uname = info.gname = ""
-            data = (REPO / f).read_bytes()
-            if f in STAMPS:
-                prefix = STAMPS[f]
-                text, n = re.subn(rf'(?m)^{prefix}"[^"]+"$', f'{prefix}"{version}"', data.decode())
-                if n != 1:
-                    sys.exit(f"{f}: no line {prefix}\"...\" for the version")
-                data = text.encode()
-                info.size = len(data)
+            data = stamped(f, (REPO / f).read_bytes(), version)
+            info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
+    return path
+
+
+def integration(version: str, out: Path) -> Path:
+    """The integration's files at the zip's top, as HACS unpacks them into custom_components/winston."""
+    path = out / "winston-ha.zip"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in files():
+            if f.startswith(INTEGRATION + "/"):
+                z.writestr(f.removeprefix(INTEGRATION + "/"), stamped(f, (REPO / f).read_bytes(), version))
     return path
 
 
@@ -73,7 +91,7 @@ def main() -> None:
     if a.notes:
         a.notes.write_text(entry)
     a.out.mkdir(parents=True, exist_ok=True)
-    made = [tarball(a.version, a.out), Path(shutil.copy(REPO / "scripts/install.sh", a.out / "install.sh")),
+    made = [tarball(a.version, a.out), integration(a.version, a.out), Path(shutil.copy(REPO / "scripts/install.sh", a.out / "install.sh")),
             Path(shutil.copy(REPO / "CHANGELOG.md", a.out / "CHANGELOG.md"))]
     if a.firmware:
         made.append(Path(shutil.copy(a.firmware, a.out / f"voice-pe-winston-{a.version}.factory.bin")))

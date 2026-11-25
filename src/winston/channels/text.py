@@ -71,6 +71,7 @@ class TurnTracker(BaseObserver):
 class Printer(FrameProcessor):
     def __init__(self, tracker: TurnTracker, echo: bool = True):
         super().__init__(); self._t = tracker; self._echo = echo; self.buf = []; self.replies = []
+        self.on_text: Callable[[str], None] | None = None     # each piece as it comes, for a channel that streams
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
@@ -80,6 +81,8 @@ class Printer(FrameProcessor):
                 if self._echo:
                     print(text, end="", flush=True)
                 self.buf.append(text)
+                if self.on_text:
+                    self.on_text(text)
         await self.push_frame(frame, direction)
 
     async def wait_reply(self, timeout=90) -> str:
@@ -155,15 +158,19 @@ class TextSession:
     def busy(self) -> bool:
         return self._lock.locked()
 
-    async def ask(self, m: str, timeout: float = 90) -> str:
+    async def ask(self, m: str, timeout: float = 90, on_text: Callable[[str], None] | None = None) -> str:
         """The reply. Raises what the pipeline said when there is none (the brain unreachable), so no
-        channel shows an empty answer without saying why."""
+        channel shows an empty answer without saying why. on_text gets each piece of it as it comes."""
         async with self._lock:
             self.last_used = time.monotonic()
             self._tracker.error = None
+            self.printer.on_text = on_text
             await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}],
                                                                     run_llm=True)])
-            reply = await self.printer.wait_reply(timeout)
+            try:
+                reply = await self.printer.wait_reply(timeout)
+            finally:
+                self.printer.on_text = None
             self.last_used = time.monotonic()
             if not reply and self._tracker.error:
                 raise self._tracker.error

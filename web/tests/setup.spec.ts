@@ -142,6 +142,9 @@ test('the wizard signs in to Home Assistant, which then lists the devices he can
   await expect(page.getByText(/Connected to Home Assistant/)).toBeVisible()
   await expect(page.locator('[data-slot="card-title"]', { hasText: 'Devices he can use' })).toBeVisible()
   await expect(page.locator('[data-slot="card-title"]', { hasText: 'What he can do there' })).toHaveCount(0)
+  // Both ways Home Assistant talks to him, off until switched on.
+  await expect(page.locator('[data-slot="card-title"]', { hasText: 'Home Assistant integration' })).toBeVisible()
+  await expect(page.locator('[data-slot="card-title"]', { hasText: 'Home Assistant Assist' })).toBeVisible()
   await page.getByRole('button', { name: 'Continue' }).click()
   await expect(page).toHaveURL(/\/setup\/who$/)
   expect(errors).toEqual([])

@@ -3,6 +3,7 @@
   "name": "Winston",
   "codeowners": ["@aldinsmajlovic"],
   "config_flow": true,
+  "dependencies": ["conversation"],
   "documentation": "https://github.com/aldinsmajlovic/winston/blob/main/docs/ha-integration.md",
   "integration_type": "hub",
   "iot_class": "local_push",

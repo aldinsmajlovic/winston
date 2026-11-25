@@ -66,6 +66,7 @@ class Request:
     device_id: str | None
     satellite_id: str | None
     language: str | None
+    area: str | None = None         # the device's area as Home Assistant names it, when it sends one (the integration)
 
     @classmethod
     def of(cls, t: Transcript) -> "Request":
@@ -153,9 +154,10 @@ GONE = ("unavailable", "unknown")
 
 class Assist:
     """Answers Home Assistant's requests in winstond: the listener switched by channels.assist, the
-    conversations in a WebChat of their own, and the room each request came from. While it listens it is
-    the hub's `outside`: Home Assistant's satellites speak announcements, nudges and corrections in rooms
-    with no Winston speaker connected (core/announce.Hub)."""
+    conversations in a WebChat of their own, and the room each request came from. While it listens, or
+    Winston's integration is on (api/ha_link.py answers through it), it is the hub's `outside`: Home
+    Assistant's satellites speak announcements, nudges and corrections in rooms with no Winston speaker
+    connected (core/announce.Hub)."""
 
     def __init__(self, cfg: WinstonConfig, feed: Feed, rooms: Rooms, hub: Hub,
                  ha: Callable[[], httpx.AsyncClient]):
@@ -195,15 +197,20 @@ class Assist:
                 self.error = (f"Port {a.port} is in use by another program." if e.errno == errno.EADDRINUSE
                               else f"Port {a.port} could not be opened: {e.strerror or e}.")
                 logger.warning(f"assist: {self.error}")
-        self.hub.outside = self if self.listener else None
-        if self.listener:
+        # Home Assistant's satellites speak for him while either way of talking to him there is on.
+        speaks = self.listener is not None or cfg.channels.ha_integration.enabled
+        self.hub.outside = self if speaks else None
+        if speaks:
             self._read_at = -directory.READ_SECS
             self.rooms()                              # reads Home Assistant in the background
         await self.chat.reset(cfg)
 
     async def where(self, req: Request) -> str | None:
         """The room the request came from: its device's area in Home Assistant, else its satellite's, as a
-        room (core/rooms.room_for_area). None without Home Assistant, its registry, or an area."""
+        room (core/rooms.room_for_area). None without Home Assistant, its registry, or an area. An area the
+        request names itself (the integration reads it in Home Assistant) needs none of that."""
+        if req.area:
+            return room_for_area(self.cfg, req.area)
         snap = self._snap = await directory.home(self.cfg)
         self._read_at = time.monotonic()
         if snap is None or snap.registry is None:
@@ -214,9 +221,10 @@ class Assist:
         name = snap.areas.get(aid) if aid else None
         return room_for_area(self.cfg, name) if name else None
 
-    async def answer(self, req: Request) -> tuple[str, bool]:
+    async def answer(self, req: Request, on_text: Callable[[str], None] | None = None) -> tuple[str, bool]:
         """His reply and whether it asks something. In the room the request came from, else in one
-        conversation per Home Assistant conversation id. Never silent: a failure is Unanswered."""
+        conversation per Home Assistant conversation id. Never silent: a failure is Unanswered. on_text gets
+        each piece of the reply as it comes (the integration streams it)."""
         room = None
         try:
             room = await self.where(req)
@@ -224,7 +232,7 @@ class Assist:
             logger.exception("assist: the request's room not found")
         conv = None if room else req.conversation_id
         try:
-            text = await self.chat.reply(req.text, room, conv, notify=self._notify(req))
+            text = await self.chat.reply(req.text, room, conv, notify=self._notify(req), on_text=on_text)
         except Exception as e:
             logger.exception("assist: answering failed")
             said = error_text(e)

@@ -14,6 +14,7 @@ import functools
 import hashlib
 import http.server
 import io
+import json
 import os
 import runpy
 import subprocess
@@ -64,7 +65,14 @@ real = setup.changes((REPO / "CHANGELOG.md").read_text())
 check("the repo's CHANGELOG.md: each release dated or unreleased, each with changes",
       [bool(r["date"]) and bool(r["items"]) for r in real], [True] * len(real))
 
-notes = runpy.run_path(str(REPO / "scripts/release.py"))["notes"]
+release = runpy.run_path(str(REPO / "scripts/release.py"))
+notes = release["notes"]
+manifest = "custom_components/winston/manifest.json"
+check("the integration's version is stamped as Winston's",
+      json.loads(release["stamped"](manifest, (REPO / manifest).read_bytes(), "9.9.9"))["version"], "9.9.9")
+check("the integration zip is what HACS installs (hacs.json)",
+      {k: v for k, v in json.loads((REPO / "hacs.json").read_text()).items() if k in ("zip_release", "filename")},
+      {"zip_release": True, "filename": "winston-ha.zip"})
 dated = next(r for r in real if r["date"][:1].isdigit())
 check("a release's GitHub notes are its entry, without the heading",
       notes(dated["version"]).startswith("- "), True)

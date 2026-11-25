@@ -1,6 +1,7 @@
 """The listener Winston's Home Assistant integration talks to (api/ha_link.py, docs/ha-integration.md): the
-pairing code, then a winstond on a spare port with the fake Home Assistant and the chores extension,
-switched on by a save, paired and streamed as the integration does. Every advertisement goes to a recording
+pairing code, then a winstond on a spare port with the fake Home Assistant, a made-up brain
+(tests/fake_openai.py) and the chores extension, switched on by a save, added from Ways to talk and paired,
+streamed and asked as the integration does. Every advertisement goes to a recording
 fake, so nothing reaches the real network's mDNS.
 
     uv run python tests/ha_link_cases.py
@@ -107,14 +108,19 @@ async def winstond():
     import winston.extension_host.process as P
     P.BACKOFF, P.WATCH_EVERY, P.PING_EVERY, P.PING_MISSES = (0.2, 0.2, 0.2), 0.3, 1.0, 2
 
-    ha_port, api_port, port = free_port(), free_port(), free_port()
+    import threading
+    from http.server import ThreadingHTTPServer
+    import fake_openai
+    ha_port, api_port, port, llm_port = free_port(), free_port(), free_port(), free_port()
+    brain = ThreadingHTTPServer(("127.0.0.1", llm_port), fake_openai.Handler)
+    threading.Thread(target=brain.serve_forever, daemon=True).start()
     winstond_data(DATA, {
-        "llm": {"model": "x"},
+        "llm": {"model": "fake", "base_url": f"http://127.0.0.1:{llm_port}/v1"},
         "channels": {"voice": {"enabled": False}, "discord": {"enabled": False},
                      "satellite": {"enabled": False, "devices": {"Kitchen": {"host": "127.0.0.1"}}}},
         "providers": {"home_assistant": {"url": f"http://127.0.0.1:{ha_port}", "token_env": "HA_TOKEN"}},
         "control": {"port": api_port}, "extensions": {"chores": {"enabled": True}}}, fixtures=("chores.py",))
-    async with FakeHA(ha_port):
+    async with FakeHA(ha_port) as fake:
         app = create_app(load(), autostart=False)
         stop = await serve(app, api_port)
         host = app.state.extensions
@@ -136,10 +142,29 @@ async def winstond():
             expect("switched on by a save, nothing to restart",
                    (r.status_code, r.json().get("restarts"), st["listening"], st["error"]) == (200, [], True, None),
                    (r.json(), st))
+            expect("Home Assistant's satellites speak for him, as with Assist", app.state.hub.outside is not None)
             zc = FakeZeroconf.made[-1]
             expect("advertised with its instance id",
                    zc.info.port == port and zc.info.properties.get(b"instance") == ha_link.instance().encode(),
                    zc.info.properties if zc.info else None)
+
+            r = await api.post("/api/ha_integration/add")
+            expect("added from here, with Winston's Home Assistant token: Home Assistant paired at this address",
+                   r.status_code == 200 and r.json()["paired"] and any(
+                       w["type"] == "config_entries/winston" and w["port"] == port for w in fake.writes),
+                   (r.text, fake.writes))
+            fake.winston_installed = False
+            r = await api.post("/api/ha_integration/add")
+            expect("not downloaded in Home Assistant yet: says so", r.status_code == 409
+                   and r.json()["detail"] == ha_link.NOT_INSTALLED, r.text)
+            fake.winston_installed = True
+            fake.winston_reachable = False                     # a firewall between them
+            r = await api.post("/api/ha_integration/add")
+            expect("Home Assistant cannot reach this computer: the address and port to open, its flow closed",
+                   r.status_code == 409 and f"127.0.0.1, port {port}" in r.json()["detail"]
+                   and fake.writes[-1]["type"] == "config_entries/flow_delete", (r.text, fake.writes[-1]))
+            fake.winston_reachable = True
+            await api.delete("/api/ha_integration/pairing")
 
             r = await link.get("/stream")
             expect("the stream needs a token", r.status_code == 401, r.status_code)
@@ -201,6 +226,20 @@ async def winstond():
             r = await link.post("/set", json={"extension": "chores", "key": "done", "press": True})
             expect("setting needs the token", r.status_code == 401, r.status_code)
 
+            r = await link.post("/converse", json={"text": "Good evening"})
+            expect("asking needs the token", r.status_code == 401, r.status_code)
+            async with link.stream("POST", "/converse", headers={"Authorization": f"Bearer {token}"},
+                                   json={"text": "Good evening", "conversation_id": "ha-1", "area": "Kitchen"}) as r:
+                lines = [json.loads(x) async for x in r.aiter_lines() if x]
+            pieces = "".join(x["text"] for x in lines if set(x) == {"text"})
+            expect("asked as Home Assistant's agent: the reply streams, then the whole of it",
+                   r.headers["content-type"].startswith("application/x-ndjson") and len(lines) >= 2
+                   and pieces.strip() == fake_openai.REPLY
+                   and lines[-1] == {"done": True, "text": fake_openai.REPLY, "continue": False}, lines)
+            turns = [e for e in app.state.feed.backlog() if e.channel == "assist" and e.type == "user"]
+            expect("shown on the Talk page in the area's room", turns and turns[-1].room == "Kitchen",
+                   [(e.text, e.room) for e in turns])
+
             await api.post("/api/announce", json={"text": "Dinner is ready."})
             ok = await until(lambda: asyncio.sleep(0, result=any(e.get("type") == "announcement" for e in s.events)), 5)
             expect("an announcement is an event", ok, s.events)
@@ -224,8 +263,9 @@ async def winstond():
             await api.patch("/api/config", json={"changes": [
                 {"path": ["channels", "ha_integration", "enabled"], "value": False}]})
             st = (await api.get("/api/ha_integration")).json()
-            expect("switched off: the port closes, the advertisement withdrawn",
-                   st["listening"] is False and zc.calls[-2:] == ["unregister", "close"], (st, zc.calls))
+            expect("switched off: the port closes, the advertisement withdrawn, the satellites quiet",
+                   st["listening"] is False and zc.calls[-2:] == ["unregister", "close"]
+                   and app.state.hub.outside is None, (st, zc.calls))
             try:
                 await link.get("/stream")
                 closed = False
@@ -237,6 +277,7 @@ async def winstond():
                 s.task.cancel()
             await app.state.extensions.stop_all()
             await stop()
+            brain.shutdown()
 
 
 async def main():

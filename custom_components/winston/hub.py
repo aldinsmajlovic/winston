@@ -44,7 +44,7 @@ class Hub:
         self.event_signal = f"{self.signal}_event"
 
     @property
-    def _headers(self) -> dict[str, str]:
+    def headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.entry.data[CONF_TOKEN]}"}
 
     async def run(self) -> None:
@@ -52,7 +52,7 @@ class Hub:
         tries = 0
         while True:
             try:
-                async with session.get(self.url / "stream", headers=self._headers,
+                async with session.get(self.url / "stream", headers=self.headers,
                                        timeout=aiohttp.ClientTimeout(total=None, sock_connect=10,
                                                                      sock_read=READ_SECS)) as r:
                     if r.status == 401:
@@ -141,7 +141,7 @@ class Hub:
         raised for Home Assistant to show."""
         session = async_get_clientsession(self.hass)
         try:
-            async with session.post(self.url / "set", headers=self._headers,
+            async with session.post(self.url / "set", headers=self.headers,
                                     json={"extension": ext, "key": key, "entry": entry, "value": value, "press": press},
                                     timeout=aiohttp.ClientTimeout(total=40)) as r:
                 body = await r.json(content_type=None) if r.content_length != 0 else {}

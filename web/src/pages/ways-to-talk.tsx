@@ -2,7 +2,7 @@ import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { Plus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { $api } from '@/api/client'
+import { $api, errorText } from '@/api/client'
 import { useConfig } from '@/api/config'
 import type { components } from '@/api/schema'
 import { useStatus } from '@/api/status'
@@ -294,9 +294,7 @@ export default function WaysToTalkPage() {
       <RoomBoxes page={page} />
       <SectionForm page={page} path={DISCORD} title="Discord" status={<ChannelState name="discord" />} />
       <AssistCard page={page} />
-      <SectionForm page={page} path={HA_INTEGRATION} title="Home Assistant integration">
-        <IntegrationStatus />
-      </SectionForm>
+      <IntegrationCard page={page} />
     </SettingsPage>
   )
 }
@@ -340,17 +338,45 @@ function AssistStatus() {
   )
 }
 
-/** Pairing Winston's integration in Home Assistant: the code to type there while one is open, whether a Home
- * Assistant is paired and last reached him, and forgetting it. Nothing while it is off. */
-function IntegrationStatus() {
+/** Winston's integration in Home Assistant: its switch and port, and under them getting it there and pairing.
+ * Also in the wizard's Home Assistant step. */
+export function IntegrationCard({ page }: { page: SettingsState }) {
+  return (
+    <SectionForm page={page} path={HA_INTEGRATION} title="Home Assistant integration">
+      <IntegrationStatus page={page} />
+    </SectionForm>
+  )
+}
+
+/** Opens Winston's repository in that Home Assistant's Marketplace (HACS before 2026.11), to download from:
+ * its own "My" redirect, which both know. */
+function downloadLink(haUrl: string): string {
+  const q = new URLSearchParams({ owner: 'aldinsmajlovic', repository: 'winston', category: 'integration' })
+  return `${haUrl.replace(/\/+$/, '')}/_my_redirect/hacs_repository?${q}`
+}
+
+/** Getting him into Home Assistant and pairing: with Home Assistant connected, Download there and Add from
+ * here, no code; else, or as well, the code to type there while one is open. Then whether a Home Assistant is
+ * paired and last reached him, and forgetting it. Nothing while the switch is off. Add and Pair save first,
+ * since the port opens on save (the wizard saves only at Continue). */
+function IntegrationStatus({ page }: { page: SettingsState }) {
+  const haUrl = page.value.providers?.home_assistant?.url ?? undefined
   const q = $api.useQuery('get', '/api/ha_integration', undefined, { refetchInterval: 5_000 })
   const pair = $api.useMutation('post', '/api/ha_integration/code', { onSuccess: () => q.refetch() })
   const forget = $api.useMutation('delete', '/api/ha_integration/pairing', { onSuccess: () => q.refetch() })
+  const add = $api.useMutation('post', '/api/ha_integration/add', {
+    onSuccess: () => {
+      toast.success('Added in Home Assistant.')
+      void q.refetch()
+    },
+    onError: (e) => toast.error(errorText(e)),
+  })
   const ask = useConfirm()
   const region = useRegion()
   const st = q.data
-  if (!st?.enabled) return null
+  if (!page.value.channels?.ha_integration?.enabled || !st) return null
   if (st.error) return <p className="text-sm text-destructive">{st.error}</p>
+  const saved = async () => !page.dirty || (await page.save())
   const when = (t: number) =>
     new Date(t * 1000).toDateString() === new Date().toDateString() ? region.time(t) : `${region.day(t)}, ${region.time(t)}`
   const unpair = async () => {
@@ -374,14 +400,31 @@ function IntegrationStatus() {
           Paired.{' '}
           {st.last_seen ? `Home Assistant reached him at ${when(st.last_seen)}.` : 'Not reached since Winston started.'}
         </p>
+      ) : haUrl ? (
+        <ol className="list-decimal space-y-1 pl-5 text-muted-foreground">
+          <li>Download opens Winston in Home Assistant's Marketplace (HACS before 2026.11). Download him there, then restart Home Assistant.</li>
+          <li>Add to Home Assistant adds him there, with no code to type.</li>
+        </ol>
       ) : (
         <p className="text-muted-foreground">
-          Not paired. Add Winston from Home Assistant's Marketplace (HACS before 2026.11), then select Pair and type the code there. Home Assistant finds him on its own, or asks for this computer's address and the port.
+          Not paired. Download Winston from Home Assistant's Marketplace (HACS before 2026.11) and restart it, then select Pair and type the code there. Home Assistant finds him on its own, or asks for this computer's address and the port.
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button variant="outline" size="sm" disabled={pair.isPending} onClick={() => pair.mutate({})}>
-          {st.code ? 'New code' : st.paired ? 'Pair again' : 'Pair'}
+        {haUrl && !st.paired && !st.code ? (
+          <>
+            <Button variant="outline" size="sm" asChild>
+              <a href={downloadLink(haUrl)} target="_blank" rel="noreferrer">
+                Download in Home Assistant
+              </a>
+            </Button>
+            <Button size="sm" disabled={add.isPending || page.saving} onClick={() => void saved().then((ok) => ok && add.mutate({}))}>
+              {add.isPending ? 'Adding...' : 'Add to Home Assistant'}
+            </Button>
+          </>
+        ) : null}
+        <Button variant="outline" size="sm" disabled={pair.isPending || page.saving} onClick={() => void saved().then((ok) => ok && pair.mutate({}))}>
+          {st.code ? 'New code' : st.paired ? 'Pair again' : haUrl ? 'Pair with a code' : 'Pair'}
         </Button>
         {st.paired ? (
           <Button variant="outline" size="sm" disabled={forget.isPending} onClick={unpair}>

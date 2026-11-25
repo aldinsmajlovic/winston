@@ -6,6 +6,10 @@ word, the speech recognition and its own voice, and Winston does the thinking, w
 tools and extensions, and the check that a device really changed. Nothing is installed in Home
 Assistant: it talks to him over its built-in Wyoming integration.
 
+Winston's own [Home Assistant integration](ha-integration.md) makes him a conversation agent too, with
+his reply streamed as he says it, a token on its port, and his state as entities. It needs installing
+in Home Assistant; Assist does not.
+
 Winston's own voice path ([Voice PE](voice-pe.md), the Talk page) is separate and unchanged.
 
 ## Switching it on
@@ -75,8 +79,9 @@ On the Talk page these turns show under Home Assistant Assist, with the room whe
 
 ## Speaking on Home Assistant's satellites
 
-While Assist is on, each of Home Assistant's voice satellites with an area speaks for its room, in Home
-Assistant's voice, as long as no Winston box or screen is connected in that room. Nothing is said
+While Assist or Winston's [integration](ha-integration.md) is on, each of Home Assistant's voice
+satellites with an area speaks for its room, in Home Assistant's voice, as long as no Winston box or
+screen is connected in that room. Nothing is said
 twice: when the box comes back, the satellite goes quiet again.
 
 - **Announcements** go to every connected speaker and every such satellite, and count as spoken, so

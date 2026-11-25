@@ -76,6 +76,16 @@ test('Ways to talk: the Home Assistant integration switched on shows its port, a
   await toggle.click()
   await expect(card.getByRole('spinbutton', { name: 'Port' })).toBeVisible()  // the copy moves every port
   await expect(saveButton).toBeEnabled()
+  // With Home Assistant connected: Download opens his repository in its Marketplace, and Add pairs from here
+  // (not pressed: it saves, which would announce the copy).
+  if (process.env.FAKE_HA_URL) {
+    await expect(card.getByRole('link', { name: 'Download in Home Assistant' })).toHaveAttribute(
+      'href',
+      `${process.env.FAKE_HA_URL}/_my_redirect/hacs_repository?owner=aldinsmajlovic&repository=winston&category=integration`,
+    )
+    await expect(card.getByRole('button', { name: 'Add to Home Assistant' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Pair with a code' })).toBeVisible()
+  }
   await toggle.click()
   await expect(saveButton).toBeDisabled()
   expect(errors).toEqual([])

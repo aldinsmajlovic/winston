@@ -608,7 +608,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     extension_services = ExtensionServices(extensions)
     extension_services.talking = feed.talking             # background model calls yield to conversations
     assist = Assist(cfg, feed, rooms, hub, extension_services._ha_client)
-    ha_link = HALink(cfg, feed, extensions, sup)
+    ha_link = HALink(cfg, feed, extensions, sup, assist)
     extensions.on_entity = ha_link.changed
 
     def llm_up() -> bool:
@@ -1118,6 +1118,20 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def ha_integration_code():
         ha_link.pairing.new()
         logger.info("home assistant: a pairing code made")
+        return ha_integration_state()
+
+    @app.post("/api/ha_integration/add", response_model=HAIntegrationState,
+              summary="Add him in Home Assistant from here, with Winston's own Home Assistant token: no code to type")
+    async def ha_integration_add():
+        ha = app.state.cfg.providers.ha
+        try:
+            client = extension_services._ha_client()
+        except Exception as e:                      # not connected
+            raise HTTPException(409, f"Connect Home Assistant first ({e}).") from e
+        async with client:
+            said = await ha_link.add_to(client, ha.url)
+        if said:
+            raise HTTPException(409, said)
         return ha_integration_state()
 
     @app.delete("/api/ha_integration/pairing", response_model=HAIntegrationState,

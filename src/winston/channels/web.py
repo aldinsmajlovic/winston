@@ -72,9 +72,10 @@ class WebChat:
             return s
 
     async def reply(self, text: str, room: str | None = None, conversation: str | None = None,
-                    notify=None) -> str:
+                    notify=None, on_text=None) -> str:
         """His answer, with the feed told as for any typed turn; raises what the session raises. notify, when
-        given, is where a state check's correction goes instead of the Talk page alone."""
+        given, is where a state check's correction goes instead of the Talk page alone; on_text gets each piece
+        of the answer as it comes."""
         k = self._key(room, conversation)
         try:
             async with self._lock:
@@ -88,7 +89,7 @@ class WebChat:
         s = await self.current(room, conversation)
         if notify is not None:
             s.notify = notify
-        return await s.ask(text, timeout=60)
+        return await s.ask(text, timeout=60, on_text=on_text)
 
     async def ask(self, text: str, room: str | None = None):
         try:

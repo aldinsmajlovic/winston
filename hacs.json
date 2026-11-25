@@ -1,5 +1,7 @@
 {
   "name": "Winston",
   "homeassistant": "2026.10.0",
-  "hide_default_branch": true
+  "hide_default_branch": true,
+  "zip_release": true,
+  "filename": "winston-ha.zip"
 }

@@ -105,7 +105,7 @@ class Session:
     def __init__(self, fails: bool = False):
         self.last_used, self.fails = time.monotonic(), fails
 
-    async def ask(self, text, timeout=90):
+    async def ask(self, text, timeout=90, on_text=None):
         if self.fails:
             raise RuntimeError("starting") from httpx.ConnectError("refused")
 

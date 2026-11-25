@@ -9,6 +9,9 @@ The token reaches only these routes:
   engines, each publishing extension's entities and their values), whole, at the start and whenever it
   changes; and `event`, an announcement or an extension's nudge, as it happens.
 - `POST /set {extension, key, entry, value, press}` runs the extension's on_change or on_press.
+- `POST /converse {text, conversation_id, device_id, satellite_id, area}` is Home Assistant's conversation
+  agent: answered as Assist answers (channels/assist.py), streamed back as lines of JSON, `{"text": piece}` as
+  he says it, then `{"done": true, "text", "continue"}` or `{"error": what to say instead}`.
 
 Discovery is zeroconf, `_winston._tcp.local.`, with the instance id in its properties, so Home Assistant
 knows a Winston it has already added."""
@@ -22,7 +25,9 @@ import time
 import uuid
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import urlsplit
 
+import httpx
 import uvicorn
 from loguru import logger
 from starlette.applications import Starlette
@@ -47,6 +52,21 @@ CODE_TRIES = 5
 TITLES = {"llm": "Brain", "stt": "Hearing", "tts": "Speaking", "voice": "Talk page", "satellite": "Room boxes",
           "discord": "Discord"}        # as the web UI names them (web/src/lib/presets.ts, Ways to talk)
 TICK_SECS = 2                   # engines have no events of their own: the snapshot is rebuilt this often anyway
+
+
+NOT_INSTALLED = ("Home Assistant does not have Winston's integration yet. Select Download in Home Assistant, "
+                 "download him there and restart Home Assistant, then try again.")
+
+
+def address_towards(url: str) -> str | None:
+    """This computer's IPv4 address on the route to that URL's host (nothing is sent), or None."""
+    host = urlsplit(url).hostname
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect((host, 9))
+            return s.getsockname()[0]
+    except (OSError, TypeError):
+        return None
 
 
 def instance() -> str:
@@ -96,8 +116,8 @@ class _Server(uvicorn.Server):
 class HALink:
     """The listener, switched by channels.ha_integration, and what it serves."""
 
-    def __init__(self, cfg: WinstonConfig, feed: Feed, host, supervisor):
-        self.cfg, self.feed, self.host, self.sup = cfg, feed, host, supervisor
+    def __init__(self, cfg: WinstonConfig, feed: Feed, host, supervisor, answerer: "assist.Assist | None" = None):
+        self.cfg, self.feed, self.host, self.sup, self.answerer = cfg, feed, host, supervisor, answerer
         self.pairing = Pairing()
         self.states: dict[str, str] = {}                # room key -> idle, listening, thinking or speaking
         self.last_seen: float | None = None
@@ -108,6 +128,7 @@ class HALink:
         self._zc = self._service = None
         self._subs: set[asyncio.Queue] = set()
         self._watch: asyncio.Task | None = None
+        self._tasks: set[asyncio.Task] = set()          # answers still running after Home Assistant hung up
 
     # what Home Assistant sees
 
@@ -253,9 +274,47 @@ class HALink:
             self.host.handled(ext_id)
         return JSONResponse(r, 200 if r.get("ok") else 500)
 
+    async def _converse(self, request: Request):
+        if not self._authorized(request):
+            return JSONResponse({"error": "not paired"}, 401)
+        try:
+            b = await request.json()
+            text = str(b["text"]).strip()
+        except (ValueError, KeyError, TypeError):
+            return JSONResponse({"error": "send {text, conversation_id, device_id, satellite_id, area}"}, 400)
+        if not text or self.answerer is None:
+            return JSONResponse({"error": "nothing to answer" if not text else "not answering here"}, 400)
+        opt = lambda k: str(b[k]) if b.get(k) else None                     # noqa: E731
+        req = assist.Request(text, opt("conversation_id") or uuid.uuid4().hex, opt("device_id"),
+                             opt("satellite_id"), opt("language"), opt("area"))
+        q: asyncio.Queue = asyncio.Queue()
+
+        async def run():
+            try:
+                said, more = await self.answerer.answer(req, on_text=q.put_nowait)
+                q.put_nowait({"done": True, "text": said, "continue": more})
+            except assist.Unanswered as e:
+                q.put_nowait({"error": str(e)})
+            except Exception:                                           # noqa: BLE001
+                logger.exception("home assistant: answering failed")
+                q.put_nowait({"error": assist.FAILED})
+        # Not cancelled when Home Assistant hangs up: what he started doing in the home finishes either way.
+        task = asyncio.create_task(run())
+        self._tasks.add(task); task.add_done_callback(self._tasks.discard)
+
+        async def lines():
+            while True:
+                item = await q.get()
+                yield json.dumps({"text": item} if isinstance(item, str) else item) + "\n"
+                if not isinstance(item, str):
+                    return
+        return StreamingResponse(lines(), media_type="application/x-ndjson",
+                                 headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
     def app(self) -> Starlette:
         return Starlette(routes=[Route("/pair", self._pair, methods=["POST"]),
-                                 Route("/stream", self._stream), Route("/set", self._set, methods=["POST"])])
+                                 Route("/stream", self._stream), Route("/set", self._set, methods=["POST"]),
+                                 Route("/converse", self._converse, methods=["POST"])])
 
     # switching it
 
@@ -319,6 +378,48 @@ class HALink:
             logger.info("home assistant: stopped listening")
         self._server = self._task = self._zc = self._service = self._watch = None
         self._port = None
+
+    async def add_to(self, ha: "httpx.AsyncClient", ha_url: str) -> str | None:
+        """Adds him in Home Assistant from here, with the token Winston already has there (an administrator's):
+        a fresh code, and Home Assistant's own Add integration flow given this computer's address, the port
+        and the code. None once added, else what to tell the user."""
+        if not self.listening:
+            return self.error or "Switch on Show him in Home Assistant and save first."
+        addr = await asyncio.to_thread(address_towards, ha_url)
+        if not addr:
+            return "This computer has no route to Home Assistant's address. Pair with a code instead."
+        code = self.pairing.new()
+        try:
+            r = await ha.post("/api/config/config_entries/flow", json={"handler": "winston"})
+            if r.status_code == 404:
+                return NOT_INSTALLED
+            if r.status_code in (401, 403):
+                return ("Winston's account in Home Assistant is not an administrator's, so it cannot add him. "
+                        "Pair with a code instead.")
+            r.raise_for_status()
+            flow = r.json()
+            if flow.get("type") == "form":
+                r = await ha.post(f"/api/config/config_entries/flow/{flow['flow_id']}",
+                                  json={"host": addr, "port": self._port, "code": code})
+                r.raise_for_status()
+                flow = r.json()
+        except (httpx.HTTPError, ValueError, KeyError) as e:
+            logger.warning(f"home assistant: adding the integration failed: {e!r}")
+            return f"Home Assistant did not finish adding him ({e}). Pair with a code instead."
+        kind, why = flow.get("type"), flow.get("reason")
+        if kind == "create_entry" or (kind == "abort" and why == "already_configured"):
+            logger.info(f"home assistant: added the integration there, at {addr}:{self._port}")
+            return None
+        if kind == "form":                  # its errors, left open: closed so it is not left half done
+            try:
+                await ha.delete(f"/api/config/config_entries/flow/{flow['flow_id']}")
+            except httpx.HTTPError:
+                pass
+            if (flow.get("errors") or {}).get("base") == "cannot_connect":
+                return (f"Home Assistant could not reach this computer at {addr}, port {self._port}. Open the port "
+                        f"to Home Assistant's address on this computer's firewall, and on the router between them.")
+        logger.warning(f"home assistant: adding the integration ended with {flow}")
+        return f"Home Assistant did not add him ({why or kind}). Pair with a code instead."
 
     def unpair(self):
         secrets.remove(TOKEN_ENV)
