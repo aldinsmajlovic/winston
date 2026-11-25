@@ -21,7 +21,8 @@ conversation text to the model provider.
 ## Choosing
 
 `winston setup` picks for you from the largest NVIDIA card ([sizing by the card](#sizing-by-the-card));
-without one it starts from `ollama`.
+without one it starts from `ollama`, sized to the AMD card or, without a card, the computer's memory
+([without an NVIDIA card](#without-an-nvidia-card)).
 
 - **NVIDIA with 24 GB:** `nvidia-24gb`, what the reference box runs
   ([below](#recommended-on-a-24-gb-card)). Breeze's weights are for non-commercial use only; for
@@ -32,6 +33,8 @@ without one it starts from `ollama`.
   page can leave it out (Granite 4.2 has none). The default, `granite4.2:8b`, fits a 12 GB card;
   on less than about 8 GB free, pick `qwen3.5:4b` (3.4 GB). How they compare:
   [comparing brains](#comparing-brains).
+- **AMD, for llama.cpp:** pick llama.cpp on AMD (Docker) on the Brain page: the same brain through
+  Vulkan. Not yet tried on an AMD card; Ollama is the tried way there.
 - **A brain you already run on another computer** (Ollama, vLLM, llama.cpp or any OpenAI-compatible
   server): any profile, then A server on your network under Runs on. See
   [a server on your network](#a-server-on-your-network).
@@ -102,6 +105,32 @@ Between and past these, a straight line. A brain not in the table is estimated f
 So an 8 GB card gets 112K, a 12 GB card 20K, a 16 GB card 40K and a 24 GB card 16K. The numbers live
 in `src/winston/config/memory.py`; the memory bar in the wizard and on the Brain and Voice pages reads
 the same ones ([web UI](web-ui.md#graphics-memory)).
+
+### Without an NVIDIA card
+
+| Part | AMD card | No graphics card |
+| --- | --- | --- |
+| Brain | Ollama, on the card (ROCm or Vulkan, Ollama's choice). llama.cpp on AMD, untried. | Ollama, on the processor |
+| Voice | Pocket, on the processor | Pocket |
+| Hearing | Fluid Speech Pro or Parakeet, on the processor | The same |
+| Memory bar | The AMD card's, read from the kernel's files | The computer's memory |
+
+The other voices, Qwen3-ASR hearing and vLLM need NVIDIA's CUDA. Setup picks `ollama` either way. It
+keeps Granite 4.2 8B when it fits under 90% of the memory at 16K, else Qwen3.5 4B, then fills the
+context the same way.
+
+On the processor, measured as each process's resident memory while working (25 November):
+
+| Part | 16K | 32K | 64K |
+| --- | --- | --- | --- |
+| `qwen3.5:4b` | 3.7 GB | 3.9 GB | 4.5 GB |
+| `granite4.2:8b` | 6.4 GB | 7.7 GB | 10.4 GB |
+| Pocket, speaking | 0.9 GB | | |
+| Fluid Speech Pro / Parakeet | 0.9 / 1.1 GB | | |
+
+So an 8 GB computer gets Qwen3.5 4B with 28K once the system's 1.5 GB is counted, and a 16 GB one
+Granite. An AMD card does not say which program holds what, so while his engines run the bar leaves
+other programs out and says so.
 
 ## Recommended on a 24 GB card
 
@@ -232,7 +261,8 @@ box the 27B writes 60 to 90 tokens a second with MTP drafting, 44 without.
 
 ### llama.cpp
 
-- Runs the official `server-cuda` image, pinned to one release in the preset.
+- Runs the official `server-cuda` image, pinned to one release in the preset. The AMD preset runs the
+  same release's `server-vulkan` image and passes the card in with Devices (`/dev/dri`), in How it runs.
 - The model is a Hugging Face repo and quant, such as `unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S`. Before
   the first start Winston downloads that quant into `~/.cache/huggingface`, the same cache vLLM uses.
 - Holds two conversations at once, each with `llm.context` (16K by default, the Brain page's slider).
@@ -252,7 +282,7 @@ open). Restarting the brain frees it.
   preset sets up.
 - Ollama gives a card under 24 GB only 4K of context, and Winston's prompt is about 11K tokens. So
   when the brain starts, Winston makes a copy of the model with a 16K context (`granite4.2:8b-16k`
-  for `granite4.2:8b`) and talks to that. The copy uses the same files and no extra disk, and it is
+  for `granite4.2:8b`, at `llm.context`) and talks to that. The copy uses the same files and no extra disk, and it is
   made for a model you pulled yourself too.
 - The Brain page lists the model, not the copy.
 
@@ -305,6 +335,6 @@ To clone from a clip (the same clips Chatterbox uses):
 
 ## What is not covered
 
-vLLM on AMD (ROCm images exist, untested here), Windows, and a brain smaller than 4B. The hearing's
+vLLM on AMD (ROCm images exist, untested here), llama.cpp on AMD (offered, untried), Windows, and a brain smaller than 4B. The hearing's
 INT8 ONNX build wants a few CPU cores; on a Raspberry Pi class satellite the plan keeps hearing on
 the brain box, not the satellite.

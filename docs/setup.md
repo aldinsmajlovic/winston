@@ -247,9 +247,9 @@ The profile's picks, preselected, on the cards of the Brain and Voice pages: Run
 model and its own settings, and each one's size against the free space, with Download. How it runs is
 left out: every pick here is a preset, and the Brain and Voice pages keep it for later.
 
-On an NVIDIA card, a **Graphics memory** bar sits on top and stays in view
-([web UI](web-ui.md#graphics-memory)). Here it also says whether the picks are the ones recommended
-for this card, with **Use the recommendation** once you have changed one. The recommendation is the
+A **Graphics memory** bar (**Memory**, the computer's own, without a graphics card) sits on top and stays
+in view ([web UI](web-ui.md#graphics-memory)). Here it also says whether the picks are the ones
+recommended for this computer, with **Use the recommendation** once you have changed one. The recommendation is the
 profile setup picked, with the context filled last ([hardware](hardware.md#context-filled-last)).
 
 - **Download and continue** saves a changed pick and confirms the sizes ("24.2 GB in all. Brain: its

@@ -171,14 +171,16 @@ and Add a custom engine, which asks a name and how it runs. Log is described wit
 
 #### Graphics memory
 
-On a computer with an NVIDIA card, a bar on top of the Brain and Voice pages (and the wizard's first
-step) shows how full the card would be with the picks on the page, before saving:
+A bar on top of the Brain and Voice pages (and the wizard's first step) shows how full the NVIDIA or
+AMD card would be with the picks on the page, before saving. Without a card it is **Memory**, the
+computer's own, since the brain then runs on the processor.
 
 - **Parts**: other programs, the brain, More to keep in mind (what the context adds past 16K), the
   voice and hearing on the card. Each part's size is in the legend.
 - **Colour**: green under 80%, amber to 100%, red past it.
-- **Verdict**: "22.1 of 24.0 GB, 92%. Fits, only just." Past 100%, Ollama runs part of the brain on
-  the processor, about three times slower, and the other engines do not start.
+- **Verdict**: "22.1 of 24.0 GB, 92%. Fits, only just." Past 100% on a card, Ollama runs part of the
+  brain on the processor, about three times slower, and the other engines do not start. In the
+  computer's memory, it runs out: he slows to a crawl, or a program is stopped.
 
 It moves as you change a pick or the context slider. Other programs are read again every 15 seconds.
 The sizes are the measured ones in [hardware](hardware.md#context-filled-last); a brain not measured is

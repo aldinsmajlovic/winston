@@ -10,7 +10,6 @@ import time
 import uuid
 from collections import OrderedDict
 from datetime import date, datetime, timedelta
-import subprocess
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import PurePosixPath
@@ -112,10 +111,13 @@ class Recommended(BaseModel):
 
 
 class MemoryPlan(BaseModel):
-    gpu: str | None = Field(description="The largest NVIDIA card's name; none without one")
+    memory: Literal["graphics", "system"] = Field(description="The graphics card's memory, or without an NVIDIA or "
+                                                              "AMD card the computer's own, the brain on the processor")
+    gpu: str | None = Field(description="The largest NVIDIA or AMD card's name; none without one")
     total_mb: int = 0
-    other_mb: int = Field(0, description="What programs other than his engines hold on it now")
-    recommended: Recommended | None = Field(None, description="Setup's picks for this card and what is free")
+    other_mb: int | None = Field(0, description="What programs other than his engines hold on it now; none when not "
+                                                "known (an AMD card while his engines run)")
+    recommended: Recommended | None = Field(None, description="Setup's picks for this memory and what is free")
     brain: BrainMemory
     voices: dict[str, int] = Field(description="MiB by voice preset; one not named takes none")
     hearing: dict[str, int] = Field(description="MiB by hearing preset; one not named takes none")
@@ -580,12 +582,10 @@ class Presets(BaseModel):
 
 
 def gpu_status() -> GpuStatus | None:
-    try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=3, check=False).stdout.strip().split(", ")
-        return GpuStatus(name=out[0], used_mb=int(out[1]), total_mb=int(out[2]))
-    except Exception:  # noqa: BLE001
-        return None
+    """The largest NVIDIA or AMD card's memory, none without one."""
+    from winston.config import memory
+    m = memory.here()
+    return GpuStatus(name=m.name or "", used_mb=m.used, total_mb=m.total) if m.kind != "ram" else None
 
 
 def _events(q: asyncio.Queue, close: Callable[[], object],
@@ -1738,13 +1738,17 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         saved = app.state.cfg
         block = req.block or (e.model_dump() if (e := saved.engine_at("llm")) else {})
         base = (block.get("url") or f"http://127.0.0.1:{block.get('port', 11434)}").rstrip("/")
-        brain = await vram.brain(req.model or saved.llm.model, llm_engine(block), base)
-        gpu = await asyncio.to_thread(gpu_status)
-        other = await asyncio.to_thread(vram.other, gpu.used_mb) if gpu else 0
+        m = await asyncio.to_thread(vram.here)
+        cpu = m.kind == "ram"
+        brain = await vram.brain(req.model or saved.llm.model, llm_engine(block), base, cpu)
+        # An AMD card does not say what his engines hold, so while one runs the rest is not known.
+        busy = m.kind == "amd" and any(e.state in ("starting", "healthy", "unhealthy") for e in sup.items.values())
+        other = None if busy else await asyncio.to_thread(vram.other, m)
         return MemoryPlan(
-            gpu=gpu.name if gpu else None, total_mb=gpu.total_mb if gpu else 0, other_mb=other,
-            recommended=Recommended(**vram.recommend(gpu.total_mb, other)) if gpu else None,
-            brain=BrainMemory(**brain), voices=vram.VOICES, hearing=vram.HEARING, green=vram.GREEN,
+            memory="system" if cpu else "graphics", gpu=m.name, total_mb=m.total, other_mb=other,
+            recommended=Recommended(**vram.recommend(m.total, other or 0, m.kind)),
+            brain=BrainMemory(**brain), voices=vram.VOICES_CPU if cpu else vram.VOICES,
+            hearing=vram.HEARING_CPU if cpu else vram.HEARING, green=vram.GREEN,
             fill=vram.FILL, min_k=vram.MIN_K, max_k=vram.MAX_K, step_k=vram.STEP_K)
 
     @app.get("/api/presets", response_model=Presets,

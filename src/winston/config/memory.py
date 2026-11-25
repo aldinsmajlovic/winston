@@ -1,12 +1,15 @@
-"""Graphics memory each pick takes, and the picks recommended for a card.
+"""Memory each pick takes, and the picks recommended for this computer: the graphics card's (NVIDIA or AMD), or
+without one the computer's own, since the brain then runs on the processor.
 
-Measured with nvidia-smi on the RTX 3090 on 2026-11-25, each part working (the brain answering, the voice
-speaking, hearing transcribing), without the desktop's share: docs/hardware.md (Sizing by the card). A brain
-not measured is estimated from the size of its weights. The Brain page's memory bar and setup's recommendation
-both read these numbers, so they agree.
+Measured on 2026-11-25, each part working (the brain answering, the voice speaking, hearing transcribing): on
+the RTX 3090 with nvidia-smi, without the desktop's share, and on the processor as each process's resident
+memory: docs/hardware.md (Sizing by the card). A brain not measured is estimated from the size of its weights.
+The memory bar and setup's recommendation both read these numbers, so they agree.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 # A brain's MiB at each context (K tokens per conversation); between and past them, a straight line.
@@ -20,6 +23,14 @@ BRAINS: dict[str, tuple[tuple[int, int], ...]] = {
 # from the voice benchmarks (docs/voices.md), the rest measured as above.
 VOICES = {"breeze2": 5382, "chatterbox": 3364, "gepard": 2253, "qwen3": 6656, "voxcpm2": 7066}
 HEARING = {"qwen3-asr-0.6b": 2314, "qwen3-asr-1.7b": 4896}
+# The same on the processor, in the computer's memory: Ollama with no layers on the card, Pocket speaking, the
+# built-in hearing transcribing. A GPU-only voice or hearing does not run there at all.
+BRAINS_CPU: dict[str, tuple[tuple[int, int], ...]] = {
+    "granite4.2:8b": ((16, 6528), (32, 7889), (64, 10611)),
+    "qwen3.5:4b": ((16, 3827), (32, 3999), (64, 4609)),
+}
+VOICES_CPU = {"pocket": 955}
+HEARING_CPU = {"fluid-speech-pro": 923, "parakeet": 1140}
 
 PER_K = 85            # an unmeasured brain's MiB per 1K of context: Granite 8B and the 27B take 83 to 91
 OVERHEAD = 1536       # an unmeasured brain's MiB beyond its weights at 16K (Granite 8B 1.7 GB, Qwen 4B 1.1 GB)
@@ -49,17 +60,30 @@ def fill(total: int, fixed: float, points: tuple[tuple[int, int], ...]) -> int:
     return k
 
 
-def recommend(total: int, other: int) -> dict[str, Any]:
-    """Setup's picks for a card of total MiB with other MiB held by other programs: the profile setup.pick
-    chooses, and the context filled last."""
-    from winston.config.presets import preset, profile
-    from winston.setup import pick_for
-    p = profile(pick_for(total))
-    model = (p.get("settings") or {}).get("llm", {}).get("model") \
+def _model(p: dict) -> str:
+    from winston.config.presets import preset
+    return (p.get("settings") or {}).get("llm", {}).get("model") \
         or preset("llm", p["presets"]["llm"])["settings"]["llm"]["model"]
-    points = BRAINS.get(model)
-    voice = VOICES.get(p["presets"].get("tts", ""), 0)
-    context = fill(total, other + voice, points) if points else MIN_K
+
+
+def recommend(total: int, other: int, kind: str = "nvidia") -> dict[str, Any]:
+    """Setup's picks for total MiB with other MiB held by other programs, then the context filled last. On an
+    NVIDIA card (kind), the profile setup.pick sizes to it. On an AMD card or the processor ("amd", "ram"), Ollama
+    and Pocket, the only picks that run there, with Ollama's brain, or the 8 GB profile's smaller one when that
+    does not fit; on the processor the voice and hearing share the memory too."""
+    from winston.config.presets import profile
+    from winston.setup import pick_for
+    if kind == "nvidia":
+        p = profile(pick_for(total))
+        model, table = _model(p), BRAINS
+        fixed = other + VOICES.get(p["presets"].get("tts", ""), 0)
+    else:
+        p, table = profile("ollama"), BRAINS if kind == "amd" else BRAINS_CPU
+        fixed = other + (VOICES_CPU["pocket"] + HEARING_CPU["fluid-speech-pro"] if kind == "ram" else 0)
+        big, small = _model(p), _model(profile("nvidia-8gb"))
+        model = big if fixed + at(table[big], MIN_K) <= FILL * total else small
+    points = table.get(model)
+    context = fill(total, fixed, points) if points else MIN_K
     return {"profile": p["id"], "llm": p["presets"]["llm"], "model": model, "tts": p["presets"].get("tts"),
             "stt": "fluid-speech-pro", "context": context * 1024}
 
@@ -71,35 +95,104 @@ assert fill(16376, 300 + VOICES["breeze2"], BRAINS["granite4.2:8b"]) == 40
 # ---- Read from this computer -------------------------------------------------------------------------------
 
 OURS = ("llama-server", "vllm", "ollama", "/services/tts-", "/services/stt-")   # his engines' processes
+AMD_MIN = 4096   # ponytail: an AMD device with less is an integrated one's carve-out, not a card for the brain
 
 
-def other(used: int) -> int:
-    """MiB of used that is not his engines': the desktop, a browser, a game. Compute processes are told apart by
-    their command line; what nvidia-smi lists for none (the display) counts as other."""
+@dataclass
+class Memory:
+    kind: str            # nvidia | amd | ram (no graphics card: the computer's own memory)
+    name: str | None     # the card's name; None for ram
+    total: int           # MiB
+    used: int            # MiB in use now, by anything
+
+
+def _run(cmd: list[str]) -> str:
     import subprocess
-    from pathlib import Path
     try:
-        out = subprocess.run(["nvidia-smi", "--query-compute-apps=pid,used_memory", "--format=csv,noheader,nounits"],
-                             capture_output=True, text=True, timeout=3, check=False).stdout
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=3, check=False).stdout
     except (OSError, subprocess.TimeoutExpired):
-        return used
-    ours = 0
-    for line in out.splitlines():
-        pid, _, mib = line.partition(",")
+        return ""
+
+
+def nvidia(csv: str) -> Memory | None:
+    """The largest card in `nvidia-smi --query-gpu=name,memory.used,memory.total --format=csv,noheader,nounits`."""
+    cards = []
+    for line in csv.splitlines():
+        name, _, rest = line.partition(", ")
+        used, _, total = rest.partition(", ")
+        if used.strip().isdigit() and total.strip().isdigit():
+            cards.append(Memory("nvidia", name.strip(), int(total), int(used)))
+    return max(cards, key=lambda c: c.total, default=None)
+
+
+def amd(drm: Path = Path("/sys/class/drm")) -> Memory | None:
+    """The largest AMD card, from the kernel's amdgpu files (no tool needed)."""
+    cards = []
+    for card in drm.glob("card[0-9]*"):
+        d = card / "device"
         try:
-            cmd = Path(f"/proc/{pid.strip()}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
-        except OSError:
+            if "-" in card.name or (d / "vendor").read_text().strip() != "0x1002":
+                continue
+            total = int((d / "mem_info_vram_total").read_text()) // 2 ** 20
+            used = int((d / "mem_info_vram_used").read_text()) // 2 ** 20
+        except (OSError, ValueError):
             continue
-        if any(o in cmd for o in OURS) and mib.strip().isdigit():
-            ours += int(mib)
-    return max(0, used - ours)
+        name = (d / "product_name").read_text().strip() if (d / "product_name").is_file() else ""
+        if total >= AMD_MIN:
+            cards.append(Memory("amd", name or "AMD graphics card", total, used))
+    return max(cards, key=lambda c: c.total, default=None)
 
 
-async def brain(model: str, kind: str | None, base: str) -> dict[str, Any]:
-    """A brain's memory: measured points, points estimated from its weights, vLLM's share, or nothing known."""
+def ram(meminfo: str) -> Memory:
+    """The computer's memory from /proc/meminfo: in use is all but what is available."""
+    kb = {k: int(v.split()[0]) for k, _, v in (line.partition(":") for line in meminfo.splitlines()) if v.strip()}
+    return Memory("ram", None, kb["MemTotal"] // 1024, (kb["MemTotal"] - kb["MemAvailable"]) // 1024)
+
+
+def here() -> Memory:
+    """What the brain runs in on this computer: the NVIDIA card, else the AMD card, else the computer's memory."""
+    return nvidia(_run(["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"])) \
+        or amd() or ram(Path("/proc/meminfo").read_text())
+
+
+def _cmd(pid: str) -> str:
+    try:
+        return Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+    except OSError:
+        return ""
+
+
+def other(m: Memory) -> int | None:
+    """MiB of what is in use that is not his engines': the desktop, a browser, a game. On an NVIDIA card compute
+    processes are told apart by their command line, and what nvidia-smi lists for none (the display) counts as
+    other; in the computer's memory each process's own (anonymous) memory. An AMD card does not say which program
+    holds what, so there it is all of it: the caller knows whether his engines hold any."""
+    if m.kind == "amd":
+        return m.used
+    ours = 0
+    if m.kind == "nvidia":
+        for line in _run(["nvidia-smi", "--query-compute-apps=pid,used_memory",
+                          "--format=csv,noheader,nounits"]).splitlines():
+            pid, _, mib = line.partition(",")
+            if any(o in _cmd(pid.strip()) for o in OURS) and mib.strip().isdigit():
+                ours += int(mib)
+    else:
+        for proc in Path("/proc").glob("[0-9]*"):
+            if any(o in _cmd(proc.name) for o in OURS):
+                try:
+                    ours += next(int(line.split()[1]) for line in (proc / "status").read_text().splitlines()
+                                 if line.startswith("RssAnon:")) // 1024
+                except (OSError, StopIteration, ValueError):
+                    pass
+    return max(0, m.used - ours)
+
+
+async def brain(model: str, kind: str | None, base: str, cpu: bool = False) -> dict[str, Any]:
+    """A brain's memory, on the card or (cpu) the processor: measured points, points estimated from its weights,
+    vLLM's share, or nothing known."""
     if kind == "vllm":
-        return {"points": None, "measured": True, "share": VLLM_SHARE}
-    if points := BRAINS.get(model):
+        return {"points": None, "measured": not cpu, "share": None if cpu else VLLM_SHARE}
+    if points := (BRAINS_CPU if cpu else BRAINS).get(model):
         return {"points": points, "measured": True, "share": None}
     weights = None
     try:

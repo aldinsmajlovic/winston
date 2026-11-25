@@ -150,6 +150,10 @@ class EngineConfig(Model):
                                                          value_title="Container path"))
     runtime: str | None = Field(None, title="Container runtime", description="Such as nvidia.",
                                 json_schema_extra=ui(drivers=["docker"]))
+    devices: list[str] = Field(default_factory=list, title="Devices",
+                               description="Device files on this computer the container gets, such as /dev/dri for "
+                                           "an AMD card through Vulkan.",
+                               json_schema_extra=ui(drivers=["docker"], widget="args", help="One per line."))
     ipc_host: bool = Field(False, title="IPC host", description="Shares the host's IPC namespace with the container.",
                            json_schema_extra=ui(drivers=["docker"],
                                                 help="Some servers need it to share memory between their workers."))

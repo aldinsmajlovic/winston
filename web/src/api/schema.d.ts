@@ -2156,6 +2156,11 @@ export interface components {
              */
             runtime?: string | null;
             /**
+             * Devices
+             * @description Device files on this computer the container gets, such as /dev/dri for an AMD card through Vulkan.
+             */
+            devices?: string[];
+            /**
              * IPC host
              * @description Shares the host's IPC namespace with the container.
              * @default false
@@ -3304,8 +3309,14 @@ export interface components {
         /** MemoryPlan */
         MemoryPlan: {
             /**
+             * Memory
+             * @description The graphics card's memory, or without an NVIDIA or AMD card the computer's own, the brain on the processor
+             * @enum {string}
+             */
+            memory: "graphics" | "system";
+            /**
              * Gpu
-             * @description The largest NVIDIA card's name; none without one
+             * @description The largest NVIDIA or AMD card's name; none without one
              */
             gpu: string | null;
             /**
@@ -3315,11 +3326,11 @@ export interface components {
             total_mb?: number;
             /**
              * Other Mb
-             * @description What programs other than his engines hold on it now
+             * @description What programs other than his engines hold on it now; none when not known (an AMD card while his engines run)
              * @default 0
              */
-            other_mb?: number;
-            /** @description Setup's picks for this card and what is free */
+            other_mb?: number | null;
+            /** @description Setup's picks for this memory and what is free */
             recommended?: components["schemas"]["Recommended"] | null;
             brain: components["schemas"]["BrainMemory"];
             /**

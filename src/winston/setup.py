@@ -263,6 +263,9 @@ def have_now() -> set[str]:
         out |= {"nvidia"} if state == "ok" and "nvidia" in runtimes else set()
     if shutil.which("ollama") or _answers(11434):
         out.add("ollama")
+    from winston.config.memory import amd
+    if amd() and Path("/dev/dri").exists():
+        out.add("amd")
     return out
 
 
@@ -321,13 +324,6 @@ def describe(m: Machine) -> list[tuple[bool | None, str]]:
 def pick(m: Machine) -> str:
     """The profile for the largest NVIDIA card; without one, Ollama, which sizes itself to what it finds."""
     return pick_for(max(mib for _, mib, _ in m.gpus)) if m.gpus else "ollama"
-
-
-def _used(name: str) -> int:
-    """MiB other programs hold on the card named name now, 0 when it cannot be read."""
-    out = _run(["nvidia-smi", "--query-gpu=name,memory.used", "--format=csv,noheader,nounits"]).stdout
-    return next((int(u) for n, _, u in (line.rpartition(",") for line in out.splitlines())
-                 if n.strip() == name and u.strip().isdigit()), 0)
 
 
 def pick_for(card: int) -> str:
@@ -424,7 +420,7 @@ def target() -> Path:
     return Path.home() / ".local/share/winston"
 
 
-def make_data_dir(profile: str, force: bool = False, print=print, context: int | None = None) -> Path:   # setup: quiet
+def make_data_dir(profile: str, force: bool = False, print=print, llm: dict | None = None) -> Path:   # setup: quiet
     """The data directory from the examples: the profile's config, the persona, the bundled voices."""
     from winston.config.presets import apply_profile
     from winston.config.schema import WinstonConfig
@@ -435,10 +431,10 @@ def make_data_dir(profile: str, force: bool = False, print=print, context: int |
         src, dst = ex / (name if name != ".env" else "env.example"), d / name
         if dst.exists() and not force:
             print(f"keep   {dst}")
-        elif name == "config.yaml" and (profile != "nvidia-24gb" or context):
+        elif name == "config.yaml" and (profile != "nvidia-24gb" or llm):
             cfg = apply_profile(yaml.safe_load(src.read_text()), profile)
-            if context:                                     # what memory.recommend filled for this card
-                cfg = {**cfg, "llm": {**cfg.get("llm", {}), "context": context}}
+            if llm:                                         # the model and context memory.recommend picked here
+                cfg = {**cfg, "llm": {**cfg.get("llm", {}), **llm}}
             cfg = WinstonConfig.model_validate(cfg)
             dst.write_text(yaml.safe_dump(cfg.model_dump(mode="json", exclude_none=True), sort_keys=False,
                                           allow_unicode=True))
@@ -538,12 +534,13 @@ def run(yes: bool, profile: str | None) -> None:
     else:
         from winston.config.presets import profile as get_profile
         chosen = get_profile(profile or pick(m))              # a typo in --profile fails before anything is made
-        context = None
-        if not profile and m.gpus:                            # the context filled last, for what is free now
-            from winston.config.memory import recommend
-            card = max(m.gpus, key=lambda g: g[1])
-            context = recommend(card[1], _used(card[0]))["context"]
-        make_data_dir(chosen["id"], print=lambda *a, **k: None, context=context)
+        llm = None
+        if not profile:          # the brain sized and the context filled last, for the card or memory free now
+            from winston.config import memory
+            mem = memory.here()
+            rec = memory.recommend(mem.total, memory.other(mem) or 0, mem.kind)
+            llm = {"model": rec["model"], "context": rec["context"]}
+        make_data_dir(chosen["id"], print=lambda *a, **k: None, llm=llm)
         heading("Your settings")
         item(True, f"Made in {_home(data)}, starting from {chosen['title']}"
                    + ("" if profile else ", which suits this computer"))

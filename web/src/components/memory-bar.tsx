@@ -21,12 +21,13 @@ function shade(p: Part, tone: Use['tone']): string {
   return p.strength ? cn(FILL[tone], SHADE[p.strength]) : 'fill-muted-foreground/45'
 }
 
-function verdict(use: Use): [string, string] {
+function verdict(use: Use, system: boolean): [string, string] {
   const pct = use.share * 100
   if (pct > 100)
-    return ['Does not fit.', use.spill === 'slow' ? 'Part of the brain would run on the processor, about three times slower.' : 'What does not fit will not start.']
-  if (pct >= 90) return ['Fits, only just.', 'Other programs that use the graphics card may push it over.']
-  if (pct >= 80) return ['Fits.', 'Little room left for other programs on the graphics card.']
+    return ['Does not fit.', system ? 'The computer would run out of memory: he slows to a crawl, or a program is stopped.'
+      : use.spill === 'slow' ? 'Part of the brain would run on the processor, about three times slower.' : 'What does not fit will not start.']
+  if (pct >= 90) return ['Fits, only just.', system ? 'Other programs may push it over.' : 'Other programs that use the graphics card may push it over.']
+  if (pct >= 80) return ['Fits.', system ? 'Little room left for other programs.' : 'Little room left for other programs on the graphics card.']
   return ['Fits easily.', `${gb(use.total - use.used)} GB to spare.`]
 }
 
@@ -50,15 +51,17 @@ function isRecommended(r: Picks, page: SettingsState, presets: Presets): boolean
     && matchPreset('tts', c, presets.tts) === r.tts && matchPreset('stt', c, presets.stt) === r.stt
 }
 
-/** How full the graphics card would be with the draft's picks, in green, amber or red, kept in view while the
- * picks below change (pinned from tablet width up; on a phone it would cover a third of the screen). In the setup wizard (recommend), also whether they are the picks recommended for this card,
- * with a way back to them. Nothing without an NVIDIA card. */
+/** How full the graphics card (or without one, the computer's memory) would be with the draft's picks, in
+ * green, amber or red, kept in view while the picks below change (pinned from tablet width up; on a phone it
+ * would cover a third of the screen). In the setup wizard (recommend), also whether they are the picks
+ * recommended here, with a way back to them. */
 export function MemoryBar({ page, presets, recommend }: { page: SettingsState; presets: Presets; recommend?: boolean }) {
   const plan = useGraphicsMemory(page)
-  if (!plan?.gpu) return null
+  if (!plan?.total_mb) return null
+  const system = plan.memory === 'system'
   const use = memoryUse(plan, page.value, presets)
   const scale = Math.max(use.total, use.used)
-  const [head, more] = verdict(use)
+  const [head, more] = verdict(use, system)
   const r = recommend ? plan.recommended : null
   const back = () =>
     page.update((c) => {
@@ -73,9 +76,9 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
   return (
     <Card className="z-10 shadow-sm sm:sticky sm:top-2" aria-live="polite">
       <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <CardTitle>Graphics memory</CardTitle>
+        <CardTitle>{system ? 'Memory' : 'Graphics memory'}</CardTitle>
         <span className="text-sm text-muted-foreground">
-          {plan.gpu}, {gb(use.total)} GB
+          {system ? 'No graphics card, so the brain runs on the processor' : plan.gpu}, {gb(use.total)} GB
         </span>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -104,6 +107,9 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
           </span>
           <span className="text-muted-foreground">{more}</span>
         </p>
+        {use.otherUnknown ? (
+          <p className="text-sm text-muted-foreground">Other programs are left out: this card does not say what each program holds while his engines run.</p>
+        ) : null}
         {use.brainUnknown ? (
           <p className="text-sm text-muted-foreground">The brain's memory is not known for this model, so it is left out.</p>
         ) : use.brainHere && !use.brainMeasured ? (
@@ -112,10 +118,10 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
         {r ? (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3 text-sm text-muted-foreground">
             {isRecommended(r, page, presets) ? (
-              <span>These are the picks recommended for this graphics card.</span>
+              <span>These are the picks recommended for this computer.</span>
             ) : (
               <>
-                <span>Changed from the picks recommended for this graphics card.</span>
+                <span>Changed from the picks recommended for this computer.</span>
                 <Button variant="outline" size="sm" onClick={back}>
                   Use the recommendation
                 </Button>
@@ -138,7 +144,7 @@ export function ContextSlider({ page, presets }: { page: SettingsState; presets:
   const tokens = page.value.llm.context ?? plan.min_k * 1024
   const k = tokens / 1024
   const extra = (use.brainAt(k) ?? 0) - (use.brainAt(plan.min_k) ?? 0)
-  const cost = !plan.gpu || use.brainUnknown ? ''
+  const cost = !plan.total_mb || use.brainUnknown ? ''
     : plan.brain.share ? ' vLLM holds the same share of the card at any length.'
     : k > plan.min_k ? ` Takes ${gb(extra)} GB more than ${plan.min_k}K.`
     : ' The least he needs: his instructions and tools take about 10.5K.'

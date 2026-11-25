@@ -14,6 +14,7 @@ const NEEDS: Record<string, string> = {
   nvidia: 'NVIDIA GPU',
   cuda: 'NVIDIA GPU (CUDA)',
   ollama: 'Ollama installed',
+  amd: 'AMD graphics card',
   internet: 'Sends your requests out of your network',
 }
 

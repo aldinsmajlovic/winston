@@ -67,6 +67,19 @@ LLM: list[Fragment] = [
                              "model": "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S", "thinking": {"control": "chat_template"}}},
     },
     {
+        "id": "llamacpp-amd", "icon": "llamacpp", "title": "llama.cpp on AMD (Docker)", "needs": ["docker", "amd"],
+        "hint": "The same as on NVIDIA, on an AMD card through Vulkan, which runs on nearly every AMD card. Not yet "
+                "tried on one: Ollama is the tried way on AMD.",
+        "engine": {
+            "driver": "docker", "image": "ghcr.io/ggml-org/llama.cpp:server-vulkan-v1.0.0-b12359-b1b770d",
+            "port": 8000, "health": "/health", "startup_timeout": 900, "devices": ["/dev/dri"],
+            "volumes": {"~/.cache/huggingface": "/root/.cache/huggingface"},
+            "args": list(_LLAMACPP_ARGS),
+        },
+        "settings": {"llm": {"base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
+                             "model": "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S", "thinking": {"control": "chat_template"}}},
+    },
+    {
         "id": "ollama", "icon": "ollama", "title": "Ollama (local)", "needs": ["ollama"],
         "hint": "Any graphics card or a CPU. Granite 4.2 8B takes about 7 GB with a 16K context; on a smaller "
                 "card pick qwen3.5:4b.",

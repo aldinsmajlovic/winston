@@ -81,6 +81,8 @@ class DockerDriver:
             }
             if self.cfg.ipc_host:
                 kwargs["ipc_mode"] = "host"
+            if self.cfg.devices:
+                kwargs["devices"] = [f"{d}:{d}:rwm" for d in self.cfg.devices]
             if self.cfg.runtime:
                 kwargs["runtime"] = self.cfg.runtime
             elif self.cfg.gpu:

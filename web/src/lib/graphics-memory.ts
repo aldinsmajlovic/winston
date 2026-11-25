@@ -4,8 +4,9 @@ import { CUSTOM, matchPreset, type Kind } from '@/lib/presets'
 type Points = number[][]
 /** What /api/graphics-memory answers, as far as the bar reads it. */
 export type MemoryPlan = {
+  memory: 'graphics' | 'system'
   total_mb?: number
-  other_mb?: number
+  other_mb?: number | null
   brain: { points?: Points | null; measured: boolean; share?: number | null }
   voices: Record<string, number>
   hearing: Record<string, number>
@@ -14,7 +15,7 @@ export type MemoryPlan = {
 }
 
 // Brains Winston runs on this computer: what the memory bar counts.
-const LOCAL_BRAINS = ['llamacpp', 'ollama', 'vllm']
+const LOCAL_BRAINS = ['llamacpp', 'llamacpp-amd', 'ollama', 'vllm']
 
 /** MiB at k K tokens, on the line through the nearest two measured points (config/memory.py: at). */
 export function at(points: Points, k: number): number {
@@ -38,6 +39,8 @@ export type Use = {
   /** The brain runs here but its memory is not known (an unmeasured model whose size could not be read). */
   brainUnknown: boolean
   brainMeasured: boolean
+  /** What other programs hold is not known (an AMD card while his engines run), so it is left out. */
+  otherUnknown: boolean
   /** What goes wrong past the card: Ollama spills to the processor, the rest do not start. */
   spill: 'slow' | 'fail'
   /** MiB the brain takes at the minimum context, and at the draft's. */
@@ -81,6 +84,7 @@ export function memoryUse(plan: MemoryPlan, config: Config, presets: Record<Kind
     brainHere,
     brainUnknown: brainHere && brainAt(plan.min_k) === null,
     brainMeasured: plan.brain.measured,
+    otherUnknown: plan.other_mb === null,
     spill: llm === 'ollama' ? 'slow' : 'fail',
     brainAt,
   }
