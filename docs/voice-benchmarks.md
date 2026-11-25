@@ -331,6 +331,26 @@ Six requests in three VCTK voices, the brain and Chatterbox running, with a made
 | The hint word right | 6 of 9 | 9 of 9 |
 | Time per request | about 0.2 s | about 0.29 s |
 
+### Fluid Speech Pro against Qwen3-ASR, 25 November
+
+The 24 November method below, on a fresh draw of 150 FLEURS sentences: the same mixed audio through
+Winston's own adapter for Fluid (int8, CPU) and the `services/stt-qwen3-asr` server for Qwen3-ASR, on
+the RTX 3090 with nothing else on it. Memory is the peak from `nvidia-smi` while transcribing.
+`tests/stt_bench.py` runs it, from fetching FLEURS to the scores.
+
+| | Fluid Speech Pro (CPU) | Qwen3-ASR 0.6B | Qwen3-ASR 1.7B |
+| --- | --- | --- | --- |
+| English, clean | 5.2% word errors | 5.1% | 3.8% |
+| English, four other people talking | 6.7% | 7.9% | 5.7% |
+| English, under a hum | 5.1% | 6.1% | 4.8% |
+| Time per sentence (median, about 10 s of speech) | 0.61 s | 0.54 s | 0.56 s |
+| Graphics memory | none | 2.3 GB | 4.8 GB |
+
+- **The 0.6B does not beat Fluid** on these sentences, and is worse with talkers and the hum.
+- **The 1.7B makes about a fifth fewer errors** than Fluid, for 4.8 GB of graphics memory.
+- **Hint words were not tested.** Qwen3-ASR takes them and Fluid does not; that is the 0.6B's
+  remaining case, for names it would otherwise mishear.
+
 ### Parakeet against Fluid Speech Pro, 24 November
 
 Both int8 on the CPU through onnx-asr 0.12.0, 150 FLEURS sentences per row. Talkers are four other

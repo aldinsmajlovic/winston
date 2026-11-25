@@ -320,10 +320,10 @@ other men talking 10 dB under the voice
 
 | Preset | Runs on | Memory | Takes hint words | Word errors, quiet / with talkers | Notes |
 | --- | --- | --- | --- | --- | --- |
-| Fluid Speech Pro (built in, CPU) | the same, from Hugging Face | none | no, fixed afterwards | not measured on these lines | The default since 24 November; Parakeet retrained, a quarter of its errors with talkers on FLEURS; about 0.4 s a request |
+| Fluid Speech Pro (built in, CPU) | the same, from Hugging Face | none | no, fixed afterwards | 5.2% / 6.7% (FLEURS, [25 November](voice-benchmarks.md#fluid-speech-pro-against-qwen3-asr-25-november)) | The default since 24 November; Parakeet retrained, a quarter of its errors with talkers on FLEURS; about 0.4 s a request |
 | Parakeet (built in, CPU) | inside the voice process, onnx-asr | none | no, fixed afterwards | 1.6% / 15.5% | About 0.2 s a request |
-| Qwen3-ASR 0.6B on GPU | `services/stt-qwen3-asr` on port 8001 | about 2.2 GB | yes, as its context | 2.2% / 6.3% | Fits beside the 27B brain and Chatterbox; about 0.29 s a request |
-| Qwen3-ASR 1.7B on GPU | the same service | about 5 GB | yes | not measured | Beside the 27B brain it needs Pocket TTS instead of Chatterbox |
+| Qwen3-ASR 0.6B on GPU | `services/stt-qwen3-asr` on port 8001 | 2.3 GB | yes, as its context | 2.2% / 6.3% on his lines; 5.1% / 7.9% (FLEURS, 25 November) | Fits beside the 27B brain and Chatterbox; about 0.29 s a request |
+| Qwen3-ASR 1.7B on GPU | the same service | 4.8 GB | yes | 3.8% / 5.7% (FLEURS, 25 November) | Beside the 27B brain it needs Pocket TTS instead of Chatterbox |
 | Hosted | any server speaking OpenAI's transcription API | none | as its prompt | not measured | `STT_API_KEY` in `.env`; your speech leaves the LAN |
 
 - **Parakeet** runs in int8 (`stt.quantization`, config.yaml only), faster on the CPU at no audible
