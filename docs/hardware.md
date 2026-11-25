@@ -8,7 +8,10 @@ table below), or switch any slot later on the Brain and Voice pages.
 | Profile | Needs | Brain | Voice | Hearing |
 |---|---|---|---|---|
 | `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Breeze TTS 2 on the GPU, voice cloning from a clip | Fluid Speech Pro on the CPU |
+| `nvidia-16gb` | NVIDIA card with 14 GB or more, Ollama | Ollama, `granite4.2:8b` | Breeze TTS 2 on the GPU | Fluid Speech Pro on the CPU |
+| `nvidia-12gb` | NVIDIA card with 12 GB, Ollama | Ollama, `granite4.2:8b` | Chatterbox-Turbo on the GPU | Fluid Speech Pro on the CPU |
 | `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `granite4.2:8b` | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
+| `nvidia-8gb` | NVIDIA card with 8 GB or less, Ollama | Ollama, `qwen3.5:4b` | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 | `hosted` | Internet and an API key | Any OpenAI-compatible endpoint | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 
 In every profile, hearing (Fluid Speech Pro, a retrained Parakeet TDT 0.6B v3, through ONNX), voice activity, turn taking and the
@@ -16,6 +19,9 @@ wake word run on the CPU. Home control never leaves the LAN; the hosted profile 
 conversation text to the model provider.
 
 ## Choosing
+
+`winston setup` picks for you from the largest NVIDIA card ([sizing by the card](#sizing-by-the-card));
+without one it starts from `ollama`.
 
 - **NVIDIA with 24 GB:** `nvidia-24gb`, what the reference box runs
   ([below](#recommended-on-a-24-gb-card)). Breeze's weights are for non-commercial use only; for
@@ -42,6 +48,38 @@ another process holds it, and Ollama keeps its last model loaded for five minute
 before vLLM starts again after trying Ollama, wait those minutes or run `ollama stop`. The other way
 round, an Ollama model that finds the card full runs half on the CPU, at about 3 s a tool call
 instead of under 1 s.
+
+## Sizing by the card
+
+The brain comes first. The best brain under 24 GB is Granite 4.2 8B (54 of 54 brain trials), and the
+next step up, the 27B, needs a 24 GB card. So a card between the two keeps Granite and spends the rest
+on a better voice, rather than squeezing in a bigger brain. Below Granite's size, the brain is Qwen3.5
+4B and the voice goes to the CPU.
+
+Each pick's peak graphics memory with the brain and voice working at once, on the RTX 3090 on
+25 November, without the desktop's 0.2 GB:
+
+| Brain (16K context) | Alone | With Chatterbox-Turbo | With Breeze TTS 2 |
+| --- | --- | --- | --- |
+| `qwen3.5:4b` | 4.1 GB | 7.4 GB | 9.4 GB |
+| `granite4.2:8b` | 6.6 GB | 9.9 GB | 11.9 GB |
+
+Alone, Chatterbox peaked at 3.4 GB and Breeze at 5.3 GB. `ollama ps` reports less than the card
+holds (3.4 GB for the 4B), so these are from `nvidia-smi`.
+
+Setup adds 1.5 GB to each, for a desktop on the same card and for spikes, and picks the first that
+fits the largest card:
+
+| Card | Profile | Needs |
+| --- | --- | --- |
+| 24 GB | `nvidia-24gb` | 27B and Breeze |
+| 14 GB or more (16 and 20 GB cards) | `nvidia-16gb` | 11.9 + 1.5 GB |
+| 12 GB | `nvidia-12gb` | 9.9 + 1.5 GB |
+| 10 and 11 GB | `ollama` | 6.6 + 1.5 GB |
+| 8 GB or less | `nvidia-8gb` | the 4B, Pocket on the CPU |
+
+On an 8 GB card Granite would need all but 1.4 GB, so the 4B is the safe pick there; Qwen 4B with
+Chatterbox (7.4 GB) leaves too little too. None of these has yet been checked on a card of that size.
 
 ## Recommended on a 24 GB card
 

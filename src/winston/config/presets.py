@@ -177,8 +177,15 @@ TTS: list[Fragment] = [
 PROFILES: list[Fragment] = [
     {"id": "nvidia-24gb", "title": "NVIDIA, 24 GB", "presets": {"llm": "llamacpp", "tts": "breeze2"},
      "hint": "Qwen3.8-27B through llama.cpp and Breeze TTS 2 share one card (about 23 GB); hearing on the CPU."},
+    {"id": "nvidia-16gb", "title": "NVIDIA, 16 GB", "presets": {"llm": "ollama", "tts": "breeze2"},
+     "hint": "Granite 4.2 8B on Ollama and Breeze TTS 2 share one card (about 12 GB); hearing on the CPU."},
+    {"id": "nvidia-12gb", "title": "NVIDIA, 12 GB", "presets": {"llm": "ollama", "tts": "chatterbox"},
+     "hint": "Granite 4.2 8B on Ollama and Chatterbox-Turbo share one card (about 10 GB); hearing on the CPU."},
     {"id": "ollama", "title": "Ollama, any GPU or CPU", "presets": {"llm": "ollama", "tts": "pocket"},
      "hint": "Ollama serves the model, Pocket TTS speaks on the CPU. Small cards, AMD, Apple silicon, no Docker."},
+    {"id": "nvidia-8gb", "title": "NVIDIA, 8 GB or less", "presets": {"llm": "ollama", "tts": "pocket"},
+     "settings": {"llm": {"model": "qwen3.5:4b"}},
+     "hint": "Qwen3.5 4B on Ollama (about 4 GB), Pocket TTS and hearing on the CPU."},
     {"id": "hosted", "icon": "cloud", "title": "Hosted LLM", "presets": {"llm": "hosted", "tts": "pocket"},
      "hint": "A cloud model over an OpenAI-compatible URL; hearing and speaking stay local."},
 ]
@@ -282,7 +289,7 @@ def apply(config: dict, kind: str, preset_id: str) -> dict:
 
 
 def apply_profile(config: dict, profile_id: str) -> dict:
-    out = config
-    for kind, preset_id in profile(profile_id)["presets"].items():
+    p, out = profile(profile_id), config
+    for kind, preset_id in p["presets"].items():
         out = apply(out, kind, preset_id)
-    return out
+    return _merge(out, p.get("settings") or {})

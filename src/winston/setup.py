@@ -26,7 +26,14 @@ import yaml
 
 from winston.config import data_dir, repo_root
 
-GPU_24GB_MIB = 23000       # the 24 GB cards report 24564 or 24576 MiB
+HEADROOM_MIB = 1536        # a desktop on the same card, and spikes
+# The smallest card (MiB) for each profile, largest first: its brain and voice's peak with both working at once,
+# measured on the RTX 3090 on 2026-11-25 (docs/hardware.md), plus the headroom. The brain comes first, until it is
+# Granite 4.2 8B: the next step up, the 27B, needs a 24 GB card, so a card between spends the rest on a better voice.
+FITS = [("nvidia-24gb", 23000),                   # the 24 GB cards report 24564 or 24576 MiB
+        ("nvidia-16gb", 12173 + HEADROOM_MIB),    # Granite 8B and Breeze TTS 2
+        ("nvidia-12gb", 10157 + HEADROOM_MIB),    # Granite 8B and Chatterbox-Turbo
+        ("ollama", 6796 + HEADROOM_MIB)]          # Granite 8B, Pocket on the CPU
 
 
 # ---- Talking in the terminal ------------------------------------------------------------------------------
@@ -312,7 +319,11 @@ def describe(m: Machine) -> list[tuple[bool | None, str]]:
 # ---- What to do --------------------------------------------------------------------------------------
 
 def pick(m: Machine) -> str:
-    return "nvidia-24gb" if any(mib >= GPU_24GB_MIB for _, mib, _ in m.gpus) else "ollama"
+    """The profile for the largest NVIDIA card; without one, Ollama, which sizes itself to what it finds."""
+    if not m.gpus:
+        return "ollama"
+    card = max(mib for _, mib, _ in m.gpus)
+    return next((p for p, need in FITS if card >= need), "nvidia-8gb")
 
 
 def needs(config: dict) -> set[str]:

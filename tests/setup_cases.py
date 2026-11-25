@@ -19,6 +19,7 @@ import yaml  # noqa: E402
 from winston import setup  # noqa: E402
 from winston.config import repo_root  # noqa: E402
 from winston.config.presets import apply_profile  # noqa: E402
+from winston.config.schema import WinstonConfig  # noqa: E402
 
 FIX = Path(__file__).parent / "fixtures/setup"
 
@@ -56,9 +57,21 @@ def machine(**kw) -> setup.Machine:
 check("a 24 GB card gets the 27B", setup.pick(machine(gpus=desk)), "nvidia-24gb")
 check("so does a 4090's 24564 MiB", setup.pick(machine(gpus=[("NVIDIA GeForce RTX 4090", 24564, "580.95.05")])),
       "nvidia-24gb")
-check("a smaller card, or none, gets Ollama",
-      [setup.pick(machine(gpus=[("NVIDIA GeForce RTX 4060", 8188, "580.95.05")])), setup.pick(machine())],
-      ["ollama", "ollama"])
+
+
+def card(mib: int) -> str:
+    return setup.pick(machine(gpus=[("NVIDIA GeForce RTX", mib, "580.95.05")]))
+
+
+check("each card size gets the most it fits: 20, 16, 12, 11, 10, 8 and 6 GB",
+      [card(20480), card(16376), card(12282), card(11264), card(10240), card(8188), card(6144)],
+      ["nvidia-16gb", "nvidia-16gb", "nvidia-12gb", "ollama", "ollama", "nvidia-8gb", "nvidia-8gb"])
+check("no NVIDIA card gets Ollama", setup.pick(machine()), "ollama")
+check("two cards: the larger decides", setup.pick(machine(gpus=[("a", 8188, "x"), ("b", 16376, "x")])), "nvidia-16gb")
+example = yaml.safe_load((repo_root() / "examples/config.yaml").read_text())
+for p, model in (("nvidia-16gb", "granite4.2:8b"), ("nvidia-12gb", "granite4.2:8b"), ("nvidia-8gb", "qwen3.5:4b")):
+    cfg = WinstonConfig.model_validate(apply_profile(example, p))
+    check(f"{p}: Ollama with {model}", (cfg.llm.base_url, cfg.llm.model), ("http://127.0.0.1:11434/v1", model))
 
 # ---- Docker ----
 nvidia = setup.docker_state((FIX / "docker-info-nvidia.json").read_text(), "")

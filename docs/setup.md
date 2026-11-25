@@ -132,8 +132,14 @@ the distribution's guide and starts from the Ollama profile.
 | Found | Profile |
 | --- | --- |
 | NVIDIA with 24 GB or more | `nvidia-24gb` |
-| A smaller NVIDIA card, another GPU, or none | `ollama` |
+| NVIDIA with 14 GB or more (16 and 20 GB cards) | `nvidia-16gb` |
+| NVIDIA with 12 GB | `nvidia-12gb` |
+| NVIDIA with 10 or 11 GB, another GPU, or none | `ollama` |
+| NVIDIA with 8 GB or less | `nvidia-8gb` |
 | No usable local model, or your choice | `hosted` |
+
+The largest NVIDIA card decides. Why each size gets what it does: [sizing by the
+card](hardware.md#sizing-by-the-card).
 
 Free disk is read where the downloads land (the Hugging Face cache and Docker's root) and shown
 against what the pick needs. Every pick can be changed in the wizard, and on the settings pages later.

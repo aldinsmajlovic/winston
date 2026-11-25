@@ -17,8 +17,8 @@ machine by default, and any part can be swapped for a hosted service.
 
 ## Install
 
-Needs Linux and Home Assistant. Any of the [hardware profiles](docs/hardware.md) works: a 24 GB
-NVIDIA card, Ollama on any GPU or CPU, or a hosted model.
+Needs Linux and Home Assistant. Any of the [hardware profiles](docs/hardware.md) works: an NVIDIA
+card from 8 GB (24 GB for the largest brain), Ollama on any GPU or CPU, or a hosted model.
 
 ```sh
 curl -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
