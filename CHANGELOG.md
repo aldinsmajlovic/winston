@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.12 (unreleased)
+## 0.1.12 (2026-11-25)
 
 - Setup picks the brain and voice to fit your graphics card: 8, 12 and 16 GB NVIDIA cards now each get
   their own picks, so a smaller card no longer gets a brain that does not fit, and a 12 or 16 GB card
