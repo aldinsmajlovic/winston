@@ -380,7 +380,9 @@ reaches the running brain, voice server, channels, MCP servers or Spotify receiv
 - it copies `config.yaml` and `persona.md` from the data directory Winston uses (or `WINSTON_SOURCE`)
   to a temp directory, with fake keys;
 - every engine and channel is off, Home Assistant points at a fake one (`tests/fake_ha.py`), every
-  other address points nowhere and every port is moved to a free one.
+  other address points nowhere and every port is moved to a free one;
+- the brain is llama.cpp in Docker whatever the copied one is, so the Brain page's tests that switch
+  Runs on start from the same place on every computer.
 
 It checks that:
 

@@ -85,6 +85,10 @@ def isolate(node):
             node[k] = "127.0.0.1"
         else:
             isolate(v)
+# The brain on llama.cpp in Docker whatever this machine runs: the Brain page's tests switch Runs on away
+# from it, and would find Ollama or a server already picked.
+from winston.config.presets import apply
+cfg = apply(cfg, "llm", "llamacpp")
 for e in cfg.get("engines", {}).values():
     e["enabled"] = False
 for c in ("voice", "discord", "satellite", "assist", "ha_integration"):   # a save would announce the copy
