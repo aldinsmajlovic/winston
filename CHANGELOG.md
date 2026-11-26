@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.17 (unreleased)
+## 0.1.17 (2026-11-26)
 
 - The memory bar follows vLLM's share of the card as set in How it runs, as the model search already did,
   instead of always assuming 70%.
