@@ -189,7 +189,7 @@ sent to the phone, with Confirm and Decline.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/speaking-up-dark.png">
-  <img src="images/speaking-up-light.png" alt="The Speaking up page: quiet hours, spoken messages a day and the morning briefing, then when you put something off: when after work is and the parts of the day" width="720">
+  <img src="images/speaking-up-light.png" alt="The Speaking up page: when he may speak, with spoken messages a day and the morning briefing, then when you put something off: when after work is and the parts of the day" width="720">
 </picture>
 
 The Speaking up page (`/speaking-up`, in the settings sidebar) holds what every extension's messages

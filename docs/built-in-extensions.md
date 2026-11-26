@@ -171,7 +171,7 @@ kept in a SQLite file in its folder.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/extensions-news-dark.png">
-  <img src="images/extensions-news-light.png" alt="The News page: its switch, its status line with the topics it learned under it, what it can reach, and the top of its settings: topics, your music library, a county for crisis alerts and breaking stories a day" width="720">
+  <img src="images/extensions-news-light.png" alt="The News page: its switch, what it can reach and its status line, then the top of its settings: topics, topics from what he knows, your music library, a county for crisis alerts and breaking stories a day" width="720">
 </picture>
 
 ### Feeds

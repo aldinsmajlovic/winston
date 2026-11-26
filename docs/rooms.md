@@ -15,7 +15,7 @@ and "the lights" means that room's lights. A screen with no room is a Winston of
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/ways-to-talk-dark.png">
-  <img src="images/ways-to-talk-light.png" alt="Ways to talk: the Talk page card with the wall display link, the room boxes with their state, and Discord" width="720">
+  <img src="images/ways-to-talk-light.png" alt="Ways to talk: the Talk page card with the wall display link, then the room boxes with their settings and a box that is connected" width="720">
 </picture>
 
 ### A box's fields

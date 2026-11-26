@@ -677,7 +677,7 @@ and its page opens.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/extensions-news-dark.png">
-  <img src="images/extensions-news-light.png" alt="The News extension's page: its description, the Use News switch and its status, what it can reach, and the start of its settings" width="720">
+  <img src="images/extensions-news-light.png" alt="The News extension's page: its description, the Use News switch with what it can reach and its status, then the start of its settings" width="720">
 </picture>
 
 A tile opens the extension's own page (`/extensions/ID`), under the breadcrumb Extensions / its name,

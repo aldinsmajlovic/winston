@@ -21,8 +21,8 @@ The first-run wizard offers the same switch in its Home Assistant step, once Hom
 connected.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/assist-dark.png">
-  <img src="images/assist-light.png" alt="The Home Assistant Assist card on Ways to talk: the switch with its warning that the port has no password, the port, when Home Assistant last reached him and how many of its satellites he speaks on" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="images/from-home-assistant-dark.png">
+  <img src="images/from-home-assistant-light.png" alt="The From Home Assistant card on Ways to talk: the integration switched on with its port, the two steps and the buttons Download in Home Assistant, Add to Home Assistant and Pair with a code; then Assist switched on with its port, the warning that anyone on your network can ask him to act, when Home Assistant last reached him and how many of its satellites he speaks on" width="720">
 </picture>
 
 | Setting | Key | Default | What it does |

@@ -24,8 +24,8 @@ brings his entities.
 ## Adding him
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/ha-integration-dark.png">
-  <img src="images/ha-integration-light.png" alt="The Home Assistant integration card on Ways to talk: the switch, the port, the two steps, and the buttons Download in Home Assistant, Add to Home Assistant and Pair with a code" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="images/from-home-assistant-dark.png">
+  <img src="images/from-home-assistant-light.png" alt="The From Home Assistant card on Ways to talk: the integration switched on with its port, the two steps and the buttons Download in Home Assistant, Add to Home Assistant and Pair with a code; then Assist switched on with its port, the warning that anyone on your network can ask him to act, when Home Assistant last reached him and how many of its satellites he speaks on" width="720">
 </picture>
 
 It is The integration, the first half of the From Home Assistant card on Ways to talk (Assist is the
