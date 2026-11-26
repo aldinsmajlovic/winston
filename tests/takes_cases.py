@@ -7,13 +7,17 @@ asked with tts.model and its key. No hardware.
 import asyncio
 import json
 import os
+import shutil
 
 import httpx
 
-from harness import check, finish_checks
+from harness import REPO, check, finish_checks, scratch_data
 
-from winston.channels import voice as vp
-from winston.core.brain import HOME_LINES
+# the example config, not the instance's: its voice may be a hosted one whose key is elsewhere
+shutil.copy(REPO / "examples" / "config.yaml", scratch_data("winston-takes-") / "config.yaml")
+
+from winston.channels import voice as vp  # noqa: E402
+from winston.core.brain import HOME_LINES  # noqa: E402
 
 
 class Asked(Exception):
