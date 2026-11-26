@@ -145,7 +145,7 @@ From the top:
 - **Custom engines**, once there is one: servers Winston starts and keeps running, which nothing uses
   until a setting points at their address. Each row opens its page at `/status/engines/<name>`, which
   shows How it runs open.
-- **Web address**: Who can open this page, This computer only or Every device on your network
+- **Web address**: Who can open this page, Only his computer or Every device on your network
   (`control.host`). Open to the network, a warning says anyone on it can control him (and your home,
   once Home Assistant is set up), and a line says keys cannot be pasted on these pages then. It takes
   effect when Winston restarts. API reference opens `/docs`.
@@ -320,7 +320,7 @@ down) leaves a plain text box with the reason in a line under it.
 | Home Assistant entities, sensors, domains | Home Assistant's states, with each entity's name, state and an icon for its type |
 | Your Discord user ID, contacts | The members of the bot's servers, a pasted id looked up ([Discord](discord.md)) |
 | Sound before an announcement | None, and the sounds in `assets/sounds/` and `data/sounds/` |
-| Who can open this page | This computer only, Every device on your network |
+| Who can open this page | Only his computer, Every device on your network |
 
 ### Saving
 

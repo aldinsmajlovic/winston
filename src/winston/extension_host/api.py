@@ -113,6 +113,7 @@ class ErrorView(BaseModel):
 class ReachView(BaseModel):
     text: str
     risk: Literal["changes", "reads", "connects"]
+    online: bool = Field(False, description="It reaches the internet: what he sends it leaves your network")
     hosts: list[str] = Field(default_factory=list, description="The hosts it may reach, this computer as one")
 
 
@@ -224,12 +225,12 @@ def _loopback(host: str) -> bool:
 
 def _network(hosts: list[str]) -> ReachView:
     if "*" in hosts:
-        return ReachView(text="Uses any website", risk="connects")
-    shown = [h for h in hosts if not _loopback(h)] + (["This computer"] if any(map(_loopback, hosts)) else [])
-    if not shown[1:] and shown[0] == "This computer":
-        return ReachView(text="Connects to programs on this computer", risk="connects", hosts=shown)
+        return ReachView(text="Uses any website", risk="connects", online=True)
+    shown = [h for h in hosts if not _loopback(h)] + (["His computer"] if any(map(_loopback, hosts)) else [])
+    if not shown[1:] and shown[0] == "His computer":
+        return ReachView(text="Connects to programs on his computer", risk="connects", hosts=shown)
     more = f" and {len(shown) - 1} more" if shown[1:] else ""
-    return ReachView(text=f"Uses the internet: {shown[0]}{more}", risk="connects", hosts=shown)
+    return ReachView(text=f"Uses the internet: {shown[0]}{more}", risk="connects", hosts=shown, online=True)
 
 
 def reach(host: Host, permissions: dict[str, Any]) -> list[ReachView]:

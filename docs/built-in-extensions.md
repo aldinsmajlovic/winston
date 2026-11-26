@@ -13,7 +13,7 @@ you switch them on, each on its own page under Extensions, or with `winston ext 
 | --- | --- | --- | --- |
 | [**Agenda**](#agenda) (`agenda`) | "Coming up": 30 minutes before each event or task with a due time; "Today's events" in the briefing | Read your agenda | Reads Home Assistant: the calendars and to-do lists you pick |
 | [**Ask Claude**](#ask-claude) (`claude`) | Nothing | Ask Claude | Uses the internet: api.anthropic.com, through the Claude Code CLI |
-| [**Awareness**](#awareness) (`awareness`) | "Goodnight": after a busy day, when the evening goes quiet | Nothing | Connects to programs on this computer: Winston, for the day's requests |
+| [**Awareness**](#awareness) (`awareness`) | "Goodnight": after a busy day, when the evening goes quiet | Nothing | Connects to programs on his computer: Winston, for the day's requests |
 | [**Hevy**](#hevy) (`hevy`) | "Time to train": no workout for 3 days, when you are home; firmer from day 5 | Check your training | Uses the internet: api.hevyapp.com |
 | [**Later**](#later) (`later`) | "Done as asked", "Could not do it" | Do something later, List what is waiting, Cancel something waiting | Can run his actions for you; knows whether you are home; reads Home Assistant |
 | [**News**](#news) (`news`) | "Breaking news", "Crisis alerts", "Links you asked for", "Daily digest" | Read the news | Reads his memory; uses his brain for work in the background; uses any website (the feeds you pick) |
@@ -187,7 +187,7 @@ Each preset is a switch under Feeds:
 | Security | `security` | Off | BleepingComputer, The Hacker News, Krebs on Security, The Record, SecurityWeek, Dark Reading, The Register |
 | Music | `music` | Off | Pitchfork, NME, Stereogum, Rolling Stone, Consequence, Billboard, The Guardian's music pages |
 
-**Your feeds** (`feeds`, Add feed) takes any RSS or Atom address, with who publishes it, a region and
+**Your feeds** (`feeds`, Add a feed) takes any RSS or Atom address, with who publishes it, a region and
 a topic. A feed that is not answering shows as a warning on its page.
 
 ### Topics and settings
@@ -253,7 +253,7 @@ reminders do I have?", "cancel the one about Mum".
 Sensors you pick, such as phone batteries, with how long ago each last changed. Home Assistant's live
 context has no timestamps, so without this a reading can be hours old without him knowing.
 
-Each reading on its page (Add reading) has a name, a Sensor and an optional Second sensor (charging).
+Each reading on its page (Add a reading, under Readings) has a name, a Sensor and an optional Second sensor (charging).
 Picking them lets Sensors read them, exposed to the brain or not.
 
 **Read sensors** (`sensors_get_readings`) gives "Phone: 91% (discharging), last changed 45 minutes

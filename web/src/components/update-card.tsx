@@ -41,7 +41,7 @@ export function UpdateCard({ update, name, downtime }: { update: ReturnType<type
     const lines = [
       `${name} restarts and cannot hear, answer or speak for ${downtime}.`,
       'Your settings, memory and voices stay as they are.',
-      `Version ${u.version} stays on this computer, so you can go back to it.`,
+      `Version ${u.version} stays on his computer, so you can go back to it.`,
     ]
     if (await ask({ title: `Update to ${u.latest}?`, lines, choices: [{ label: 'Update', value: 'yes' }] })) start.mutate({ body: {} })
   }

@@ -11,8 +11,8 @@ export const CUSTOM = 'custom'
 // What a preset needs, in words.
 const NEEDS: Record<string, string> = {
   docker: 'Docker',
-  nvidia: 'NVIDIA GPU',
-  cuda: 'NVIDIA GPU (CUDA)',
+  nvidia: 'NVIDIA card',
+  cuda: 'NVIDIA card',
   ollama: 'Ollama installed',
   amd: 'AMD graphics card',
   internet: 'Sends your requests out of your network',
@@ -71,7 +71,7 @@ export function matchPreset(kind: Kind, config: Config, presets: Preset[]): stri
   return (hits.find((p) => slotSettings(p, kind).model === slot.model) ?? hits[0])?.id ?? CUSTOM
 }
 
-/** Slots whose preset the draft switches, each with the line a confirm says ("Hearing: Qwen3-ASR 0.6B on GPU")
+/** Slots whose preset the draft switches, each with the line a confirm says ("Hearing: Qwen3-ASR 0.6B on the graphics card")
  * and the paths that preset writes, so those are not listed field by field as well. */
 export function presetSwitches(saved: Config, draft: Config, presets: Presets | undefined) {
   if (!presets) return []

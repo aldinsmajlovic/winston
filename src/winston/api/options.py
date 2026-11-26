@@ -59,7 +59,7 @@ def _secret(name: str | None) -> str:
 
 def _control_hosts(cfg: WinstonConfig, params: dict) -> Options:
     """Who can open the web UI, in his words; the field still takes a typed address."""
-    return Options(name="control_hosts", choices=[Choice(value="127.0.0.1", label="This computer only"),
+    return Options(name="control_hosts", choices=[Choice(value="127.0.0.1", label="Only his computer"),
                                                   Choice(value="0.0.0.0", label="Every device on your network")])
 
 

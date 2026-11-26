@@ -116,7 +116,7 @@ class EngineConfig(Model):
     model_config = section("{engine}")
     driver: Literal["docker", "subprocess", "external"] = Field(
         title="Runs as",
-        description="Docker container: Winston runs an image. Process: Winston runs a command on this computer. "
+        description="Docker container: Winston runs an image. Process: Winston runs a command on his computer. "
                     "External server: something you run yourself; Winston only checks it.",
         json_schema_extra=ui(labels={"docker": "Docker container", "subprocess": "Process", "external": "External server"},
                              icons={"docker": "docker", "subprocess": "process", "external": "external"}))
@@ -144,14 +144,14 @@ class EngineConfig(Model):
                                 json_schema_extra=ui(drivers=["docker", "subprocess"],
                                                      key_title="Variable", value_title="Value"))
     volumes: dict[str, str] = Field(default_factory=dict, title="Volumes",
-                                    description="Folders the container sees: a path on this computer and where it "
+                                    description="Folders the container sees: a path on his computer and where it "
                                                 "appears inside the container.",
                                     json_schema_extra=ui(drivers=["docker"], key_title="Host path",
                                                          value_title="Container path"))
     runtime: str | None = Field(None, title="Container runtime", description="Such as nvidia.",
                                 json_schema_extra=ui(drivers=["docker"]))
     devices: list[str] = Field(default_factory=list, title="Devices",
-                               description="Device files on this computer the container gets, such as /dev/dri for "
+                               description="Device files on his computer the container gets, such as /dev/dri for "
                                            "an AMD card through Vulkan.",
                                json_schema_extra=ui(drivers=["docker"], widget="args", help="One per line."))
     ipc_host: bool = Field(False, title="IPC host", description="Shares the host's IPC namespace with the container.",
@@ -253,7 +253,7 @@ class LLMConfig(Model):
                                                          secret=secret("LLM_API_KEY", "API key",
                                                                        "From your provider's account page.")))
     model: str = Field(title="Model",
-                       description="Downloaded lists the models the engine can load from this computer. Typing "
+                       description="Downloaded lists the models the engine can load from his computer. Typing "
                                    "searches Hugging Face for what the engine loads (and Ollama's library for "
                                    "Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are "
                                    "listed once it is picked or named exactly.",
@@ -289,7 +289,7 @@ TRANSCRIPTION = {"stt.provider": ["openai_transcription"]}     # speech to text 
 class STTConfig(Model):
     model_config = section("voice", "satellite", slot="stt")
     provider: str = Field("parakeet", title="Hearing adapter",
-                          description="parakeet runs inside Winston on the CPU; openai_transcription sends the audio "
+                          description="parakeet runs inside Winston on the processor; openai_transcription sends the audio "
                                       "to a server. Runs on sets it.",
                           json_schema_extra=ui(hidden=True))
     base_url: str | None = Field(None, title="API address",
@@ -309,7 +309,7 @@ class STTConfig(Model):
                                    "the model name it knows.",
                        json_schema_extra=ui(options="stt_models"))
     quantization: str | None = Field("int8", title="Precision",
-                                     description="int8 is faster on the CPU at no audible accuracy cost; empty for "
+                                     description="int8 is faster on the processor at no audible accuracy cost; empty for "
                                                  "full precision.",
                                      json_schema_extra=ui(hidden=True, empty_means_off=True,
                                                           when={"stt.provider": ["parakeet", None]}))
@@ -409,7 +409,7 @@ class VoiceChannel(Model):
                           json_schema_extra=ui(help="Uses the browser's microphone with no wake word: he hears "
                                                     "everything until you press it again. Typing works either way."))
     host: str = Field("127.0.0.1", title="Address",
-                      description="Where the browser's voice is received. 127.0.0.1 keeps it on this computer; "
+                      description="Where the browser's voice is received. 127.0.0.1 keeps it on his computer; "
                                   "Winston passes the browser's connection to it.",
                       json_schema_extra=ui(hidden=True))
     port: int = Field(7860, ge=1, le=65535, title="Port", description="Pipecat's own test page is served here too.",
@@ -543,7 +543,7 @@ class SatelliteChannel(Model):
                            description="Port the boxes fetch his spoken replies from, on every interface.",
                            json_schema_extra=ui(hidden=True))
     public_host: str | None = Field(None, title="Address the boxes use",
-                                    description="This computer's address as the boxes reach it. Unset finds it "
+                                    description="His computer's address as the boxes reach it. Unset finds it "
                                                 "from the route to each box.",
                                     json_schema_extra=ui(hidden=True))
     session_idle_mins: int = Field(10, ge=1, title="New conversation after",
@@ -736,7 +736,7 @@ class ExtensionTool(Model):
                     "outside the voice.")
     offer: bool = Field(False, title="Shared with other apps",
                         description="Listed at Winston's /mcp address, for Claude Code and other MCP clients.",
-                        json_schema_extra=ui(help="AI apps on this computer that speak MCP can use it."))
+                        json_schema_extra=ui(help="AI apps on his computer that speak MCP can use it."))
 
 
 class McpServer(Model):
@@ -747,7 +747,7 @@ class McpServer(Model):
                                                            help="The command and its arguments, one per line."))
     url: str | None = Field(None, title="Address", description="Where it listens, for a server that talks over HTTP.")
     env: list[str] = Field(default_factory=list, title="Keys it needs",
-                           description="The keys it gets from this computer, by the name it reads each one by; it "
+                           description="The keys it gets from his computer, by the name it reads each one by; it "
                                        "gets no others.")
     token_env: str | None = Field(None, title="Token variable",
                                   description="For a server over HTTP: the variable in data/.env that holds its "
@@ -772,7 +772,7 @@ class ExtensionConfig(Model):
     publish: bool = Field(True, title="Show in Home Assistant",
                           json_schema_extra=ui(help="Its readings and buttons, as one device in Home Assistant, "
                                                     "when Winston's integration is added there."))
-    memory_mb: int = Field(500, ge=50, le=16000, title="Memory limit",
+    memory_mb: int = Field(500, ge=50, le=16000, title="Computer memory limit",
                            json_schema_extra=ui(unit="MB", help="Past this, it is stopped and this page says why."))
     mcp: McpServer | None = Field(None, title="MCP server", description="Set for an MCP server added as a "
                                                                           "tools-only extension.")
@@ -819,7 +819,7 @@ class TurnsConfig(Model):
     enabled: bool = Field(False, title="Keep recordings of what you say",
                           description="Also how long each step took, to find and mark his mistakes and test changes "
                                       "on them.",
-                          json_schema_extra=ui(help="Your audio, what he heard, did and said, kept on this computer. "
+                          json_schema_extra=ui(help="Your audio, what he heard, did and said, kept on his computer. "
                                                     "History's details, the diary and marking mistakes need it."))
     keep_days: int = Field(14, ge=1, le=365, title="Delete recordings after", json_schema_extra=ui(unit="days"))
     dir: str = Field("turns", title="Recordings folder",

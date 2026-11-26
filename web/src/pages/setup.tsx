@@ -221,7 +221,7 @@ function BrainStep({ page, presets, next }: StepProps) {
     <>
       <Card>
         <CardHeader>
-          <CardTitle>Picked for this computer</CardTitle>
+          <CardTitle>Picked for his computer</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <ul className="flex flex-col divide-y">

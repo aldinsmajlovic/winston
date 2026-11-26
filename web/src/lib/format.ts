@@ -11,6 +11,10 @@ export function since(epochSeconds: number): string {
 }
 
 /** "living room" -> "Living room". */
+/** "a feed", "an entity": a button's noun with its article ("Add a feed"). By the first letter, which holds
+ * for the nouns the schema names. */
+export const withArticle = (noun: string) => `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
+
 export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1)
 }

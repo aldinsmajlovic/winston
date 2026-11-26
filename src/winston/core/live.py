@@ -141,7 +141,7 @@ class Feed:
 _VERBS = {
     "hassturnon": ("Turning on {t}", "Turned on {t}", "Couldn't turn on {t}"),
     "hassturnoff": ("Turning off {t}", "Turned off {t}", "Couldn't turn off {t}"),
-    "hasslightset": ("Setting {t}", "Set {t}", "Couldn't set {t}"),
+    "hasslightset": ("Setting {t}", "Changed {t}", "Couldn't set {t}"),       # "Set" done reads as an order
     "getlivecontext": ("Checking the home", "Checked the home", "Couldn't check the home"),
     "getdatetime": ("Checking the time", "Checked the time", "Couldn't check the time"),
     "remember": ("Remembering {q}", "Remembered {q}", "Couldn't remember that"),
@@ -172,14 +172,46 @@ def _failed(label: str) -> str:
     return f"Couldn't {label[:1].lower()}{label[1:]}"
 
 
+# A done line is in the past tense, as the built-in verbs above are: "Add a reminder" did "Added a reminder".
+# ponytail: a fixed list of the verbs titles start with; a title led by any other word stays as it is.
+_IRREGULAR = {"read": "read", "do": "did", "go": "went", "get": "got", "find": "found", "send": "sent",
+              "make": "made", "take": "took", "run": "ran", "give": "gave", "tell": "told", "say": "said",
+              "buy": "bought", "write": "wrote", "begin": "began", "keep": "kept", "bring": "brought",
+              "put": "put", "set": "set", "skip": "skipped", "stop": "stopped", "plan": "planned",
+              "dim": "dimmed", "log": "logged", "drop": "dropped", "shut": "shut"}
+_REGULAR = {
+    "add", "ask", "cancel", "check", "list", "play", "start", "pause", "resume", "shuffle", "move", "rate",
+    "search", "open", "close", "turn", "change", "create", "delete", "remove", "update", "save", "show",
+    "look", "fetch", "follow", "like", "mark", "mute", "unmute", "note", "order", "queue", "record", "remind",
+    "rename", "reply", "restart", "schedule", "share", "snooze", "switch", "track", "call", "book", "block",
+    "clear", "copy", "edit", "empty", "lock", "unlock", "lower", "raise", "reset", "toggle", "translate",
+    "watch", "use", "count", "convert", "compare", "calculate", "summarize", "explain", "describe",
+    "announce", "arm", "disarm", "brighten", "connect", "download", "upload", "install", "load", "print",
+    "scan", "sync", "test", "clean", "water", "feed", "answer"}
+
+
+def _past(label: str) -> str:
+    verb, _, rest = label.partition(" ")
+    low = verb.lower()
+    if low in _IRREGULAR:
+        past = _IRREGULAR[low]
+    elif low in _REGULAR:
+        past = low + "d" if low.endswith("e") else low[:-1] + "ied" if low[-1] == "y" and low[-2] not in "aeiou" \
+            else low + "ed"
+    else:
+        return label
+    return " ".join([past[:1].upper() + past[1:] if verb[:1].isupper() else past, rest]).rstrip()
+
+
 def tool_label(name: str, args: dict | None, status: str) -> str:
-    """"Turned on Kitchen lights"; an extension's tool by its title and first text argument, "Play music: Daft
-    Punk", "Couldn't pause music"; another Home Assistant tool by its label and target, "Clean a room with
-    the vacuum: Kitchen"."""
+    """"Turned on Kitchen lights"; an extension's tool by its title and first text argument, in the past tense
+    once done, "Played music: Daft Punk", "Couldn't pause music"; another Home Assistant tool by its label and
+    target, "Cleaned a room with the vacuum: Kitchen"."""
     args = args if isinstance(args, dict) else {}
     if name in EXTENSION_TOOLS:
         title = EXTENSION_TOOLS[name][2]
         detail = next((v.strip() for v in args.values() if isinstance(v, str) and v.strip()), "")
+        title = _past(title) if status == "ok" else title
         return _failed(title) if status == "error" else f"{title}: {detail}" if detail else title
     base = name.split("__")[-1]
     target = args.get("name") or args.get("to") or args.get("area") or ""
@@ -188,7 +220,10 @@ def tool_label(name: str, args: dict | None, status: str) -> str:
         target = f"{args['area']} {PLURAL.get(domain, domain.replace('_', ' ') + 's')}"
     if (forms := _VERBS.get(base.lower())) is None:
         label = ha_tool_label(base)
-        return _failed(label) if status == "error" else f"{label}: {target}" if target else label
+        if status == "error":
+            return _failed(label)
+        label = _past(label) if status == "ok" else label
+        return f"{label}: {target}" if target else label
     detail = args.get("query") or args.get("fact") or args.get("question") or ""
     return forms[("running", "ok", "error").index(status)].format(t=target or "something", q=detail).strip()
 

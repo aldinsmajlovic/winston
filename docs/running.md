@@ -220,5 +220,5 @@ watched sensors in [built-in extensions](built-in-extensions.md).
 Extensions, and the Extensions page under Settings, are in [extensions](extensions.md): each runs as
 its own process, gets only its own keys, and its tools reach every channel's brain. What each action
 may do on its own is set on Actions. An action ticked under Share with other AI apps (on Actions
-while an extension is on, with the address to copy) is also offered to MCP apps on this computer, such
+while an extension is on, with the address to copy) is also offered to MCP apps on his computer, such
 as Claude Code, at http://127.0.0.1:8700/mcp.

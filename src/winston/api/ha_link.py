@@ -387,7 +387,7 @@ class HALink:
             return self.error or "Switch on Show him in Home Assistant and save first."
         addr = await asyncio.to_thread(address_towards, ha_url)
         if not addr:
-            return "This computer has no route to Home Assistant's address. Pair with a code instead."
+            return "His computer has no route to Home Assistant's address. Pair with a code instead."
         code = self.pairing.new()
         try:
             r = await ha.post("/api/config/config_entries/flow", json={"handler": "winston"})
@@ -416,8 +416,8 @@ class HALink:
             except httpx.HTTPError:
                 pass
             if (flow.get("errors") or {}).get("base") == "cannot_connect":
-                return (f"Home Assistant could not reach this computer at {addr}, port {self._port}. Open the port "
-                        f"to Home Assistant's address on this computer's firewall, and on the router between them.")
+                return (f"Home Assistant could not reach his computer at {addr}, port {self._port}. Open the port "
+                        f"to Home Assistant's address on his computer's firewall, and on the router between them.")
         logger.warning(f"home assistant: adding the integration ended with {flow}")
         return f"Home Assistant did not add him ({why or kind}). Pair with a code instead."
 

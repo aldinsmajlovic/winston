@@ -42,7 +42,7 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await expect(page.locator('h1')).toHaveText(/^Set up \S/)
     await expect(page.getByText('Step 1 of 5: Brain and voice')).toBeVisible()
     // The picks in one card; Change opens a pick's card from the Brain and Voice pages, and Done closes it.
-    await expect(page.locator('[data-slot="card-title"]', { hasText: 'Picked for this computer' })).toBeVisible()
+    await expect(page.locator('[data-slot="card-title"]', { hasText: 'Picked for his computer' })).toBeVisible()
     await expect(page.locator('[data-slot="card-title"]', { hasText: 'What runs his brain' })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Back' })).toHaveCount(0)  // the first step
     for (const title of ['What runs his brain', 'Speaking', 'Hearing']) {
@@ -91,7 +91,7 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await page.getByRole('option', { name: 'Every device on your network' }).click()
     if (address) await expect(page.getByText(`From a phone or another device here, open http://${address}:`)).toBeVisible()
     await who.click()
-    await page.getByRole('option', { name: 'This computer only' }).click()
+    await page.getByRole('option', { name: 'Only his computer' }).click()
 
     await page.getByRole('button', { name: 'Finish and go to Talk' }).click()
     await expect(page).toHaveURL(/:\d+\/$/)

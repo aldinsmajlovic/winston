@@ -33,6 +33,7 @@ import { InfoTip } from '@/components/info-tip'
 import { KindIcon } from '@/components/kind-icon'
 import { HintWordsField } from '@/components/hint-words-field'
 import { KeyedMapField } from '@/components/keyed-map-field'
+import { withArticle } from '@/lib/format'
 import { AccountField } from '@/components/account-field'
 import { SecretField } from '@/components/secret-field'
 import { Adornments } from '@/lib/adornments'
@@ -244,6 +245,9 @@ function ObjectFieldTemplate({ title, properties, schema, fieldPathId, registry,
 /** A plain list (domains): its label and (i) with Add, then one box per entry with remove. */
 function ArrayFieldTemplate({ fieldPathId, title, schema, items, canAdd, onAddClick, disabled, readonly }: ArrayFieldTemplateProps) {
   const adornment = useContext(Adornments)[fieldPathId.$id]
+  // What one item is called ("Topic"), so the button reads "Add a topic" as everywhere else.
+  const item = schema.items
+  const noun = item && typeof item === 'object' && !Array.isArray(item) && typeof item.title === 'string' ? item.title : undefined
   return (
     <div id={fieldPathId.$id} className="flex flex-col gap-2">
       <div className="flex items-center gap-1.5">
@@ -252,9 +256,9 @@ function ArrayFieldTemplate({ fieldPathId, title, schema, items, canAdd, onAddCl
         <span className="flex-1" />
         {adornment}
         {canAdd ? (
-          <Button type="button" variant="outline" size="sm" aria-label={`Add to ${title}`} disabled={disabled || readonly} onClick={onAddClick}>
+          <Button type="button" variant="outline" size="sm" aria-label={noun ? undefined : `Add to ${title}`} disabled={disabled || readonly} onClick={onAddClick}>
             <Plus />
-            Add
+            {noun ? `Add ${withArticle(noun.toLowerCase())}` : 'Add'}
           </Button>
         ) : null}
       </div>

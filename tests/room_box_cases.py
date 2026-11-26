@@ -195,7 +195,7 @@ async def main():
         denied = str(e)
     os.chmod(box.port, 0o600)
     check("a port this user may not open", (denied, args.exists(), any((tmp / "cache").rglob("*.bin"))),
-          (f"This computer's user may not open {box.port}. Run `winston setup` again, then restart this computer.",
+          (f"The user he runs as may not open {box.port}. Run `winston setup` again, then restart his computer.",
            False, False))
 
     seen, f, probed = await flashed(box.port)
@@ -224,7 +224,7 @@ async def main():
         far = "no error"
     except room_box.BoxError as e:
         far = str(e)
-    check("not reachable", far, "The box joined Home at 127.0.0.2, but this computer cannot reach it there (port 6053).")
+    check("not reachable", far, "The box joined Home at 127.0.0.2, but his computer cannot reach it there (port 6053).")
     server.close()
     keyed = await esphome_api(api_port, key=True)
     try:
@@ -317,7 +317,7 @@ async def api():
             box.address = "127.0.0.4"
             r = await c.post("/api/setup/box/wifi", json={"port": box.port, "ssid": "Home", "password": PW})
             check("a box this computer cannot reach", (r.status_code, r.json()["detail"]),
-                  (409, "The box joined Home at 127.0.0.4, but this computer cannot reach it there (port 6053)."))
+                  (409, "The box joined Home at 127.0.0.4, but his computer cannot reach it there (port 6053)."))
             check("nothing saved", (await c.get("/api/config")).json()["channels"]["satellite"]["devices"], {})
             r = await c.post("/api/setup/box/ha-disable", json={"entry_id": "entry_box"})
             check("Home Assistant not there to disable it, in words",

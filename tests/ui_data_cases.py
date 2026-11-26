@@ -49,22 +49,25 @@ check("reach, riskiest first", [(r.risk, r.text) for r in lines], [
     ("reads", "Knows whether you are home"), ("reads", "Uses actions of Other and gone"),
     ("connects", "Uses the internet: api.example.com and 2 more")])
 check("its hosts, this computer once", lines[-1].hosts,
-      ["api.example.com", "cdn.example.com", "This computer"])
+      ["api.example.com", "cdn.example.com", "His computer"])
 check("any website", [(r.text, r.hosts) for r in reach(host, {"network": ["*"]})], [("Uses any website", [])])
+# Online, for the "Uses the internet" tag on its actions: the internet is, his own computer is not.
+check("online", [r.online for r in reach(host, {"network": ["*"]}) + reach(host, {"network": ["api.example.com"]})
+                 + reach(host, {"network": ["localhost"]})], [True, True, False])
 check("only this computer", [r.text for r in reach(host, {"network": ["localhost", "::1"]})],
-      ["Connects to programs on this computer"])
+      ["Connects to programs on his computer"])
 check("read-only tools and memory", [r.text for r in reach(host, {"tools": "read", "memory": "read"})],
       ["Can use his read-only actions", "Reads his memory"])
 
 # Tool lines on Talk: an extension's tool by its own title; a Home Assistant tool in words, never its name.
 know_extension_tools([{"name": "music_play", "extension": "music", "title": "Music",
                        "tool_title": "Play music"}])
-check("a tool with an argument", tool_label("music_play", {"query": " Daft Punk "}, "ok"),
-      "Play music: Daft Punk")
+check("a tool with an argument, done, in the past tense", tool_label("music_play", {"query": " Daft Punk "}, "ok"),
+      "Played music: Daft Punk")
 check("a tool without one", tool_label("music_play", {"volume": 3}, "running"), "Play music")
 check("a tool that failed", tool_label("music_play", {"query": "x"}, "error"), "Couldn't play music")
 check("Home Assistant, by its label",
-      tool_label("vacuum__HassVacuumCleanArea", {"area": "Kitchen"}, "ok"), "Clean a room with the vacuum: Kitchen")
+      tool_label("vacuum__HassVacuumCleanArea", {"area": "Kitchen"}, "ok"), "Cleaned a room with the vacuum: Kitchen")
 check("and failing", tool_label("HassVacuumCleanArea", {}, "error"), "Couldn't clean a room with the vacuum")
 check("a known verb keeps its sentence", tool_label("HassTurnOn", {"name": "Desk lamp"}, "ok"),
       "Turned on Desk lamp")

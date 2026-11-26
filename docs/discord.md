@@ -38,7 +38,7 @@ Under `channels.discord`, on Settings, Ways to talk, Discord:
 
 ### People he can message
 
-A table (Person, Discord user) with Add person, a dialog per contact and trash with Undo.
+A table (Person, Discord user) with Add a person, a dialog per contact and trash with Undo.
 
 - **With the token set**, the dialog lists the people in the bot's servers by name, grouped by server,
   and picking one fills in the name. Listing needs Server Members Intent, and says so without it.

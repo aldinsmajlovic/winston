@@ -184,7 +184,7 @@ def guard(request: Request, control_hosts: list[str], body: bool, name: str | No
     if exposed := [h for h in control_hosts if not loopback(h)]:
         if name:        # body: a paste (PUT); else a removal (DELETE)
             what, how = ("pasted", f"Add {name} to") if body else ("removed", f"Remove {name} from")
-            raise HTTPException(403, f"Keys can be {what} here only while this page is open to this computer "
+            raise HTTPException(403, f"Keys can be {what} here only while this page is open to his computer "
                                      f"alone. {how} the .env file in the data folder instead.")
         raise HTTPException(403, f"secrets are set from the UI only while winstond listens on this machine alone "
                                  f"(control.host is {exposed[0]}); edit data/.env instead")

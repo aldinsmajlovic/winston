@@ -3,7 +3,7 @@
 export const SETUP_STEPS: Record<string, { title: string; intro: string }> = {
   brain: {
     title: 'Brain and voice',
-    intro: 'What he thinks, speaks and hears with, picked for this computer. Change any of them here, or later in Settings.',
+    intro: 'What he thinks, speaks and hears with, picked for his computer. Change any of them here, or later in Settings.',
   },
   home_assistant: {
     title: 'Home Assistant',
@@ -15,6 +15,6 @@ export const SETUP_STEPS: Record<string, { title: string; intro: string }> = {
   },
   box: {
     title: 'A room box',
-    intro: 'Plug a Voice PE into this computer with USB-C. He puts his firmware on it, gives it your Wi-Fi and puts it in a room.',
+    intro: 'Plug a Voice PE into his computer with USB-C. He puts his firmware on it, gives it your Wi-Fi and puts it in a room.',
   },
 }

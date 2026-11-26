@@ -26,6 +26,8 @@ export type ActionItem = {
   enabled: boolean
   /** From an MCP server or a package: the declared tier is only what it says about itself. */
   thirdParty: boolean
+  /** Its extension reaches the internet: what he sends it leaves your network, and it may cost money. */
+  online?: boolean
 }
 
 type Change = { enabled?: boolean | null; tier?: Tier | null }
@@ -157,6 +159,8 @@ function ActionRow({ item, details, readOnly, onChoose }: { item: ActionItem; de
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="font-medium">{item.title}</span>
         {item.summary ? <span className="text-sm text-muted-foreground">{item.summary}</span> : null}
+        {/* Under the summary, apart from the Permission choice, so it does not read as its label. */}
+        <span className="text-sm text-muted-foreground">{item.online ? `${marker(item)}, uses the internet` : marker(item)}</span>
         {details ? (
           <>
             <Button type="button" variant="ghost" size="sm" className={cn(FOLD, 'self-start')} aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -172,9 +176,8 @@ function ActionRow({ item, details, readOnly, onChoose }: { item: ActionItem; de
           </>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-3 sm:justify-end">
-        <span className="text-sm text-muted-foreground">{marker(item)}</span>
-        {readOnly ? null : (
+      {readOnly ? null : (
+        <div className="flex items-center gap-3 sm:justify-end">
           <Select value={permission(item)} onValueChange={(v) => onChoose(v as Permission)}>
             <SelectTrigger size="sm" aria-label={`Permission for ${item.title}`}>
               <SelectValue>{PERMISSIONS[permission(item)]}</SelectValue>
@@ -188,8 +191,8 @@ function ActionRow({ item, details, readOnly, onChoose }: { item: ActionItem; de
               ))}
             </SelectContent>
           </Select>
-        )}
-      </div>
+        </div>
+      )}
     </li>
   )
 }

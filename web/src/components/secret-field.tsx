@@ -54,7 +54,7 @@ export function SecretField({ id, names, resolve, label, placeholder, disabled, 
     const choice = await ask({
       title: `Remove the saved ${inSentence(label)}?`,
       lines: [
-        'It is deleted from this computer now, without waiting for Save.',
+        'It is deleted from his computer now, without waiting for Save.',
         ...(restarts.length ? ['What is running keeps using it until it restarts.'] : []),
       ],
       choices: [{ label: 'Remove', value: 'yes', destructive: true }],

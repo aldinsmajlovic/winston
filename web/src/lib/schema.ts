@@ -250,7 +250,7 @@ function secretField(field: JsonSchema, meta: SecretMeta, path: Path, config: un
   return {
     type: 'string',
     title: meta.label,
-    description: 'Kept on this computer and never shown again.',
+    description: 'Kept on his computer and never shown again.',
     help: meta.help ?? field.help,
     group: field.group,
     widget: 'secret',

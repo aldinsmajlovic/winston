@@ -24,7 +24,7 @@ class Sensor(Model):
 
 
 class SensorsSettings(Settings):
-    sensors: dict[str, Sensor] = Field(default_factory=dict, key_title="Reading",
+    sensors: dict[str, Sensor] = Field(default_factory=dict, title="Readings", key_title="Reading",
                                        description="Each reading comes with how long ago it changed.")
 
 

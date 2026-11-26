@@ -41,7 +41,7 @@ export default function AssistantPage() {
   return (
     <SettingsPage
       title="Assistant"
-      intro="His name, manner and language, and what he keeps about you on this computer."
+      intro="His name, manner and language, and what he keeps about you on his computer."
       page={s.page}
     >
       <Card>

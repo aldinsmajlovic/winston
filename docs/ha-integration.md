@@ -49,7 +49,7 @@ Saving applies it at once, with no restart.
 | Add to Home Assistant says | Means |
 | --- | --- |
 | Home Assistant does not have Winston's integration yet | Step 1 is not done, or Home Assistant was not restarted |
-| Home Assistant could not reach this computer at ..., port ... | A firewall drops the port: open it to Home Assistant's address only, on this computer and on the router between the subnets, as for [Assist](assist.md#adding-him-to-home-assistant) |
+| Home Assistant could not reach his computer at ..., port ... | A firewall drops the port: open it to Home Assistant's address only, on this computer and on the router between the subnets, as for [Assist](assist.md#adding-him-to-home-assistant) |
 | Winston's account in Home Assistant is not an administrator's | Adding integrations needs one: pair with a code instead |
 
 ### Pairing with a code
@@ -62,7 +62,7 @@ When Winston is not connected to Home Assistant, or its account is not an admini
 2. On the card, select Pair (Pair with a code). A six-digit code shows for ten minutes.
 3. In Home Assistant, open Settings, Devices and services. Winston shows under Discovered: add him and
    type the code. Not discovered? Discovery stays inside one subnet, so on another VLAN select Add
-   integration, pick Winston, and give this computer's address, the port and the code.
+   integration, pick Winston, and give his computer's address, the port and the code.
 
 ### Using him as the agent
 

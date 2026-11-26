@@ -24,7 +24,7 @@ and "the lights" means that room's lights. A screen with no room is a Winston of
 | --- | --- | --- |
 | Room | the box's key | The room's name, like "main room" |
 | Address | `host` | The box's IP address or `.local` name |
-| Encryption key | `key_env` | Only for a box Home Assistant adopted. Kept on this computer under a variable of the room's own, `VOICE_PE_KEY_MAIN_ROOM`, so two boxes never share one |
+| Encryption key | `key_env` | Only for a box Home Assistant adopted. Kept on his computer under a variable of the room's own, `VOICE_PE_KEY_MAIN_ROOM`, so two boxes never share one |
 | Wake word | `wake_word` | See [the wake word](voice-pe.md#the-wake-word) |
 | Home Assistant area | `area` | The room's name in Home Assistant, for "turn off the lights". Unset, the room's own name is used. The field lists Home Assistant's areas (`/api/options/ha_areas`) |
 

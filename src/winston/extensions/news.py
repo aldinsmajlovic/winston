@@ -38,9 +38,9 @@ import re
 import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field as PField
 from winston_sdk import Extension, Extensions, Field, Link, Model, Nudge, Settings, Status
 
 ext = Extension()
@@ -138,7 +138,7 @@ class NewsSettings(Settings):
     security: bool = Field(False, title="Security", help=_outlets("security") + ".", group="Feeds")
     music: bool = Field(False, title="Music", help=_outlets("music") + ".", group="Feeds")
     feeds: dict[str, Feed] = Field(default_factory=dict, title="Your feeds", group="Feeds", key_title="Feed")
-    topics: list[str] = Field(default_factory=list, help="Stories about these come first, and count when deciding "
+    topics: list[Annotated[str, PField(title="Topic")]] = Field(default_factory=list, help="Stories about these come first, and count when deciding "
                                                          "what is breaking.")
     learn_topics: bool = Field(True, title="Topics from what he knows",
                                help="Once a day, up to eight more from what he remembers, his diary and your music.")

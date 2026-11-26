@@ -43,7 +43,8 @@ Do:
 Don't:
 
 - No monospace, no small spaced-out capitals as labels, no second font for titles. Mixed type is what
-  makes a page read as machine-made.
+  makes a page read as machine-made. One exception: text you paste elsewhere exactly (`CopyText`: a
+  YAML example, an address) is monospace, since its spaces and indents matter. Never a label or a value.
 - No glows, gradients or decorative shadows, and nothing hand-tuned per theme.
 - No inline styles, no custom CSS classes, no em dashes. The build fails on all three.
 
@@ -142,7 +143,9 @@ him. The role names come from `partName` and `engineLabel` (`api/status.ts`) and
 | Announcement | Announcement: something an automation or app asked him to say | |
 | Extension permissions | What it can reach | May reach, permissions |
 | Secret | Key, or the service's own word (Bot token, Access token) | secret, variable, data/.env |
-| winstond, the data folder | Winston, this computer | winstond, data/.env, winston up |
+| RAM | Computer memory, graphics memory; Memory alone is what he remembers | memory, RAM, VRAM |
+| CPU, GPU | The processor, the graphics card ("NVIDIA card" when the make matters) | CPU, GPU |
+| winstond, the data folder | Winston, his computer | winstond, data/.env, winston up |
 | A switch | Its effect as a verb phrase | Enabled |
 | Dashboard | Wall display | dashboard |
 | Presence `idle` | Ready | Idle |
@@ -162,7 +165,7 @@ the program ("Start with Winston", "Takes effect when Winston restarts").
 
 | Element | Rule | Example |
 | --- | --- | --- |
-| Label | Names the effect in your words: a noun phrase for a value, a verb phrase for a switch, a verb for a button. Never "Enabled", never the config key | "Delete recordings after", "Remember what you tell him", "Add a box" |
+| Label | Names the effect in your words: a noun phrase for a value, a verb phrase for a switch, a verb for a button. An add button is "Add a" and what one entry is called. Never "Enabled", never the config key | "Delete recordings after", "Remember what you tell him", "Add a box" |
 | Help (`help`) | One visible line under the control. One sentence of at most about 140 characters, and never repeats the label | |
 | Description (`description`) | Behind the (i): background, trade-offs and examples. Does not repeat the help | |
 | Unit | The schema's `unit`, drawn after the value, never part of a title | |
@@ -172,10 +175,11 @@ the program ("Start with Winston", "Takes effect when Winston restarts").
 | Search with no results | "Nothing matches." ("None yet." is only for simple maps: environment, volumes) | |
 | Status line (`StatusLine`) | An icon for its tone and one sentence, with what to do as a labelled button. The reason is in the words, never only in a tooltip. A suggestion (Set up next on Status) is muted, not a warning | "Hevy needs a key." and Open Hevy |
 | Confirm title | A question that names the action and the part by its role | "Stop the brain?", "Remove the saved bot token?" |
-| Confirm lines | What stops working, for how long, and what changes outside Winston | "It is deleted from this computer now, without waiting for Save." |
+| Confirm lines | What stops working, for how long, and what changes outside Winston | "It is deleted from his computer now, without waiting for Save." |
 | Confirm button | Repeats the verb, never OK | "Stop", "Run without asking" |
 | Toast | What happened, in the confirm's words and the past tense, with Undo wherever it can be undone | "Forgot: ...", "Saved; added 1 name" |
 | Error | What happened and what to do, in plain words. The exception goes to the log, never to the page | "Can't reach Home Assistant: nothing answered at that address" |
+| Preset hint | Two parts: what you get, then what it needs. No model versions, sizes or timings: the memory bar and the download line say those | "Clones a voice from a short clip, in English only. Needs an NVIDIA card." |
 
 When a field gets help:
 
@@ -190,7 +194,8 @@ Never:
   or help. `description` names them only when they are the choice itself; measurements go to
   `docs/decisions.md`;
 - a welcome, marketing, or an intro or card lead that repeats the title;
-- `data/.env` or winstond: say "this computer";
+- `data/.env` or winstond: say "his computer", or "the computer he runs on" in a sentence. Never "this
+  computer": read on a phone or a wall panel, it means that device;
 - secret: say "key".
 
 `tests/schema_copy_cases.py` holds the config schema to these rules. It fails on:
@@ -215,7 +220,7 @@ The conversation is the page.
 | --- | --- |
 | You | On the right in a soft bubble |
 | Him | On the left as plain text |
-| An action | One muted line with its icon, worded from the action's title ("Turned on Kitchen lights", "Search the web: opening hours") |
+| An action | One muted line with its icon, worded from the action's title, in the past tense once done ("Turned on Kitchen lights", "Searched the web: opening hours"). A title led by a word that is not a known verb stays as it is |
 | A new conversation | A divider that says why it started |
 | Lines from another place | Where, on the first line of a run ("Kitchen box", "Discord") |
 | What he brings up on his own | One line with a bell: the time, what he said, from whom and where it went |
@@ -518,8 +523,10 @@ Drawn by: `SlotCard`, `HowItRuns`, `Fold`.
 Actions from every source are drawn by `ActionList`. Each row has:
 
 - the title and the summary;
-- "Only looks" or "Changes things". For an MCP server or a package, what it says about itself: "Says
-  it only looks", "Says it changes things" or "Not marked safe";
+- under the summary, apart from the Permission choice: "Only looks" or "Changes things". For an MCP
+  server or a package, what it says about itself: "Says it only looks", "Says it changes things" or
+  "Not marked safe". An extension that reaches the internet adds "uses the internet" ("Only looks,
+  uses the internet"): what he sends it leaves the house, and it may cost money;
 - one Permission: On its own, Asks you first, Off.
 
 Rules for the list:

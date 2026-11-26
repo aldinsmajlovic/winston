@@ -1,3 +1,4 @@
+import { withArticle } from '@/lib/format'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import { CircleAlert, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -254,7 +255,7 @@ function MapTable({
         <InfoTip text={schema.description} label={schema.title} />
         <Button type="button" variant="outline" size="sm" className="ml-auto" disabled={locked} onClick={() => setEditing({ key: '', value: primitive ? '' : {} })}>
           <Plus />
-          {`Add ${keyTitle.toLowerCase()}`}
+          {`Add ${withArticle(keyTitle.toLowerCase())}`}
         </Button>
       </div>
       {schema.help ? <p className="text-sm text-muted-foreground">{schema.help}</p> : null}
@@ -271,7 +272,7 @@ function MapTable({
       <ItemDialog
         open={editing !== null}
         onOpenChange={(open) => !open && setEditing(null)}
-        title={editing?.original ?? `Add ${keyTitle.toLowerCase()}`}
+        title={editing?.original ?? `Add ${withArticle(keyTitle.toLowerCase())}`}
         keyLabel={keyTitle}
         keyInfo={schema.key_description ?? schema.description}
         keyValue={editing?.key ?? ''}

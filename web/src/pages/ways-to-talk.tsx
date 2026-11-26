@@ -359,7 +359,7 @@ function AssistStatus() {
         <p>Home Assistant reached him at {when(st.last_seen)}.</p>
       ) : (
         <p className="text-muted-foreground">
-          Not reached since Winston started. In Home Assistant: Settings, Devices and services, then Winston under Discovered, or add Wyoming Protocol with this computer's address and the port.
+          Not reached since Winston started. In Home Assistant: Settings, Devices and services, then Winston under Discovered, or add Wyoming Protocol with his computer's address and the port.
         </p>
       )}
       {st.listening && n > 0 ? (
@@ -430,7 +430,7 @@ function IntegrationStatus({ page }: { page: SettingsState }) {
         </ol>
       ) : (
         <p className="text-muted-foreground">
-          Not paired. Download Winston from Home Assistant's Marketplace (HACS before 2026.11) and restart it, then select Pair and type the code there. Home Assistant finds him on its own, or asks for this computer's address and the port.
+          Not paired. Download Winston from Home Assistant's Marketplace (HACS before 2026.11) and restart it, then select Pair and type the code there. Home Assistant finds him on its own, or asks for his computer's address and the port.
         </p>
       )}
       <div className="flex flex-wrap gap-2">

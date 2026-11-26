@@ -186,7 +186,7 @@ and applies at the next `winston up`.
 
 An engine or channel a save adds starts at once; one it drops or switches off stops when the save
 lands. The save's confirm says both, and names a slot whose preset changed by the preset ("Hearing:
-Qwen3-ASR 0.6B on GPU").
+Qwen3-ASR 0.6B on the graphics card").
 
 ### Keys
 

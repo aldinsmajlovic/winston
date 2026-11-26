@@ -2114,7 +2114,7 @@ export interface components {
         EngineConfig: {
             /**
              * Runs as
-             * @description Docker container: Winston runs an image. Process: Winston runs a command on this computer. External server: something you run yourself; Winston only checks it.
+             * @description Docker container: Winston runs an image. Process: Winston runs a command on his computer. External server: something you run yourself; Winston only checks it.
              * @enum {string}
              */
             driver: "docker" | "subprocess" | "external";
@@ -2162,7 +2162,7 @@ export interface components {
             };
             /**
              * Volumes
-             * @description Folders the container sees: a path on this computer and where it appears inside the container.
+             * @description Folders the container sees: a path on his computer and where it appears inside the container.
              */
             volumes?: {
                 [key: string]: string;
@@ -2174,7 +2174,7 @@ export interface components {
             runtime?: string | null;
             /**
              * Devices
-             * @description Device files on this computer the container gets, such as /dev/dri for an AMD card through Vulkan.
+             * @description Device files on his computer the container gets, such as /dev/dri for an AMD card through Vulkan.
              */
             devices?: string[];
             /**
@@ -2395,7 +2395,7 @@ export interface components {
              */
             publish?: boolean;
             /**
-             * Memory limit
+             * Computer memory limit
              * @default 500
              */
             memory_mb?: number;
@@ -3140,7 +3140,7 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Model
-             * @description Downloaded lists the models the engine can load from this computer. Typing searches Hugging Face for what the engine loads (and Ollama's library for Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are listed once it is picked or named exactly.
+             * @description Downloaded lists the models the engine can load from his computer. Typing searches Hugging Face for what the engine loads (and Ollama's library for Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are listed once it is picked or named exactly.
              */
             model: string;
             /**
@@ -3278,7 +3278,7 @@ export interface components {
             url?: string | null;
             /**
              * Keys it needs
-             * @description The keys it gets from this computer, by the name it reads each one by; it gets no others.
+             * @description The keys it gets from his computer, by the name it reads each one by; it gets no others.
              */
             env?: string[];
             /**
@@ -3633,6 +3633,12 @@ export interface components {
              */
             risk: "changes" | "reads" | "connects";
             /**
+             * Online
+             * @description It reaches the internet: what he sends it leaves your network
+             * @default false
+             */
+            online?: boolean;
+            /**
              * Hosts
              * @description The hosts it may reach, this computer as one
              */
@@ -3762,7 +3768,7 @@ export interface components {
         STTConfig: {
             /**
              * Hearing adapter
-             * @description parakeet runs inside Winston on the CPU; openai_transcription sends the audio to a server. Runs on sets it.
+             * @description parakeet runs inside Winston on the processor; openai_transcription sends the audio to a server. Runs on sets it.
              * @default parakeet
              */
             provider?: string;
@@ -3784,7 +3790,7 @@ export interface components {
             model?: string;
             /**
              * Precision
-             * @description int8 is faster on the CPU at no audible accuracy cost; empty for full precision.
+             * @description int8 is faster on the processor at no audible accuracy cost; empty for full precision.
              * @default int8
              */
             quantization?: string | null;
@@ -3860,7 +3866,7 @@ export interface components {
             http_port?: number;
             /**
              * Address the boxes use
-             * @description This computer's address as the boxes reach it. Unset finds it from the route to each box.
+             * @description His computer's address as the boxes reach it. Unset finds it from the route to each box.
              */
             public_host?: string | null;
             /**
@@ -4695,7 +4701,7 @@ export interface components {
             enabled?: boolean;
             /**
              * Address
-             * @description Where the browser's voice is received. 127.0.0.1 keeps it on this computer; Winston passes the browser's connection to it.
+             * @description Where the browser's voice is received. 127.0.0.1 keeps it on his computer; Winston passes the browser's connection to it.
              * @default 127.0.0.1
              */
             host?: string;

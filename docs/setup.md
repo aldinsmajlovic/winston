@@ -101,8 +101,8 @@ and plain when piped or with `NO_COLOR` set.
 
 A page cannot run anything as root, so setup installs as root only what its starting profile needs. A
 pick in the wizard or on the Brain and Voice pages that needs more (Ollama on a computer set up for
-NVIDIA, or llama.cpp where Docker is missing) says so on its card: "Ollama is not on this computer
-yet, and installing it needs root. Save, then in a terminal here run: winston setup system".
+NVIDIA, or llama.cpp where Docker is missing) says so on its card: "Ollama is not on his computer
+yet, and installing it needs root. Save, then in a terminal on it run: winston setup system".
 `winston setup system` runs only the root steps for the saved brain, voice and hearing (Docker, its
 group, NVIDIA's container toolkit, Ollama), each shown first and run on yes, and leaves the settings
 alone. Then start the engine again on Status. A card that needs an NVIDIA graphics card without one
@@ -205,7 +205,7 @@ or http://localhost:8700/setup on this computer.
 
 winstond opens itself to the network for setup only when Who can open this page (`control.host`) is
 this computer and no `--host` was given. When the wizard ends, the page follows Who can open this page
-again. Its last step asks, and the answer applies at once: with This computer only, another address is
+again. Its last step asks, and the answer applies at once: with Only his computer, another address is
 refused from Finish on, and from Winston's next start he listens on this computer alone.
 
 ### While setup is under way
@@ -246,7 +246,7 @@ and voice: skipped during setup." with Set it up) after the wizard ends.
   <img src="images/setup-light.png" alt="The setup wizard's Brain and voice step: the graphics memory bar at 92% with the picks recommended for the card, then llama.cpp with the 27B" width="720">
 </picture>
 
-The profile's picks, preselected, in one card, **Picked for this computer**: what runs his brain,
+The profile's picks, preselected, in one card, **Picked for his computer**: what runs his brain,
 speaking and hearing, each with what it still downloads and **Change**, then what is downloaded in all
 against the free space ("24.2 GB to download in all, 312 GB free."), and a warning when it does not fit.
 Change opens that pick's card from the Brain and Voice pages under it (Runs on, the brain's model and
@@ -255,7 +255,7 @@ Brain and Voice pages keep it for later.
 
 A **Graphics memory** bar (**Computer memory** without a graphics card) sits on top and stays
 in view ([web UI](web-ui.md#graphics-memory)). Here it also says whether the picks are the ones
-recommended for this computer, with **Use the recommendation** once you have changed one. The recommendation is the
+recommended for his computer, with **Use the recommendation** once you have changed one. The recommendation is the
 profile setup picked, with the context filled last ([hardware](hardware.md#context-filled-last)).
 
 - **Download and continue** saves a changed pick, without a confirm: the card above it already says
@@ -342,7 +342,7 @@ by default, without asking.
   <img src="images/setup-box-light.png" alt="The setup wizard's A room box step at Wi-Fi: the network Home picked from those the box sees, with its lock, the note that only 2.4 GHz networks show, and the password" width="720">
 </picture>
 
-1. **Plug a Voice PE into this computer with USB-C.** Until one is there the step says "Waiting for a
+1. **Plug a Voice PE into his computer with USB-C.** Until one is there the step says "Waiting for a
    Voice PE on USB-C." and looks again every 2 s. Winston finds it by its USB id (Espressif's
    303a:1001, read from sysfs) and asks it over Improv Serial what it runs ("Found a Voice PE on
    /dev/ttyACM0, running Home Assistant Voice PE 25.10.0.").
@@ -358,7 +358,7 @@ by default, without asking.
    says "The box could not join Home. Check the password." and is tried again without a new flash.
 4. **Winston checks he reaches it.** The box prints its address in its log once it has joined, and
    Winston checks he reaches its ESPHome API there (port 6053). When he cannot, as from another
-   network, the step says so ("The box joined Home at 192.168.1.50, but this computer cannot reach it
+   network, the step says so ("The box joined Home at 192.168.1.50, but his computer cannot reach it
    there (port 6053).") and nothing is saved. A box that still has a key from Home Assistant, because
    it was not flashed, is said to need a flash.
 5. **Choose its room** and Home Assistant area. When his name is not Winston, also pick a stock wake
@@ -372,7 +372,7 @@ and to disable it there by hand, and Continue goes on with the box saved.
 
 When something is in the way:
 
-- **This computer's user may not open the port yet** (not in the serial group). The step says so
+- **The user he runs as may not open the port yet** (not in the serial group). The step says so
   before anything is downloaded: run `winston setup` again, then restart this computer. Logging out
   and in is not enough, since the service runs under systemd's user manager, which lingers past a
   logout with the groups it started with.
@@ -385,7 +385,7 @@ When something is in the way:
   takes you to Talk, where you talk to him."
 - Who can open this page from now on, as on Status, with the same warning when it is the whole network.
   Open to the network, it also gives the address to type on a phone ("From a phone or another device
-  here, open http://192.168.1.20:8700."), this computer's address there.
+  here, open http://192.168.1.20:8700."), his computer's address there.
 - What was skipped.
 - **Finish and go to Talk** saves, ends setup mode, restarts what waits for a restart, starts the engines
   setup held back when Brain and voice was skipped, and opens Talk.

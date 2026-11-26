@@ -183,12 +183,12 @@ const SYSTEM: Record<string, string> = { docker: 'Docker', nvidia: "NVIDIA's con
 function Lacking({ needs, have }: { needs: string[]; have?: string[] }) {
   if (!have) return null
   if (needs.includes('cuda') && !have.includes('cuda'))
-    return <StatusLine tone="warning">This needs an NVIDIA graphics card with its driver, and none answers on this computer.</StatusLine>
+    return <StatusLine tone="warning">This needs an NVIDIA graphics card with its driver, and none answers on his computer.</StatusLine>
   const lacking = needs.filter((n) => n in SYSTEM && !have.includes(n)).map((n) => SYSTEM[n])
   if (!lacking.length) return null
   return (
     <StatusLine tone="warning">
-      {`${joinNames(lacking)} ${lacking.length > 1 ? 'are' : 'is'} not on this computer yet, and installing ${lacking.length > 1 ? 'them' : 'it'} needs root. Save, then in a terminal here run: winston setup system`}
+      {`${joinNames(lacking)} ${lacking.length > 1 ? 'are' : 'is'} not on his computer yet, and installing ${lacking.length > 1 ? 'them' : 'it'} needs root. Save, then in a terminal on it run: winston setup system`}
     </StatusLine>
   )
 }

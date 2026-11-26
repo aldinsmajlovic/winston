@@ -55,9 +55,9 @@ const STATE = {
 
 /** Where it comes from, on its page; built-in ones say nothing. */
 const ORIGIN: Record<string, string> = {
-  mcp: 'MCP server you added: runs as you on this computer',
-  package: 'Package you installed: runs as you on this computer',
-  personal: 'Your own, from the extensions folder: runs as you on this computer',
+  mcp: 'MCP server you added: runs as you on his computer',
+  package: 'Package you installed: runs as you on his computer',
+  personal: 'Your own, from the extensions folder: runs as you on his computer',
 }
 /** The same in a word or two, beside its name on its tile. */
 const ORIGIN_WORD: Record<string, string> = { mcp: 'MCP server', package: 'Package', personal: 'Personal' }
@@ -134,6 +134,7 @@ export function actionItems(e: ExtensionView, config: Config): ActionItem[] {
       // An MCP server's action reaches him only once listed; an extension's unless switched off.
       enabled: mcp ? choice != null && choice.enabled !== false : choice?.enabled !== false,
       thirdParty: mcp || e.origin === 'package',
+      online: (e.reach ?? []).some((r) => r.online),
     }
   })
 }
@@ -198,7 +199,7 @@ export function useUnmute() {
 
 const COPY_FAILED = 'Could not copy. Select the text and copy it yourself.'
 
-/** Text to paste elsewhere (an address, a command, an example) in a muted box, with Copy. */
+/** Text to paste elsewhere exactly (an address, a command, an example) in a muted monospace box, with Copy. */
 export function CopyText({ text, label }: { text: string; label: string }) {
   const copy = () => {
     const done = navigator.clipboard?.writeText(text)
@@ -210,7 +211,8 @@ export function CopyText({ text, label }: { text: string; label: string }) {
   }
   return (
     <div className="flex items-start gap-2">
-      <div className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 text-sm break-words whitespace-pre-wrap">{text}</div>
+      {/* Copied exactly, so set in monospace: the one place it is (docs/ui-guide.md, Look). */}
+      <div className="min-w-0 flex-1 rounded-md bg-muted px-3 py-2 font-mono text-sm break-words whitespace-pre-wrap">{text}</div>
       <Button type="button" variant="outline" size="sm" aria-label={`Copy ${label}`} onClick={copy}>
         <Copy data-icon="inline-start" />
         Copy
@@ -724,7 +726,7 @@ function AddMcp({ page, taken, open, onOpenChange, onAdded }: {
         <DialogHeader>
           <DialogTitle>Add an MCP server</DialogTitle>
           <DialogDescription>
-            MCP is how AI apps share actions. A server's actions can become his. A server you start runs as you on this computer, not in a sandbox.
+            MCP is how AI apps share actions. A server's actions can become his. A server you start runs as you on his computer, not in a sandbox.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
@@ -740,7 +742,7 @@ function AddMcp({ page, taken, open, onOpenChange, onAdded }: {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="command">A command on this computer</SelectItem>
+                <SelectItem value="command">A command on his computer</SelectItem>
                 <SelectItem value="url">An address</SelectItem>
               </SelectContent>
             </Select>
@@ -770,7 +772,7 @@ function AddMcp({ page, taken, open, onOpenChange, onAdded }: {
           ) : (
             <div className="flex flex-col gap-1.5">
               <span className="text-sm font-medium">Keys it needs</span>
-              <p className="text-sm text-muted-foreground">The name its instructions give each key, like API_KEY, and the key itself. Kept on this computer.</p>
+              <p className="text-sm text-muted-foreground">The name its instructions give each key, like API_KEY, and the key itself. Kept on his computer.</p>
               {keys.map((k, i) => (
                 <div key={i} className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">

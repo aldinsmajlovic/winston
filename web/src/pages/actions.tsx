@@ -40,7 +40,7 @@ function OtherApps({ groups, page }: { groups: Group[]; page: SettingsState }) {
       <CardHeader>
         <CardTitle>Share with other AI apps</CardTitle>
         <CardDescription>
-          AI apps on this computer that speak MCP can use the actions you share here; ones that ask you first still wait for your OK.
+          AI apps on his computer that speak MCP can use the actions you share here; ones that ask you first still wait for your OK.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

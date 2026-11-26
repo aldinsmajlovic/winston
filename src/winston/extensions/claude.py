@@ -44,7 +44,7 @@ atexit.register(shutil.rmtree, WORKDIR, True)              # True: ignore_errors
 
 class ClaudeSettings(Settings):
     key: str = Secret("CLAUDE_CODE_OAUTH_TOKEN", label="Key", optional=True,
-                      help="Optional: empty uses this computer's Claude Code login.",
+                      help="Optional: empty uses the Claude Code login on his computer.",
                       description="A token from claude setup-token (sk-ant-oat...) uses your Claude plan's credit; an "
                                   "API key (sk-ant-api...) is billed per question.")
     max_usd_per_day: float = Field(3.0, ge=0, title="Spending limit per day", unit="USD",

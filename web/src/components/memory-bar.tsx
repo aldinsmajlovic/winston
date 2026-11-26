@@ -117,17 +117,17 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
           <p className="text-sm text-muted-foreground">Other programs are left out: this card does not say what each program holds while his engines run.</p>
         ) : null}
         {use.brainUnknown ? (
-          <p className="text-sm text-muted-foreground">The brain's memory is not known for this model, so it is left out.</p>
+          <p className="text-sm text-muted-foreground">The brain's share is not known for this model, so it is left out.</p>
         ) : use.brainHere && !use.brainMeasured ? (
           <p className="text-sm text-muted-foreground">The brain's share is estimated from the size of its model.</p>
         ) : null}
         {r ? (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3 text-sm text-muted-foreground">
             {isRecommended(r, page, presets) ? (
-              <span>These are the picks recommended for this computer.</span>
+              <span>These are the picks recommended for his computer.</span>
             ) : (
               <>
-                <span>Changed from the picks recommended for this computer.</span>
+                <span>Changed from the picks recommended for his computer.</span>
                 <Button variant="outline" size="sm" onClick={back}>
                   Use the recommendation
                 </Button>

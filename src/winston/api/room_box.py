@@ -222,7 +222,7 @@ async def reach(host: str, ssid: str, port: int = 6053) -> str:
                        "Flash it again, which erases the key.") from None
     except (APIConnectionError, OSError, TimeoutError) as e:
         logger.info(f"room box: {host}:{port} not reached: {type(e).__name__}: {e}")
-        raise BoxError(f"The box joined {ssid} at {host}, but this computer cannot reach it there (port {port}).") from None
+        raise BoxError(f"The box joined {ssid} at {host}, but his computer cannot reach it there (port {port}).") from None
     finally:
         await client.disconnect(force=True)
     return info.mac_address

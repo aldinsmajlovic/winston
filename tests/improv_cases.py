@@ -56,7 +56,7 @@ async def main():
     except improv.ImprovError as e:
         said = str(e)
     check("and what to do, which a service lingering on needs a restart for", said,
-          f"This computer's user may not open {denied.port}. Run `winston setup` again, then restart this computer.")
+          f"The user he runs as may not open {denied.port}. Run `winston setup` again, then restart his computer.")
     denied.close()
 
     fds = len(os.listdir("/proc/self/fd"))

@@ -21,6 +21,7 @@ LABELS = [
     ("intent__HassTurnOff", {"area": "Hall", "domain": ["media_player"]}, "ok", "Turned off Hall media players"),
     ("homeassistant__GetLiveContext", {"area": "Living Room"}, "ok", "Checked the home"),
     ("forget", {"fact": "Omar visits on Fridays"}, "ok", "Forgot Omar visits on Fridays"),
+    ("light__HassLightSet", {"name": "Desk lamp", "brightness": 50}, "ok", "Changed Desk lamp"),
     ("some_new_tool", {}, "ok", "Some new tool"),
 ]
 for name, args, status, want in LABELS:
@@ -31,6 +32,17 @@ check("label of an extension's tool", tool_label("web_search", {"query": "popula
       "Web search: population of Sarajevo")
 check("an extension's tool failing", tool_label("web_search", {"query": "x"}, "error"), "Couldn't web search")
 check("its icon", tool_icon("web_search"), "search")
+# Done, a title led by a verb is in the past tense; one led by anything else stays as it is.
+know_extension_tools([{"name": "rem_add", "extension": "reminders", "tool_title": "Add a reminder"},
+                      {"name": "news_read", "extension": "news", "tool_title": "Read the news"},
+                      {"name": "music_skip", "extension": "music", "tool_title": "Skip to the next song"},
+                      {"name": "later_list", "extension": "later", "tool_title": "List what is waiting"},
+                      {"name": "pl_empty", "extension": "pl", "tool_title": "Empty the queue"}])
+for name, want in (("rem_add", "Added a reminder: bread"), ("news_read", "Read the news: bread"),
+                   ("music_skip", "Skipped to the next song: bread"), ("later_list", "Listed what is waiting: bread"),
+                   ("pl_empty", "Emptied the queue: bread")):
+    check(f"past: {want}", tool_label(name, {"what": "bread"}, "ok"), want)
+check("running, as its title", tool_label("rem_add", {"what": "bread"}, "running"), "Add a reminder: bread")
 
 # History: pieces of one reply become one event; a tool's result updates its running event.
 feed = Feed(keep=10)

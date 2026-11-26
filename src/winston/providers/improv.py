@@ -25,7 +25,7 @@ IPV4 = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 ADDRESS_LINE = re.compile(r"IP Address(?:es)?:\s*(\d{1,3}(?:\.\d{1,3}){3})")
 # A restart, not a new login: the service runs under systemd's user manager, which lingers past a logout
 # with the groups it started with.
-DENIED = "This computer's user may not open {port}. Run `winston setup` again, then restart this computer."
+DENIED = "The user he runs as may not open {port}. Run `winston setup` again, then restart his computer."
 
 
 @dataclass

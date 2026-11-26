@@ -276,7 +276,7 @@ over HTTP its token (`token_env`).
 Permissions keep honest extensions honest and make mistakes visible; they are not a sandbox. An
 extension runs as your user and could read files a well-behaved one would not. Install ones you
 trust, as with VS Code or Home Assistant. The page of anything not built in says where it comes from
-and that it runs as you on this computer.
+and that it runs as you on his computer.
 
 ## Settings
 
@@ -331,7 +331,9 @@ Asks you first (restricted) or Off. The source's own choice is marked "(default)
 - Choosing On its own for one the source marked restricted asks first.
 - Your choice is saved under `extensions.<id>.tools.<name>` (`tier`, `enabled`), only where it
   differs.
-- Beside the choice, "Only looks" or "Changes things" says what the source declared. Built-in and
+- Under the summary, "Only looks" or "Changes things" says what the source declared, with "uses the
+  internet" after it when the extension reaches the internet ("Only looks, uses the internet" for Ask
+  Claude and Search the web). Built-in and
   personal extensions are trusted on it. For an MCP server or a package it reads "Says it only
   looks", "Says it changes things" or "Not marked safe" (restricted: an MCP tool with no hints or one
   marked destructive).
@@ -348,8 +350,10 @@ The docstring is written for the brain. It shows only for an MCP server's or a p
 closed Details under the summary: "Name he sees" and "What he is told".
 
 On Talk and History a call is one line with the extension's icon, the tool's title and the call's
-first text argument: "Search the web: population of Sarajevo", or "Couldn't search the web" when it
-failed.
+first text argument: "Search the web: population of Sarajevo" while it runs, "Searched the web:
+population of Sarajevo" once done, or "Couldn't search the web" when it failed. A title is a verb
+phrase ("Add a reminder"); one led by a verb Winston does not know (`_REGULAR` and `_IRREGULAR` in
+`core/live.py`) stays as it is when done.
 
 ### Outside information
 
@@ -490,7 +494,7 @@ stateDiagram-v2
   (a key would still be its variable's name). One with neither runs on its defaults, so a plain MCP
   client can use it directly.
 - **Watched.** MCP 2026-07-28 has no ping, so every 10 s an extension is asked `winston/info` and an
-  MCP server to list its tools. Past its memory limit (Memory limit on its page, `memory_mb`, 500) it
+  MCP server to list its tools. Past its memory limit (Computer memory limit on its page, `memory_mb`, 500) it
   is stopped and started again like a crash.
 - **Why it stopped** is on its page in words. Settings that did not load name the setting ("its
   settings did not load: Speaker: not set"), and the error as raised is in its Log. While it runs
@@ -665,7 +669,7 @@ An MCP server without a name is shown by its id in words, in capitals when it is
 ("PC").
 
 **Add an MCP server** asks for a name (its id, and its actions' prefix, come from it), how it starts
-(a command on this computer or an address), the keys a command needs by the name it reads each one
+(a command on his computer or an address), the keys a command needs by the name it reads each one
 by, and for an address an optional token. It goes into the draft switched on with every action off,
 and its page opens.
 
@@ -689,7 +693,7 @@ to show are left out:
 | What he can do with News (its name) | Its actions, each with its title, summary, "Only looks" or "Changes things", and its [Permission](#permission-per-action) |
 | When it speaks up | Its kinds of message, each with its description, When and Where ([speaking up](speaking-up.md#kinds-and-their-options)). A muted kind shows "Muted until ..." with Unmute. Then what it brought up recently, each with its day and where it stands ("Said on the speakers", "Said in a conversation, then you dismissed it", "Not said: quiet hours", "Held: quiet hours", "Put off until ...") |
 | Readings | Its entities' values |
-| How it runs, folded closed as on Brain and Voice (a refused save in it opens it) | When it runs next, what it adds to every request and what that does to his first word (from "too few to notice" to "noticeably"), its memory against its limit while it runs, and the Memory limit field. An MCP server at an address runs elsewhere, so its page has no Memory limit |
+| How it runs, folded closed as on Brain and Voice (a refused save in it opens it) | When it runs next, what it adds to every request and what that does to his first word (from "too few to notice" to "noticeably"), its memory against its limit while it runs, and the Computer memory limit field. An MCP server at an address runs elsewhere, so its page has no Memory limit |
 
 ### Actions
 
