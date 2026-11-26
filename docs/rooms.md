@@ -145,3 +145,33 @@ The live feed carries the mic too, as `mic` events with `room` and `held_by`.
 | `tests/rooms_cases.py` | No hardware: one conversation across sessions, the idle reset, starting over, the mic lease, the room in the stamp, and a named device keeping its own room |
 
 Results and what is still to check on real hardware are in [the plan](plan.md#m3-next-steps-added-2026-09-25-in-this-order).
+
+## Known issues
+
+Rooms have run on hardware with one box. Two boxes in two rooms are covered only by the checks above,
+with fake boxes, so what follows is read from the code, not seen.
+
+- **Two rooms share one brain and one voice.** Every spoken session keeps to llama.cpp's first slot
+  (`server_slot` in `core/brain.py`), so a room that talks while another is answered waits for that
+  turn, and switching rooms reads the other room's history again. The speech server speaks one reply
+  at a time. A slot per room costs context and VRAM; a hosted brain has no slots.
+- **The room you are in is a guess.** It is the room last talked in within 30 minutes
+  (`Rooms.recent`); presence sensors are not read. Walk to another room without speaking and
+  reminders, nudges and music still go to the old one. After 30 quiet minutes nudges go to every
+  speaker and music to every box.
+- **Music cannot be sent to a room.** `ctx.speakers.play` takes no room, so "play jazz in the
+  bedroom" plays where you last talked. With no room known it plays on every box, out of step, since
+  each box reads its own stream, and the volume can be set only when there is one box. There are no
+  speaker groups and no music that follows you.
+- **Announcements cannot be sent to a room.** An announcement has its text, context and source, and
+  every speaker says it, so an automation cannot announce in the kitchen only.
+- **The conversation stays in its room.** A question asked in one room is not known to the next
+  room's box a minute later; only memory and the diary cross rooms. That suits two people in two
+  rooms, not one person walking between them.
+- **One box per room.** Boxes are keyed by their room, so an open space with two boxes is two rooms
+  with two conversations (both can name the same Home Assistant area). Nothing decides between boxes:
+  two that hear one wake word both answer.
+- **One process for every box.** Editing one box restarts the satellite channel, and every box
+  reconnects.
+
+The fixes, in order, are step 5 of [the plan's M3 next steps](plan.md#m3-next-steps-added-2026-09-25-in-this-order).
