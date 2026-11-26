@@ -28,8 +28,9 @@ brings his entities.
   <img src="images/ha-integration-light.png" alt="The Home Assistant integration card on Ways to talk: the switch, the port, the two steps, and the buttons Download in Home Assistant, Add to Home Assistant and Pair with a code" width="720">
 </picture>
 
-The card is on Ways to talk, and in the setup wizard's Home Assistant step once Home Assistant is
-connected. Switch on Show him in Home Assistant, then:
+It is The integration, the first half of the From Home Assistant card on Ways to talk (Assist is the
+other, and the card's lead says which to use), and the same card is in the setup wizard's Home Assistant
+step once Home Assistant is connected. Switch on Show him in Home Assistant, then:
 
 1. **Download in Home Assistant** opens Winston in Home Assistant's Marketplace (HACS before 2026.11),
    ready to download. Download him, then restart Home Assistant.

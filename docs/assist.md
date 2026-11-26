@@ -14,7 +14,9 @@ Winston's own voice path ([Voice PE](voice-pe.md), the Talk page) is separate an
 
 ## Switching it on
 
-On Settings, Ways to talk, Home Assistant Assist, switch on Answer Home Assistant's Assist and save.
+On Settings, Ways to talk, From Home Assistant, switch on Answer Home Assistant's Assist under Assist and
+save. Switched on, a warning says anyone on your network can ask him to act, and that the integration
+limits it to a paired Home Assistant.
 The first-run wizard offers the same switch in its Home Assistant step, once Home Assistant is
 connected.
 

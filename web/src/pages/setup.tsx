@@ -23,7 +23,7 @@ import type { Kind } from '@/lib/presets'
 import { allBut, setIn } from '@/lib/schema'
 import { SETUP_STEPS } from '@/lib/setup'
 import { HomeAssistantSections } from '@/pages/home-assistant'
-import { AssistCard, IntegrationCard } from '@/pages/ways-to-talk'
+import { FromHomeAssistantCard } from '@/pages/ways-to-talk'
 import { PersonalityDocument } from '@/pages/personality'
 import { StepActions } from '@/components/step-actions'
 import { useBusy } from '@/hooks/use-busy'
@@ -167,12 +167,7 @@ function HomeAssistantStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
   return (
     <>
       <HomeAssistantSections page={page} back="/setup/home_assistant" />
-      {connected ? (
-        <>
-          <IntegrationCard page={page} />
-          <AssistCard page={page} />
-        </>
-      ) : null}
+      {connected ? <FromHomeAssistantCard page={page} /> : null}
       <StepActions
         label={connected ? (page.dirty ? 'Save and continue' : 'Continue') : undefined}
         busy={busy || page.saving}

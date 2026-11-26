@@ -32,6 +32,8 @@ import { useNow } from '@/hooks/use-now'
 import { useRegion } from '@/hooks/use-region'
 import { discardSecrets, setSecret, useSecretsDraft } from '@/hooks/use-secrets'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
+import { Fold } from '@/components/fold'
+import { useErrorsUnder } from '@/api/field-errors'
 import { capitalize, humanize, joinNames } from '@/lib/format'
 import { deepEqual, getIn, hasFields, section, setIn, type JsonSchema } from '@/lib/schema'
 import { cn } from '@/lib/utils'
@@ -332,6 +334,7 @@ function About({ e, page }: Props) {
             {help ? <p className="text-sm text-muted-foreground">{help}</p> : null}
           </div>
         </div>
+        <Reach e={e} page={page} />
         {origin ? (
           <p className="flex items-center gap-2 text-muted-foreground">
             <ShieldAlert className="size-4 shrink-0" />
@@ -367,18 +370,19 @@ function About({ e, page }: Props) {
   )
 }
 
-/** What its permissions let it do, what it can change first; an MCP server declares nothing. One that
- * reaches nothing says so on About instead. */
+/** What its permissions let it do, what it can change first, under the switch in About's card, so what
+ * switching it on allows is read beside the switch; an MCP server declares nothing. One that reaches
+ * nothing says so on About instead. */
 function Reach({ e, page }: Props) {
   const [shown, setShown] = useState(false)
   const reach = e.reach ?? []
   if (e.origin !== 'mcp' && !reach.length) return null
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>What it can reach</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <section aria-labelledby={`${e.id}-reach`} className="flex flex-col gap-2 border-t pt-4">
+      <h3 id={`${e.id}-reach`} className="text-sm font-semibold">
+        What it can reach
+      </h3>
+      <div>
         {e.origin === 'mcp' ? (
           <p>
             {mcpUrl(page, e.id)
@@ -403,8 +407,8 @@ function Reach({ e, page }: Props) {
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -555,6 +559,7 @@ const NOT_PUBLISH = ['enabled', 'settings', 'kinds', 'tools', 'mcp', 'memory_mb'
  * server over HTTP runs elsewhere, so it has no memory limit here. */
 function HowItRuns({ e, page }: Props) {
   const region = useRegion()
+  const errors = useErrorsUnder([[...EXTENSIONS, e.id]])
   const next = Math.min(...(e.jobs ?? []).map((j) => j.next_run ?? Infinity))
   const slow = slows(e.prompt_chars ?? 0)
   const remote = e.origin === 'mcp' && !!mcpUrl(page, e.id)
@@ -566,14 +571,15 @@ function HowItRuns({ e, page }: Props) {
   if (remote && !lines.length) return null
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>How it runs</CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {lines.map((l) => (
-          <p key={l}>{l}</p>
-        ))}
-        {!remote && <SectionForm page={page} path={[...EXTENSIONS, e.id]} omit={NOT_MEMORY} />}
+      <CardContent>
+        <Fold title="How it runs" forceOpen={errors}>
+          <div className="flex flex-col gap-3 pt-2">
+            {lines.map((l) => (
+              <p key={l}>{l}</p>
+            ))}
+            {!remote && <SectionForm page={page} path={[...EXTENSIONS, e.id]} omit={NOT_MEMORY} />}
+          </div>
+        </Fold>
       </CardContent>
     </Card>
   )
@@ -619,7 +625,6 @@ export function ExtensionPage() {
       page={page}
     >
       <About e={e} page={page} />
-      <Reach e={e} page={page} />
       <Settings e={e} page={page} />
       <Actions e={e} page={page} />
       <SpeaksUp e={e} page={page} />

@@ -107,7 +107,7 @@ him; the theme and the version are at its foot.
 | Assistant | His personality, region, memory and recordings of what you say | [identity](identity.md#his-personality), [tools](tools.md), [understanding](understanding.md#1-turn-record-and-marks) |
 | Brain | What runs his brain and how he thinks | [below](#brain) |
 | Voice | Speaking and hearing | [voices](voices.md) |
-| Ways to talk | The Talk page, the wall display, room boxes and Discord | [rooms](rooms.md), [Voice PE](voice-pe.md), [Discord](discord.md) |
+| Ways to talk | The Talk page, the wall display, room boxes, Discord, and From Home Assistant (the integration and Assist) | [rooms](rooms.md), [Voice PE](voice-pe.md), [Discord](discord.md) |
 | Home Assistant | The connection and the devices he may use | [Home Assistant](home-assistant.md#the-page) |
 | Extensions | Each extension, its settings and actions | [extensions](extensions.md#the-extensions-and-actions-pages) |
 | Actions | What each action may do on its own | [extensions](extensions.md#the-extensions-and-actions-pages) |

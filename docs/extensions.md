@@ -683,13 +683,13 @@ to show are left out:
 
 | Section | What it holds |
 | --- | --- |
-| The top card | Its switch ("Use News"), which starts or stops it when you save; where it comes from when it is not built in; its status line; and what is wrong, in words: why it stopped lately, a key it needs, something it ran that failed today. An MCP server or a personal extension also has Remove this extension |
-| What it can reach | Its [permissions](#permissions) in words. An MCP server declares none, so it says what that means: one Winston starts runs as you and can do anything you can; one at an address can do whatever that server does with what he sends it |
+| The top card | Its switch ("Use News"), which starts or stops it when you save, with What it can reach under it; where it comes from when it is not built in; its status line; and what is wrong, in words: why it stopped lately, a key it needs, something it ran that failed today. An MCP server or a personal extension also has Remove this extension |
+| What it can reach, in the top card | Its [permissions](#permissions) in words. An MCP server declares none, so it says what that means: one Winston starts runs as you and can do anything you can; one at an address can do whatever that server does with what he sends it |
 | Settings | Its settings form, keys included. For an MCP server: its name (empty, its id in words), start command or address, the keys it needs and its token |
 | What he can do with News (its name) | Its actions, each with its title, summary, "Only looks" or "Changes things", and its [Permission](#permission-per-action) |
 | When it speaks up | Its kinds of message, each with its description, When and Where ([speaking up](speaking-up.md#kinds-and-their-options)). A muted kind shows "Muted until ..." with Unmute. Then what it brought up recently, each with its day and where it stands ("Said on the speakers", "Said in a conversation, then you dismissed it", "Not said: quiet hours", "Held: quiet hours", "Put off until ...") |
 | Readings | Its entities' values |
-| How it runs | When it runs next, what it adds to every request and what that does to his first word (from "too few to notice" to "noticeably"), its memory against its limit while it runs, and the Memory limit field. An MCP server at an address runs elsewhere, so its page has no Memory limit |
+| How it runs, folded closed as on Brain and Voice (a refused save in it opens it) | When it runs next, what it adds to every request and what that does to his first word (from "too few to notice" to "noticeably"), its memory against its limit while it runs, and the Memory limit field. An MCP server at an address runs elsewhere, so its page has no Memory limit |
 
 ### Actions
 

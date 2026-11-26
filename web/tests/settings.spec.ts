@@ -49,7 +49,8 @@ async function save(page: Page, choice?: string) {
 test('Ways to talk: Home Assistant Assist switched on shows its port, and off again leaves nothing to save', async ({ page }) => {
   const errors = watchErrors(page)
   await open(page, '/ways-to-talk')
-  const card = page.locator('[data-slot="card"]', { hasText: 'Home Assistant Assist' }).last()
+  // One card, From Home Assistant, holds both ways; each is a section named by its heading.
+  const card = page.getByRole('region', { name: 'Assist', exact: true })
   const toggle = card.getByRole('switch', { name: "Answer Home Assistant's Assist" })
   const saveButton = page.locator('header').getByRole('button', { name: 'Save', exact: true })
   await expect(toggle).not.toBeChecked()
@@ -57,6 +58,8 @@ test('Ways to talk: Home Assistant Assist switched on shows its port, and off ag
   await expect(card.getByText('Home Assistant reached him')).toHaveCount(0)
   await toggle.click()
   await expect(card.getByRole('spinbutton', { name: 'Port' })).toBeVisible()  // the copy moves every port
+  // Switched on, the open port is said as a warning, with the way that limits it.
+  await expect(card.getByText('Anyone on your network can ask him to act.', { exact: false })).toBeVisible()
   await expect(saveButton).toBeEnabled()
   await toggle.click()
   await expect(saveButton).toBeDisabled()
@@ -67,7 +70,7 @@ test('Ways to talk: Home Assistant Assist switched on shows its port, and off ag
 test('Ways to talk: the Home Assistant integration switched on shows its port, and off again leaves nothing to save', async ({ page }) => {
   const errors = watchErrors(page)
   await open(page, '/ways-to-talk')
-  const card = page.locator('[data-slot="card"]', { hasText: 'Home Assistant integration' }).last()
+  const card = page.getByRole('region', { name: 'The integration', exact: true })
   const toggle = card.getByRole('switch', { name: 'Show him in Home Assistant' })
   const saveButton = page.locator('header').getByRole('button', { name: 'Save', exact: true })
   await expect(toggle).not.toBeChecked()

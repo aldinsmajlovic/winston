@@ -303,7 +303,7 @@ rooms and names, the device list, switching the MCP server on. A sign-in that do
 why.
 
 Then come the devices he can use, as on the Home Assistant page, and the two ways Home Assistant talks to
-him, from Ways to talk, both off by default: Winston's integration, with Download in Home Assistant and Add
+him, Ways to talk's From Home Assistant card, both off by default: Winston's integration, with Download in Home Assistant and Add
 to Home Assistant ([Home Assistant integration](ha-integration.md#adding-him)), and the Assist switch
 ([Home Assistant Assist](assist.md)). Continue saves them all (the list is applied in Home Assistant) and
 goes on.

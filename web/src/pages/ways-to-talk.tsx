@@ -15,6 +15,8 @@ import { StateIcon } from '@/components/state-icon'
 import { DataTable, type Column } from '@/components/templates/list-page'
 import { SettingsPage } from '@/components/templates/settings-page'
 import { Button } from '@/components/ui/button'
+import { KindIcon } from '@/components/kind-icon'
+import { StatusLine } from '@/components/status-line'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -293,19 +295,50 @@ export default function WaysToTalkPage() {
       </Card>
       <RoomBoxes page={page} />
       <SectionForm page={page} path={DISCORD} title="Discord" status={<ChannelState name="discord" />} />
-      <AssistCard page={page} />
-      <IntegrationCard page={page} />
+      <FromHomeAssistantCard page={page} />
     </SettingsPage>
   )
 }
 
-/** Home Assistant Assist: its switch and port, and under them whether Home Assistant has reached him. Also
- * in the wizard's Home Assistant step. */
-export function AssistCard({ page }: { page: SettingsState }) {
+/** Home Assistant's two ways to talk to him in one card, with when to use which: the integration (installed
+ * there and paired), then Assist (nothing to install, no password), each with its switch, its fields once on,
+ * and its state. Also in the wizard's Home Assistant step. */
+export function FromHomeAssistantCard({ page }: { page: SettingsState }) {
+  const assistOn = page.value.channels?.assist?.enabled === true
   return (
-    <SectionForm page={page} path={ASSIST} title="Home Assistant Assist">
-      <AssistStatus />
-    </SectionForm>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <KindIcon name="homeassistant" />
+          From Home Assistant
+        </CardTitle>
+        <CardDescription>
+          Its app, chat and voice satellites can talk to him in either of two ways, and one is enough. The integration is
+          installed there and paired, and also shows his state and his extensions' readings; Assist needs nothing installed.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <section aria-labelledby="ha-integration" className="flex flex-col gap-2">
+          <h3 id="ha-integration" className="text-sm font-semibold">
+            The integration
+          </h3>
+          <SectionForm page={page} path={HA_INTEGRATION}>
+            <IntegrationStatus page={page} />
+          </SectionForm>
+        </section>
+        <section aria-labelledby="ha-assist" className="flex flex-col gap-2 border-t pt-4">
+          <h3 id="ha-assist" className="text-sm font-semibold">
+            Assist
+          </h3>
+          <SectionForm page={page} path={ASSIST}>
+            {assistOn ? (
+              <StatusLine tone="warning">Anyone on your network can ask him to act. The integration limits it to a paired Home Assistant.</StatusLine>
+            ) : null}
+            <AssistStatus />
+          </SectionForm>
+        </section>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -335,16 +368,6 @@ function AssistStatus() {
         </p>
       ) : null}
     </div>
-  )
-}
-
-/** Winston's integration in Home Assistant: its switch and port, and under them getting it there and pairing.
- * Also in the wizard's Home Assistant step. */
-export function IntegrationCard({ page }: { page: SettingsState }) {
-  return (
-    <SectionForm page={page} path={HA_INTEGRATION} title="Home Assistant integration">
-      <IntegrationStatus page={page} />
-    </SectionForm>
   )
 }
 
