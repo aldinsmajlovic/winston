@@ -623,7 +623,8 @@ The landing page shows, in order:
 - custom engines, once there is one;
 - the web address with its warning.
 
-Its commands are Start all and Stop all, each only while it applies, and Add a custom engine.
+Its commands are Restart (all of him, Winston included), Start all and Stop all, each only while it applies,
+and Add a custom engine.
 
 ### Brain and Voice
 

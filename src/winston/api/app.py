@@ -1502,6 +1502,21 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         await sup.stop_all()
         return Ok()
 
+    @app.post("/api/restart", response_model=Ok,
+              summary="Restart Winston itself: stop everything as Ctrl-C does, then run `winston up` again, which "
+                      "starts the engines and channels and applies what only his own restart applies")
+    async def restart_winston():
+        server = getattr(app.state, "server", None)
+        if server is None:
+            raise HTTPException(409, "Winston was not started with `winston up`, so restart him where he was started.")
+
+        async def go():
+            await sup.stop_all()        # all of them: exiting stops only what this winstond started itself
+            app.state.restart = True
+            server.should_exit = True
+        spawn(go())
+        return Ok()
+
     etag_header = {"ETag": {"description": "The saved file's version; send it back as If-Match",
                             "schema": {"type": "string"}}}
 

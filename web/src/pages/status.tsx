@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
-import { Play, Plus, Square } from 'lucide-react'
+import { Play, Plus, RotateCcw, Square } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
-import { $api, errorText, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView } from '@/api/client'
+import { $api, errorText, type Config, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView, type Presets, type Status } from '@/api/client'
 import { useConfig } from '@/api/config'
 import { updateNeedsYou, useUpdate } from '@/api/update'
 import { engineLabel, isRunning, notWorking, partName, restartCost, STATE_WORDS, useEngineActions, useStatus } from '@/api/status'
@@ -22,9 +22,11 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useGraphicsMemory } from '@/hooks/use-graphics-memory'
 import { useDrivers } from '@/hooks/use-drivers'
-import { useSettings } from '@/hooks/use-settings'
-import { capitalize, since } from '@/lib/format'
+import { useSettings, type SettingsState } from '@/hooks/use-settings'
+import { capitalize, joinNames, since } from '@/lib/format'
+import { memoryUse } from '@/lib/graphics-memory'
 import { matchPreset, SLOT_TITLES, type Kind } from '@/lib/presets'
 import { getIn, section, setIn } from '@/lib/schema'
 import { SETUP_STEPS } from '@/lib/setup'
@@ -165,6 +167,47 @@ function PartState({ part }: { part: Part }) {
   )
 }
 
+// The memory bar's parts that are his, as a sentence names them.
+const ON_CARD: Record<string, string> = { Brain: 'the brain', Voice: 'the speaking voice', Hearing: 'hearing' }
+
+/** The graphics card: how full it is now, and which of his parts run on it, from the saved picks. */
+function GraphicsCard({ gpu, page, config, presets, running }: { gpu: NonNullable<Status['gpu']>; page: SettingsState; config: Config; presets?: Presets; running: boolean }) {
+  const plan = useGraphicsMemory(page)
+  const use = plan && presets ? memoryUse(plan, config, presets) : null
+  const full = gpu.used_mb / gpu.total_mb > 0.9
+  // The brain by brainHere: one whose memory is not known is on the card all the same.
+  const names = [
+    ...(use?.brainHere ? [ON_CARD.Brain] : []),
+    ...(use?.parts ?? []).filter((p) => p.label !== 'Brain' && ON_CARD[p.label]).map((p) => ON_CARD[p.label]),
+  ]
+  const what = !use ? '' : names.length ? `${capitalize(joinNames(names))} ${names.length > 1 ? 'run' : 'runs'} on it.` : 'None of his parts run on it.'
+  const fit = full
+    ? 'Nearly full: a bigger model or voice will not fit.'
+    : use?.brainHere && use.spill === 'slow'
+      ? 'A brain too big for it runs partly on the processor, about three times slower; a voice or hearing will not start.'
+      : 'A part that does not fit will not start.'
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Graphics memory</CardTitle>
+        <CardDescription>
+          {what} {fit}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <div className="flex flex-wrap justify-between gap-x-4 text-sm">
+          <span>
+            {(gpu.used_mb / 1024).toFixed(1)} of {(gpu.total_mb / 1024).toFixed(1)} GB in use
+            {running ? '' : ' by other programs'}
+          </span>
+          <span className="text-muted-foreground">{gpu.name}</span>
+        </div>
+        <Progress value={(gpu.used_mb / gpu.total_mb) * 100} className={cn(full && '*:data-[slot=progress-indicator]:bg-warning')} />
+      </CardContent>
+    </Card>
+  )
+}
+
 /** The Settings landing: what needs you, what to set up next, his parts by role with their state and
  * commands, the graphics card, the custom engines once there is one, and who can open this page. */
 export default function StatusPage() {
@@ -232,7 +275,6 @@ export default function StatusPage() {
   const connected = rooms.data?.filter((r) => r.box && r.connected).length ?? 0
   const haDetail = exposure.isError ? errorText(exposure.error) : exposure.data?.ok === false ? exposure.data.detail : undefined
   const haDown = haOn && (exposure.isError || exposure.data?.ok === false)
-  const full = !!gpu && gpu.used_mb / gpu.total_mb > 0.9
   const on = (extensions.data ?? []).filter((x) => x.enabled)
   const needing = on.filter(needsYou)
 
@@ -375,6 +417,15 @@ export default function StatusPage() {
     if (await ask({ title: 'Stop everything?', lines, choices: [{ label: 'Stop all', value: 'yes', destructive: true }] })) actions.stopAll.mutate({})
   }
 
+  const restartAll = async () => {
+    const lines = [
+      `He stops hearing, answering and speaking everywhere, then starts again with every saved setting.`,
+      ...processes.filter(isRunning).map((e) => `${partName(e.name)}: back in ${restartCost(e)}`),
+      'This page reconnects when he is back.',
+    ]
+    if (await ask({ title: `Restart ${name}?`, lines, choices: [{ label: 'Restart', value: 'yes' }] })) actions.restartWinston.mutate({})
+  }
+
   const partColumns: Column<Part>[] = [
     {
       key: 'part',
@@ -474,6 +525,7 @@ export default function StatusPage() {
       intro={`Everything ${name} runs and connects to, and whether it works.`}
       page={page}
       commands={[
+        { label: 'Restart', icon: RotateCcw, onClick: () => void restartAll() },
         ...(processes.some((e) => !isRunning(e)) ? [{ label: 'Start all', icon: Play, onClick: () => actions.startAll.mutate({}) }] : []),
         ...(processes.some(isRunning) ? [{ label: 'Stop all', icon: Square, onClick: () => void stopAll() }] : []),
         { label: 'Add a custom engine', icon: Plus, onClick: () => setAdding({ name: '', driver: 'docker' }) },
@@ -504,29 +556,7 @@ export default function StatusPage() {
           <DataTable columns={partColumns} rows={parts} rowKey={(p) => p.key} rowLink={(p) => p.to} actions={partActions} />
         </CardContent>
       </Card>
-      {gpu ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Graphics memory</CardTitle>
-            <CardDescription>
-              The brain and the voices share it. {full ? 'Nearly full: a bigger model or voice will not fit.' : 'One that does not fit will not start.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-2">
-            <div className="flex flex-wrap justify-between gap-x-4 text-sm">
-              <span>
-                {(gpu.used_mb / 1024).toFixed(1)} of {(gpu.total_mb / 1024).toFixed(1)} GB in use
-                {processes.some(isRunning) ? '' : ' by other programs'}
-              </span>
-              <span className="text-muted-foreground">{gpu.name}</span>
-            </div>
-            <Progress
-              value={(gpu.used_mb / gpu.total_mb) * 100}
-              className={cn(full && '*:data-[slot=progress-indicator]:bg-warning')}
-            />
-          </CardContent>
-        </Card>
-      ) : null}
+      {gpu ? <GraphicsCard gpu={gpu} page={page} config={saved} presets={presets.data} running={processes.some(isRunning)} /> : null}
       {custom.length ? (
         // Kept in sight once there is one: a custom engine has no row in His parts.
         <Card>

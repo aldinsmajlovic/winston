@@ -127,8 +127,14 @@ def up(host: str = typer.Option(None), port: int = typer.Option(None),
                              f"else has it")
     application = create_app(cfg, autostart=not no_start)
     application.state.opened_for_setup = opened
-    uvicorn.run(application, host=host, port=port, log_level="warning",
-                timeout_graceful_shutdown=5)   # open SSE streams (status, live) would otherwise hold shutdown forever
+    server = application.state.server = uvicorn.Server(uvicorn.Config(
+        application, host=host, port=port, log_level="warning",
+        timeout_graceful_shutdown=5))   # open SSE streams (status, live) would otherwise hold shutdown forever
+    server.run()
+    # Restart from the page (/api/restart): everything has stopped as on Ctrl-C; the same command again, in
+    # this process, so a service or a terminal keeps it.
+    if getattr(application.state, "restart", False):
+        os.execv(sys.argv[0], sys.argv)
 
 
 @app.command()

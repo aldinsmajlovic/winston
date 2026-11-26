@@ -1202,6 +1202,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart Winston itself: stop everything as Ctrl-C does, then run `winston up` again, which starts the engines and channels and applies what only his own restart applies */
+        post: operations["restart_winston_api_restart_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config": {
         parameters: {
             query?: never;
@@ -7102,6 +7119,26 @@ export interface operations {
         };
     };
     stop_all_api_engines_stop_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Ok"];
+                };
+            };
+        };
+    };
+    restart_winston_api_restart_post: {
         parameters: {
             query?: never;
             header?: never;

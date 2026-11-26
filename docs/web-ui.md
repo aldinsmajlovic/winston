@@ -135,9 +135,11 @@ From the top:
   [updating](setup.md#updating).
 - **His parts**: Brain, Speaking, Hearing, Talk page microphone, Room boxes, Discord, Home Assistant
   and Extensions. Each row is described below the list.
-- **Graphics memory**: "23.4 of 24.0 GB in use" and the card's name. The brain and the voices share
-  it; one that does not fit will not start. Above 90% the bar is in the warning colour and the card
-  says "Nearly full: a bigger model or voice will not fit."
+- **Graphics memory**: "23.4 of 24.0 GB in use" and the card's name, then which of his parts run on
+  the card, from the saved picks ("The brain and the speaking voice run on it."): a voice or hearing on
+  the processor is not named. A part that does not fit will not start; a brain on Ollama runs partly on
+  the processor instead, about three times slower. Above 90% the bar is in the warning colour and the
+  card says "Nearly full: a bigger model or voice will not fit."
 - **Custom engines**, once there is one: servers Winston starts and keeps running, which nothing uses
   until a setting points at their address. Each row opens its page at `/status/engines/<name>`, which
   shows How it runs open.
@@ -158,8 +160,11 @@ change, for Save) and Set up for Discord. Its menu has Stop and Log, and the row
 sets it up. Stop and Restart say what stops and for how long ("Stop the brain? He cannot answer
 anywhere until it starts again, about 24 s.").
 
-The header has Start all (while something is stopped), Stop all (while something runs, after asking)
-and Add a custom engine, which asks a name and how it runs. Log is described with
+The header has Restart, Start all (while something is stopped), Stop all (while something runs, after
+asking) and Add a custom engine. Restart, after asking with how long each part takes to come back, stops
+everything and runs `winston up` again in the same process, so a service or a terminal keeps it: every
+engine and channel starts fresh, and so do the settings only his own restart applies (Web address). It
+works when he was started with `winston up`, as the service does. Add a custom engine which asks a name and how it runs. Log is described with
 [status and errors](running.md#status-and-errors).
 
 ### Brain

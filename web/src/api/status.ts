@@ -36,6 +36,7 @@ export function useEngineActions() {
     restart: $api.useMutation('post', '/api/engines/{name}/restart', refresh),
     startAll: $api.useMutation('post', '/api/engines/start_all', refresh),
     stopAll: $api.useMutation('post', '/api/engines/stop_all', refresh),
+    restartWinston: $api.useMutation('post', '/api/restart', refresh),
   }
 }
 
