@@ -3128,11 +3128,11 @@ export interface components {
         LLMConfig: {
             /**
              * Provider
-             * @description Protocol the brain is spoken to with. Every supported server speaks the OpenAI chat API.
+             * @description Protocol the brain is spoken to with: the OpenAI chat API, which every server he runs speaks, or Claude's own API.
              * @default openai_compatible
-             * @constant
+             * @enum {string}
              */
-            provider?: "openai_compatible";
+            provider?: "openai_compatible" | "anthropic";
             /**
              * API address
              * @description Where the brain's API answers. Runs on sets it.
@@ -4402,11 +4402,11 @@ export interface components {
             home_effort?: "" | "low" | "medium" | "high" | "xhigh";
             /**
              * How thinking is switched
-             * @description How Winston turns his thinking on and off on this server. No switch: the server decides by itself.
+             * @description How Winston turns his thinking on and off on this server. No switch: the server decides by itself. Claude always decides when to think; Winston sets how hard, low where thinking is off, its default where on, and the same for a whole conversation, so home requests are answered at low too.
              * @default chat_template
              * @enum {string}
              */
-            control?: "chat_template" | "reasoning_effort" | "none";
+            control?: "chat_template" | "reasoning_effort" | "effort" | "none";
         };
         /** ToolResult */
         ToolResult: {

@@ -214,7 +214,7 @@ estimated from its weights, and the bar says so. It stays pinned while you scrol
 
 The What runs his brain card has, from the top:
 
-- **Runs on**: presets (vLLM, llama.cpp, Ollama, a server on your network, hosted), each with a line on what it is good at and
+- **Runs on**: presets (vLLM, llama.cpp, Ollama, a server on your network, hosted, Claude), each with a line on what it is good at and
   what it needs where its name does not say. Picking one rewrites the engine block and the settings
   that go with it, and asks first when you had edited that block.
 - **Model**, a dialog ([choosing a model](#choosing-a-model)) with three lists: Running, what the brain's server reports; Downloaded, what the chosen

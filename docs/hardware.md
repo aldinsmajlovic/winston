@@ -38,9 +38,10 @@ without one it starts from `ollama`, sized to the AMD card or, without a card, t
 - **A brain you already run on another computer** (Ollama, vLLM, llama.cpp or any OpenAI-compatible
   server): any profile, then A server on your network under Runs on. See
   [a server on your network](#a-server-on-your-network).
-- **No local model:** `hosted`. Put the key in `data/.env` as `LLM_API_KEY`, set `llm.model` to
-  the name your provider uses, and check the base URL. Thinking control is `none`, since hosted
-  APIs have their own switches.
+- **No local model:** `hosted`. For Claude, pick Claude (Anthropic API) on the Brain page and paste an
+  Anthropic API key ([Claude](#claude-anthropic-api)). For any other provider, put the key in
+  `data/.env` as `LLM_API_KEY`, set `llm.model` to the name your provider uses, and check the base
+  URL. Thinking control is `none` there, since hosted APIs have their own switches.
 
 Mixing is normal. A brain that fills the whole card (Qwen3.6-35B-A3B at 4 bits takes 24 to 25 GB,
 the 27B through vLLM 19.5 GB) needs Pocket TTS on the CPU: pick the brain's preset on the Brain page
@@ -248,6 +249,7 @@ box the 27B writes 60 to 90 tokens a second with MTP drafting, 44 without.
 | [llama.cpp](#llamacpp) | Brain | NVIDIA, in Docker | The 27B, fast, and a start in seconds |
 | [Ollama](#ollama) | Brain | Any GPU, Apple silicon or a CPU | A small card, AMD, a Mac, or no GPU |
 | [A server on your network](#a-server-on-your-network) | Brain | Another computer you run it on | A brain you already have, not run twice |
+| [Claude (Anthropic API)](#claude-anthropic-api) | Brain | Anthropic, with a key | No local brain, with his prompt cached |
 | [Chatterbox-Turbo](#chatterbox-turbo) | Voice | NVIDIA | A cloned voice that starts quickly |
 | [Pocket TTS](#pocket-tts) | Voice | CPU | No GPU to spare |
 | [Hosted speech](#hosted-speech) | Voice | A provider, with a key | No local voice at all |
@@ -307,6 +309,29 @@ network under Runs on, then on the card:
   vLLM and llama.cpp, `OLLAMA_HOST=0.0.0.0` for Ollama. It needs a context of at least 16K: his
   prompt is about 11K tokens, and llama.cpp divides `-c` between its `-np` slots.
 - **Not downloaded by Winston** on vLLM or llama.cpp there: put the model on that server yourself.
+
+### Claude (Anthropic API)
+
+Claude through Anthropic's own API, not its OpenAI-compatible address: that one caches nothing and
+ignores effort, so every turn would read his whole prompt again. Pick Claude (Anthropic API) under
+Runs on and paste an Anthropic API key (`sk-ant-api...`); it is stored as `ANTHROPIC_API_KEY`. Ask
+Claude keeps its own key, and extensions never see this one. The model starts as `claude-haiku-5-5`,
+the quickest and cheapest; Model lists every model the key can use.
+
+- **Cached.** His instructions and tools are cached once for every conversation going at the same
+  time, and each conversation up to its last turn, so a turn reads only what is new. An entry lasts
+  five minutes after its last use; Ready before the first question writes it ahead, as for a brain
+  he runs.
+- **Thinking.** Claude decides when to think; How thinking is switched is Effort (Claude). Where
+  thinking is off (spoken, home requests too) Winston asks for low effort, where it is on (typed) the
+  model's own. It stays the same for a whole conversation, since a change reads the prompt again.
+- **Not sent:** temperature, top-p and presence penalty. Current Claude models take only their own.
+  Longest reply is at least 2048 tokens, since thinking counts against it.
+- **Its context** is far larger than How much he keeps in mind; a conversation starts afresh only
+  when Claude says it is too long.
+- **What leaves your network** is the conversation text, his instructions and the tools' results.
+  Hearing, the voice and home control stay here. A request Claude declines ends with no reply and a
+  warning in the log.
 
 ### Chatterbox-Turbo
 

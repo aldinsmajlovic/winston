@@ -8,14 +8,16 @@ one platform is a plugin or a line of config. This page is the map; `decisions.m
 - **Core stays small; specifics are plugins or config.** The repo ships no personal data. An instance
   lives in a data directory (`config.yaml`, `.env`, `persona.md`, `memory/`, `voices/`, `logs/`).
 - **Standard protocols at every seam.** LLM engines speak OpenAI-compatible HTTP, TTS engines speak the
-  OpenAI speech protocol, tools speak MCP. Anything that speaks those plugs in.
+  OpenAI speech protocol, tools speak MCP. Anything that speaks those plugs in. The one exception is
+  Claude's own API (`llm.provider: anthropic`): `core/anthropic_chat.py` asks it and answers in
+  OpenAI's shapes, so the rest of the brain stays one code path.
 - **One API, two clients.** `winstond` exposes REST and SSE. The web UI and the `winston` CLI both use it.
   Nothing exists only in the UI.
 - **Typed, versioned config.** Pydantic models with defaults and a JSON Schema export. Each field says
   whether the form draws it and what a change restarts ([config metadata](#config-metadata)). Forms
   and docs come from the schema.
 - **Presets over hand-written engine blocks.** `config/presets.py` names the engine and model choices
-  per slot (vLLM, llama.cpp, Ollama, hosted; Chatterbox, Pocket TTS, Qwen3-TTS, VoxCPM2, Gepard,
+  per slot (vLLM, llama.cpp, Ollama, hosted, Claude; Chatterbox, Pocket TTS, Qwen3-TTS, VoxCPM2, Gepard,
   Breeze TTS 2, hosted) and composes them into hardware profiles. The UI offers them as dropdowns,
   `winston init --profile` writes one, and the config stays the truth.
 - **Choices come from where the truth lives.** A field names a live list in the schema (`options`).

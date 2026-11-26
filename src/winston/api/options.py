@@ -15,6 +15,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import get_args
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import BaseModel
@@ -375,12 +376,16 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
     share = await vllm_share(engine) if kind == "vllm" else None
     local = _downloaded_choices(kind, cache, share) if kind else []
     sizes = {c.value: c for c in local if not c.disabled}
-    headers = {"Authorization": f"Bearer {key}"} if (key := _secret(cfg.llm.api_key_env)) else {}
+    key = _secret(cfg.llm.api_key_env)
+    # Claude's API (saved, or the draft's address) takes its key in its own header, and lists 20 models a page.
+    claude = cfg.llm.provider == "anthropic" or urlparse(url).hostname == "api.anthropic.com"
+    headers = ({"x-api-key": key, "anthropic-version": "2023-06-01"} if claude else
+               {"Authorization": f"Bearer {key}"}) if key else {}
     running: list[Choice] = []
     pulled: dict[str, dict] = {}            # Ollama's models with their size and parameters
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
-            r = await c.get(url + "/models", headers=headers)
+            r = await c.get(url + "/models", headers=headers, params={"limit": 1000} if claude else None)
             if kind == "ollama":
                 pulled = {t["name"]: t for t in (await c.get(server_root(url) + "/api/tags")).json().get("models") or []}
         r.raise_for_status()

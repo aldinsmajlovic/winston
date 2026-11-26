@@ -22,6 +22,7 @@ dependencies = [
     "aioesphomeapi>=46.5",
     "winston-sdk",
     "wyoming==1.11.0",
+    "anthropic>=2.14.0",
 ]
 
 [project.scripts]

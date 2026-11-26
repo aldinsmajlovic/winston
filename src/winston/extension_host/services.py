@@ -19,7 +19,6 @@ from typing import Any
 
 import httpx
 from loguru import logger
-from openai import AsyncOpenAI
 from winston_sdk.fields import picked
 from winston_sdk.manifest import refusal, tool_refusal
 
@@ -27,7 +26,7 @@ from winston.config import resolve
 from winston.config.schema import WinstonConfig
 from winston.core import guard, memory
 from winston.core.common import log_event
-from winston.core.brain import api_key, server_slot, thinking_body
+from winston.core.brain import chat_client, server_slot, thinking_body
 from winston.extension_host import accounts
 from winston.extension_host.sources import read_json, state_dir, write_json
 
@@ -365,8 +364,7 @@ class Services:
 
     async def _ask_once(self, prompt: str, schema: dict | None, max_tokens: int) -> Any:
         from winston.api.options import served_model
-        c = self.cfg.llm
-        client = AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=60)
+        client = chat_client(self.cfg, timeout=60)
         extra: dict[str, Any] = dict(thinking_body(self.cfg, "voice"))
         if (slot := await self.background_slot()) is not None:
             extra["id_slot"] = slot

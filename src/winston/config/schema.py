@@ -191,7 +191,7 @@ class Sampling(Model):
                                                       "thinking."))
 
 
-THINKS = {"llm.thinking.control": ["chat_template", "reasoning_effort"]}   # a server Winston can switch
+THINKS = {"llm.thinking.control": ["chat_template", "reasoning_effort", "effort"]}   # a server Winston can switch
 
 
 class Thinking(Model):
@@ -218,12 +218,15 @@ class Thinking(Model):
                                    "llm.thinking.spoken": ["home"]},
                              labels={"": "Model default", "low": "Low (fastest)", "medium": "Medium",
                                      "high": "High (slower)", "xhigh": "Extra high (slowest)"}))
-    control: Literal["chat_template", "reasoning_effort", "none"] = Field(
+    control: Literal["chat_template", "reasoning_effort", "effort", "none"] = Field(
         "chat_template", title="How thinking is switched",
         description="How Winston turns his thinking on and off on this server. No switch: the server decides by "
-                    "itself.",
+                    "itself. Claude always decides when to think; Winston sets how hard, low where thinking is "
+                    "off, its default where on, and the same for a whole conversation, so home requests are "
+                    "answered at low too.",
         json_schema_extra=ui(labels={"chat_template": "Chat template (vLLM, llama.cpp)",
-                                     "reasoning_effort": "Reasoning effort (Ollama)", "none": "No switch"}))
+                                     "reasoning_effort": "Reasoning effort (Ollama)", "effort": "Effort (Claude)",
+                                     "none": "No switch"}))
 
     @model_validator(mode="before")
     @classmethod
@@ -241,10 +244,11 @@ class Thinking(Model):
 
 class LLMConfig(Model):
     model_config = section("{brains}", slot="llm")
-    provider: Literal["openai_compatible"] = Field("openai_compatible",
-                                                   description="Protocol the brain is spoken to with. Every "
-                                                               "supported server speaks the OpenAI chat API.",
-        json_schema_extra=ui(hidden=True, labels={"openai_compatible": "OpenAI-compatible"}))
+    provider: Literal["openai_compatible", "anthropic"] = Field(
+        "openai_compatible", description="Protocol the brain is spoken to with: the OpenAI chat API, which every "
+                                         "server he runs speaks, or Claude's own API.",
+        json_schema_extra=ui(hidden=True, labels={"openai_compatible": "OpenAI-compatible",
+                                                  "anthropic": "Claude (Anthropic API)"}))
     base_url: str = Field("http://127.0.0.1:8000/v1", title="API address",
                           description="Where the brain's API answers. Runs on sets it.",
                           json_schema_extra=ui(help="Where Winston sends its requests, ending in /v1."))

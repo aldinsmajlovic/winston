@@ -18,7 +18,6 @@ from types import SimpleNamespace
 from typing import Any
 
 from loguru import logger
-from openai import AsyncOpenAI
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
@@ -181,10 +180,9 @@ class Diary:
     async def _ask(self, prompt: str, *, talking: Any = None) -> str | None:
         """Call the background model, yielding to conversations."""
         from winston.api.options import served_model
-        from winston.core.brain import api_key, thinking_body
+        from winston.core.brain import chat_client, thinking_body
         from winston.extension_host.services import Services
-        c = self.cfg.llm
-        client = AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=120)
+        client = chat_client(self.cfg, timeout=120)
         extra: dict[str, Any] = dict(thinking_body(self.cfg, "voice"))
         # The slot extension background calls keep to, so the nightly entry never evicts a conversation's
         # cached prompt (the box's prewarmed one waits there for the morning).

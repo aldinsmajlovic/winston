@@ -22,7 +22,8 @@ from pathlib import Path
 import httpx
 from loguru import logger
 from mcp.client.session_group import StreamableHttpParameters
-from openai import BadRequestError
+import anthropic
+from openai import AsyncOpenAI, BadRequestError
 from openai.types.chat.chat_completion_chunk import (ChatCompletionChunk, ChoiceDelta, ChoiceDeltaToolCall,
                                                      ChoiceDeltaToolCallFunction)
 from openai.types.chat.chat_completion_chunk import Choice as ChunkChoice
@@ -41,6 +42,7 @@ from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import
 from winston.config.schema import WinstonConfig
 from winston.core import persona as persona_file
 from winston.core import directory, guard, region
+from winston.core.anthropic_chat import AnthropicChat
 from winston.core.common import Once, entity_names, key, log_event, rewrap, words_pattern
 from winston.core.diary import Diary
 from winston.core.memory import make_memory_tools, prompt_block
@@ -153,6 +155,8 @@ async def server_slot(cfg: WinstonConfig, spoken: bool) -> int | None:
     request waited 18 s while his 14k-token conversation was read again, so the box gave up. Servers without
     slots (no /props) or with one: None, and nothing is sent. A failed read is not kept: the server may be
     loading."""
+    if cfg.llm.provider == "anthropic":         # no slots; each conversation caches its own prompt (anthropic_chat)
+        return None
     base = cfg.llm.base_url.rstrip("/").removesuffix("/v1")
     at, total = _slots.get(base, (0.0, 0))
     if time.monotonic() - at > 300:
@@ -182,7 +186,8 @@ def unreachable(e: BaseException) -> bool:
     seen: set[int] = set()
     cur: BaseException | None = e
     while cur is not None and id(cur) not in seen:
-        if isinstance(cur, (openai.APIConnectionError, openai.APITimeoutError, httpx.ConnectError)):
+        if isinstance(cur, (openai.APIConnectionError, openai.APITimeoutError, anthropic.APIConnectionError,
+                            httpx.ConnectError)):
             return True
         seen.add(id(cur))
         cur = cur.__cause__ or cur.__context__
@@ -198,6 +203,14 @@ def api_key(env_name: str | None) -> str:
     return key
 
 
+def chat_client(cfg: WinstonConfig, timeout: float) -> AsyncOpenAI | AnthropicChat:
+    """A client for one-off brain calls (the diary, extensions' background asks), by llm.provider."""
+    c = cfg.llm
+    if c.provider == "anthropic":
+        return AnthropicChat(api_key(c.api_key_env), c.base_url, timeout=timeout)
+    return AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=timeout)
+
+
 def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
     """Request fields that switch reasoning on or off, per the server's dialect (llm.thinking.control)."""
     think, control = thinking_for(cfg, channel), cfg.llm.thinking.control
@@ -205,6 +218,8 @@ def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
         return {"chat_template_kwargs": {"enable_thinking": think}}
     if control == "reasoning_effort" and not think:      # Ollama: "none" switches it off; on is the model default
         return {"reasoning_effort": "none"}
+    if control == "effort" and not think:                # Claude: it decides when to think; low keeps that short.
+        return {"output_config": {"effort": "low"}}      # On is the model's default effort.
     return {}
 
 
@@ -356,7 +371,8 @@ def newest_said(messages: list) -> int:
 
 
 class WinstonLLM(OpenAILLMService):
-    """The OpenAI-compatible LLM, with thinking switched on per request for a spoken home request
+    """The OpenAI-compatible LLM (on Claude's own API, through anthropic_chat in the same shapes), with
+    thinking switched on per request for a spoken home request
     (llm.thinking.spoken: home). Measured 2026-09-26 on the 27B with actions stubbed: thinking off called a
     tool 18 of 24 times ("Kitchen lights are on." with no call; once the main room lights for "turn off
     the living room lights"), on 24 of 24, about 3 s slower. The effort comes from
@@ -381,7 +397,8 @@ class WinstonLLM(OpenAILLMService):
     after the box's conversation passed 16,384 tokens got silence until it was reset by hand."""
 
     def __init__(self, *args, home: re.Pattern | None = None, control: str = "none", effort: str = "",
-                 own: list[Own] | None = None, assistant: str = "", **kwargs):
+                 own: list[Own] | None = None, assistant: str = "", anthropic_api: bool = False, **kwargs):
+        self._anthropic = anthropic_api         # read by create_client, which the parent's __init__ calls
         super().__init__(*args, **kwargs)
         self._home, self._control, self._effort = home, control, effort.strip()
         self._own, self._assistant = own or [], assistant
@@ -392,6 +409,11 @@ class WinstonLLM(OpenAILLMService):
         self._no_tools = False                  # this request has called enough: words now
         self._failed: dict[tuple[str, str], str] = {}   # (tool, arguments) that failed in this request: error
         self._failed_in = -1                    # which request: newest_said of its messages
+
+    def create_client(self, api_key=None, base_url=None, **kwargs):
+        if self._anthropic:
+            return AnthropicChat(api_key, base_url)
+        return super().create_client(api_key=api_key, base_url=base_url, **kwargs)
 
     def bind(self, tools: list[str]):
         """The brain's tools are known: find each shortcut's tool. An HA script (script.x) is the MCP tool
@@ -485,8 +507,9 @@ class WinstonLLM(OpenAILLMService):
         self._think = self._think or tweak
         try:
             return await super().get_chat_completions(context)
-        except BadRequestError as e:
-            if "exceed" not in str(e) or not await start_over(context):
+        except (BadRequestError, anthropic.BadRequestError) as e:
+            # llama.cpp and vLLM say the context is exceeded; Claude that the prompt is too long.
+            if not ("exceed" in str(e) or "too long" in str(e)) or not await start_over(context):
                 raise
             logger.warning(f"the conversation outgrew the model's context; a new one from the newest request ({e})")
             await self.push_frame(TTSSpeakFrame(AFRESH_LINE, append_to_context=False))
@@ -496,7 +519,9 @@ class WinstonLLM(OpenAILLMService):
 
     def build_chat_completion_params(self, params_from_context) -> dict:
         params = super().build_chat_completion_params(params_from_context)
-        if self._no_tools:
+        if self._no_tools and self._anthropic:
+            params["tool_choice"] = "none"      # Claude refuses a history of tool calls with no tools defined
+        elif self._no_tools:
             # Without its tools, not with tool_choice "none": llama.cpp then lets the model write a tool
             # call as text, which would be spoken.
             params.pop("tools", None)
@@ -519,15 +544,14 @@ class WinstonLLM(OpenAILLMService):
 def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot: int | None = None) -> OpenAILLMService:
     from winston.api.options import served_model
     c = cfg.llm
-    if c.provider != "openai_compatible":
-        raise ValueError(f"unsupported llm provider {c.provider}")
     s = c.sampling
     body = thinking_body(cfg, channel) | ({"id_slot": slot} if slot is not None else {})
-    # Only where thinking is otherwise off: text channels already think every turn.
+    # Only where thinking is otherwise off: text channels already think every turn. Not with Claude's effort,
+    # which stays the same for a whole conversation: changing it per request re-reads the cached prompt.
     home = home_request(cfg) if channel in HEARD and c.thinking.spoken == "home" and not thinking_for(cfg, channel) \
-        else None
+        and c.thinking.control != "effort" else None
     return WinstonLLM(
-        home=home, control=c.thinking.control, effort=c.thinking.home_effort,
+        home=home, control=c.thinking.control, effort=c.thinking.home_effort, anthropic_api=c.provider == "anthropic",
         own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name,
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(

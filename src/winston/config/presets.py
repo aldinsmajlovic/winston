@@ -48,7 +48,7 @@ LLM: list[Fragment] = [
             "volumes": {"~/.cache/huggingface": "/root/.cache/huggingface"},
             "args": list(_VLLM_ARGS),
         },
-        "settings": {"llm": {"base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
+        "settings": {"llm": {"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
                              "model": "QuantTrio/Qwen3.5-9B-AWQ", "thinking": {"control": "chat_template"}}},
     },
     {
@@ -62,7 +62,7 @@ LLM: list[Fragment] = [
             "volumes": {"~/.cache/huggingface": "/root/.cache/huggingface"},   # llama.cpp reads the HF cache
             "args": list(_LLAMACPP_ARGS),
         },
-        "settings": {"llm": {"base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
+        "settings": {"llm": {"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
                              "model": "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S", "thinking": {"control": "chat_template"}}},
     },
     {
@@ -75,7 +75,7 @@ LLM: list[Fragment] = [
             "volumes": {"~/.cache/huggingface": "/root/.cache/huggingface"},
             "args": list(_LLAMACPP_ARGS),
         },
-        "settings": {"llm": {"base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
+        "settings": {"llm": {"provider": "openai_compatible", "base_url": "http://127.0.0.1:8000/v1", "api_key_env": None,
                              "model": "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_S", "thinking": {"control": "chat_template"}}},
     },
     {
@@ -84,7 +84,7 @@ LLM: list[Fragment] = [
                 "pick a smaller model below.",
         "engine": {"driver": "external", "url": "http://127.0.0.1:11434", "port": 11434, "health": "/",
                    "startup_timeout": 60},
-        "settings": {"llm": {"base_url": "http://127.0.0.1:11434/v1", "api_key_env": None,
+        "settings": {"llm": {"provider": "openai_compatible", "base_url": "http://127.0.0.1:11434/v1", "api_key_env": None,
                              "model": "granite4.2:8b", "thinking": {"control": "reasoning_effort"}}},
     },
     {
@@ -93,7 +93,7 @@ LLM: list[Fragment] = [
                 "below, and a key only if it asks for one.",
         # No address of its own: the API address on the card is the one checked (WinstonConfig.engine_at).
         "engine": {"driver": "external", "port": 8000, "health": "/v1/models", "startup_timeout": 30},
-        "settings": {"llm": {"base_url": "http://192.168.1.10:8000/v1", "api_key_env": None, "model": "",
+        "settings": {"llm": {"provider": "openai_compatible", "base_url": "http://192.168.1.10:8000/v1", "api_key_env": None, "model": "",
                              "thinking": {"control": "chat_template"}}},
     },
     {
@@ -102,8 +102,20 @@ LLM: list[Fragment] = [
                 "network.",
         "engine": {"driver": "external", "url": "https://api.openai.com", "port": 443, "health": "",
                    "startup_timeout": 10},
-        "settings": {"llm": {"base_url": "https://api.openai.com/v1", "api_key_env": "LLM_API_KEY",
+        "settings": {"llm": {"provider": "openai_compatible", "base_url": "https://api.openai.com/v1", "api_key_env": "LLM_API_KEY",
                              "model": "your-provider-model", "thinking": {"control": "none"}}},
+    },
+    {
+        # Claude's own API, not its OpenAI-compatible URL: that one caches nothing and ignores effort
+        # (core/anthropic_chat.py). The key is the one Ask Claude can use too.
+        "id": "anthropic", "icon": "claude", "title": "Claude (Anthropic API)", "needs": ["internet"],
+        "hint": "Claude, with nothing to run here; Haiku is the quickest. Needs an Anthropic API key, and your "
+                "requests leave your network.",
+        "engine": {"driver": "external", "url": "https://api.anthropic.com", "port": 443, "health": "",
+                   "startup_timeout": 10},
+        "settings": {"llm": {"provider": "anthropic", "base_url": "https://api.anthropic.com/v1",
+                             "api_key_env": "ANTHROPIC_API_KEY", "model": "claude-haiku-5-5",
+                             "thinking": {"control": "effort"}}},
     },
 ]
 
