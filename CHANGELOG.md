@@ -3,6 +3,13 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.21 (unreleased)
+
+- His mark says more about what he is doing: while he thinks, a bright arc circles its ring, and while he
+  speaks, the middle of the W rises and falls with his voice.
+- A room box's reply shows him speaking on Talk and the wall display while it plays, and Ready once it
+  has played; before, he looked to be thinking through the whole reply.
+
 ## 0.1.20 (2026-11-26)
 
 - Claude can be his brain, through Anthropic's own API: pick Claude (Anthropic API) under Runs on and
