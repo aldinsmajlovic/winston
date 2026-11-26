@@ -61,7 +61,8 @@ How long he waits in silence before answering in the browser is config.yaml only
 
 History, at `/history` (`/turns` and `/diary` lead there), shows the spoken requests kept while
 recordings are on, one day at a time under his diary entry for that day, or only the ones marked as
-mistakes. Recordings and marks are in [understanding](understanding.md#1-turn-record-and-marks).
+mistakes. With recordings off and none kept it is one sentence with Turn on recordings, which opens
+Assistant. Recordings and marks are in [understanding](understanding.md#1-turn-record-and-marks).
 
 ## Memory
 

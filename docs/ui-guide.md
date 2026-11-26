@@ -273,7 +273,8 @@ Drawn by: `TurnMarkControl`.
   and `?view=marked` opens the second.
 - Each spoken request has a muted header in words ("14:25, Kitchen, after the wake word, answered in
   1.5 s"), Play what he heard inside your bubble, and the rest as on Talk.
-- With recordings off, it says what they would keep and links to Assistant.
+- With recordings off and none kept, one sentence centred, as Talk's empty conversation is, with Turn on
+  recordings; with some kept, a muted line says new ones are not, with the same button.
 
 ### Memory
 
@@ -294,7 +295,7 @@ The wall display (`/wall?room=`) is set up from Ways to talk, on the Talk page c
 - the logo large, as the talk button;
 - its room quietly at the top left;
 - one line for his state ("Tap to talk", "Microphone paused while the box has it", or why he cannot
-  answer);
+  answer), in full-strength text at about the reply's size, so it reads across a room;
 - the last exchange in large type;
 - what he says on his own, across the screen until it is tapped away;
 - a plain Close link at the top right, its only other control.

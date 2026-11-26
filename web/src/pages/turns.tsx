@@ -10,6 +10,7 @@ import { LoadError, useTitle } from '@/components/page'
 import { TurnMarkControl } from '@/components/turn-mark'
 import { ToolLine } from '@/components/tool-line'
 import { WinstonHeader } from '@/components/winston-header'
+import { StatusLine } from '@/components/status-line'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useNow } from '@/hooks/use-now'
@@ -165,13 +166,18 @@ export default function TurnsPage() {
             </div>
           ) : null}
         </div>
-        {data?.enabled === false ? (
-          <p className="-mt-3 text-muted-foreground">
-            {`History keeps spoken requests only while recordings are on. Turning them on keeps your audio, what he heard, did and said, for ${keepDays} days on this computer. The diary and marking mistakes need it.`}{' '}
-            <Link to="/assistant" className="text-foreground underline underline-offset-4">
-              Turn on in Assistant
-            </Link>
-          </p>
+        {empty ? (
+          // Nothing to browse: one sentence and what fills it, centred as Talk's empty conversation is.
+          <div className="m-auto flex max-w-md flex-col items-center gap-4 py-8 text-center text-muted-foreground">
+            <p>{`History shows what you said and what he did while recordings are on, kept for ${keepDays} days.`}</p>
+            <Button asChild variant="outline">
+              <Link to="/assistant">Turn on recordings</Link>
+            </Button>
+          </div>
+        ) : data?.enabled === false ? (
+          <StatusLine tone="muted" action={{ label: 'Turn on recordings', to: '/assistant' }}>
+            Recordings are off, so new requests are not kept.
+          </StatusLine>
         ) : null}
 
         {!data && turns.isError ? (

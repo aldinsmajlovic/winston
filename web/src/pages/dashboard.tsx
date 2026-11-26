@@ -97,12 +97,13 @@ export default function DashboardPage() {
           <Presence state={state} className="size-[min(32svh,50vw)]" />
         </button>
         {announcement ? (
-          <span className="flex items-center gap-3 text-[clamp(1.125rem,2.2vmin,1.5rem)] text-muted-foreground">
+          <span className="flex items-center gap-3 text-[clamp(1.5rem,3.6vmin,2.5rem)] text-muted-foreground">
             <BellRing className="size-[1em]" />
             {region.time(announcement.ts)}
           </span>
         ) : (
-          <p className="text-[clamp(1.125rem,2.2vmin,1.5rem)] text-muted-foreground">{line}</p>
+          // Read from across the room: about twice the size it was, at full strength.
+          <p className="text-[clamp(1.5rem,3.6vmin,2.5rem)] text-foreground">{line}</p>
         )}
       </div>
 
