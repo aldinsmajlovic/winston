@@ -113,6 +113,16 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
           </span>
           <span className="text-muted-foreground">{more}</span>
         </p>
+        {system && use.brainHere ? (
+          <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="font-medium text-warning">Fits, but too slow to talk to.</span>
+            <span className="text-muted-foreground">
+              On the processor every brain that fits took over a minute before his first word in a new conversation, Granite 4.2 8B six (tried on an 8-core desktop). A hosted brain, or a server on your network with a graphics card, answers in seconds.
+            </span>
+          </p>
+        ) : system && r ? (
+          <p className="text-sm text-muted-foreground">No graphics card, so a hosted brain is recommended: one on the processor is too slow to talk to.</p>
+        ) : null}
         {use.otherUnknown ? (
           <p className="text-sm text-muted-foreground">Other programs are left out: this card does not say what each program holds while his engines run.</p>
         ) : null}

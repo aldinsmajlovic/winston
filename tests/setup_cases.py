@@ -54,20 +54,14 @@ def machine(**kw) -> setup.Machine:
     return m
 
 
-check("a 24 GB card gets the 27B", setup.pick(machine(gpus=desk)), "nvidia-24gb")
-check("so does a 4090's 24564 MiB", setup.pick(machine(gpus=[("NVIDIA GeForce RTX 4090", 24564, "580.95.05")])),
-      "nvidia-24gb")
-
-
-def card(mib: int) -> str:
-    return setup.pick(machine(gpus=[("NVIDIA GeForce RTX", mib, "580.95.05")]))
+check("a 24 GB card gets the 27B", setup.pick_for(desk[0][1]), "nvidia-24gb")
+check("so does a 4090's 24564 MiB", setup.pick_for(24564), "nvidia-24gb")
+card = setup.pick_for
 
 
 check("each card size gets the most it fits: 20, 16, 12, 11, 10, 8 and 6 GB",
       [card(20480), card(16376), card(12282), card(11264), card(10240), card(8188), card(6144)],
       ["nvidia-16gb", "nvidia-16gb", "nvidia-12gb", "ollama", "ollama", "nvidia-8gb", "nvidia-8gb"])
-check("no NVIDIA card gets Ollama", setup.pick(machine()), "ollama")
-check("two cards: the larger decides", setup.pick(machine(gpus=[("a", 8188, "x"), ("b", 16376, "x")])), "nvidia-16gb")
 example = yaml.safe_load((repo_root() / "examples/config.yaml").read_text())
 for p, model in (("nvidia-16gb", "granite4.2:8b"), ("nvidia-12gb", "granite4.2:8b"), ("nvidia-8gb", "qwen3.5:4b")):
     cfg = WinstonConfig.model_validate(apply_profile(example, p))

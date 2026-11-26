@@ -8,6 +8,7 @@ The memory bar and setup's recommendation both read these numbers, so they agree
 """
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,18 +73,22 @@ def _model(p: dict) -> str:
 
 def recommend(total: int, other: int, kind: str = "nvidia") -> dict[str, Any]:
     """Setup's picks for total MiB with other MiB held by other programs, then the context filled last. On an
-    NVIDIA card (kind), the profile setup.pick sizes to it. On an AMD card or the processor ("amd", "ram"), Ollama
-    and Pocket, the only picks that run there, with Ollama's brain, or the 8 GB profile's smaller one when that
-    does not fit; on the processor the voice and hearing share the memory too."""
+    NVIDIA card (kind), the profile setup.pick_for sizes to it. On an AMD card, Ollama and Pocket, the only picks that
+    run there, with Ollama's brain, or the 8 GB profile's smaller one when that does not fit. Without a card
+    ("ram"), the hosted profile: every brain that fits took over a minute to its first word on the processor
+    (docs/hardware.md, Without a graphics card), so one there is a pick, never the recommendation."""
     from winston.config.presets import profile
     from winston.setup import pick_for
+    if kind == "ram":
+        p = profile("hosted")
+        return {"profile": p["id"], "llm": p["presets"]["llm"], "model": _model(p), "tts": p["presets"].get("tts"),
+                "stt": "fluid-speech-pro", "context": MIN_K * 1024}
     if kind == "nvidia":
         p = profile(pick_for(total))
         model, table = _model(p), BRAINS
         fixed = other + VOICES.get(p["presets"].get("tts", ""), 0)
     else:
-        p, table = profile("ollama"), BRAINS if kind == "amd" else BRAINS_CPU
-        fixed = other + (VOICES_CPU["pocket"] + HEARING_CPU["fluid-speech-pro"] if kind == "ram" else 0)
+        p, table, fixed = profile("ollama"), BRAINS, other
         big, small = _model(p), _model(profile("nvidia-8gb"))
         model = big if fixed + at(table[big], MIN_K) <= FILL * total else small
     points = table.get(model)
@@ -157,6 +162,12 @@ def here() -> Memory:
     """What the brain runs in on this computer: the NVIDIA card, else the AMD card, else the computer's memory."""
     return nvidia(_run(["nvidia-smi", "--query-gpu=name,memory.used,memory.total", "--format=csv,noheader,nounits"])) \
         or amd() or ram(Path("/proc/meminfo").read_text())
+
+
+@functools.cache
+def on_processor() -> bool:
+    """Whether the brain here runs on the processor (no graphics card), read once per process."""
+    return here().kind == "ram"
 
 
 def _ours(pid: str) -> bool:

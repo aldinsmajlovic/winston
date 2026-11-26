@@ -321,11 +321,6 @@ def describe(m: Machine) -> list[tuple[bool | None, str]]:
 
 # ---- What to do --------------------------------------------------------------------------------------
 
-def pick(m: Machine) -> str:
-    """The profile for the largest NVIDIA card; without one, Ollama, which sizes itself to what it finds."""
-    return pick_for(max(mib for _, mib, _ in m.gpus)) if m.gpus else "ollama"
-
-
 def pick_for(card: int) -> str:
     """The profile for an NVIDIA card of card MiB."""
     return next((p for p, need in FITS if card >= need), "nvidia-8gb")
@@ -533,14 +528,13 @@ def run(yes: bool, profile: str | None) -> None:
         note("The brain and voice stay as they are; change them on his Brain and Voice pages. To start over with "
              "the wizard instead: `winston uninstall --data`, then install again.")
     else:
+        from winston.config import memory
         from winston.config.presets import profile as get_profile
-        chosen = get_profile(profile or pick(m))              # a typo in --profile fails before anything is made
-        llm = None
+        pid, llm, mem = profile, None, memory.here()
         if not profile:          # the brain sized and the context filled last, for the card or memory free now
-            from winston.config import memory
-            mem = memory.here()
             rec = memory.recommend(mem.total, memory.other(mem) or 0, mem.kind)
-            llm = {"model": rec["model"], "context": rec["context"]}
+            pid, llm = rec["profile"], {"model": rec["model"], "context": rec["context"]}
+        chosen = get_profile(pid)                             # a typo in --profile fails before anything is made
         make_data_dir(chosen["id"], print=lambda *a, **k: None, llm=llm)
         heading("Your settings")
         item(True, f"Made in {_home(data)}, starting from {chosen['title']}"
@@ -551,7 +545,12 @@ def run(yes: bool, profile: str | None) -> None:
         if m.nvidia_card and not m.gpus:
             guide = DRIVER_GUIDES.get(m.base, "your distribution's guide")
             note(f"This NVIDIA card needs its driver for a local brain, and setup does not install drivers: {guide}. "
-                 "Until then Ollama runs on the processor, or a hosted brain works anywhere.", fg="yellow")
+                 "Until then a hosted brain works anywhere.", fg="yellow")
+        if mem.kind == "ram":
+            note("No graphics card, so a brain here would run on the processor, and that is too slow to talk to: "
+                 "tried on an 8-core desktop, over a minute passed before he said a word in a new conversation. "
+                 "So he starts with a hosted brain. A server on your network with a graphics card works too, "
+                 "and Ollama on this computer can still be picked on the setup page.", fg="yellow")
     # Setup mode for a new data directory, and a new link each run until the wizard is done. Before the service
     # starts, which then listens on the network for it.
     key = setup_link.new_key() if fresh or setup_link.active() else None

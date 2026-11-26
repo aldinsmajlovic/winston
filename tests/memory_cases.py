@@ -37,11 +37,11 @@ used = {mib: 300 + memory.at(memory.BRAINS[r["model"]], r["context"] / 1024) + m
 check("every recommendation fits its card", all(used[mib] <= mib for mib in rec), True)
 
 # ---- Without an NVIDIA card: an AMD card or the processor ----
-vm8 = memory.recommend(8192, 1500, "ram")
-check("an 8 GB computer without a card: the small brain on the processor, Pocket and Fluid beside it",
-      (vm8["profile"], vm8["model"], vm8["tts"], vm8["context"] // 1024), ("ollama", "qwen3.5:4b", "pocket", 28))
-vm16 = memory.recommend(16384, 1500, "ram")
-check("a 16 GB one fits Ollama's own brain", (vm16["model"], vm16["context"] // 1024 > 16), ("granite4.2:8b", True))
+# Every brain that fits took over a minute to its first word on the processor, so none is recommended there.
+for mib in (8192, 65536):
+    vm = memory.recommend(mib, 1500, "ram")
+    check(f"a {mib // 1024} GB computer without a card: a hosted brain, Pocket and Fluid local",
+          (vm["profile"], vm["llm"], vm["tts"], vm["stt"], vm["context"]), ("hosted", "hosted", "pocket", "fluid-speech-pro", 16384))
 amd16 = memory.recommend(16368, 300, "amd")
 check("an AMD card gets Ollama and Pocket, the context filled on the card",
       (amd16["profile"], amd16["llm"], amd16["model"], amd16["context"] // 1024), ("ollama", "ollama", "granite4.2:8b", 100))
@@ -117,4 +117,20 @@ check("the copy is named by its context", [ollama_copy("granite4.2:8b"), ollama_
 check("his copies are told from a pick at any context", [bool(COPY.search(n)) for n in
       ("granite4.2:8b-40k", "granite4.2:8b", "qwen3.5:4b-112k")], [True, False, True])
 
-finish_checks("memory: the recommendation per card, estimates, llm.context and its migration, the Ollama copy")
+# ---- Ollama on the processor keeps the model ----
+from winston.core.brain import thinking_body  # noqa: E402
+ollama_cfg = WinstonConfig.model_validate(apply_profile(example, "ollama"))
+away = WinstonConfig.model_validate(apply_profile(example, "ollama") | {"llm": {**ollama_cfg.llm.model_dump(),
+                                                                               "base_url": "http://10.0.0.5:11434/v1"}})
+boxes = WinstonConfig.model_validate(apply_profile(example, "ollama") | {"channels": {
+    "web": {"session_idle_mins": 5}, "satellite": {"enabled": True, "session_idle_mins": 45}}})
+kept = {}
+for no_card in (True, False):
+    memory.on_processor = lambda no_card=no_card: no_card
+    kept[no_card] = [thinking_body(c, "voice").get("keep_alive") for c in (ollama_cfg, away, boxes, cfg)]
+check("Ollama keeps the model as long as the longest open conversation; on this computer without a card, "
+      "while he runs; llama.cpp is never sent it",
+      kept, {True: [-1, "30m", -1, None], False: ["30m", "30m", "45m", None]})
+
+finish_checks("memory: the recommendation per card, estimates, llm.context and its migration, the Ollama copy, "
+              "how long Ollama keeps the model")

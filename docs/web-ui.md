@@ -200,6 +200,9 @@ A bar on top of the Brain and Voice pages (and the wizard's first step) shows ho
 AMD card would be with the picks on the page, before saving. Without a card it is **Computer memory**,
 since a brain on his computer then runs on the processor; the bar says so only while it does.
 
+- **Without a card**: a brain on the processor gets "Fits, but too slow to talk to." with the measured
+  wait and what answers in seconds instead ([hardware](hardware.md#speed-on-the-processor)). In the
+  wizard, the recommended hosted brain says why it is recommended.
 - **Parts**: other programs, the brain, More to keep in mind (what the context adds past 16K), the
   voice and hearing on the card, in steps of grey from the brain, darkest, to other programs, palest.
   Each part's size is in the legend, and Free has its own swatch.

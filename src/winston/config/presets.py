@@ -80,8 +80,8 @@ LLM: list[Fragment] = [
     },
     {
         "id": "ollama", "icon": "ollama", "title": "Ollama (local)", "needs": ["ollama"],
-        "hint": "The simplest, on any graphics card or on the processor without one. Needs Ollama; on a small card, "
-                "pick a smaller model below.",
+        "hint": "The simplest, on any graphics card. Needs Ollama; on a small card, pick a smaller model below. On the "
+                "processor alone it runs too, but over a minute passes before he answers.",
         "engine": {"driver": "external", "url": "http://127.0.0.1:11434", "port": 11434, "health": "/",
                    "startup_timeout": 60},
         "settings": {"llm": {"provider": "openai_compatible", "base_url": "http://127.0.0.1:11434/v1", "api_key_env": None,
@@ -204,7 +204,7 @@ PROFILES: list[Fragment] = [
      "hint": "Granite 4.2 8B on Ollama and Breeze TTS 2 share one card (about 12 GB); hearing on the CPU."},
     {"id": "nvidia-12gb", "title": "NVIDIA, 12 GB", "presets": {"llm": "ollama", "tts": "chatterbox"},
      "hint": "Granite 4.2 8B on Ollama and Chatterbox-Turbo share one card (about 10 GB); hearing on the CPU."},
-    {"id": "ollama", "title": "Ollama, any GPU or CPU", "presets": {"llm": "ollama", "tts": "pocket"},
+    {"id": "ollama", "title": "Ollama, any GPU", "presets": {"llm": "ollama", "tts": "pocket"},
      "hint": "Ollama serves the model, Pocket TTS speaks on the CPU. Small cards, AMD, Apple silicon, no Docker."},
     {"id": "nvidia-8gb", "title": "NVIDIA, 8 GB or less", "presets": {"llm": "ollama", "tts": "pocket"},
      "settings": {"llm": {"model": "qwen3.5:4b"}},

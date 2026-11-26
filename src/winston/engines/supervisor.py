@@ -131,6 +131,22 @@ def _exited(m: Managed) -> str:
     return f"exited with code {code}" + (f": {line}" if line else "")
 
 
+async def _release(cfg: WinstonConfig) -> None:
+    """Ollama keeps the brain's model for a while after each request (brain.keep_alive), on the processor while
+    Winston runs; stopped, he lets it go, so it does not hold the card or the computer's memory after him. A
+    failure only leaves it loaded until its time runs out."""
+    from winston.api.options import served_model
+    from winston.core.brain import keep_alive
+    if await asyncio.to_thread(keep_alive, cfg) is None:
+        return
+    base = cfg.llm.base_url.rstrip("/").removesuffix("/v1")
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            await c.post(f"{base}/api/generate", json={"model": served_model(cfg), "keep_alive": 0})
+    except httpx.HTTPError as e:
+        logger.warning(f"llm: Ollama did not let the model go ({e})")
+
+
 def _expand_model(e: EngineConfig, cfg: WinstonConfig) -> EngineConfig:
     """"{model}" in an engine's args or cmd stands for llm.model, so the model name lives in one place;
     "{section.field}" stands for any other config value, so a server's options are settings too."""
@@ -347,6 +363,8 @@ class Supervisor:
         m = self.items[name]
         m.expected, m.stale = False, False
         await m.driver.stop()
+        if name == "llm" and m.kind == "engine":
+            await _release(self.cfg)
         self._set(m, "stopped")
         if m.pending:
             m.pending.started_in, m.pending.owned = m.started_in, m.owned

@@ -10,7 +10,7 @@ table below), or switch any slot later on the Brain and Voice pages.
 | `nvidia-24gb` (default) | NVIDIA card with 24 GB, Docker with the NVIDIA container toolkit | llama.cpp in Docker, Qwen3.8-27B GGUF at 4 bits | Breeze TTS 2 on the GPU, voice cloning from a clip | Fluid Speech Pro on the CPU |
 | `nvidia-16gb` | NVIDIA card with 14 GB or more, Ollama | Ollama, `granite4.2:8b` | Breeze TTS 2 on the GPU | Fluid Speech Pro on the CPU |
 | `nvidia-12gb` | NVIDIA card with 12 GB, Ollama | Ollama, `granite4.2:8b` | Chatterbox-Turbo on the GPU | Fluid Speech Pro on the CPU |
-| `ollama` | Ollama installed; any GPU, Apple silicon or a CPU | Ollama, `granite4.2:8b` | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
+| `ollama` | Ollama installed; any GPU or Apple silicon | Ollama, `granite4.2:8b` | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 | `nvidia-8gb` | NVIDIA card with 8 GB or less, Ollama | Ollama, `qwen3.5:4b` | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 | `hosted` | Internet and an API key | Any OpenAI-compatible endpoint | Pocket TTS on the CPU | Fluid Speech Pro on the CPU |
 
@@ -21,14 +21,14 @@ conversation text to the model provider.
 ## Choosing
 
 `winston setup` picks for you from the largest NVIDIA card ([sizing by the card](#sizing-by-the-card));
-without one it starts from `ollama`, sized to the AMD card or, without a card, the computer's memory
+without one it starts from `ollama`, sized to the AMD card, and without any card from `hosted`
 ([without an NVIDIA card](#without-an-nvidia-card)).
 
 - **NVIDIA with 24 GB:** `nvidia-24gb`, what the reference box runs
   ([below](#recommended-on-a-24-gb-card)). Breeze's weights are for non-commercial use only; for
   anything else pick Chatterbox-Turbo on the Voice page. For a brain that sees images, pick vLLM
   (Qwen3.5-9B) on the Brain page: it got fewer requests right than the 27B.
-- **A smaller card, AMD, Apple silicon, or no GPU:** `ollama`. Ollama handles the hardware itself.
+- **A smaller card, AMD or Apple silicon:** `ollama`. Ollama handles the hardware itself.
   Any model that `ollama show` lists with the `tools` capability works; the tags on its Ollama
   page can leave it out (Granite 4.2 has none). The default, `granite4.2:8b`, fits a 12 GB card;
   on less than about 8 GB free, pick `qwen3.5:4b` (3.4 GB). How they compare:
@@ -112,14 +112,14 @@ the same ones ([web UI](web-ui.md#graphics-memory)).
 
 | Part | AMD card | No graphics card |
 | --- | --- | --- |
-| Brain | Ollama, on the card (ROCm or Vulkan, Ollama's choice). llama.cpp on AMD, untried. | Ollama, on the processor |
+| Brain | Ollama, on the card (ROCm or Vulkan, Ollama's choice). llama.cpp on AMD, untried. | Hosted, or a server on your network. Ollama on the processor can be picked but is too slow to talk to ([speed](#speed-on-the-processor)) |
 | Voice | Pocket, on the processor | Pocket |
 | Hearing | Fluid Speech Pro or Parakeet, on the processor | The same |
 | Memory bar | The AMD card's, read from the kernel's files | The computer's memory |
 
-The other voices, Qwen3-ASR hearing and vLLM need NVIDIA's CUDA. Setup picks `ollama` either way. It
-keeps Granite 4.2 8B when it fits under 90% of the memory at 16K, else Qwen3.5 4B, then fills the
-context the same way.
+The other voices, Qwen3-ASR hearing and vLLM need NVIDIA's CUDA. On an AMD card setup picks `ollama`.
+It keeps Granite 4.2 8B when it fits under 90% of the memory at 16K, else Qwen3.5 4B, then fills the
+context the same way. Without a card it picks `hosted`, and says why.
 
 On the processor, measured as each process's resident memory while working (25 November):
 
@@ -130,9 +130,48 @@ On the processor, measured as each process's resident memory while working (25 N
 | Pocket, speaking | 0.9 GB | | |
 | Fluid Speech Pro / Parakeet | 0.9 / 1.1 GB | | |
 
-So an 8 GB computer gets Qwen3.5 4B with 28K once the system's 1.5 GB is counted, and a 16 GB one
-Granite. An AMD card does not say which program holds what, so while his engines run the bar leaves
-other programs out and says so.
+The memory bar reads these when Ollama is picked on the processor anyway. An AMD card does not say
+which program holds what, so while his engines run the bar leaves other programs out and says so.
+
+### Speed on the processor
+
+A brain that fits in the computer's memory is still too slow to talk to. Measured on 26 November on a
+Ryzen 7 5800X (8 cores, DDR4), Ollama 0.40.17 with no layers on the card, thinking off, 16K, his real
+voice prompt (about 6,000 tokens, 19 tools, without extension tools):
+
+| Model | New conversation, first word | Next turn, prompt kept | "Turn on the living room lights" |
+| --- | --- | --- | --- |
+| `granite4.2:8b` | 6 min 2 s | 1.4 s | called the tool, 17 s in all |
+| `granite4.2:3b` | 4 min 16 s | 1.1 s | no tool call |
+| `nemotron-3-nano:4b` | 2 min 50 s | 29 s | no tool call |
+| `qwen3.5:4b` | 1 min 48 s | 22 s | no tool call |
+| `gemma4:e4b` | 1 min 7 s | 0.3 s | no tool call |
+| `lfm2.5:8b` (about 1B active) | 1 min 5 s | 14 s | called the tool, 27 s in all |
+
+"No tool call" means it said the lights were on without turning them on (one try each). Reading the
+prompt is the slow part: 17 to 100 tokens a second, against thousands on a card. Some models read
+most of it again every turn (Qwen, Nemotron, LFM); Granite and Gemma keep it.
+
+A new conversation comes more often than it sounds: the date in the prompt changes every day, and
+Ollama drops a model after 5 idle minutes. A slower computer, such as a small home server, takes
+several times longer.
+
+### How long Ollama keeps the model
+
+Ollama drops a model 5 minutes after its last request, and the next first word then waits for the
+load and for the prompt to be read again. Measured on 26 November, the same prompt, Granite 4.2 8B:
+
+| | Loaded, prompt kept | After an unload |
+| --- | --- | --- |
+| RTX 3090 | 0.1 s | 3.9 to 7.0 s (2.1 to 5.3 s of it loading) |
+| Processor (5800X) | 1.4 s | 6 min 2 s |
+
+So every request to an Ollama brain says how long to keep it (`keep_alive`): as long as the longest
+New conversation after among the channels that are on (30 minutes by default), and on this computer
+with no graphics card for as long as Winston runs. When the brain stops, Winston lets the model go.
+
+Keeping it does not stop Ollama from making room: on the 3090, loading Granite unloaded another
+model that had been set to stay forever.
 
 ## Recommended on a 24 GB card
 

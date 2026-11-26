@@ -211,16 +211,36 @@ def chat_client(cfg: WinstonConfig, timeout: float) -> AsyncOpenAI | AnthropicCh
     return AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=timeout)
 
 
+def keep_alive(cfg: WinstonConfig) -> int | str | None:
+    """How long an Ollama brain keeps its model after a request; None for any other server. Ollama's own 5
+    minutes cost the next first word 4 to 7 s on a 3090 and 1 to 6 minutes on the processor (docs/hardware.md),
+    so: as long as a conversation stays open (the longest New conversation after), and on this computer with no
+    graphics card, while he runs. Every request carries it; one without would set the 5 minutes again."""
+    from urllib.parse import urlparse
+    from winston.api.options import llm_engine
+    from winston.config.memory import on_processor
+    e = cfg.engine_at("llm")
+    if not (e and e.enabled and llm_engine(e.model_dump()) == "ollama"):
+        return None
+    if urlparse(cfg.llm.base_url).hostname in ("127.0.0.1", "localhost", "::1") and on_processor():
+        return -1
+    mins = [c.session_idle_mins for c in cfg.channels.__dict__.values()
+            if hasattr(c, "session_idle_mins") and getattr(c, "enabled", True)]
+    return f"{max(mins, default=30)}m"
+
+
 def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
-    """Request fields that switch reasoning on or off, per the server's dialect (llm.thinking.control)."""
+    """Request fields every brain request carries: reasoning on or off, per the server's dialect
+    (llm.thinking.control), and how long Ollama keeps the model (keep_alive)."""
     think, control = thinking_for(cfg, channel), cfg.llm.thinking.control
+    keep = {"keep_alive": k} if (k := keep_alive(cfg)) is not None else {}
     if control == "chat_template":                       # vLLM, llama.cpp: Qwen's enable_thinking template flag
-        return {"chat_template_kwargs": {"enable_thinking": think}}
+        return {"chat_template_kwargs": {"enable_thinking": think}} | keep
     if control == "reasoning_effort" and not think:      # Ollama: "none" switches it off; on is the model default
-        return {"reasoning_effort": "none"}
+        return {"reasoning_effort": "none"} | keep
     if control == "effort" and not think:                # Claude: it decides when to think; low keeps that short.
         return {"output_config": {"effort": "low"}}      # On is the model's default effort.
-    return {}
+    return keep
 
 
 # A request to change something ("turn it off", "dim it a bit more") names no device every time.

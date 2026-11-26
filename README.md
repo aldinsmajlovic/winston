@@ -17,8 +17,9 @@ machine by default, and any part can be swapped for a hosted service.
 
 ## Install
 
-Needs Linux and Home Assistant. Any of the [hardware profiles](docs/hardware.md) works: an NVIDIA
-card from 8 GB (24 GB for the largest brain), Ollama on any GPU or CPU, or a hosted model.
+Needs Linux and Home Assistant, and for a brain of your own a graphics card: NVIDIA from 8 GB (24 GB
+for the largest brain) or Ollama on any other. Without one, his brain is a hosted model or a server
+on your network; see the [hardware profiles](docs/hardware.md).
 
 ```sh
 curl -fsSL https://github.com/aldinsmajlovic/winston/releases/latest/download/install.sh | sh
@@ -34,7 +35,7 @@ set up a Voice PE plugged in over USB. To read the script first, or to install f
 ## Features
 
 - **Local first.** The language model and the voice share one GPU and speech recognition runs on the
-  CPU, or everything runs on Ollama and the CPU. Each can point at a hosted API instead.
+  CPU. Each can point at a hosted API or another computer instead.
 - **Fast.** About 1.3 s from the end of a plain question to his first word.
 - **Controls your home** through Home Assistant's MCP server, then checks the device really changed
   and corrects himself when it did not. Add his integration to Home Assistant from his own page, and
