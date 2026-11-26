@@ -136,7 +136,8 @@ From the top:
   new version. The sidebar's footer says "Version 0.2.0 is out" on every Settings page. See
   [updating](setup.md#updating).
 - **His parts**: Brain, Speaking, Hearing, Talk page microphone, Room boxes, Discord, Home Assistant
-  and Extensions. Each row is described below the list.
+  and Extensions, each only while it is on (Home Assistant once it is set up): its page turns it on.
+  Each row is described below the list.
 - **Graphics memory**: "23.4 of 24.0 GB in use" and the card's name, then which of his parts run on
   the card, from the saved picks ("The brain and the speaking voice run on it."): a voice or hearing on
   the processor is not named. A part that does not fit will not start; a brain on Ollama runs partly on
@@ -157,8 +158,8 @@ A row in His parts says:
 - its state in words with how long ("Running, up 15 min", "Starting, 40 s of about 2 min"), and the
   reason under it when it is not running.
 
-Its command is Restart while it runs, Start while it does not, Turn on for one switched off (a draft
-change, for Save) and Set up for Discord. Its menu has Stop and Log, and the row opens the page that
+Its command is Restart while it runs, Start while it does not, and Set up for a Home Assistant not
+connected yet. Its menu has Stop and Log, and the row opens the page that
 sets it up. Stop and Restart say what stops and for how long ("Stop the brain? He cannot answer
 anywhere until it starts again, about 24 s.").
 

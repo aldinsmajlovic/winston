@@ -29,7 +29,7 @@ import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { capitalize, joinNames, since } from '@/lib/format'
 import { memoryUse } from '@/lib/graphics-memory'
 import { matchPreset, SLOT_TITLES, type Kind } from '@/lib/presets'
-import { getIn, section, setIn } from '@/lib/schema'
+import { section } from '@/lib/schema'
 import { SETUP_STEPS } from '@/lib/setup'
 import { cn } from '@/lib/utils'
 
@@ -53,10 +53,9 @@ type Part = {
   process?: EngineStatus
   /** A state that is no process of Winston's (Home Assistant answering), with its own word. */
   state?: { state: EngineState; detail?: string; word?: string }
+  /** Switched off or not set up: no row, its page turns it on. */
   off?: boolean
-  /** The switch that turns it on: while off, its command is Turn on, in the draft. */
-  enable?: string[]
-  /** Off until it is set up there (Discord): its command is Set up. */
+  /** Set up but not connected yet (Home Assistant): its command is Set up. */
   setUp?: boolean
 }
 
@@ -157,7 +156,7 @@ export function PartStateLine({ part }: { part: EngineStatus }) {
 function PartState({ part }: { part: Part }) {
   const e = part.process
   const state: Part['state'] = e ? { state: e.state, detail: e.detail } : part.state
-  if (!state) return part.off ? <span className="text-muted-foreground">Off</span> : null
+  if (!state) return null
   return (
     <div className="flex flex-col gap-0.5">
       <span className="relative z-10 whitespace-nowrap">
@@ -262,7 +261,6 @@ export default function StatusPage() {
       to,
       process: proc(kind),
       off: engine?.enabled === false,
-      enable: ['engines', kind, 'enabled'],
     }
   }
   // The model by its own name, without its maker, file format or quantization ("Qwen3.8-27B" for
@@ -276,7 +274,7 @@ export default function StatusPage() {
   const on = (extensions.data ?? []).filter((x) => x.enabled)
   const needing = on.filter(needsYou)
 
-  const parts: Part[] = [
+  const all: Part[] = [
     slot('llm', '/brain', model),
     slot('tts', '/voice', voice),
     slot('stt', '/voice'),
@@ -288,7 +286,6 @@ export default function StatusPage() {
       to: '/ways-to-talk',
       process: proc('voice'),
       off: saved.channels?.voice?.enabled === false,
-      enable: ['channels', 'voice', 'enabled'],
     },
     {
       key: 'satellite',
@@ -298,8 +295,6 @@ export default function StatusPage() {
       to: '/ways-to-talk',
       process: proc('satellite'),
       off: !saved.channels?.satellite?.enabled,
-      // With no box, Set up next's Add a box covers it.
-      enable: boxes ? ['channels', 'satellite', 'enabled'] : undefined,
     },
     {
       key: 'discord',
@@ -309,21 +304,20 @@ export default function StatusPage() {
       to: '/ways-to-talk',
       process: proc('discord'),
       off: !saved.channels?.discord?.enabled,
-      setUp: !saved.channels?.discord?.enabled,
     },
     {
       key: 'home_assistant',
       icon: 'homeassistant',
       role: 'Home Assistant',
-      runs: !haSetUp ? 'Not set up' : haState === 'new' ? 'Not connected yet' : exposure.data?.version ? `Version ${exposure.data.version}` : '',
+      runs: haState === 'new' ? 'Not connected yet' : exposure.data?.version ? `Version ${exposure.data.version}` : '',
       to: '/home-assistant',
       state:
         haState === 'down' || haState === 'ok'
           ? { state: haDown ? 'error' : 'healthy', detail: haDetail, word: haDown ? "Can't reach it" : 'Connected' }
           : undefined,
-      off: haSetUp && !haOn,
+      // Not set up: Set up next's Connect Home Assistant covers it.
+      off: !haSetUp || !haOn,
       setUp: haState === 'new',
-      enable: haSetUp ? ['providers', 'home_assistant', 'enabled'] : undefined,
     },
     {
       key: 'extensions',
@@ -333,6 +327,7 @@ export default function StatusPage() {
       to: '/extensions',
     },
   ]
+  const parts = all.filter((p) => !p.off)
 
   // Needs you: what is wrong now, each with what to do about it. What waits for a restart is in the header
   // and in its part's state.
@@ -453,18 +448,12 @@ export default function StatusPage() {
   ]
   const partActions = (p: Part) => {
     const e = p.process
-    // Gone once the draft turns it on; the save bar takes it from there.
-    const turnOn = !e && p.off && p.enable && getIn(page.value, p.enable) !== true ? p.enable : undefined
-    if (!e && !p.setUp && !turnOn) return null
+    if (!e && !p.setUp) return null
     return (
       <span className="inline-flex items-center gap-1 max-sm:pl-7">
         {e ? (
           <Button variant="outline" size="sm" onClick={() => (isRunning(e) ? void commands.restart(e) : commands.start(e))}>
             {isRunning(e) ? 'Restart' : 'Start'}
-          </Button>
-        ) : turnOn ? (
-          <Button variant="outline" size="sm" onClick={() => page.update((c) => setIn(c, turnOn, true))}>
-            Turn on
           </Button>
         ) : p.setUp ? (
           <Button variant="outline" size="sm" asChild>
