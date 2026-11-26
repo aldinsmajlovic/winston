@@ -57,7 +57,7 @@ function isRecommended(r: Picks, page: SettingsState, presets: Presets): boolean
  * would cover a third of the screen). In the setup wizard (recommend), also whether they are the picks
  * recommended here, with a way back to them. */
 export function MemoryBar({ page, presets, recommend }: { page: SettingsState; presets: Presets; recommend?: boolean }) {
-  const plan = useGraphicsMemory(page)
+  const plan = useGraphicsMemory(page.value)
   if (!plan?.total_mb) return null
   const system = plan.memory === 'system'
   const use = memoryUse(plan, page.value, presets)
@@ -143,7 +143,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
 /** How much one conversation holds (llm.context), for a brain he runs here: a slider in steps, with about how
  * many exchanges that is and what it costs on the card, which the memory bar shows as it moves. */
 export function ContextSlider({ page, presets }: { page: SettingsState; presets: Presets }) {
-  const plan = useGraphicsMemory(page)
+  const plan = useGraphicsMemory(page.value)
   if (!plan) return null
   const use = memoryUse(plan, page.value, presets)
   if (!use.brainHere) return null

@@ -20,6 +20,7 @@ import {
 } from '@rjsf/utils'
 import { CircleAlert, Plus, Trash2 } from 'lucide-react'
 import { Combobox, type Choice } from '@/components/combobox'
+import { ModelPicker } from '@/components/model-picker'
 import { IconButton } from '@/components/icon-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -342,9 +343,11 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
       </div>
     )
   }
+  // The brain's models are chosen by more than a name: a dialog of rows with what each is and whether it fits.
+  const Picker = meta.options === 'llm_models' ? ModelPicker : Combobox
   return (
     <div className="flex flex-col gap-2">
-      <Combobox
+      <Picker
         id={id}
         value={value ?? ''}
         choices={choices}

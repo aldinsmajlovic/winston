@@ -113,7 +113,7 @@ def _split_ref(ref: str) -> tuple[str, str, str]:
 # Looked up once per winstond. Async on purpose: httpx's async client tries IPv6 and IPv4 side by side, and the
 # sync one waits out every IPv6 address first, minutes behind a VPN that drops IPv6.
 _SIZES: dict[str, int | None] = {}
-_FILES: dict[str, dict[str, int]] = {}
+_FILES: dict[str, dict] = {}       # each Hub repo's model API answer: its files with their sizes, card, counts
 
 
 async def _manifest_size(host: str, repo: str, tag: str, agent: str = "winston") -> int | None:
@@ -186,15 +186,25 @@ def _venv(svc: Path) -> Part:
     return Part(key, "its Python packages", str(svc), None if have or size is None else int(size * GB), have)
 
 
-async def _repo_files(repo: str) -> dict[str, int]:
-    """The repo's files and their sizes, from the Hub's model API (its token, for a gated repo)."""
+async def repo_info(repo: str) -> dict:
+    """The Hub's model API answer for a repo (its token, for a gated repo): its files with their sizes, and what
+    the model picker shows of it (card, parameters, counts)."""
     if repo not in _FILES:
         from huggingface_hub import constants
         from huggingface_hub.utils import build_hf_headers
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as c:
             r = await c.get(f"{constants.ENDPOINT}/api/models/{repo}", params={"blobs": "true"}, headers=build_hf_headers())
-        _FILES[repo] = {s["rfilename"]: s.get("size") or 0 for s in r.raise_for_status().json().get("siblings") or []}
+        _FILES[repo] = r.raise_for_status().json()
     return _FILES[repo]
+
+
+def info_files(info: dict) -> dict[str, int]:
+    return {s["rfilename"]: s.get("size") or 0 for s in info.get("siblings") or []}
+
+
+async def _repo_files(repo: str) -> dict[str, int]:
+    """The repo's files and their sizes."""
+    return info_files(await repo_info(repo))
 
 
 def _gguf(files: list[str], quant: str) -> list[str]:

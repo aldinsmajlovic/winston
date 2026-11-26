@@ -1,7 +1,7 @@
 """Finding a brain model by typing (api/options.py, llm_models with `q`): the Hub searched for the engine's
 format, a GGUF repo offered at its 4-bit size, every size of a repo named exactly or pasted as a link and of
-the one picked now, Ollama's library, and nothing at all while offline. Fakes for the Hub and Ollama's search
-page; nothing reaches the network.
+the one picked now, Ollama's library, what the model picker shows of each (facts), and nothing at all while
+offline. Fakes for the Hub, Ollama's search page and its registry; nothing reaches the network.
 
     uv run python tests/model_search_cases.py
 """
@@ -45,12 +45,31 @@ async def model(request):
     repo = f"{request.match_info['owner']}/{request.match_info['name']}"
     if repo not in FILES:
         return web.json_response({"error": "not found"}, status=404)
-    return web.json_response({"siblings": [{"rfilename": f, "size": n} for f, n in FILES[repo].items()]})
+    card = {"cardData": {"base_model": ["Org/Small"], "license": "apache-2.0", "tags": ["vision"]}, "likes": 7,
+            "downloads": 2_100_000, "lastModified": "2026-11-12T02:15:52.000Z",
+            "gguf": {"total": 27_320_697_856, "context_length": 262144}} if repo == "unsloth/Small-GGUF" else {}
+    return web.json_response({**card, "siblings": [{"rfilename": f, "size": n} for f, n in FILES[repo].items()]})
+
+
+# One result as ollama.com's search page draws it (2026-11-26), then bare links.
+RESULT = """<li class="border-t"> <a href="/library/small3" class="group grid"> <h2 title="small3"><span >small3</span></h2>
+ <span class="flex-none text-[15px]" title="Updated August 27, 2026">3mo</span> </div>
+ <div class="order-last"><span class="inline-flex items-center rounded-md bg-indigo-50 px-2">tools</span> </div>
+ <p class="mt-1 line-clamp-2 text-[15px]">Small models that use tools &amp; think. </p>
+ <span class="inline-flex items-center gap-1.5 tabular-nums" title="334,165 downloads"><span >334.2K</span></span>
+ <span class="inline-flex items-center rounded-md bg-[#ddf4ff] px-2">3b</span>
+ <span  class="inline-flex items-center rounded-md bg-[#ddf4ff] px-2">8b</span
+> </a> </li>"""
 
 
 async def ollama(request):
-    return web.Response(text='<a href="/library/small3">x</a><a href="/library/small3">y</a><a href="/library/smaller">',
-                        content_type="text/html")
+    return web.Response(text=RESULT + '<a href="/library/small3">y</a><a href="/library/smaller">', content_type="text/html")
+
+
+async def registry(request):
+    if request.match_info["name"] != "small3":
+        return web.json_response({"errors": []}, status=404)
+    return web.json_response({"layers": [{"size": 5 * GB}], "config": {"size": 1}})
 
 
 def rows(found):
@@ -62,10 +81,12 @@ async def main():
     app.router.add_get("/api/models", models)
     app.router.add_get("/api/models/{owner}/{name}", model)
     app.router.add_get("/ollama", ollama)
+    app.router.add_get("/v2/library/{name}/manifests/{tag}", registry)
     runner = web.AppRunner(app)
     await runner.setup()
     await web.TCPSite(runner, "127.0.0.1", port).start()
     options.OLLAMA_SEARCH = f"http://127.0.0.1:{port}/ollama"
+    options.OLLAMA_REGISTRY = f"127.0.0.1:{port}"
 
     check("llama.cpp: each GGUF repo at its 4-bit size, the odd one at what it has, one with no GGUF left out",
           rows(await options._find("llamacpp", "small", "")),
@@ -104,9 +125,42 @@ async def main():
     check("found choices are shown as the server found them", all(c.searched for c in await options._find(
         "llamacpp", "small", "")), True)
 
+    found = {c.value: c.facts for c in await options._find("llamacpp", "small", "")}
+    f = found["unsloth/Small-GGUF:Q4_K_M"]
+    check("a Hub find: where from, what it is made from, parameters, its 4-bit size, context, license, counts, tags",
+          (f.source, f.link, f.description, f.params, f.bytes, f.context, f.license, f.downloads, f.likes, f.updated,
+           f.tags, f.sizes, f.repo),
+          ("Hugging Face", "https://huggingface.co/unsloth/Small-GGUF", "Made from Org/Small", "27.3B", 5 * GB, 262144,
+           "apache-2.0", 2_100_000, 7, "2026-11-12T02:15:52.000Z", ["vision"], ["BF16", "Q4_K_M", "Q8_0"],
+           "unsloth/Small-GGUF"))
+    check("a repo the Hub does not answer for keeps what the search said", (found["x/Odd-GGUF:IQ3_M"].downloads,
+          found["x/Odd-GGUF:IQ3_M"].bytes), (12, None))
+    check("each size of a repo has its own bytes",
+          [c.facts.bytes for c in await options._find("llamacpp", "unsloth/Small-GGUF", "")], [5 * GB, 9 * GB, 16 * GB])
+    lib = {c.value: c.facts for c in await options._find("ollama", "small", "")}
+    check("Ollama's library: its description, pulls, last update, what it does, sizes, and its latest's size",
+          (lib["small3"].description, lib["small3"].downloads, lib["small3"].updated, lib["small3"].tags,
+           lib["small3"].sizes, lib["small3"].bytes, lib["small3"].link),
+          ("Small models that use tools & think.", 334165, "2026-08-27", ["tools"], ["3b", "8b"], 5 * GB + 1,
+           "https://ollama.com/library/small3"))
+    check("a bare link: its name and page, nothing else known",
+          (lib["smaller"].source, lib["smaller"].description, lib["smaller"].bytes), ("Ollama", None, None))
+    check("a model listed by name (downloaded, running): the Hub's facts, the disk's size kept",
+          ((f := await options._facts("llamacpp", "unsloth/Small-GGUF:Q8_0", 123)).params, f.bytes), ("27.3B", 123))
+    check("an Ollama name links its library page, a hosted name has no facts",
+          ((await options._facts("ollama", "granite4.2:8b")).link, await options._facts("vllm", "gpt-4o")),
+          ("https://ollama.com/library/granite4.2", None))
+    cs = [options.Choice(value="granite4.2:8b", label="", facts=options.ModelFacts(bytes=1)),
+          options.Choice(value="x/Y:Q4_K_M", label="", searched=True, facts=options.ModelFacts(bytes=4 * GB))]
+    await options._add_facts("ollama", cs, {"granite4.2:8b": {"size": 5 * GB, "details": {"parameter_size": "8.2B"}}})
+    check("memory by context: measured for a known brain, estimated from the weights for another",
+          [(c.facts.measured, c.facts.points[0][0]) for c in cs], [(True, 16), (False, 16)])
+    check("Ollama's own list fills in parameters", cs[0].facts.params, "8.2B")
+
     await runner.cleanup()
     os.environ["HF_ENDPOINT"] = f"http://127.0.0.1:{free_port()}"
     options.OLLAMA_SEARCH = f"http://127.0.0.1:{free_port()}/ollama"
+    options.OLLAMA_REGISTRY = f"127.0.0.1:{free_port()}"
     from huggingface_hub import constants
     constants.ENDPOINT = os.environ["HF_ENDPOINT"]
     from winston.engines.install import _FILES
@@ -117,4 +171,4 @@ async def main():
 
 
 asyncio.run(main())
-finish_checks("model search: the Hub per engine, sizes per repo, links, Ollama's library, offline")
+finish_checks("model search: the Hub per engine, sizes per repo, links, Ollama's library, facts, offline")

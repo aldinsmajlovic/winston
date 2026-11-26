@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { ChevronDown, CircleAlert, LoaderCircle } from 'lucide-react'
 import { KindIcon } from '@/components/kind-icon'
 import { Button } from '@/components/ui/button'
+import type { ModelFacts } from '@/api/client'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -19,7 +21,12 @@ export type Choice = {
   disabled?: boolean
   /** Found by the server for the typed text: shown as is, not filtered again. */
   searched?: boolean
+  /** The brain's models: what the model picker shows of each. */
+  facts?: ModelFacts | null
 }
+
+/** What a rich row can do besides being picked: type a search (a repo's sizes), or pick a value of its own. */
+export type RowActions = { search: (text: string) => void; pick: (value: string) => void }
 
 type Props = {
   id?: string
@@ -37,6 +44,10 @@ type Props = {
   onClear?: () => void
   /** The typed text, for a server that searches further (its finds come back `searched`). */
   onSearch?: (text: string) => void
+  /** Each choice drawn as a rich row, in a wide dialog (`title`, `description`) instead of a dropdown. */
+  row?: (choice: Choice, act: RowActions) => ReactNode
+  title?: string
+  description?: ReactNode
 }
 
 const SEARCH_FROM = 8
@@ -69,8 +80,8 @@ export function ChoiceName({ text, className }: { text: string; className?: stri
 }
 
 /** A dropdown of choices fetched from somewhere, searchable when long; with `custom` a typed
- * value that is not listed can be used as is. */
-export function Combobox({ id, value, choices, onChange, custom, loading, problem, disabled, placeholder, onClear, onSearch }: Props) {
+ * value that is not listed can be used as is. With `row`, a dialog of rich rows instead. */
+export function Combobox({ id, value, choices, onChange, custom, loading, problem, disabled, placeholder, onClear, onSearch, row, title, description }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const current = choices.find((c) => c.value === value)
@@ -88,85 +99,106 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
     setOpen(false)
     type('')
   }
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className="w-full justify-between border-input bg-transparent font-normal hover:bg-transparent"
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <ChoicePicture choice={current} className="size-5" />
-            <ChoiceName text={current?.label ?? (value || placeholder || 'Not set')} className={cn('truncate', !current && !value && 'text-muted-foreground')} />
-          </span>
-          <span className="flex items-center gap-2">
-            {loading ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" /> : null}
-            {problem ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">
-                    <CircleAlert className="size-4 text-warning" aria-label={problem} />
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>{problem}</TooltipContent>
-              </Tooltip>
-            ) : null}
-            <ChevronDown className="size-4 text-muted-foreground" />
-          </span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
-        <Command filter={filter}>
-          {choices.length >= SEARCH_FROM || custom ? (
-            <CommandInput placeholder={onSearch ? 'Search, or paste a link' : custom ? 'Search, or type a name' : 'Search'} value={search} onValueChange={type} />
-          ) : null}
-          <CommandList>
-            {found ? null : <CommandEmpty>{problem ?? 'Nothing found'}</CommandEmpty>}
-            {onClear && value ? (
-              <CommandGroup>
-                <CommandItem
-                  value="none"
-                  onSelect={() => {
-                    onClear()
-                    setOpen(false)
-                  }}
-                >
-                  <span className="text-muted-foreground">None</span>
-                </CommandItem>
-              </CommandGroup>
-            ) : null}
-            {groups(choices).map(([group, items]) => (
-              <CommandGroup key={group} heading={group || undefined} forceMount={items.some((c) => c.searched)}>
-                {items.map((c) => (
-                  <CommandItem
-                    key={c.value}
-                    forceMount={c.searched}
-                    value={`${c.label} ${c.value}`}
-                    data-checked={c.value === value}
-                    disabled={c.disabled}
-                    onSelect={() => pick(c.value)}
-                  >
+  const trigger = (
+    <Button
+      id={id}
+      type="button"
+      variant="outline"
+      role="combobox"
+      aria-expanded={open}
+      disabled={disabled}
+      className="w-full justify-between border-input bg-transparent font-normal hover:bg-transparent"
+    >
+      <span className="flex min-w-0 items-center gap-2">
+        <ChoicePicture choice={current} className="size-5" />
+        <ChoiceName text={current?.label ?? (value || placeholder || 'Not set')} className={cn('truncate', !current && !value && 'text-muted-foreground')} />
+      </span>
+      <span className="flex items-center gap-2">
+        {loading ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" /> : null}
+        {problem ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <CircleAlert className="size-4 text-warning" aria-label={problem} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{problem}</TooltipContent>
+          </Tooltip>
+        ) : null}
+        <ChevronDown className="size-4 text-muted-foreground" />
+      </span>
+    </Button>
+  )
+  const list = (
+    <Command filter={filter} className={cn(row && 'min-h-0 flex-1 rounded-none! bg-transparent')}>
+      {choices.length >= SEARCH_FROM || custom ? (
+        <CommandInput placeholder={onSearch ? 'Search, or paste a link' : custom ? 'Search, or type a name' : 'Search'} value={search} onValueChange={type} />
+      ) : null}
+      <CommandList className={cn(row && 'max-h-none flex-1')}>
+        {found ? null : <CommandEmpty>{problem ?? 'Nothing found'}</CommandEmpty>}
+        {onClear && value ? (
+          <CommandGroup>
+            <CommandItem
+              value="none"
+              onSelect={() => {
+                onClear()
+                setOpen(false)
+              }}
+            >
+              <span className="text-muted-foreground">None</span>
+            </CommandItem>
+          </CommandGroup>
+        ) : null}
+        {groups(choices).map(([group, items]) => (
+          <CommandGroup key={group} heading={group || undefined} forceMount={items.some((c) => c.searched)}>
+            {items.map((c) => (
+              <CommandItem
+                key={c.value}
+                forceMount={c.searched}
+                value={`${c.label} ${c.value}`}
+                data-checked={c.value === value}
+                disabled={c.disabled}
+                onSelect={() => pick(c.value)}
+              >
+                {row ? row(c, { search: type, pick }) : (
+                  <>
                     <ChoicePicture choice={c} className="size-6" />
                     <ChoiceName text={c.label} className="flex-1 truncate" />
                     {c.hint ? <span className="max-w-1/3 truncate text-xs text-muted-foreground">{c.hint}</span> : null}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+                  </>
+                )}
+              </CommandItem>
             ))}
-            {offerTyped ? (
-              <CommandGroup forceMount>
-                <CommandItem forceMount value={`use ${typed}`} onSelect={() => pick(typed)}>
-                  Use {typed}
-                </CommandItem>
-              </CommandGroup>
-            ) : null}
-          </CommandList>
-        </Command>
+          </CommandGroup>
+        ))}
+        {offerTyped ? (
+          <CommandGroup forceMount>
+            <CommandItem forceMount value={`use ${typed}`} onSelect={() => pick(typed)}>
+              Use {typed}
+            </CommandItem>
+          </CommandGroup>
+        ) : null}
+      </CommandList>
+    </Command>
+  )
+  if (row)
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>{trigger}</DialogTrigger>
+        <DialogContent className="flex h-[min(48rem,calc(100dvh-2rem))] flex-col gap-0 p-0 sm:max-w-3xl">
+          <DialogHeader className="border-b p-4 pr-12">
+            <DialogTitle>{title}</DialogTitle>
+            {description ? <DialogDescription>{description}</DialogDescription> : null}
+          </DialogHeader>
+          {list}
+        </DialogContent>
+      </Dialog>
+    )
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
+        {list}
       </PopoverContent>
     </Popover>
   )

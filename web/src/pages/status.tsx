@@ -172,7 +172,7 @@ const ON_CARD: Record<string, string> = { Brain: 'the brain', Voice: 'the speaki
 
 /** The graphics card: how full it is now, and which of his parts run on it, from the saved picks. */
 function GraphicsCard({ gpu, page, config, presets, running }: { gpu: NonNullable<Status['gpu']>; page: SettingsState; config: Config; presets?: Presets; running: boolean }) {
-  const plan = useGraphicsMemory(page)
+  const plan = useGraphicsMemory(page.value)
   const use = plan && presets ? memoryUse(plan, config, presets) : null
   const full = gpu.used_mb / gpu.total_mb > 0.9
   // The brain by brainHere: one whose memory is not known is on the card all the same.

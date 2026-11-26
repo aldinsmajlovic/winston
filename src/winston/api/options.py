@@ -5,12 +5,14 @@ nothing is typed by hand that a machine already knows. Secrets never leave: no l
 value. Every provider answers with a reason in `source` rather than an error, so a dropdown still takes
 a typed value when its source is down."""
 import asyncio
+import html
 import inspect
 import json
 import os
 import re
 import unicodedata
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import get_args
 
@@ -27,6 +29,25 @@ from winston.providers.home_assistant import HomeAssistant, state_text
 
 TIMEOUT = 4
 
+class ModelFacts(BaseModel):
+    """What the brain's model picker shows of a model (llm_models only); a fact not known is None."""
+    source: str | None = None       # where it comes from: "Hugging Face" or "Ollama"
+    link: str | None = None         # its page there
+    description: str | None = None
+    params: str | None = None       # its parameters: "27.3B"
+    bytes: int | None = None        # its weights: the download, or what is on the disk
+    context: int | None = None      # the longest context it takes, in tokens
+    license: str | None = None
+    downloads: int | None = None    # the Hub's last 30 days, Ollama's all time
+    likes: int | None = None
+    updated: str | None = None      # ISO date
+    tags: list[str] = []            # vision, tools, thinking, MoE
+    sizes: list[str] = []           # a GGUF repo's quants (listed with their sizes by searching `repo`); Ollama's tags
+    repo: str | None = None         # the Hub repo
+    points: list[list[int]] | None = None   # MiB by K tokens of context (config/memory.py), measured or from bytes
+    measured: bool = False
+
+
 class Choice(BaseModel):
     value: str
     label: str
@@ -36,6 +57,7 @@ class Choice(BaseModel):
     disabled: bool = False      # listed for the record but not pickable, the hint says why
     searched: bool = False      # found by the server for the typed text, so the page shows it unfiltered
     image: str | None = None    # a picture's address (an extension's own list: a playlist's cover)
+    facts: ModelFacts | None = None  # llm_models: what the model picker shows of it
 
 
 class Options(BaseModel):
@@ -312,16 +334,17 @@ def _downloaded_choices(kind: str, cache: Path, share: float | None = None) -> l
     ok, greyed = [], []
     for fmt, value, size in downloaded(cache):
         serves = (fmt == "gguf") == (kind in GGUF_ENGINES)
+        facts = ModelFacts(bytes=size)
         if not serves:
             only = "vLLM only" if fmt == "safetensors" else "llama.cpp or Ollama"
             greyed.append(Choice(value=value, label=value, hint=f"{_size(size)}, {only}", group="Downloaded",
-                                 disabled=True))
+                                 disabled=True, facts=facts))
         elif kind == "ollama":
             # Ollama keeps its own store: it pulls the same file again from the Hub under hf.co/.
             ok.append(Choice(value=f"hf.co/{value}", label=value, hint=f"{_size(size)}, Ollama pulls its own copy",
-                             group="Downloaded"))
+                             group="Downloaded", facts=facts))
         else:
-            c = _fits(Choice(value=value, label=value, hint=_size(size), group="Downloaded"), size, share)
+            c = _fits(Choice(value=value, label=value, hint=_size(size), group="Downloaded", facts=facts), size, share)
             (greyed if c.disabled else ok).append(c)
     return ok + greyed
 
@@ -351,16 +374,21 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
     cache = hf_cache(saved)
     share = await vllm_share(engine) if kind == "vllm" else None
     local = _downloaded_choices(kind, cache, share) if kind else []
-    sizes = {c.value: c.hint for c in local if not c.disabled}
+    sizes = {c.value: c for c in local if not c.disabled}
     headers = {"Authorization": f"Bearer {key}"} if (key := _secret(cfg.llm.api_key_env)) else {}
     running: list[Choice] = []
+    pulled: dict[str, dict] = {}            # Ollama's models with their size and parameters
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT) as c:
             r = await c.get(url + "/models", headers=headers)
+            if kind == "ollama":
+                pulled = {t["name"]: t for t in (await c.get(server_root(url) + "/api/tags")).json().get("models") or []}
         r.raise_for_status()
         ids = sorted(i for m in r.json().get("data", []) if (i := m.get("id"))
                      and not (kind == "ollama" and COPY.search(i)))         # his own copies, not a pick
-        running = [Choice(value=i, label=i, hint=sizes.get(i), group="Running") for i in ids]
+        running = [Choice(value=i, label=i, hint=(d := sizes.get(i)) and d.hint, group="Running",
+                          facts=d.facts if d else ModelFacts(bytes=pulled.get(i, {}).get("size")))
+                   for i in ids]
         source, ok = url, True
     except Exception as e:                                              # noqa: BLE001
         source, ok = f"Can't reach the brain's server: {failure_words(e)}", False
@@ -370,6 +398,7 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
     for p in LLM:
         m = p["settings"]["llm"]["model"]
         if kind and llm_engine(p.get("engine")) == kind and m not in have:
+            have.add(m)                     # llama.cpp's NVIDIA and AMD presets name the same model
             choices.append(Choice(value=m, label=m, hint="not downloaded yet", group="Suggested"))
     if kind and ok:
         source += f"; {ENGINE_NAMES[kind]} models in {cache}"
@@ -377,7 +406,28 @@ async def _llm_models(cfg: WinstonConfig, params: dict) -> Options:
         have = {c.value for c in choices}
         choices += [c for c in await _find(kind, (params.get("q") or "").strip(), params.get("model") or cfg.llm.model, share)
                     if c.value not in have]
+        await _add_facts(kind, choices, pulled)
     return Options(name="llm_models", source=source, choices=choices, ok=ok, served_by=kind)
+
+
+async def _add_facts(kind: str, choices: list[Choice], pulled: dict[str, dict]) -> None:
+    """Fills in what the model picker shows: the Hub's or Ollama's facts for the models listed by name (those
+    found by a search have theirs), and each model's memory by context, measured or estimated from its weights.
+    vLLM takes its share of the card whatever the model, so its models have none."""
+    from winston.config import memory as vram
+    named = [c for c in choices if not c.searched]
+    found = await asyncio.gather(*(_facts(kind, c.value, c.facts and c.facts.bytes, c.group == "Downloaded")
+                                   for c in named))
+    for c, f in zip(named, found, strict=True):
+        if (t := pulled.get(c.value)) and f:
+            f.bytes, f.params = f.bytes or t.get("size"), f.params or (t.get("details") or {}).get("parameter_size")
+        c.facts = f
+    if kind == "vllm":
+        return
+    table = vram.BRAINS_CPU if (await asyncio.to_thread(vram.here)).kind == "ram" else vram.BRAINS
+    for c in choices:
+        if c.facts and (points := table.get(c.value) or (vram.estimate(c.facts.bytes) if c.facts.bytes else None)):
+            c.facts.points, c.facts.measured = [list(p) for p in points], c.value in table
 
 
 # A model page pasted for its name: huggingface.co/<repo>/..., hf.co/<repo>, ollama.com/library/<name>.
@@ -387,6 +437,7 @@ REPO = re.compile(r"^[\w.-]+/[\w.-]+$")
 # The size a GGUF search result is offered at: the usual 4-bit one, else the first there is.
 FOUR_BIT = ("Q4_K_M", "UD-Q4_K_XL", "Q4_K_S", "UD-Q4_K_S", "IQ4_XS", "Q4_0")
 OLLAMA_SEARCH = "https://ollama.com/search"
+OLLAMA_REGISTRY = "registry.ollama.ai"
 
 
 def _quants(files) -> list[str]:
@@ -399,19 +450,78 @@ def _quants(files) -> list[str]:
     return sorted(out)
 
 
+def _params(n: int | None) -> str | None:
+    """ "27.3B", "270M"."""
+    return None if not n else f"{n / 1e9:.1f}B".replace(".0B", "B") if n >= 1e9 else f"{round(n / 1e6)}M"
+
+
+def _hub_facts(repo: str, info: dict, size: int | None = None, quants: list[str] | None = None) -> ModelFacts:
+    """A Hub repo's facts from its model API answer (engines.install.repo_info, or a search's row), its weights'
+    `size` when the caller knows it."""
+    card = info.get("cardData") or {}
+    base = card.get("base_model")
+    base = (base[0] if base else None) if isinstance(base, list) else base
+    words = {str(t).lower() for t in [*(info.get("tags") or []), *(card.get("tags") or []),
+                                      info.get("pipeline_tag") or card.get("pipeline_tag") or ""]}
+    tags = [t for t, w in (("vision", {"vision", "image-text-to-text", "multimodal"}), ("MoE", {"moe"})) if words & w]
+    gguf = info.get("gguf") or {}
+    return ModelFacts(source="Hugging Face", link=f"https://huggingface.co/{repo}",
+                      description=f"Made from {base}" if base and base != repo else None,
+                      params=_params(gguf.get("total") or (info.get("safetensors") or {}).get("total")), bytes=size,
+                      context=gguf.get("context_length"), license=card.get("license"), downloads=info.get("downloads"),
+                      likes=info.get("likes"), updated=info.get("lastModified"), tags=tags, sizes=quants or [],
+                      repo=repo)
+
+
+async def _info(repo: str) -> dict | None:
+    """The Hub's answer for a repo, None offline or for no such repo."""
+    from winston.engines.install import repo_info
+    try:
+        return await asyncio.wait_for(repo_info(repo), TIMEOUT)
+    except Exception:                                                   # noqa: BLE001
+        return None
+
+
+def _top_weights(files: dict[str, int]) -> int:
+    """Bytes of a safetensors repo's weights: its top-level shards, a consolidated copy of the same weights left
+    out."""
+    top = {f: n for f, n in files.items() if "/" not in f and f.endswith(".safetensors")}
+    return sum(({f: n for f, n in top.items() if not f.startswith("consolidated")} or top).values())
+
+
+async def _facts(kind: str, value: str, size: int | None = None, hub: bool = False) -> ModelFacts | None:
+    """What the picker shows of a model listed by name: a Hub repo's facts (a quant's size from the Hub when the
+    disk's is not given), an Ollama library name's page; None for a name neither knows. `hub`: from the Hub
+    whatever the engine (a download Ollama cannot load is listed by its repo, not as hf.co/)."""
+    from winston.engines.install import _gguf, info_files
+    name = value.removeprefix("hf.co/")
+    repo, _, quant = name.partition(":")
+    if (hub or name != value or kind != "ollama") and REPO.match(repo):
+        info = await _info(repo) or {}
+        files = info_files(info)
+        if not size and files:
+            size = sum(files[f] for f in _gguf(list(files), quant)) if quant else _top_weights(files)
+        return _hub_facts(repo, info, size or None, _quants(files))
+    if kind == "ollama" and repo:
+        return ModelFacts(source="Ollama", link=f"https://ollama.com/{'' if '/' in repo else 'library/'}{repo}",
+                          bytes=size)
+    return None
+
+
 def _gguf_value(kind: str, repo: str, quant: str) -> str:
     return f"hf.co/{repo}:{quant}" if kind == "ollama" else f"{repo}:{quant}"     # Ollama pulls from the Hub so
 
 
 async def _sizes(kind: str, repo: str, group: str, skip: str = "") -> list[Choice]:
     """Every quant of one GGUF repo with its size, from the Hub."""
-    from winston.engines.install import _gguf, _repo_files
-    try:
-        files = await asyncio.wait_for(_repo_files(repo), TIMEOUT)
-    except Exception:                                                   # noqa: BLE001  (offline, or no such repo)
-        return []
-    sizes = {q: sum(files[f] for f in _gguf(list(files), q)) for q in _quants(files)}
-    return [Choice(value=v, label=f"{repo}:{q}", group=group, searched=True, hint=_size(n))
+    from winston.engines.install import _gguf, info_files
+    if not (info := await _info(repo)):
+        return []                                                       # offline, or no such repo
+    files = info_files(info)
+    quants = _quants(files)
+    sizes = {q: sum(files[f] for f in _gguf(list(files), q)) for q in quants}
+    return [Choice(value=v, label=f"{repo}:{q}", group=group, searched=True, hint=_size(n),
+                   facts=_hub_facts(repo, info, n))          # no sizes of its own: they are the list
             for q, n in sorted(sizes.items(), key=lambda x: x[1]) if (v := _gguf_value(kind, repo, q)) != skip]
 
 
@@ -427,9 +537,10 @@ async def _find(kind: str, q: str, model: str, share: float | None = None) -> li
     repo = link["repo"] if link else named if REPO.match(named) else ""
     if kind not in GGUF_ENGINES:
         if repo:
-            n = await _repo_weights(repo)
+            info = await _info(repo) or {}
+            n = _top_weights(_files(info))
             return [_fits(Choice(value=repo, label=repo, group="Hugging Face", searched=True,
-                                 hint=_size(n) if n else None), n, share)]
+                                 hint=_size(n) if n else None, facts=_hub_facts(repo, info, n or None)), n, share)]
         return await _hub(kind, q, share) if len(q) >= 2 else []
     if repo:
         return await _sizes(kind, repo, f"Sizes of {repo}") or await _hub(kind, repo)
@@ -440,16 +551,9 @@ async def _find(kind: str, q: str, model: str, share: float | None = None) -> li
     return found[1] + found[0]
 
 
-async def _repo_weights(repo: str) -> int:
-    """Bytes of a safetensors repo's weights from the Hub: its top-level shards, a consolidated copy of the same
-    weights left out. 0 when the Hub does not answer."""
-    from winston.engines.install import _repo_files
-    try:
-        files = await asyncio.wait_for(_repo_files(repo), TIMEOUT)
-    except Exception:                                                   # noqa: BLE001  (offline, or no such repo)
-        return 0
-    top = {f: n for f, n in files.items() if "/" not in f and f.endswith(".safetensors")}
-    return sum(({f: n for f, n in top.items() if not f.startswith("consolidated")} or top).values())
+def _files(info: dict) -> dict[str, int]:
+    from winston.engines.install import info_files
+    return info_files(info)
 
 
 async def _hub(kind: str, q: str, share: float | None = None) -> list[Choice]:
@@ -466,17 +570,25 @@ async def _hub(kind: str, q: str, share: float | None = None) -> list[Choice]:
         return []
     models = [m for m in models if "mlx" not in (m.get("tags") or [])]     # Apple's format, which no engine here loads
     if kind not in GGUF_ENGINES:
-        sizes = await asyncio.gather(*(_repo_weights(m["id"]) for m in models))
-        return [_fits(Choice(value=m["id"], label=m["id"], group="Hugging Face", searched=True,
-                             hint=", ".join([_size(n)] * bool(n) + [_count(m.get("downloads") or 0)])), n, share)
-                for m, n in zip(models, sizes, strict=True)]
+        infos = await asyncio.gather(*(_info(m["id"]) for m in models))
+        out = []
+        for m, info in zip(models, infos, strict=True):
+            n = _top_weights(_files(info or {}))
+            out.append(_fits(Choice(value=m["id"], label=m["id"], group="Hugging Face", searched=True,
+                                    hint=", ".join([_size(n)] * bool(n) + [_count(m.get("downloads") or 0)]),
+                                    facts=_hub_facts(m["id"], info or m, n or None)), n, share))
+        return out
+    from winston.engines.install import _gguf
+    hits = [(m, quants) for m in models if (quants := _quants(s["rfilename"] for s in m.get("siblings") or []))]
     out = []
-    for m in models:
+    for (m, quants), info in zip(hits, await asyncio.gather(*(_info(m["id"]) for m, _ in hits)), strict=True):
         repo, downloads = m["id"], _count(m.get("downloads") or 0)
-        if quants := _quants(s["rfilename"] for s in m.get("siblings") or []):
-            q4 = next((x for x in FOUR_BIT if x in quants), quants[0])
-            out.append(Choice(value=_gguf_value(kind, repo, q4), label=f"{repo}:{q4}", group="Hugging Face",
-                              hint=f"{downloads}, {len(quants)} size{'s' * (len(quants) > 1)}", searched=True))
+        q4 = next((x for x in FOUR_BIT if x in quants), quants[0])
+        files = _files(info or {})
+        out.append(Choice(value=_gguf_value(kind, repo, q4), label=f"{repo}:{q4}", group="Hugging Face",
+                          hint=f"{downloads}, {len(quants)} size{'s' * (len(quants) > 1)}", searched=True,
+                          facts=_hub_facts(repo, info or m, sum(files[f] for f in _gguf(list(files), q4)) or None,
+                                           quants)))
     return out
 
 
@@ -486,15 +598,41 @@ def _count(n: int) -> str:
 
 
 async def _ollama_library(q: str) -> list[Choice]:
-    """Ollama's library: its search page's links, as it has no search API."""
+    """Ollama's library: its search page's links, as it has no search API, with what each result says of itself
+    and the size of its latest from Ollama's registry."""
     # ponytail: reads the page's /library/<name> links; if the page changes this finds nothing, the Hub still does.
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as c:
             r = await c.get(OLLAMA_SEARCH, params={"q": q})
-        names = dict.fromkeys(re.findall(r'href="/library/([\w.-]+)"', r.raise_for_status().text))
+        text = r.raise_for_status().text
     except Exception:                                                   # noqa: BLE001
         return []
-    return [Choice(value=n, label=n, group="Ollama library", searched=True) for n in list(names)[:8]]
+    names = list(dict.fromkeys(re.findall(r'href="/library/([\w.-]+)"', text)))[:8]
+    blocks = {m[1]: m[0] for m in re.finditer(r'<li\b.*?href="/library/([\w.-]+)".*?</li>', text, re.DOTALL)}
+    from winston.engines.install import _manifest_size
+    sizes = await asyncio.gather(*(asyncio.wait_for(_manifest_size(OLLAMA_REGISTRY, f"library/{n}", "latest", "ollama"),
+                                                    TIMEOUT) for n in names), return_exceptions=True)
+    return [Choice(value=n, label=n, group="Ollama library", searched=True,
+                   facts=_ollama_facts(n, blocks.get(n, ""), s if isinstance(s, int) else None))
+            for n, s in zip(names, sizes, strict=True)]
+
+
+def _ollama_facts(name: str, block: str, size: int | None) -> ModelFacts:
+    """A library model's facts from its search result: description, pulls, last update, what it does besides
+    text (tools, vision, thinking) and its sizes (Ollama's tags)."""
+    desc = re.search(r'<p class="[^"]*line-clamp[^"]*">\s*([^<]+?)\s*</p>', block)
+    pulls = re.search(r'title="([\d,]+) downloads"', block)
+    when = re.search(r'title="Updated ([^"]+)"', block)
+    chips = re.findall(r'<span\s+class="inline-flex items-center rounded-md[^"]*">\s*([^<]+?)\s*</span', block)
+    sizes = [c for c in chips if re.fullmatch(r"[a-z]?[\d.x]+[bm]", c)]
+    try:
+        updated = datetime.strptime(when[1], "%B %d, %Y").date().isoformat() if when else None
+    except ValueError:
+        updated = None
+    return ModelFacts(source="Ollama", link=f"https://ollama.com/library/{name}", bytes=size, updated=updated,
+                      description=html.unescape(desc[1]) if desc else None,
+                      downloads=int(pulls[1].replace(",", "")) if pulls else None,
+                      tags=[c for c in chips if c not in sizes], sizes=sizes)
 
 
 async def _voices(cfg: WinstonConfig, params: dict) -> Options:

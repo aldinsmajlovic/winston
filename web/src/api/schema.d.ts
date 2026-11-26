@@ -1909,6 +1909,7 @@ export interface components {
             searched?: boolean;
             /** Image */
             image?: string | null;
+            facts?: components["schemas"]["ModelFacts"] | null;
         };
         /** ClearedFact */
         ClearedFact: {
@@ -3418,6 +3419,51 @@ export interface components {
              * @description How long from now; 0 lets go.
              */
             secs: number;
+        };
+        /**
+         * ModelFacts
+         * @description What the brain's model picker shows of a model (llm_models only); a fact not known is None.
+         */
+        ModelFacts: {
+            /** Source */
+            source?: string | null;
+            /** Link */
+            link?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Params */
+            params?: string | null;
+            /** Bytes */
+            bytes?: number | null;
+            /** Context */
+            context?: number | null;
+            /** License */
+            license?: string | null;
+            /** Downloads */
+            downloads?: number | null;
+            /** Likes */
+            likes?: number | null;
+            /** Updated */
+            updated?: string | null;
+            /**
+             * Tags
+             * @default []
+             */
+            tags?: string[];
+            /**
+             * Sizes
+             * @default []
+             */
+            sizes?: string[];
+            /** Repo */
+            repo?: string | null;
+            /** Points */
+            points?: number[][] | null;
+            /**
+             * Measured
+             * @default false
+             */
+            measured?: boolean;
         };
         /** NewFact */
         NewFact: {

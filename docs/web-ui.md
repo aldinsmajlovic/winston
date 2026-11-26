@@ -201,7 +201,7 @@ The What runs his brain card has, from the top:
 - **Runs on**: presets (vLLM, llama.cpp, Ollama, a server on your network, hosted), each with a line on what it is good at and
   what it needs where its name does not say. Picking one rewrites the engine block and the settings
   that go with it, and asks first when you had edited that block.
-- **Model**, from three lists: Running, what the brain's server reports; Downloaded, what the chosen
+- **Model**, a dialog ([choosing a model](#choosing-a-model)) with three lists: Running, what the brain's server reports; Downloaded, what the chosen
   engine can load from the Hugging Face cache on this machine; and Suggested, the presets' models for
   that engine, not downloaded yet. Typing searches for more, and a pasted model link is read as its
   name ([finding a model](#finding-a-model)). A pick that is not on this computer says what it needs downloaded,
@@ -218,6 +218,31 @@ The What runs his brain card has, from the top:
 
 Think before answering and How he picks his words are cards of their own. The second holds temperature,
 top-p, presence penalty and the longest reply, for when your model's page recommends other values.
+
+#### Choosing a model
+
+Model opens a dialog with search at the top and a row for each model. Each row has:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/brain-model-dark.png">
+  <img src="images/brain-model-light.png" alt="The Model dialog: a search for qwen3.8 27b, each find with its memory and whether it fits, what it is made from, parameters, size, context, license, downloads and its sizes" width="720">
+</picture>
+
+| Part of the row | Where it comes from |
+| --- | --- |
+| Name, and where it comes from (Hugging Face or Ollama), linked to its page | The model's name; for Ollama, a name without `hf.co/` |
+| Memory and a verdict: "≈ 18.1 GB, does not fit" | Its memory at How much he keeps in mind, as the [graphics memory](#graphics-memory) bar would count it if it were picked: green fits beside the voice, hearing and other programs, amber only just (80% or more), red does not. Measured for the brains in [hardware](hardware.md#context-filled-last), else estimated from the weights (≈) |
+| What it is | Hugging Face: "Made from" its base model. Ollama: the library's own description |
+| Parameters, weights, longest context, license, downloads, likes, last update | The Hub's model API (parameters and context from the GGUF header). Ollama's library gives downloads and the last update; a pulled model, its size and parameters from Ollama |
+| Tags | vision and MoE from the Hub's tags; tools, vision and thinking from Ollama's library |
+| Sizes | A GGUF repo: "26 sizes" searches that repo, listing each with its memory. Ollama: each size (`8b`) picks `name:8b` |
+| A note | Why it is greyed, "Not downloaded yet", "Ollama pulls its own copy" |
+
+The memory is shown only for a brain Winston runs on this computer: not for a hosted brain, a server on
+your network, or vLLM, which takes its share of the card whatever the model (a vLLM model too big for
+it is greyed, see below). An Ollama library model's memory is for its `latest`. A fact the source does
+not give is left out. The Hub is asked once per repo while winstond runs; offline the rows show only
+what the disk says.
 
 #### Which models are listed
 
