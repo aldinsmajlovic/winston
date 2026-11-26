@@ -1,17 +1,22 @@
 """Live feed cases: the history merges reply pieces and tool updates, tool labels read as
-sentences, and the observer turns a typed turn into events. No hardware needed.
+sentences, the observer turns a typed turn into events, and his voice's level goes out as it plays.
+No hardware needed.
 
     uv run python tests/live_cases.py
 """
 import asyncio
+import time
+
+import numpy as np
 
 from harness import check, finish_checks
 from pipecat.frames.frames import (FunctionCallFromLLM, FunctionCallResultFrame, FunctionCallsStartedFrame,
-                                   LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame)
+                                   InterruptionFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame, LLMTextFrame,
+                                   TTSAudioRawFrame)
 from pipecat.observers.base_observer import FramePushed
 from pipecat.processors.frame_processor import FrameDirection
 
-from winston.core.live import Feed, LiveEvent, LiveObserver, know_extension_tools, tool_icon, tool_label
+from winston.core.live import Feed, LiveEvent, LiveObserver, know_extension_tools, loudness, tool_icon, tool_label
 
 LABELS = [
     ("intent__HassTurnOn", {"name": "Kitchen lights"}, "ok", "Turned on Kitchen lights"),
@@ -98,4 +103,57 @@ check("observer events", [(e.type, e.state or e.status or e.text) for e in ev], 
     ("state", "thinking"), ("tool", "running"), ("tool", "ok"), ("state", "thinking"),
     ("reply", "It is"), ("reply", " Oslo."), ("reply_end", None), ("state", "idle")])
 
-finish_checks(f"live: {len(LABELS)} labels, history and observer ok")
+# His voice's level: streamed to the page, never kept; 0 for silence, 1 from -10 dBFS up.
+RATE = 24000
+
+
+def tone(secs: float, dbfs: float) -> bytes:
+    t = np.arange(int(RATE * secs)) / RATE
+    return (np.sin(2 * np.pi * 220 * t) * 32767 * 10 ** (dbfs / 20) * np.sqrt(2)).astype("<i2").tobytes()
+
+
+check("silence", loudness(bytes(4800)), 0.0)
+check("loud speech", loudness(tone(0.05, -6)), 1.0)
+check("halfway", round(loudness(tone(0.05, -30)), 2), 0.5)
+feed = Feed(keep=10)
+q = feed.subscribe()
+feed.publish(LiveEvent(channel="satellite", type="level", loudness=0.4, room="Kitchen"))
+check("level streamed", q.qsize(), 1)
+check("level not kept", feed.backlog(), [])
+
+
+async def spoken(plays_after: float | None, cut: bool = False):
+    """0.3 s of his voice in three pieces, arriving at once as TTS audio does, then the reply finished."""
+    events: list[tuple[float, LiveEvent]] = []
+    t0 = time.perf_counter()
+    obs = LiveObserver("satellite", lambda e: events.append((time.perf_counter() - t0, e)), spoken=True,
+                       room="Kitchen", plays_after=plays_after)
+
+    async def push(frame):
+        await obs.on_push_frame(FramePushed(source=None, destination=None, frame=frame,
+                                            direction=FrameDirection.DOWNSTREAM, timestamp=0))
+    for dbfs in (-30, -10, -30):
+        await push(TTSAudioRawFrame(tone(0.1, dbfs), RATE, 1))
+    if cut:
+        await asyncio.sleep(0.15)
+        await push(InterruptionFrame())
+    obs.finished()
+    await asyncio.sleep(0.6)
+    return events
+
+
+box = asyncio.run(spoken(0.1))
+kinds = [e.state or e.type for _, e in box]
+levels = [e.loudness for _, e in box if e.type == "level"]
+check("a box: speaking as it starts, idle once played", (kinds[0], kinds[-1]), ("speaking", "idle"))
+check("a box: a level every 50 ms of it", len(levels) in (5, 6, 7), True)
+check("a box: the loud middle is louder", max(levels[2:4]) > max(levels[0], levels[-1]), True)
+check("a box: the first level once it plays", 0.09 < box[0][0] < 0.16, True)
+check("a box: idle when it has all played", 0.38 < box[-1][0] < 0.5, True)
+check("a box: every level in its room", {e.room for _, e in box}, {"Kitchen"})
+voice = asyncio.run(spoken(None))
+check("a transport: levels only, it says speaking itself", {e.type for _, e in voice}, {"level"})
+cut = asyncio.run(spoken(0.0, cut=True))
+check("cut short: nothing after", max(t for t, _ in cut) < 0.2, True)
+
+finish_checks(f"live: {len(LABELS)} labels, history, observer and his voice's level ok")

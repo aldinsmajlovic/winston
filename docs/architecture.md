@@ -64,7 +64,8 @@ flowchart TB
   extensions' entities to Winston's integration in Home Assistant, and answers its conversation agent
   as Assist does, the reply streamed back ([Home Assistant integration](ha-integration.md)).
 - **Live feed** (`core/live.py`): what Winston hears, says and does, as events (state, what you said,
-  reply pieces, tool calls, announcements). The voice process posts them to `POST /api/live`, web chat
+  reply pieces, tool calls, announcements, and while he speaks the level of his voice as it plays,
+  streamed but never kept). The voice process posts them to `POST /api/live`, web chat
   publishes in process, and pages read `GET /api/live`. The browser's voice connects through
   `/api/voice/offer` and the Talk page reads aloud through `POST /api/speak`, so the UI needs only
   winstond's origin.

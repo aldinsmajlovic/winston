@@ -178,6 +178,11 @@ export function lastChange(feed: Feed): number {
   return Math.max(0, ...Object.values(feed.states).map((s) => s.ts))
 }
 
+/** How loud his voice is as it plays (0 to 1), from the newest `level` event, and when it came
+ * (performance.now()). Levels come every 50 ms while he speaks, so the mark reads this each frame
+ * instead of React re-rendering for each. */
+export const voice = { level: 0, at: 0 }
+
 /** The live feed: recent history on connect, then events as they happen. A reconnect resends the
  * history, so the view starts over from it. */
 export function useLive() {
@@ -185,7 +190,12 @@ export function useLive() {
   useEffect(() => {
     const source = new EventSource('/api/live')
     source.onopen = () => dispatch({ type: 'reset' })
-    source.onmessage = (event) => dispatch({ type: 'event', event: JSON.parse(event.data) as LiveEvent })
+    source.onmessage = (event) => {
+      const ev = JSON.parse(event.data) as LiveEvent
+      if (ev.type !== 'level') return dispatch({ type: 'event', event: ev })
+      voice.level = ev.loudness ?? 0
+      voice.at = performance.now()
+    }
     return () => source.close()
   }, [])
   return feed

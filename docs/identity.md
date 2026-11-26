@@ -85,12 +85,15 @@ The drawing never changes; motion and brightness carry the state.
 | --- | --- |
 | Ready (idle) | Still, at full strength. |
 | Listening | The W settles almost flat and a gentle wave runs through the line, left to right. |
-| Thinking | Dims; a gap runs along the W through the filled part. |
-| Speaking | The shape holds and the filled part fades and returns in a slow swell, about every 1.5 s. |
+| Thinking | Dims, and a bright arc circles the ring clockwise, about once every 1.4 s. The W holds still. |
+| Speaking | The middle of the W rises with his voice as you hear it: up at once on a louder syllable, down slowly after, like a level meter. The arm tips stay where they meet the ring. |
 | Announcing | The W at its deepest, the whole mark pulsing. Built into the mark; the live feed has no announcing state yet. |
 
 Changes between states ease rather than cut. With reduced motion turned on, each state is shown as a
-still. Once Winston is idle and settled the animation stops, so an idle page costs nothing.
+still (speaking with the middle a little raised).
+
+His voice's level comes from the live feed: whichever channel speaks (a room box, the browser) sends
+how loud his voice is every 50 ms, at the moment that part plays, and the mark eases toward it. Once Winston is idle and settled the animation stops, so an idle page costs nothing.
 
 The line under his name says the same in words: Ready, Listening, Thinking or Speaking. When he
 cannot answer, the mark stays at rest and the line says why, with a link to Status:

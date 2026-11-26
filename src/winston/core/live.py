@@ -8,10 +8,12 @@ A LiveObserver in a channel's pipeline turns frames into events:
     Pipeline(...), observers=[LiveObserver("voice", poster.put, spoken=True), ...]
 
 Replies stream as `reply` pieces closed by `reply_end`; the stored history keeps each reply and each
-tool call as one event, so a page that connects late gets whole lines, not tokens."""
+tool call as one event, so a page that connects late gets whole lines, not tokens. While he speaks, a
+`level` event says how loud his voice is as it plays, for his mark; levels are streamed, never kept."""
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 import uuid
 from collections import deque
@@ -19,11 +21,12 @@ from collections.abc import Callable
 from typing import Literal
 
 import httpx
+import numpy as np
 from loguru import logger
 from pipecat.frames.frames import (BotStartedSpeakingFrame, BotStoppedSpeakingFrame, FunctionCallResultFrame,
-                                   FunctionCallsStartedFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
-                                   LLMTextFrame, TranscriptionFrame, UserStartedSpeakingFrame,
-                                   UserStoppedSpeakingFrame)
+                                   FunctionCallsStartedFrame, InterruptionFrame, LLMFullResponseEndFrame,
+                                   LLMFullResponseStartFrame, LLMTextFrame, TranscriptionFrame, TTSAudioRawFrame,
+                                   UserStartedSpeakingFrame, UserStoppedSpeakingFrame)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pydantic import BaseModel
 
@@ -50,12 +53,14 @@ class LiveEvent(BaseModel):
     (core/turns.py); the history gives its id to the channel's latest user line, so the page can mark it.
     conversation: room, text (why, in words: "after 30 min of quiet", "his actions changed", "settings were
     saved"): the next line starts a new typed conversation (channels/web.py). One you start is its start_over
-    tool line."""
+    tool line.
+    level: room, loudness (0 to 1): how loud his voice is as it plays, every 50 ms while he speaks. Streamed, never
+    kept in the history."""
     id: str = ""
     ts: float = 0
     channel: str
     type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm", "nudge",
-                  "turn", "conversation"]
+                  "turn", "conversation", "level"]
     state: State | None = None
     text: str | None = None
     reply: str | None = None
@@ -68,6 +73,7 @@ class LiveEvent(BaseModel):
     room: str | None = None
     held_by: str | None = None
     links: list[dict[str, str]] | None = None
+    loudness: float | None = None                   # not `level`: a nudge's own events carry that
 
 
 class Feed:
@@ -110,7 +116,7 @@ class Feed:
             stored.status, stored.label, stored.ms = ev.status, ev.label, ev.ms
             if ev.text is not None:
                 stored.text = ev.text
-        elif ev.type != "reply_end":
+        elif ev.type not in ("reply_end", "level"):
             stored = ev.model_copy()
             self._history.append(stored)
             if ev.type in ("reply", "tool", "confirm"):
@@ -228,13 +234,31 @@ def tool_label(name: str, args: dict | None, status: str) -> str:
     return forms[("running", "ok", "error").index(status)].format(t=target or "something", q=detail).strip()
 
 
+LEVEL_SECS = 0.05                   # how often the level of his voice goes out while he speaks
+
+
+def loudness(pcm: bytes) -> float:
+    """How loud a stretch of 16-bit audio is, 0 to 1: its RMS from -50 dBFS (silence) to -10 dBFS (loud)."""
+    a = np.frombuffer(pcm[:len(pcm) // 2 * 2], dtype="<i2").astype(np.float32)
+    if not len(a):
+        return 0.0
+    db = 20 * math.log10(max(float(np.sqrt(np.mean(a * a))) / 32768, 1e-6))
+    return min(1.0, max(0.0, (db + 50) / 40))   # ponytail: fixed range; per-voice gain if a voice sits outside it
+
+
 class LiveObserver(BaseObserver):
     """Turns one pipeline's frames into feed events. `spoken` channels get their idle and speaking
     states from the bot's audio; text channels are idle when the reply ends and no tool is running.
-    The reply is what the pipeline's ReplyFilter lets through."""
+    The reply is what the pipeline's ReplyFilter lets through.
+
+    A spoken channel also sends the level of his voice as it plays. Audio reaches the pipeline's end faster
+    than it plays and plays back to back, so each stretch is due once the audio before it has played.
+    `plays_after` is for a channel with no transport to say when he speaks (the room boxes): its audio
+    plays that long after it arrives, and the observer says speaking when it starts and idle once a reply
+    the channel has `finished` has played."""
 
     def __init__(self, channel: str, sink: Callable[[LiveEvent], object], spoken: bool = False,
-                 room: str | None = None):
+                 room: str | None = None, plays_after: float | None = None):
         super().__init__()
         self.channel, self._sink, self._spoken, self.room = channel, sink, spoken, room
         self._first = Once(256)                         # observers see a frame once per pipeline hop
@@ -242,12 +266,65 @@ class LiveObserver(BaseObserver):
         self._reply: str | None = None
         self._calls: dict[str, tuple[float, str, dict]] = {}
         self._called = Once(256)                        # call frames go both ways as two frames
+        self._plays_after = plays_after
+        self._levels: deque[tuple[float, float]] = deque()  # (when it plays, by perf_counter; its level)
+        self._played = 0.0                              # when the audio so far will have played
+        self._meter: asyncio.Task | None = None
+        self._finished = False                          # the channel's reply is all in; idle once it has played
+        self._said: State | None = None                 # the last state this observer sent
 
     def _emit(self, type_: str, **fields):
         self._sink(LiveEvent(channel=self.channel, type=type_, **fields))
 
     def _state(self, s: State):
+        self._said = s
         self._emit("state", state=s, room=self.room)      # the room's state in Home Assistant (core/ha_link.py)
+
+    def _queue_audio(self, f: TTSAudioRawFrame):
+        rate = 2 * f.sample_rate * max(1, f.num_channels)  # bytes a second
+        start = max(self._played, time.perf_counter() + (self._plays_after or 0.0))
+        step = max(2, int(rate * LEVEL_SECS) // 2 * 2)
+        for i in range(0, len(f.audio), step):
+            self._levels.append((start + i / rate, loudness(f.audio[i:i + step])))
+        self._played = start + len(f.audio) / rate
+        if self._meter is None or self._meter.done():
+            self._meter = asyncio.get_running_loop().create_task(self._run_meter())
+
+    async def _run_meter(self):
+        while self._levels:
+            await asyncio.sleep(max(0.0, self._levels[0][0] - time.perf_counter()))
+            level, now = 0.0, time.perf_counter()
+            while self._levels and self._levels[0][0] <= now:
+                level = max(level, self._levels.popleft()[1])
+            if self._plays_after is not None and self._said != "speaking":
+                self._state("speaking")
+            self._emit("level", loudness=round(level, 2), room=self.room)
+            await asyncio.sleep(LEVEL_SECS)
+        if self._finished:
+            self.finished()
+
+    def finished(self):
+        """The reply is all in (a channel with `plays_after`): idle once it has played."""
+        self._finished = True
+        if self._levels:
+            return
+        self._finished = False
+        if self._said == "speaking":
+            self._state("idle")
+
+    def ahead(self, secs: float):
+        """Audio the pipeline does not see (a chime) plays first, for secs."""
+        self._played = max(self._played, time.perf_counter() + (self._plays_after or 0.0)) + secs
+
+    def say(self, s: State):
+        """A state the channel knows of itself: what is queued will not play after it."""
+        self._cut()
+        self._state(s)
+
+    def _cut(self):
+        """He was cut short: what is queued will not play."""
+        self._levels.clear()
+        self._played, self._finished = 0.0, False
 
     def _end_reply(self):
         if self._reply:
@@ -265,7 +342,13 @@ class LiveObserver(BaseObserver):
             return
         if not self._first(f.id):
             return
-        if isinstance(f, UserStartedSpeakingFrame):
+        if isinstance(f, TTSAudioRawFrame):
+            if self._spoken:
+                self._queue_audio(f)
+        elif isinstance(f, InterruptionFrame):
+            self._cut()
+        elif isinstance(f, UserStartedSpeakingFrame):
+            self._cut()
             self._state("listening")
         elif isinstance(f, UserStoppedSpeakingFrame):
             self._state("thinking")

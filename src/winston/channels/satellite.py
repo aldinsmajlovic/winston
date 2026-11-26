@@ -57,7 +57,7 @@ import httpx
 import numpy as np
 import soxr
 from aioesphomeapi import (APIClient, BinarySensorInfo, BinarySensorState, Event, EventInfo, MediaPlayerCommand,
-                            MediaPlayerEntityState, MediaPlayerInfo, ReconnectLogic, SelectInfo,
+                            MediaPlayerEntityState, MediaPlayerInfo, MediaPlayerState, ReconnectLogic, SelectInfo,
                             VoiceAssistantAudioSettings, VoiceAssistantCommandFlag)
 from aioesphomeapi import VoiceAssistantEventType as Ev
 from aiohttp import web
@@ -75,7 +75,7 @@ from winston.channels.voice import build_tts, load_chime, prerender
 from winston.config import load
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.hints import Heard, Hearing
-from winston.core.live import FeedPoster, LiveEvent, LiveObserver
+from winston.core.live import FeedPoster, LiveEvent, LiveObserver, State
 from winston.core import directory, guard
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.brain import persona
@@ -100,6 +100,7 @@ TAIL_SECS = 1.5                  # after the reply has played: the box's speaker
 FOLLOW_UP_SECS = 4.0             # after a question: until the box starts listening again
 RELEASE_TAIL_SECS = 0.3          # hold to talk: audio kept after the button is let go, for a last word cut early
 PREWARM_SECS = 60.0              # how often an idle box checks whether a new conversation's prompt changed
+PLAYS_AFTER_SECS = 0.0           # ponytail: unmeasured; set from the "began playing" log line below
 PREROLL_SECS = 0.5               # barge-in: audio from before speech over a reply was certain, for its first word
 # Said on the box after a double press switched how it listens.
 BUTTON_ONLY_LINE = "Very well. I shall listen only when you press the button."
@@ -200,13 +201,14 @@ class Conversation(TextSession):
         self.feed = feed
         self.speaker = Speaker(cfg.tts.sample_rate)
         self.turns = TurnObserver()                   # fills in the open turn record
+        self.live = LiveObserver("satellite", feed.put, spoken=True, room=room, plays_after=PLAYS_AFTER_SECS)
         tools = [make_use_voice_tool(cfg, channel="satellite")]     # a voice cloned in the browser
         if previous and cfg.logging.turns.enabled:
             tools.append(make_mark_tool(cfg, previous))   # "that's not what I said"
         super().__init__(cfg, channel="satellite", brain_channel="satellite", tools=tools,
                          room=RoomLink(room, f"box:{room}:{uuid.uuid4().hex[:6]}", http_sync(cfg)),
                          area=area(cfg, room), outputs=[build_tts(cfg), self.speaker],
-                         observers=[LiveObserver("satellite", feed.put, spoken=True, room=room), self.turns])
+                         observers=[self.live, self.turns])
         self.used = False       # handed to a request or an announcement (Satellite._conversation)
 
     def key(self) -> tuple[str, str | None]:
@@ -282,6 +284,7 @@ class Satellite:
         self._chatting = False              # his last reply only talked: a follow-up gets chat_silence_secs
         self.task: asyncio.Task | None = None
         self.conversation: Conversation | None = None
+        self._playing: MediaPlayerState | None = None       # the box's player, as it last reported
         self._building: asyncio.Task | None = None          # bringing the conversation up to date, one at a time
         self._uses = 0                                      # conversations handed out, so the prewarm sees a use
         self._warmed: tuple | None = None                   # the key of the last conversation warmed (Conversation.key)
@@ -385,8 +388,14 @@ class Satellite:
         let_go = isinstance(state, BinarySensorState) and state.key == self._center and not state.state
         if let_go and self.run and self.run.hold:
             asyncio.get_running_loop().call_later(RELEASE_TAIL_SECS, self.run.mic.put_nowait, None)
-        volume = isinstance(state, MediaPlayerEntityState) and state.key == self._media_key
-        if volume and state.volume != self._volume:
+        player = isinstance(state, MediaPlayerEntityState) and state.key == self._media_key
+        began = player and state.state != self._playing and state.state == MediaPlayerState.ANNOUNCING
+        if began and (run := self.run) and run.audio_start:     # how late the box plays, for PLAYS_AFTER_SECS
+            logger.info(f"{self.room}: the box began playing {(time.perf_counter() - run.audio_start) * 1000:.0f} ms "
+                        f"after his first audio")
+        if player:
+            self._playing = state.state
+        if player and state.volume != self._volume:
             self._volume = state.volume
             logger.info(f"{self.room}: the box's volume is {state.volume:.2f}")
             asyncio.create_task(self._report_volume(state.volume))
@@ -491,6 +500,7 @@ class Satellite:
                 if chime and (sound := self.audio.chime()):
                     run.out.put_nowait(sound)
                     run.audio_secs += len(sound) / 2 / OUT_RATE
+                    conv.live.ahead(len(sound) / 2 / OUT_RATE)
                 if nudge:
                     logger.info(f"{self.room}: nudge {ev['id']}: {text!r}")
                     can = any(t.name == "follow_up" for t in conv.brain.tools.standard_tools)
@@ -524,6 +534,7 @@ class Satellite:
                         await asyncio.sleep(0.05)
                     conv.speaker.run = None
                 run.out.put_nowait(None)
+                conv.live.finished()
                 if listen:          # the box starts listening once it has played; no wake word for that run
                     self._follow_secs = max(START_TIMEOUT_SECS, self.cfg.channels.satellite.follow_up_secs)
                     self._follow_until = time.monotonic() + run.playing_for() + FOLLOW_WAIT_SECS
@@ -546,6 +557,14 @@ class Satellite:
             self.task.cancel()
         if self._watching:
             self._watching.cancel()
+
+    def _say(self, state: State):
+        """His state on the Talk page, through the conversation's observer when there is one, so the speaking
+        and idle it sends from the reply's audio never land after this."""
+        if self.conversation is not None:
+            self.conversation.live.say(state)
+        else:
+            self.feed.put(LiveEvent(channel="satellite", type="state", state=state, room=self.room))
 
     def _event(self, ev: Ev, data: dict[str, str] | None = None):
         try:
@@ -915,7 +934,7 @@ class Satellite:
                 building = self._build(warm=True)       # a stale conversation is rebuilt and warmed while he speaks
                 self._event(Ev.VOICE_ASSISTANT_RUN_START, {"url": url})
                 self._event(Ev.VOICE_ASSISTANT_STT_START)
-                self.feed.put(LiveEvent(channel="satellite", type="state", state="listening", room=self.room))
+                self._say("listening")
                 listened = await self._listen(run)
                 self._event(Ev.VOICE_ASSISTANT_STT_VAD_END)          # the box stops its mic and waits
                 pcm, guess = listened or (None, None)
@@ -947,7 +966,7 @@ class Satellite:
                     self._event(Ev.VOICE_ASSISTANT_ERROR, {"code": "stt-no-text-recognized",
                                                            "message": "No speech recognized"})
                     self._event(Ev.VOICE_ASSISTANT_RUN_END)
-                    self.feed.put(LiveEvent(channel="satellite", type="state", state="idle", room=self.room))
+                    self._say("idle")
                     return
                 self._event(Ev.VOICE_ASSISTANT_STT_END, {"text": heard})
                 self._event(Ev.VOICE_ASSISTANT_INTENT_START)
@@ -970,6 +989,7 @@ class Satellite:
                 finally:
                     progress.cancel()
                 run.out.put_nowait(None)
+                conv.live.finished()                    # idle once the reply has played
                 # A reply that acted invites a quick tweak ("even warmer"); one that only talked, a conversation.
                 self._chatting = not (turn and any(guard.tool_tier(t["name"]) == guard.ACT for t in turn.tools))
                 question = "?" in said      # anywhere: "How about Elliott Smith? Those are soothing." asked one
@@ -994,7 +1014,7 @@ class Satellite:
                 logger.info(f"{self.room}: said {said!r}")
         except asyncio.CancelledError:
             logger.info(f"{self.room}: run {run.id} stopped")
-            self.feed.put(LiveEvent(channel="satellite", type="state", state="idle", room=self.room))
+            self._say("idle")
             run.out.put_nowait(None)
             if turn:
                 turn.outcome = "interrupted" if run.interrupted else "cut_short"
@@ -1004,6 +1024,8 @@ class Satellite:
             if turn:
                 turn.outcome = "failed"
             run.out.put_nowait(None)
+            if conv is not None:
+                conv.live.finished()                # what did play still ends in idle
             self._event(Ev.VOICE_ASSISTANT_ERROR, {"code": "winston-error", "message": str(e)[:200]})
             self._event(Ev.VOICE_ASSISTANT_RUN_END)
         finally:

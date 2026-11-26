@@ -3197,6 +3197,8 @@ export interface components {
          *     conversation: room, text (why, in words: "after 30 min of quiet", "his actions changed", "settings were
          *     saved"): the next line starts a new typed conversation (channels/web.py). One you start is its start_over
          *     tool line.
+         *     level: room, loudness (0 to 1): how loud his voice is as it plays, every 50 ms while he speaks. Streamed, never
+         *     kept in the history.
          */
         LiveEvent: {
             /**
@@ -3215,7 +3217,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge" | "turn" | "conversation";
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge" | "turn" | "conversation" | "level";
             /** State */
             state?: ("idle" | "listening" | "thinking" | "speaking") | null;
             /** Text */
@@ -3242,6 +3244,8 @@ export interface components {
             links?: {
                 [key: string]: string;
             }[] | null;
+            /** Loudness */
+            loudness?: number | null;
         };
         /** LogLines */
         LogLines: {

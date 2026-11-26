@@ -131,6 +131,11 @@ sequenceDiagram
 - **A request starts with a quarter of a second of voice**, so the wake word's own tail is not taken for
   it (that tail once ended 8 of 95 wakes during music with nothing heard).
 - **It gives up after 8 s** with no speech after the wake word, and a request stops at 60 s.
+- **The Talk page shows him speaking while the box plays.** The box plays his reply from its first
+  audio, back to back, so Winston knows when each part is heard: speaking when it starts, how loud he is
+  every 50 ms for his mark, and ready once it has played. How late the box starts playing is
+  `PLAYS_AFTER_SECS` in `channels/satellite.py`; the log says "the box began playing ... ms after his
+  first audio" on each reply, to set it from.
 
 ### When a request ends
 
