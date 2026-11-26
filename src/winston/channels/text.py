@@ -5,8 +5,6 @@ import asyncio
 import time
 from collections.abc import Awaitable, Callable
 
-import httpx
-import openai
 from loguru import logger
 from pipecat.frames.frames import (ErrorFrame, Frame, FunctionCallResultFrame, FunctionCallsStartedFrame,
                                    LLMFullResponseEndFrame, LLMMessagesAppendFrame, LLMTextFrame)
@@ -17,9 +15,10 @@ from pipecat.processors.aggregators.llm_response_universal import LLMContextAggr
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.workers.runner import WorkerRunner
 
+from winston.config import memory
 from winston.config.schema import WinstonConfig
 from winston.core.announce import note
-from winston.core.brain import SPOKEN, Brain, Clock, ToolCallLogObserver
+from winston.core.brain import SPOKEN, Brain, Clock, ToolCallLogObserver, unreachable
 from winston.core.reply import ReplyFilter
 from winston.core.rooms import RoomLink
 from winston.core.speak_up import Mentions
@@ -31,16 +30,11 @@ FAILED = "Something went wrong while he answered. The log has the details."
 
 
 def error_text(e: BaseException) -> str:
-    """What a typed channel says when he could not answer: the brain unreachable anywhere in the chain of
-    causes, or that something failed. The exception itself goes to the log."""
-    seen: set[int] = set()
-    cur: BaseException | None = e
-    while cur is not None and id(cur) not in seen:
-        if isinstance(cur, (openai.APIConnectionError, openai.APITimeoutError, httpx.ConnectError)):
-            return UNREACHABLE
-        seen.add(id(cur))
-        cur = cur.__cause__ or cur.__context__
-    return FAILED
+    """What a typed channel says when he could not answer: the brain stopped for want of memory, unreachable
+    anywhere in the chain of causes, or that something failed. The exception itself goes to the log."""
+    if isinstance(e, memory.OutOfMemory):
+        return f"His brain stopped because {e}."
+    return UNREACHABLE if unreachable(e) else FAILED
 
 
 class TurnTracker(BaseObserver):
@@ -159,11 +153,13 @@ class TextSession:
         return self._lock.locked()
 
     async def ask(self, m: str, timeout: float = 90, on_text: Callable[[str], None] | None = None) -> str:
-        """The reply. Raises what the pipeline said when there is none (the brain unreachable), so no
-        channel shows an empty answer without saying why. on_text gets each piece of it as it comes."""
+        """The reply. Raises what the pipeline said when there is none (the brain unreachable, or OutOfMemory
+        when the kernel stopped it meanwhile), so no channel shows an empty answer without saying why. on_text
+        gets each piece of it as it comes."""
         async with self._lock:
             self.last_used = time.monotonic()
             self._tracker.error = None
+            kills = memory.oom_kills()
             self.printer.on_text = on_text
             await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[{"role": "user", "content": m}],
                                                                     run_llm=True)])
@@ -172,8 +168,12 @@ class TextSession:
             finally:
                 self.printer.on_text = None
             self.last_used = time.monotonic()
-            if not reply and self._tracker.error:
-                raise self._tracker.error
+            if not reply and (err := self._tracker.error):
+                if oom := memory.out_of_memory(self.cfg, kills, err):
+                    raise oom from err
+                raise err
+            if reply:
+                memory.answered()
             return reply
 
     async def announced(self, text: str, context: dict):

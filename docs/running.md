@@ -104,6 +104,14 @@ responding, Stopped or Failed. An error says why, and stays until you start or s
   (`--max-model-len`) too long for what is left, other programs already holding the share it asks for
   (`--gpu-memory-utilization`); any engine's `out of memory` reads as running out. Any other exit says
   `exited during startup; see docker logs`.
+- A brain on this computer that the kernel stops for want of memory, say a context too large for a
+  brain on the processor, is named when a request to it fails and the kernel's count of processes it
+  stopped (`oom_kill` in `/proc/vmstat`) rose meanwhile. The reply says _His brain stopped because
+  the computer ran out of memory with 44K of context: lower How much he keeps in mind on Brain, or
+  close other programs._ The brain's status shows the same reason until it answers again, is
+  restarted, or its model or context is changed, so it is not warmed again: a system Ollama is back
+  seconds after it is stopped and looks healthy, and each warm-up would stop it again. A brain
+  elsewhere is never blamed for this computer's memory.
 - A process with no health check (Discord) counts as up only after it has run for 2 seconds.
 - An engine that lacks something it needs is installed first, and says Installing with how far it is
   ("the model, 6.2 GB of 16.4 GB"): its Docker image, its venv under `services/` (`uv sync`, logged to

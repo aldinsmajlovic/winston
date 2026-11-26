@@ -175,6 +175,20 @@ def thinking_for(cfg: WinstonConfig, channel: str) -> bool:
     return str(v).strip().lower() in ("1", "true", "yes")
 
 
+def unreachable(e: BaseException) -> bool:
+    """Whether the brain's server was out of reach anywhere in e's chain of causes: no connection, a dropped one,
+    or no answer in time (not one that answered with an error)."""
+    import openai
+    seen: set[int] = set()
+    cur: BaseException | None = e
+    while cur is not None and id(cur) not in seen:
+        if isinstance(cur, (openai.APIConnectionError, openai.APITimeoutError, httpx.ConnectError)):
+            return True
+        seen.add(id(cur))
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
 def api_key(env_name: str | None) -> str:
     """The key named by config, or "local" for servers that want none. A named but unset variable is an error."""
     if not env_name:
@@ -627,14 +641,15 @@ class Brain:
         llm.warm_up off: a hosted brain bills each read."""
         if not self.cfg.llm.warm_up:
             return
-        t0 = time.perf_counter()
+        from winston.config import memory
+        t0, kills = time.perf_counter(), memory.oom_kills()
         try:
             await self.llm.run_inference(LLMContext([{"role": "user", "content": "."}],
                                                     tools=self.tools if self.tools.standard_tools else None),
                                          max_tokens=1)
             logger.info(f"brain warmed in {(time.perf_counter() - t0) * 1000:.0f} ms")
         except Exception as e:                                          # noqa: BLE001
-            logger.warning(f"brain warm-up failed: {e}")
+            logger.warning(f"brain warm-up failed: {memory.out_of_memory(self.cfg, kills, e) or e}")
 
     def new_context(self) -> LLMContext:
         return LLMContext([], tools=self.tools if self.tools.standard_tools else None)

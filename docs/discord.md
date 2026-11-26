@@ -53,7 +53,9 @@ Only your user is answered; DMs from anyone else are ignored and logged. A conve
 after New conversation after of quiet.
 
 While the brain is stopped or still starting, a message gets _He could not reach his brain. It may be
-stopped or still starting._ instead of an answer. Any other failure says the log has the details
+stopped or still starting._ instead of an answer, and when this computer ran out of memory for it, _His
+brain stopped because the computer ran out of memory_ with what to change
+([running](running.md#status-and-errors)). Any other failure says the log has the details
 (`data/logs/discord.log`). The Talk page and `winston talk` say the same, and a box shows its error.
 
 ## Saying which room you are in

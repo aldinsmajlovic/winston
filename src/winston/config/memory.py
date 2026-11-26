@@ -8,9 +8,14 @@ The memory bar and setup's recommendation both read these numbers, so they agree
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from urllib.parse import urlsplit
+
+if TYPE_CHECKING:
+    from winston.config.schema import WinstonConfig
 
 # A brain's MiB at each context (K tokens per conversation); between and past them, a straight line.
 BRAINS: dict[str, tuple[tuple[int, int], ...]] = {
@@ -235,3 +240,63 @@ async def _ollama_bytes(model: str, base: str) -> int | None:
     first, _, rest = path.partition("/")
     host, repo = (first, rest) if rest and "." in first else ("registry.ollama.ai", path if rest else f"library/{path}")
     return await _manifest_size(host, repo, tag, "ollama")
+
+
+# ---- A brain stopped for want of the computer's memory ---------------------------------------------------------
+# A brain on the processor that does not fit is stopped by the kernel as it loads (Granite 8B at 44K on a 16 GB
+# computer, 2026-11-26): the request only loses its connection, and a system Ollama comes back healthy seconds
+# later. So a failed request is checked against the kernel's count, and what it finds is noted in data/state for
+# winstond's status, since the Talk page, Discord and `winston talk` ask the brain from their own processes.
+
+LOCAL = ("127.0.0.1", "localhost", "::1")
+
+
+class OutOfMemory(Exception):
+    """The brain on this computer was stopped for want of memory during a request."""
+
+    def __init__(self, context: int):
+        super().__init__(f"the computer ran out of memory with {context // 1024}K of context: lower How much he "
+                         "keeps in mind on Brain, or close other programs")
+
+
+def oom_kills(vmstat: Path = Path("/proc/vmstat")) -> int | None:
+    """Processes the kernel has stopped for want of memory since the computer started; None where not kept."""
+    try:
+        m = re.search(r"^oom_kill (\d+)$", vmstat.read_text(), re.MULTILINE)
+    except OSError:
+        return None
+    return int(m[1]) if m else None
+
+
+def _note() -> Path:
+    from winston.config.loader import data_dir
+    return data_dir() / "state" / "brain_out_of_memory.txt"
+
+
+def out_of_memory(cfg: WinstonConfig, before: int | None, err: BaseException) -> OutOfMemory | None:
+    """For a brain request that failed with err: OutOfMemory, noted for the status, when the brain runs on this
+    computer, its server went away (unreachable) and the kernel stopped a process for want of memory since
+    `before` (oom_kills() as it began); else None. ponytail: any process stopped meanwhile counts, as the kernel
+    names its victim only in dmesg; an Ollama whose runner alone is stopped answers 500 and is not caught."""
+    from winston.core.brain import unreachable
+    now = oom_kills()
+    if (before is None or now is None or now <= before or urlsplit(cfg.llm.base_url).hostname not in LOCAL
+            or not unreachable(err)):
+        return None
+    e = OutOfMemory(cfg.llm.context)
+    _note().parent.mkdir(parents=True, exist_ok=True)
+    _note().write_text(str(e))
+    return e
+
+
+def stopped_for_memory() -> str:
+    """Why the brain was last stopped for want of memory, until it answers again or is restarted; "" if not."""
+    try:
+        return _note().read_text()
+    except OSError:
+        return ""
+
+
+def answered() -> None:
+    """The brain answered (or was restarted): any earlier out of memory no longer holds."""
+    _note().unlink(missing_ok=True)

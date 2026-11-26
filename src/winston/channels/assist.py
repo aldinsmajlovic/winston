@@ -32,6 +32,7 @@ from zeroconf.asyncio import AsyncServiceInfo, AsyncZeroconf
 import winston
 from winston.channels.text import UNREACHABLE, error_text
 from winston.channels.web import WebChat
+from winston.config.memory import OutOfMemory
 from winston.config.schema import WinstonConfig
 from winston.core import directory
 from winston.core.announce import Hub, nudge_note
@@ -147,6 +148,7 @@ class Listener:
 
 
 NO_BRAIN = "Sorry, I could not reach my brain."
+NO_MEMORY = "Sorry, my brain ran out of memory."
 FAILED = "Sorry, something went wrong while I answered."
 WORDING_SECS = 20       # a nudge not worded by then is said as its plain line, as on a box
 GONE = ("unavailable", "unknown")
@@ -238,7 +240,8 @@ class Assist:
             said = error_text(e)
             self.feed.publish(LiveEvent(channel="assist", type="error", text=said))
             self.feed.publish(LiveEvent(channel="assist", type="state", state="idle", room=room))
-            raise Unanswered(NO_BRAIN if said == UNREACHABLE else FAILED) from e
+            raise Unanswered(NO_MEMORY if isinstance(e, OutOfMemory) else NO_BRAIN if said == UNREACHABLE
+                             else FAILED) from e
         s = self.chat.sessions.get(self.chat._key(room, conv))
         llm = s.brain.llm if s else None
         quiet = bool(getattr(llm, "ended", False))      # a scene that speaks for itself (quiet_after)

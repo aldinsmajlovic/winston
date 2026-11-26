@@ -14,7 +14,7 @@ import httpx
 from dotenv import dotenv_values
 from loguru import logger
 
-from winston.config import data_dir
+from winston.config import data_dir, memory
 from winston.config.schema import EngineConfig, WinstonConfig
 from winston.engines import install
 from winston.engines.drivers import (DockerDriver, Driver, ExternalDriver, SubprocessDriver, discord_channel_cmd,
@@ -179,6 +179,8 @@ class Supervisor:
         """Adopt a new config. A running engine whose config changed keeps its process and takes
         the new config on its next stop or restart; returns the names of those. One the config no
         longer has (removed, switched off, a channel with nothing to serve) is stopped and dropped."""
+        if (cfg.llm.model, cfg.llm.context) != (self.cfg.llm.model, self.cfg.llm.context):
+            memory.answered()                   # a brain that may fit: up again, it waits for a restart as any change
         self.cfg = cfg
         await self.refresh()                # decide on live state, not the last poll
         fresh = self._build(cfg)
@@ -249,7 +251,9 @@ class Supervisor:
             if m.state in ("installing", "starting"):
                 continue
             keep = m.detail if m.pending or m.stale else ""
-            if await self.healthy(m):
+            if m.name == "llm" and (why := memory.stopped_for_memory()):    # up again, and stopped again on use
+                self._set(m, "error", why)
+            elif await self.healthy(m):
                 self._set(m, "healthy", keep)
             elif await m.driver.running():
                 self._set(m, "unhealthy", keep or "process up, health check failing")
@@ -266,6 +270,8 @@ class Supervisor:
     async def start(self, name: str, wait: bool = True) -> Managed:
         from winston.api.options import llm_engine
         m = self.items[name]
+        if name == "llm":
+            memory.answered()                   # a restart, likely with a smaller context: judged afresh
         # Winston's Ollama is up whether or not he started it, but its 16K copy may still be missing: made below,
         # through Ollama's API, wherever it runs.
         ollama = name == "llm" and m.cfg.driver == "external" and llm_engine(m.cfg.model_dump()) == "ollama"

@@ -120,6 +120,47 @@ check("a CUDA out-of-memory error reads as one", _why(["torch.OutOfMemoryError: 
       "it ran out of graphics memory"), True)
 check("any other failure is left to the log", _why(["RuntimeError: Engine core initialization failed."]), "")
 
+# A brain on this computer stopped by the kernel for want of memory: the reply and the status say so.
+from winston.channels.text import UNREACHABLE, error_text  # noqa: E402
+from winston.config import memory  # noqa: E402
+
+vmstat = scratch / "vmstat"
+vmstat.write_text("nr_free_pages 1\noom_kill 88\npgfault 9\n")
+check("the kernel's count of processes stopped for memory", memory.oom_kills(vmstat), 88)
+check("none where it does not keep one", memory.oom_kills(scratch / "none"), None)
+
+here = WinstonConfig.model_validate({"llm": {"model": "m", "base_url": "http://127.0.0.1:11434/v1", "context": 45056}})
+hosted = WinstonConfig.model_validate({"llm": {"model": "m", "base_url": "https://openrouter.ai/api/v1"}})
+import httpx  # noqa: E402
+
+gone = httpx.ConnectError("All connection attempts failed")       # what the request saw
+memory.oom_kills = lambda: 89
+check("no count kept: nothing blamed", memory.out_of_memory(here, None, gone), None)
+check("a brain elsewhere is not this computer's memory", memory.out_of_memory(hosted, 88, gone), None)
+check("nothing stopped during the request: not memory", memory.out_of_memory(here, 89, gone), None)
+check("a brain that answered with an error was not stopped", memory.out_of_memory(here, 88, RuntimeError("500")),
+      None)
+check("so the status is as it was", memory.stopped_for_memory(), "")
+e = memory.out_of_memory(here, 88, gone)
+check("one stopped during it: out of memory, with his context", str(e),
+      "the computer ran out of memory with 44K of context: lower How much he keeps in mind on Brain, or close "
+      "other programs")
+e.__cause__ = httpx.ConnectError("All connection attempts failed")      # as TextSession.ask raises it
+check("the reply says so, not that he could not reach it", error_text(e), f"His brain stopped because {e}.")
+check("a dropped connection alone is still unreachable", error_text(httpx.ConnectError("x")), UNREACHABLE)
+check("noted for the status", memory.stopped_for_memory(), str(e))
+asyncio.run(sup.refresh())
+check("the brain's status is the reason, not running", (sup.items["llm"].state, sup.items["llm"].detail),
+      ("error", str(e)))
+asyncio.run(sup.start("llm"))
+check("a restart clears it", memory.stopped_for_memory(), "")
+sup.cfg = here
+memory.out_of_memory(here, 88, gone)
+asyncio.run(sup.reload(here.model_copy(update={"llm": here.llm.model_copy(update={"context": 16384})})))
+check("so does saving a smaller context, which then waits for a restart as any change",
+      memory.stopped_for_memory(), "")
+
 shutil.rmtree(scratch, ignore_errors=True)
 finish_checks("engines: volume folders made before docker run, failed starts say what to do, a server on your "
-              "network at its API address, graphics memory running out in words")
+              "network at its API address, graphics memory running out in words, a brain stopped for want of "
+              "the computer's memory named in its reply and status")

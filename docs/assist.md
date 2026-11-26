@@ -112,5 +112,6 @@ twice: when the box comes back, the satellite goes quiet again.
 - **Home Assistant's timers** cannot ring through him (its timer tools need the device, which his
   calls do not carry). Ask for a reminder instead.
 - **A failure is said.** When his brain is stopped or fails, Home Assistant says "Sorry, I could not
-  reach my brain." or "Sorry, something went wrong while I answered.", and the Talk page shows the
-  error as for a typed message.
+  reach my brain.", "Sorry, my brain ran out of memory." (this computer's, [running](running.md#status-and-errors))
+  or "Sorry, something went wrong while I answered.", and the Talk page shows the error as for a typed
+  message.
