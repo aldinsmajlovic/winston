@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.21 (unreleased)
+## 0.1.21 (2026-11-26)
 
 - His mark says more about what he is doing: while he thinks, a bright arc circles its ring, and while he
   speaks, the middle of the W rises and falls with his voice.
