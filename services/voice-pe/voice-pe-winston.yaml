@@ -23,9 +23,13 @@ external_components:
       path: components
     components: [voice_assistant]
 
+# Okay Winston's model. `wake.py flash` builds with one trained on your own takes instead (data/wake/).
+substitutions:
+  wake_model: ../../assets/wake/okay_winston.json
+
 micro_wake_word:
   models:
-    - model: ../../assets/wake/okay_winston.json
+    - model: ${wake_model}
       id: okay_winston
   # The wake word over a reply. ESPHome runs this after the stock handler, which has just stopped the reply (the
   # voice assistant was running), so the question after the name used to be lost. Now, unless it was "Stop", the

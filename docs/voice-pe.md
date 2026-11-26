@@ -317,7 +317,8 @@ uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device /dev/ttyACM0
 ```
 
 Then set the box's wake word to `okay_winston`. Later builds go over the network in about 17 s, with
-TCP 3232 open from this machine to the box:
+TCP 3232 open from this machine to the box (`wake.py flash` does the same, with your own model when
+there is one):
 
 ```sh
 uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device <box address>
@@ -394,30 +395,47 @@ to try, in order:
    placement (shelf, corner) and the noise (fan, TV).
 2. **Very sensitive (0.70).** The firmware can go lower, with more false wakes from household talk; the
    Swedish "hej" followed by a name is the one to watch.
-3. **Retrain with real takes from the box.** 50 to 100 "Okay Winston" said at 1, 3 and 5 m from the
-   sofa, kitchen and doorway, normal and tired or mumbled, plus room audio as negatives (TV, music,
-   household talk in Swedish and English, near misses such as "okay" and "Winston" mid-sentence). The
-   trainer takes them as personal and negative samples.
+3. **Retrain with real takes from the box** ([below](#retraining-with-your-takes)). 50 to 100 "Okay
+   Winston" said at 1, 3 and 5 m from the sofa, kitchen and doorway, normal and tired or mumbled, plus
+   room audio as negatives (TV, music, household talk in Swedish and English, near misses such as
+   "okay" and "Winston" mid-sentence). The trainer takes them as personal and negative samples.
 
-### Recording takes
+### Retraining with your takes
 
-`services/voice-pe/record_takes.py` records them through the box, as its wake word model hears them:
-the second microphone channel (the one micro_wake_word listens on, which the box streams beside the
-first) at the firmware's `gain_factor` 4. Not the turn record, which keeps the first channel, and not
-hold to talk, which keeps you at the box. Stop Winston first (`winston down`), since the box streams to
-one voice client; for the session the box is button only, so saying the wake word does not end the
-recording, and its wake words are put back at the end.
+`services/voice-pe/wake.py` does the whole round. It finds the box, its key and Winston in
+`data/config.yaml` (`--box` names the room when there are several), and pauses what it needs of
+Winston while it runs.
 
 ```sh
-uv run python services/voice-pe/record_takes.py <box address> ~/wake-takes/takes-1          # the wake word
-uv run python services/voice-pe/record_takes.py <box address> ~/wake-takes/room-1 --room    # negatives
+uv run python services/voice-pe/wake.py takes    # "Okay Winston", around the room
+uv run python services/voice-pe/wake.py room     # the room's own sounds, as negatives
+uv run python services/voice-pe/wake.py train    # about an hour on the GPU
+uv run python services/voice-pe/wake.py flash    # the box gets the new model
 ```
 
-Press the box's button once and say the wake word with about two seconds of quiet between takes, moving
-around the room; Ctrl-C ends it. Each pause cuts a take (`take_NNN.wav`, 0.4 to 2.5 s of speech); `--room`
-cuts the session into 3 s pieces instead. The whole session stays as `session.wav`, and `--split` cuts it
-again. Each session needs its own folder. The takes are your voice: keep them out of the repo, and a
-model trained on them in `data/`.
+- **takes**: press the box's button once, then say the wake word with about two seconds of quiet
+  after each, moving around the room. Ctrl-C ends the session. Each pause cuts a take (0.4 to 2.5 s of
+  speech). Every session gets its own folder in `data/wake/takes/`, and it says how many there are in
+  all.
+- **room**: the same, cut into 3 s pieces in `data/wake/room/`. Never say the wake word in it.
+- **train**: hands every take and piece to the trainer, stops Winston's engines for the GPU, runs it in
+  Docker (it needs NVIDIA's toolkit) and starts them again. The model lands in `data/wake/` with
+  ESPHome's manifest and the trainer's report. If the trainer does not take the start over its API, it
+  says so: press Train on its page, `http://127.0.0.1:8789` (from another computer through
+  `ssh -L 8789:127.0.0.1:8789`), and it waits on.
+- **flash**: builds Winston's firmware with the model from `data/wake/`, or the repo's when there is
+  none, and flashes the box over the network. To go back, delete `data/wake/okay_winston.*` and flash
+  again.
+
+A take is recorded from the box's second microphone channel (the one micro_wake_word listens on, which
+the box streams beside the first) at the firmware's `gain_factor` 4, so it is what the model hears. Not
+the turn record, which keeps the first channel, and not hold to talk, which keeps you at the box. While
+it records, Winston's satellite channel is stopped, since the box streams to one voice client, and the
+box is button only, so the wake word does not end the recording. Both are put back at the end.
+
+The whole session stays as `session.wav`; `wake.py split <session.wav>` cuts it again. Takes recorded
+before `wake.py` go in `data/wake/takes/`, a folder per session. The takes are your voice: they and the
+model stay in `data/`, never in the repo.
 
 **First measurement, 2026-10-27**: 27 takes from around the living room, scored offline the way the
 box does (mean of 5 frames). As one stream, the current model woke on 21 (78%) at `Very sensitive`
@@ -425,7 +443,7 @@ box does (mean of 5 frames). As one stream, the current model woke on 21 (78%) a
 RMS. A higher gain does not help: at ×8 and ×16 it still woke on 21 at 0.70, since the front end
 normalizes level. The model is the lever, not the box.
 
-The trainer is now v47.3 (`ghcr.io/tatertotterson/microwakeword:v47.3`, data in its own folder). Over
+The trainer is now v47.3 (`ghcr.io/tatertotterson/microwakeword:v47.3`, its data in `~/.cache/winston-wake-trainer`). Over
 v17 it generates the positives with four voice engines (OmniVoice, Qwen3-TTS, MOSS-TTS-Nano and Piper,
 with a mix of English accents) instead of Piper alone, trains 80,000 steps, weights personal samples
 3× and reviewed negatives as hard negatives, and takes generated near-miss phrases. None of its engines
