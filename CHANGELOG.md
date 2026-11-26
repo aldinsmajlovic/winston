@@ -3,6 +3,20 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.19 (unreleased)
+
+- The brain's Model opens a dialog of models to choose by: each with the memory it needs at your context
+  and whether it fits, where it comes from, its size, context, license, downloads and last update.
+- A brain the computer stopped for want of memory says so, on Talk, in Home Assistant and on its status,
+  instead of saying it could not reach his brain while Status said healthy. It no longer reloads in a loop.
+- A link to a setting (Turn on recordings, Set your phone) scrolls to it and rings its card for a moment.
+- The room picker shows how many of each room's entities are exposed, and Status lists only the parts
+  that are on.
+- Settings follow what you picked, not what was saved: a hosted brain's Model no longer talks of
+  downloads, and lists for a new engine or address no longer show the old one's while they load.
+- Setup explains installing on Unraid or Proxmox: in a Debian or Ubuntu virtual machine, and what to
+  give it.
+
 ## 0.1.18 (2026-11-26)
 
 - Winston has a colour of his own, petrol: on his mark, buttons, switches and the page you are on. Save
