@@ -30,6 +30,7 @@ import { TurnMarkControl } from '@/components/turn-mark'
 import { WinstonHeader } from '@/components/winston-header'
 import { Input } from '@/components/ui/input'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useHomeAssistantState } from '@/hooks/use-home-assistant'
 import { useMarks } from '@/hooks/use-marks'
 import { useNow } from '@/hooks/use-now'
 import { useRegion } from '@/hooks/use-region'
@@ -264,6 +265,7 @@ export default function TalkPage() {
   const ask = useConfirm()
   const status = useStatus()
   const config = useConfig()
+  const haState = useHomeAssistantState().state
   const rooms = useRoomChoices()
   const region = useRegion()
   const [text, setText] = useState('')
@@ -344,9 +346,8 @@ export default function TalkPage() {
   ) : readAloud ? (
     'Reading typed replies aloud'
   ) : null
-  const ha = config.data?.providers?.home_assistant
   const uses = [
-    ...(ha?.url && ha.enabled !== false ? ['Home Assistant'] : []),
+    ...(haState === 'ok' ? ['Home Assistant'] : []),
     ...(status.data?.extensions ?? []).filter((x) => x.state === 'running').map((x) => x.name),
   ]
   const wakeWord = rooms.some((r) => r.box) && config.data?.channels?.satellite?.enabled === true

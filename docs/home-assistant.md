@@ -157,7 +157,9 @@ uv run winston ha expose          # apply the saved list (adds and exposes; remo
 ### Connecting
 
 Until an address is saved with its token (a new install has the example's address and no token), the
-page is one card, Connect Home Assistant. It offers three ways in:
+page is one card, Connect Home Assistant. Meanwhile Status lists it under Set up next ("Not connected
+yet" on its row), not as a fault, and Talk does not say he can use it; a token that stops working, or a
+Home Assistant that stops answering, is under Needs you and marks Settings. It offers three ways in:
 
 1. Each Home Assistant found on the network, with Sign in.
 2. The Address, with Sign in to Home Assistant under it.

@@ -3,7 +3,7 @@ import { CircleAlert, History, NotebookText, Settings } from 'lucide-react'
 import { Link, useLocation } from 'react-router'
 import { useConfig } from '@/api/config'
 import { notReady, STATE_LABEL, type PresenceState } from '@/api/live'
-import { needsAttention, useStatus } from '@/api/status'
+import { useNeedsAttention, useStatus } from '@/api/status'
 import { Presence } from '@/components/presence'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -24,7 +24,7 @@ export function WinstonHeader({ name, state, actions }: Props) {
   const status = useStatus()
   const config = useConfig()
   const problem = notReady(status.data, config.data, status.isError)
-  const attention = needsAttention(status.data)
+  const attention = useNeedsAttention()
   return (
     <header className="mt-4 mb-3.5 flex w-full max-w-3xl items-center gap-2 rounded-2xl border bg-card px-4 py-3 shadow-xs max-sm:w-[calc(100%-2rem)] max-sm:px-3 sm:gap-4">
       {/* The name's link covers his presence too; the Status link sits above it. */}

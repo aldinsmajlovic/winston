@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { $api, type EngineState, type EngineStatus, type Status } from './client'
 import { duration } from '@/lib/format'
+import { useHomeAssistantState } from '@/hooks/use-home-assistant'
 
 export const statusKey = $api.queryOptions('get', '/api/status').queryKey
 
@@ -78,13 +79,20 @@ export function notWorking(x: { enabled?: boolean; state: string }): boolean {
   return x.state === 'failed' || x.state === 'problem' || (x.enabled !== false && x.state === 'stopped')
 }
 
-/** Something to look at: a part that failed or stopped answering, or an extension that does not work.
- * Marks Status in the sidebar and his Settings link. */
+/** Something to look at: a part that failed or stopped answering, or an extension that does not work. */
 export function needsAttention(status: Status | undefined): boolean {
   return (
     (status?.engines ?? []).some((e) => e.state === 'error' || e.state === 'unhealthy') ||
     (status?.extensions ?? []).some(notWorking)
   )
+}
+
+/** needsAttention, or Home Assistant set up but not answering. Marks Status in the sidebar and his
+ * Settings link. */
+export function useNeedsAttention(): boolean {
+  const status = useStatus()
+  const ha = useHomeAssistantState()
+  return needsAttention(status.data) || ha.state === 'down'
 }
 
 /** What a restart costs: how long it took last time, else its startup timeout. */

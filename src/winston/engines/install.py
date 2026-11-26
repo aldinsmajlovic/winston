@@ -256,12 +256,12 @@ async def _ollama(model: str, base: str, context: int) -> Part | None:
     except Exception:  # noqa: BLE001
         return None
     have = ollama_copy(name, context) in tags
-    size = None
-    if name not in tags:
-        path, tag = name.rsplit(":", 1)
-        first, _, rest = path.partition("/")
-        host, repo = (first, rest) if rest and "." in first else ("registry.ollama.ai", path if rest else f"library/{path}")
-        size = await _manifest_size(host, repo, tag, "ollama")
+    if name in tags:            # the weights are here: only his copy is made, in seconds, with nothing to get
+        return Part(f"ollama:{name}", f"his {context // 1024}K copy of the model", None, 0, have, source=base, context=context)
+    path, tag = name.rsplit(":", 1)
+    first, _, rest = path.partition("/")
+    host, repo = (first, rest) if rest and "." in first else ("registry.ollama.ai", path if rest else f"library/{path}")
+    size = await _manifest_size(host, repo, tag, "ollama")
     return Part(f"ollama:{name}", "the model", None, size, have, source=base, context=context)
 
 

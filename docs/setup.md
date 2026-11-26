@@ -159,7 +159,9 @@ registry. A venv's size is measured once and kept beside its lock (`tool.winston
 service's `pyproject.toml`).
 
 Picking something not installed, on the Brain and Voice pages or in the wizard, shows what it needs:
-"Still to download: the model (16.4 GB). 210 GB free." with Download. Then
+"Still to download: the model (16.4 GB). 210 GB free." with Download. An Ollama model already pulled
+needs only his copy at the context, made in seconds with nothing to get: "Still to prepare: his 16K copy
+of the model." with Prepare, which asks nothing first. Then
 each part gets a bar, updated every second ("Downloading its Docker image, 6.2 GB of 8.7 GB."), or
 why it failed with Try again.
 
@@ -209,7 +211,8 @@ refused from Finish on, and from Winston's next start he listens on this compute
 ### While setup is under way
 
 Until Brain and voice is done, winstond starts none of his engines, since starting one downloads what
-it lacks. Nothing is downloaded before you have seen the picks and their sizes.
+it lacks. Nothing is downloaded before you have seen the picks and their sizes. When Brain and voice is
+skipped, Finish starts them, as winstond's next start would.
 
 Opening his address, http://localhost:8700, opens the wizard, so the setup link need not be typed
 exactly. Other pages open as they are: Status says "Setup is not finished." with Continue setup, and
@@ -378,7 +381,8 @@ When something is in the way:
   takes you to Talk, where you talk to him."
 - Who can open this page from now on, as on Status, with the same warning when it is the whole network.
 - What was skipped.
-- **Finish and go to Talk** saves, ends setup mode, restarts what waits for a restart and opens Talk.
+- **Finish and go to Talk** saves, ends setup mode, restarts what waits for a restart, starts the engines
+  setup held back when Brain and voice was skipped, and opens Talk.
 
 From another device that only this computer may open afterwards, the step says so before Finish (its
 button is then Finish), and after it gives the address to open there: "Setup is done. From now on, open

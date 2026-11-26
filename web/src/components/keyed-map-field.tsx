@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useOptions, type OptionsQuery } from '@/hooks/use-options'
+import { useRegion } from '@/hooks/use-region'
 import { isRecord, type JsonSchema } from '@/lib/schema'
 
 type MapSchema = JsonSchema & {
@@ -143,6 +144,8 @@ function MapTable({
   const primitive = isPrimitive(valueSchema)
   const keyTitle = schema.key_title ?? 'Name'
   const valueTitle = schema.value_title ?? valueSchema.title ?? 'Value'
+  const isTime = (valueSchema as { widget?: string }).widget === 'time'
+  const region = useRegion()
   const entries: Record<string, unknown> = isRecord(formData) ? formData : {}
   const keyChoices = keyOptions.choices
   const knownKeys = new Map(keyChoices.map((c) => [c.value, c]))
@@ -205,6 +208,9 @@ function MapTable({
         // Only look a value up while the list itself works; without a token only the value shows.
         if (!choice && listed && !valueOptions.problem && !valueOptions.loading && typeof r.value === 'string')
           return <LookedUp name={listed} value={r.value} />
+        // A time of day ("19:00") as the Region's clock shows it, like every other time on the page.
+        const hm = isTime && typeof r.value === 'string' ? /^(\d\d):(\d\d)$/.exec(r.value) : null
+        if (hm) return <span>{region.time(new Date(2000, 0, 1, Number(hm[1]), Number(hm[2])))}</span>
         return <ValueCell value={r.value} choice={choice} />
       },
     },
@@ -312,6 +318,8 @@ function MapTable({
               <div className="flex flex-col gap-2">
                 <Input
                   id="item-value"
+                  type={isTime ? 'time' : undefined}
+                  className={isTime ? 'w-32' : undefined}
                   value={value === undefined || value === null ? '' : String(value)}
                   aria-invalid={badValue}
                   onChange={(e) => setEditing((x) => x && { ...x, value: e.target.value })}

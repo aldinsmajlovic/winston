@@ -965,8 +965,11 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
               summary="End setup mode: another device then needs Who can open this page, not the setup link")
     async def setup_finish(request: Request):
         if setup_link.active():
+            held = setup_link.holding()
             setup_link.finish()
             logger.info("setup finished: the page follows Who can open this page")
+            if autostart and held:      # Brain and voice skipped: the engines setup held back start now, as at boot
+                spawn(sup.start_all())
         return setup_state(request)
 
     # A room box over USB (api/room_box.py, imported as usb_box): the wizard's A room box.

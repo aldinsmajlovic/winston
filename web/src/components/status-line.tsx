@@ -27,17 +27,22 @@ export function StatusLine({ tone, children, action }: Props) {
         <Icon className={cn('mt-0.5 size-4 shrink-0', className)} />
         <span className="min-w-0">{children}</span>
       </span>
-      {actions.map((a) =>
-        'to' in a ? (
-          <Button key={a.label} variant="outline" size="sm" asChild>
-            <Link to={a.to}>{a.label}</Link>
-          </Button>
-        ) : (
-          <Button key={a.label} variant="outline" size="sm" onClick={a.onClick}>
-            {a.label}
-          </Button>
-        ),
-      )}
+      {/* One group, so the buttons wrap below the sentence together rather than one by one. */}
+      {actions.length ? (
+        <span className="flex gap-2">
+          {actions.map((a) =>
+            'to' in a ? (
+              <Button key={a.label} variant="outline" size="sm" asChild>
+                <Link to={a.to}>{a.label}</Link>
+              </Button>
+            ) : (
+              <Button key={a.label} variant="outline" size="sm" onClick={a.onClick}>
+                {a.label}
+              </Button>
+            ),
+          )}
+        </span>
+      ) : null}
     </div>
   )
 }

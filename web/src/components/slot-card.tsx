@@ -206,7 +206,10 @@ function InstallLine({ page, kind }: { page: SettingsState; kind: Kind }) {
   const running = missing.filter((p) => p.state === 'running')
   const failed = missing.filter((p) => p.state === 'error')
   const amount = amountOf(missing)
+  // Nothing to get, only to make (his copy of an Ollama model at his context): seconds, so no question first.
+  const makeOnly = missing.every((p) => p.size === 0)
   const go = async () => {
+    if (makeOnly) return download.mutate({ body })
     const choice = await ask({
       title: `Download what ${engineLabel(kind)} needs?`,
       lines: [`${capitalize(amount)}${amount ? 'of ' : ''}${joinNames(missing.map(before))}.`, 'It downloads in the background, and what runs now keeps running.'],
@@ -249,8 +252,8 @@ function InstallLine({ page, kind }: { page: SettingsState; kind: Kind }) {
   if (plan.data?.short) return <StatusLine tone="warning">{`Not enough space: it ${plan.data.short}.`}</StatusLine>
   const free = plan.data?.free != null ? ` ${size(plan.data.free)} free.` : ''
   return (
-    <StatusLine tone="muted" action={{ label: 'Download', onClick: () => void go() }}>
-      {`Still to download: ${joinNames(missing.map(before))}.${free}`}
+    <StatusLine tone="muted" action={{ label: makeOnly ? 'Prepare' : 'Download', onClick: () => void go() }}>
+      {makeOnly ? `Still to prepare: ${joinNames(missing.map(before))}.` : `Still to download: ${joinNames(missing.map(before))}.${free}`}
     </StatusLine>
   )
 }

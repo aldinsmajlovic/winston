@@ -3,7 +3,8 @@
 another device. Without the key refused; with the link's ?key= served, and then by the cookie that sets; a
 key pasted from there; a step skipped, and still listed after the end; `winston setup link` making a new key,
 the old one refused; with --host given, not opened to the network; after the wizard's Finish refused again,
-while this computer is still served.
+while this computer is still served. Then a winstond that starts things, holding an engine back during setup
+Brain and voice skipped too, and starting it at Finish.
 
     uv run python tests/setup_link_cases.py
 """
@@ -12,6 +13,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
+import yaml
 
 from harness import check, finish_checks, free_port, scratch_data, winstond_data
 
@@ -39,11 +42,12 @@ check("the setup key is kept only as its hash", (key in setup_link.path().read_t
       (False, 64))
 
 
-def up(at: int, *args: str) -> subprocess.Popen:
-    """`winston up --no-start` on port `at`, once it answers."""
+def up(at: int, *args: str, start: bool = False) -> subprocess.Popen:
+    """`winston up --no-start` (or with start, `winston up`) on port `at`, once it answers."""
     (data / "logs").mkdir(exist_ok=True)
     log = data / "logs" / f"up-{at}.log"
-    proc = subprocess.Popen([WINSTON, "up", "--no-start", *args], stdout=log.open("w"), stderr=subprocess.STDOUT)
+    cmd = [WINSTON, "up", *([] if start else ["--no-start"]), *args]
+    proc = subprocess.Popen(cmd, stdout=log.open("w"), stderr=subprocess.STDOUT)
     for _ in range(80):
         try:
             if httpx.get(f"http://127.0.0.1:{at}/api/health", timeout=1).status_code == 200:
@@ -115,5 +119,27 @@ finally:
     proc.terminate()
     proc.wait(10)
 
+# Setup again, nothing done: a winstond that starts things holds its engine back until Brain and voice is done,
+# skipped too, and Finish starts it, without a restart. The engine is a sleep: started, it runs.
+setup_link._write({"key_sha256": setup_link.state()["key_sha256"]})
+cfg = yaml.safe_load((data / "config.yaml").read_text())
+cfg["engines"] = {"held": {"driver": "subprocess", "cmd": ["sleep", "120"], "port": free_port(), "health": ""}}
+(data / "config.yaml").write_text(yaml.safe_dump(cfg))
+at = free_port()
+starts = up(at, "--host", "127.0.0.1", "--port", str(at), start=True)
+try:
+    def held() -> str:
+        return next(e["state"] for e in httpx.get(f"http://127.0.0.1:{at}/api/status").json()["engines"] if e["name"] == "held")
+    httpx.put(f"http://127.0.0.1:{at}/api/setup/steps/brain", json={"state": "skipped"})
+    time.sleep(1)
+    check("during setup, Brain and voice skipped, the engine is held back", held(), "stopped")
+    httpx.post(f"http://127.0.0.1:{at}/api/setup/finish")
+    time.sleep(1)
+    check("Finish starts it", held() in ("starting", "healthy"), True)
+finally:
+    starts.terminate()
+    starts.wait(10)
+
 finish_checks("setup link: another address refused without the key, served with it and its cookie, a key pasted, "
-              "a step skipped, a new link from winston setup link, --host kept, refused again after Finish")
+              "a step skipped, a new link from winston setup link, --host kept, refused again after Finish, "
+              "held engines started at Finish")

@@ -164,7 +164,8 @@ export function ContextSlider({ page, presets }: { page: SettingsState; presets:
         aria-label="How much he keeps in mind, in thousands of tokens"
       />
       <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
-        {[plan.min_k, 32, 64, plan.max_k].map((t) => (
+        {/* the ends only: the slider is linear, so evenly spaced middle labels would sit at the wrong values */}
+        {[plan.min_k, plan.max_k].map((t) => (
           <span key={t}>{t}K</span>
         ))}
       </div>

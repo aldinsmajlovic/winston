@@ -1,6 +1,7 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { $api } from '@/api/client'
+import { useConfig } from '@/api/config'
 import type { ExposedEntity } from '@/api/client'
 import type { components } from '@/api/schema'
 import type { ActionItem } from '@/components/action-list'
@@ -28,6 +29,22 @@ export function useHomeAssistant(on: boolean) {
   })
   const tools = $api.useQuery('get', '/api/providers/home_assistant/tools', undefined, { enabled: on, retry: false })
   return { exposure, registry, tools }
+}
+
+/** Home Assistant as every page tells it: off (switched off, or no address), new (no token yet: a step to
+ * set up, not a fault), down (set up but not answering, or refusing the token), ok, or undefined while it is
+ * asked. The exposure query the Home Assistant page reads too, shared by Status, his Settings mark and Talk. */
+export function useHomeAssistantState() {
+  const ha = useConfig().data?.providers?.home_assistant
+  const on = !!ha?.url && ha.enabled !== false
+  const exposure = $api.useQuery('get', '/api/providers/home_assistant/exposure', undefined, { enabled: on, retry: false, staleTime: 60_000 })
+  // winstond answers 409 when there is no token to try; a failed fetch is Winston away, which says so itself.
+  const noToken = exposure.isError && typeof (exposure.error as { detail?: unknown }).detail === 'string'
+  const state: 'off' | 'new' | 'down' | 'ok' | undefined = !on ? 'off'
+    : noToken ? 'new'
+    : exposure.data ? (exposure.data.ok ? 'ok' : 'down')
+    : undefined
+  return { state, setUp: !!ha?.url, on, exposure, detail: exposure.data?.ok === false ? exposure.data.detail : undefined }
 }
 
 /** Read Home Assistant again: what it exposes, its registry and its tools. */

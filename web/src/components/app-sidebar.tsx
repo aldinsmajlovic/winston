@@ -3,7 +3,7 @@ import { Activity, ArrowLeft, Bell, Bot, Brain, CircleAlert, ListChecks, Mic, Mo
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
-import { needsAttention, useStatus } from '@/api/status'
+import { useNeedsAttention, useStatus } from '@/api/status'
 import { updateNeedsYou } from '@/api/update'
 import { IconButton } from '@/components/icon-button'
 import { KindIcon } from '@/components/kind-icon'
@@ -90,7 +90,7 @@ export function AppSidebar() {
   const update = $api.useQuery('get', '/api/update')
   const active = (to: string) => pathname.startsWith(to)
   const dirty = useDirtyPages()
-  const attention = needsAttention(status.data)
+  const attention = useNeedsAttention()
   // On a phone the menu is a sheet over the page: choosing a page closes it.
   useEffect(() => setOpenMobile(false), [pathname, setOpenMobile])
   return (

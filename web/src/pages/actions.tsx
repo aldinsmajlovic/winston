@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
-import { haActionItems } from '@/hooks/use-home-assistant'
+import { haActionItems, useHomeAssistantState } from '@/hooks/use-home-assistant'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { getIn } from '@/lib/schema'
 import { actionItems, canReachPhone, CopyText, setAction, useExtensions } from '@/pages/extensions'
@@ -90,6 +90,7 @@ export default function ActionsPage() {
   const saved = useConfig().data?.providers?.home_assistant
   const haOn = !!saved && saved.enabled !== false && !!saved.url
   const ha = $api.useQuery('get', '/api/providers/home_assistant/tools', undefined, { enabled: haOn, retry: false })
+  const haState = useHomeAssistantState().state
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   if (s.loading || !list.data) return <PageSkeleton title="Actions" />
@@ -134,9 +135,15 @@ export default function ActionsPage() {
       <Card>
         <CardContent className="flex flex-col gap-4">
           {haOn && ha.isError ? (
-            <StatusLine tone="warning" action={{ label: 'Open Home Assistant', to: '/home-assistant' }}>
-              {errorText(ha.error)}
-            </StatusLine>
+            haState === 'new' ? (
+              <StatusLine tone="muted" action={{ label: 'Set up', to: '/home-assistant' }}>
+                Home Assistant is not connected yet, so its actions are not listed.
+              </StatusLine>
+            ) : (
+              <StatusLine tone="warning" action={{ label: 'Open Home Assistant', to: '/home-assistant' }}>
+                {errorText(ha.error)}
+              </StatusLine>
+            )
           ) : null}
           {haShown.length ? (
             <ActionList

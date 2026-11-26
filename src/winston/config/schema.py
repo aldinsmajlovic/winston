@@ -806,12 +806,11 @@ class SpeakUpConfig(Model):
                                description="\"Remind me after work\" when he does not know when you finish: "
                                            "when you get home that day, or at this time if you are home already.",
                                json_schema_extra=ui(widget="time", group=PUT_OFF))
-    day_parts: dict[str, Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]] = Field(
+    day_parts: dict[str, Annotated[str, Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$", json_schema_extra=ui(widget="time"))]] = Field(
         default_factory=lambda: {"morning": "08:00", "afternoon": "15:00", "evening": "19:00", "tonight": "20:00"},
         title="Parts of the day", description="What \"tomorrow morning\" and \"this evening\" mean when you put "
                                               "something off.",
-        json_schema_extra=ui(key_title="Part of the day", value_title="Time", group=PUT_OFF,
-                             help="A 24-hour time, like 19:00."))
+        json_schema_extra=ui(key_title="Part of the day", value_title="Time", group=PUT_OFF))
 
 
 class TurnsConfig(Model):

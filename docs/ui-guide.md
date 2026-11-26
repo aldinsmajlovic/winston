@@ -65,7 +65,10 @@ with a gentle shade in each field. It stays out of the rest of the UI, and other
 - **The header follows its own width** (the sidebar shares the window). Two or more commands fold into
   one More menu (one stays a button), and the breadcrumb gives way when it is narrow, so the title
   keeps its room.
-- **Tables stack below `sm`**, and Save moves to a bar along the bottom.
+- **Tables stack below `sm`**, and Save moves to a bar along the bottom. On Status a stacked row's state
+  and buttons line up under its name, past the icon.
+- **A dropdown's value wraps** onto a second line in a narrow field rather than being cut mid-word.
+- **A status line's buttons wrap together**, below its sentence, never one by one.
 - **Menus**: a menu is as wide as its longest item, so no item wraps. Menu items are words without
   icons.
 

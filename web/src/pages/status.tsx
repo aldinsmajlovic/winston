@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Play, Plus, RotateCcw, Square } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
-import { $api, errorText, type Config, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView, type Presets, type Status } from '@/api/client'
+import { $api, type Config, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView, type Presets, type Status } from '@/api/client'
 import { useConfig } from '@/api/config'
 import { updateNeedsYou, useUpdate } from '@/api/update'
 import { engineLabel, isRunning, notWorking, partName, restartCost, STATE_WORDS, useEngineActions, useStatus } from '@/api/status'
@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useConfirm } from '@/hooks/use-confirm'
 import { useGraphicsMemory } from '@/hooks/use-graphics-memory'
 import { useDrivers } from '@/hooks/use-drivers'
+import { useHomeAssistantState } from '@/hooks/use-home-assistant'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { capitalize, joinNames, since } from '@/lib/format'
 import { memoryUse } from '@/lib/graphics-memory'
@@ -228,10 +229,8 @@ export default function StatusPage() {
     wasFirst.current = updateFirst
   }, [update.query.data, updateFirst])
   const ha = saved?.providers?.home_assistant
-  const haSetUp = !!ha?.url
-  const haOn = haSetUp && ha?.enabled !== false
-  // The same query as the Home Assistant page's: whether it answers, and its version.
-  const exposure = $api.useQuery('get', '/api/providers/home_assistant/exposure', undefined, { enabled: haOn, retry: false })
+  // Whether it answers, and its version: the query the Home Assistant page reads too.
+  const { state: haState, setUp: haSetUp, on: haOn, exposure, detail: haDetail } = useHomeAssistantState()
   const actions = useEngineActions()
   const commands = useCommands()
   const ask = useConfirm()
@@ -273,8 +272,7 @@ export default function StatusPage() {
   const voice = saved.tts?.voice && saved.tts.voice !== voiceDefault ? saved.tts.voice.split('/').pop()?.replace(/\.[^.]+$/, '') : null
   const boxes = Object.keys(saved.channels?.satellite?.devices ?? {}).length
   const connected = rooms.data?.filter((r) => r.box && r.connected).length ?? 0
-  const haDetail = exposure.isError ? errorText(exposure.error) : exposure.data?.ok === false ? exposure.data.detail : undefined
-  const haDown = haOn && (exposure.isError || exposure.data?.ok === false)
+  const haDown = haState === 'down'
   const on = (extensions.data ?? []).filter((x) => x.enabled)
   const needing = on.filter(needsYou)
 
@@ -317,13 +315,14 @@ export default function StatusPage() {
       key: 'home_assistant',
       icon: 'homeassistant',
       role: 'Home Assistant',
-      runs: !haSetUp ? 'Not set up' : exposure.data?.version ? `Version ${exposure.data.version}` : '',
+      runs: !haSetUp ? 'Not set up' : haState === 'new' ? 'Not connected yet' : exposure.data?.version ? `Version ${exposure.data.version}` : '',
       to: '/home-assistant',
       state:
-        haOn && (exposure.data || exposure.isError)
+        haState === 'down' || haState === 'ok'
           ? { state: haDown ? 'error' : 'healthy', detail: haDetail, word: haDown ? "Can't reach it" : 'Connected' }
           : undefined,
       off: haSetUp && !haOn,
+      setUp: haState === 'new',
       enable: haSetUp ? ['providers', 'home_assistant', 'enabled'] : undefined,
     },
     {
@@ -386,14 +385,14 @@ export default function StatusPage() {
         {`${SETUP_STEPS[id]?.title ?? id}: skipped during setup.`}
       </StatusLine>
     )),
-    ...(!haSetUp
+    ...(!haSetUp || haState === 'new'
       ? [
           <StatusLine key="home_assistant" tone="muted" action={{ label: 'Set up', to: '/home-assistant' }}>
             Connect Home Assistant so he can see and control your home.
           </StatusLine>,
         ]
       : []),
-    ...(haOn && Object.keys(ha?.expose ?? {}).length === 0
+    ...(haState === 'ok' && Object.keys(ha?.expose ?? {}).length === 0
       ? [
           <StatusLine key="devices" tone="muted" action={{ label: 'Choose devices', to: '/home-assistant' }}>
             Choose the devices he may see and control.
@@ -441,7 +440,8 @@ export default function StatusPage() {
         </span>
       ),
     },
-    { key: 'state', title: '', className: 'whitespace-normal', render: (p) => <PartState part={p} /> },
+    // On a phone the cells stack: the state and buttons line up under the name, past the icon and its gap.
+    { key: 'state', title: '', className: 'whitespace-normal max-sm:pl-7', render: (p) => <PartState part={p} /> },
   ]
   const partActions = (p: Part) => {
     const e = p.process
@@ -449,7 +449,7 @@ export default function StatusPage() {
     const turnOn = !e && p.off && p.enable && getIn(page.value, p.enable) !== true ? p.enable : undefined
     if (!e && !p.setUp && !turnOn) return null
     return (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1 max-sm:pl-7">
         {e ? (
           <Button variant="outline" size="sm" onClick={() => (isRunning(e) ? void commands.restart(e) : commands.start(e))}>
             {isRunning(e) ? 'Restart' : 'Start'}

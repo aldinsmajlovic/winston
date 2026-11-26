@@ -240,8 +240,8 @@ async def main():
     check("an Ollama model with its 16K copy is installed", [(p.key, p.installed) for p in have],
           [("ollama:have:latest", True)])
     bare = await install.parts("llm", config({"llm": ollama}, "bare"))
-    check("one pulled before but without the copy is not, with nothing to download",
-          [(p.installed, p.size) for p in bare], [(False, None)])
+    check("one pulled before but without the copy is not, with nothing to download (its copy is made)",
+          [(p.installed, p.size, p.title) for p in bare], [(False, 0, "his 16K copy of the model")])
     want = await install.parts("llm", config({"llm": ollama}, f"127.0.0.1:{port}/made-up/small:2"))
     check("one it lacks has its registry size", (want[0].installed, want[0].size), (False, 160))
     check("Ollama's store is not a folder Winston can check", want[0].where, None)

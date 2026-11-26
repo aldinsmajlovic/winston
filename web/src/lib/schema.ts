@@ -236,7 +236,8 @@ function isSecret(value: unknown): value is SecretMeta {
  * Its help says where to get the key (the secret's own, else the name field's); it sits in the name
  * field's group. */
 function secretField(field: JsonSchema, meta: SecretMeta, path: Path, config: unknown, waits: boolean): JsonSchema {
-  const current = getIn(config, path)
+  // Left out of the config, the name field's default applies (an extension's HEVY_API_KEY), so the key is wanted.
+  const current = getIn(config, path) ?? field.default
   const unnamed = typeof current !== 'string' || current.trim() === ''
   const name = unnamed ? meta.default : (current as string).trim()
   // No variable named: nothing is sent unless a key is pasted (a server on your network that wants none).
