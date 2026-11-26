@@ -12,7 +12,7 @@ import {
   type PersonaRename,
   type SecretStatus,
 } from '@/api/client'
-import { clearFieldErrors, hiddenAt, showFieldErrors } from '@/api/field-errors'
+import { clearFieldErrors, drawnAt, hiddenAt, showFieldErrors } from '@/api/field-errors'
 import { configKey, patchConfig, useConfig, useSchema, type ConfigChange, type PatchOutcome } from '@/api/config'
 import { engineLabel, isRunning, partName, restartCost, statusKey, useEngineActions } from '@/api/status'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -21,6 +21,7 @@ import { DOWNLOAD_COST, mustDownload, optionsParams } from '@/hooks/use-options'
 import { haNames, planParts, refreshHomeAssistant, toastSaved, type ExposurePlan, type HAApply } from '@/hooks/use-home-assistant'
 import { secretRestarts, secretsKey, useSecretStatus, useSecretsDraft } from '@/hooks/use-secrets'
 import { fewNames, humanize, joinNames } from '@/lib/format'
+import { ring } from '@/lib/motion'
 import { presetSwitches } from '@/lib/presets'
 import { deepEqual, deref, getIn, isRecord, SECRET_SUFFIX, section, type JsonSchema, type Path } from '@/lib/schema'
 
@@ -544,6 +545,8 @@ export function useSettings(): Loading | Ready {
     // A saved Home Assistant list was applied there too (or not): the toast says which.
     if (changes.some((c) => c.path[0] === 'providers')) refreshHomeAssistant(client)
     if (changes.length || written.saved.length) toastSaved(haApply)
+    // Where it landed: each changed field's card rings, as a link to a setting does.
+    ring(changes.map((c) => drawnAt(c.path)))
     if (restart) {
       for (const e of restarting) actions.restart.mutate({ params: { path: { name: e.name } } })
     }

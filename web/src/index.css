@@ -136,9 +136,28 @@
   html {
     @apply font-sans;
     }
+  /* Reduce motion (the system setting): what slides, grows or turns into place only fades. Spinners
+     still turn, since they say something is working. */
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after {
+      --tw-enter-translate-x: 0 !important;
+      --tw-enter-translate-y: 0 !important;
+      --tw-enter-scale: 1 !important;
+      --tw-enter-rotate: 0 !important;
+      --tw-exit-translate-x: 0 !important;
+      --tw-exit-translate-y: 0 !important;
+      --tw-exit-scale: 1 !important;
+      --tw-exit-rotate: 0 !important;
+    }
+  }
 }
-/* Where a link to a setting lands (useHashTarget): a ring that holds, then fades. */
+/* Motion (docs/ui-guide.md#motion), after Material 3: its standard curve and a short duration for every
+   transition, and its emphasized-decelerate curve for something arriving (ease-enter). The flash rings
+   where a link to a setting lands and what a save changed: a ring that holds, then fades. */
 @theme {
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
   --animate-flash: flash 2.5s ease-out;
   @keyframes flash {
     0%, 50% { outline-color: var(--ring); }

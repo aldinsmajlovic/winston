@@ -52,7 +52,28 @@ Don't:
 
 Winston's mark is drawn in the accent ([identity](identity.md#the-mark)). Other logos stay one colour.
 
+### Motion
+
+After [Material's motion principles](https://m3.material.io/styles/motion/overview): motion informs and
+focuses, and never decorates.
+
+- **It says something**: what changed, where it went, or where to look. Leaving a setup step, its mark
+  grows into a check or a dash while the accent moves on to the next step. A card a link lands on, or
+  one a save changed, rings for a moment (`ring` in `lib/motion.ts`).
+- **It follows what you did.** A page opens still: nothing animates on load.
+- **Short, on Material 3's curves**: every transition 200 ms on the standard curve; something arriving
+  300 ms on the emphasized decelerate curve (`ease-enter`). The tokens are in `index.css`.
+- **Reduce motion is honoured.** With the system setting on, what slides, grows or turns only fades and
+  scrolls jump (`scrollBehavior()`). Spinners still turn, since they say something is working, and his
+  presence goes still.
+- **His presence is the one expressive motion.** No bounces, parallax or loops that are not progress,
+  and nothing that holds up what you do next.
+
 ### What the UI shows
+
+- **Show the state, say the reason.** A state with a place to be drawn is drawn there, not written
+  beside it: a step's mark, a switch, Save filled, ≈ before an estimate. Words are for why and what to
+  do ("Not responding: port 8710 is taken").
 
 - **Winston only**: what he heard, said, did and remembers, and his own parts and settings.
 - **Never the house's controls.** Switches and room dashboards belong to Home Assistant. "Turned on

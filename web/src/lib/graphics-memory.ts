@@ -26,8 +26,8 @@ export function at(points: Points, k: number): number {
   return v0 + ((v1 - v0) * (k - k0)) / (k1 - k0)
 }
 
-/** strength: how dark a part is drawn, brain darkest; 0 is other programs, palest. */
-export type Part = { label: string; mib: number; strength: 0 | 1 | 2 | 3 | 4 }
+/** strength: how dark a part is drawn, brain darkest; 0 is other programs, palest. estimate: drawn with ≈. */
+export type Part = { label: string; mib: number; strength: 0 | 1 | 2 | 3 | 4; estimate?: boolean }
 export type Use = {
   total: number
   parts: Part[]
@@ -38,7 +38,6 @@ export type Use = {
   brainHere: boolean
   /** The brain runs here but its memory is not known (an unmeasured model whose size could not be read). */
   brainUnknown: boolean
-  brainMeasured: boolean
   /** What other programs hold is not known (an AMD card while his engines run), so it is left out. */
   otherUnknown: boolean
   /** What goes wrong past the card: Ollama spills to the processor, the rest do not start. */
@@ -66,10 +65,11 @@ export function memoryUse(plan: MemoryPlan, config: Config, presets: Record<Kind
   const brain = brainAt(k) ?? 0
   const tts = enabled(config, 'tts') ? (plan.voices[matchPreset('tts', config, presets.tts)] ?? 0) : 0
   const stt = enabled(config, 'stt') ? (plan.hearing[matchPreset('stt', config, presets.stt)] ?? 0) : 0
+  const estimate = !plan.brain.measured
   const parts: Part[] = [
     { label: 'Other programs', mib: plan.other_mb ?? 0, strength: 0 },
-    { label: 'Brain', mib: base, strength: 4 },
-    { label: 'More to keep in mind', mib: brain - base, strength: 3 },
+    { label: 'Brain', mib: base, strength: 4, estimate },
+    { label: 'More to keep in mind', mib: brain - base, strength: 3, estimate },
     { label: 'Voice', mib: tts, strength: 2 },
     { label: 'Hearing', mib: stt, strength: 1 },
   ].filter((p): p is Part => p.mib > 1)
@@ -83,7 +83,6 @@ export function memoryUse(plan: MemoryPlan, config: Config, presets: Record<Kind
     tone: share > 1 ? 'bad' : share >= plan.green ? 'warn' : 'ok',
     brainHere,
     brainUnknown: brainHere && brainAt(plan.min_k) === null,
-    brainMeasured: plan.brain.measured,
     otherUnknown: plan.other_mb === null,
     spill: llm === 'ollama' ? 'slow' : 'fail',
     brainAt,

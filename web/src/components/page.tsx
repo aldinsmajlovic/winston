@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ring, scrollBehavior } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 /** The tab's title: "<page> · <his name>", or his name alone. */
@@ -28,8 +29,8 @@ function useHashTarget() {
   useEffect(() => {
     const el = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null
     if (!el) return
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    ;(el.closest('[data-slot="card"]') ?? el).classList.add('outline-2', 'outline-offset-4', 'outline-transparent', 'animate-flash')
+    el.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
+    ring([el])
   }, [hash])
 }
 

@@ -30,6 +30,7 @@ import { capitalize, joinNames, since } from '@/lib/format'
 import { memoryUse } from '@/lib/graphics-memory'
 import { matchPreset, SLOT_TITLES, type Kind } from '@/lib/presets'
 import { section } from '@/lib/schema'
+import { scrollBehavior } from '@/lib/motion'
 import { SETUP_STEPS } from '@/lib/setup'
 import { cn } from '@/lib/utils'
 
@@ -224,7 +225,7 @@ export default function StatusPage() {
   const wasFirst = useRef<boolean | null>(null)
   useEffect(() => {
     if (!update.query.data) return
-    if (wasFirst.current === false && updateFirst) document.getElementById('updates')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    if (wasFirst.current === false && updateFirst) document.getElementById('updates')?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() })
     wasFirst.current = updateFirst
   }, [update.query.data, updateFirst])
   const ha = saved?.providers?.home_assistant

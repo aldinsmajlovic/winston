@@ -210,7 +210,7 @@ since a brain on his computer then runs on the processor; the bar says so only w
 
 It moves as you change a pick or the context slider. Other programs are read again every 15 seconds.
 The sizes are the measured ones in [hardware](hardware.md#context-filled-last); a brain not measured is
-estimated from its weights, and the bar says so. It stays pinned while you scroll, except on a phone.
+estimated from its weights, and the legend marks its size ≈. It stays pinned while you scroll, except on a phone.
 
 The What runs his brain card has, from the top:
 
@@ -391,7 +391,8 @@ confirm lists:
 - what Home Assistant would change.
 
 The confirm's title says it ("Save and start the room boxes and restart the brain?"). Pasted keys are
-written after the config. A field the server refuses is marked where it is.
+written after the config. A field the server refuses is marked where it is. Once saved, each changed
+field's card rings for a moment, as where a link to a setting lands does.
 
 If something else saved one of the same fields meanwhile (a voice switched by asking), nothing is
 overwritten: the page reloads, keeps your edits on top, names the field in a message, and you save

@@ -86,7 +86,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
         <svg viewBox={`0 0 ${W} 20`} preserveAspectRatio="none" className="h-5 w-full overflow-hidden rounded-md bg-muted" role="img" aria-label={`${gb(use.used)} of ${gb(use.total)} GB`}>
           {bars(use.parts, scale).map(({ p, x, w }) => (
             <rect key={p.label} x={x} y={0} width={w} height={20} className={SHADE[p.strength]}>
-              <title>{`${p.label}: ${gb(p.mib)} GB`}</title>
+              <title>{`${p.label}: ${p.estimate ? '≈ ' : ''}${gb(p.mib)} GB`}</title>
             </rect>
           ))}
           {use.used > use.total ? <line x1={(use.total / scale) * W} x2={(use.total / scale) * W} y1={0} y2={20} className="stroke-foreground" strokeDasharray="3 2" strokeWidth={2} /> : null}
@@ -97,7 +97,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
               <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
                 <rect width={10} height={10} rx={2} className={SHADE[p.strength]} />
               </svg>
-              {p.label} {gb(p.mib)} GB
+              {p.label} {p.estimate ? '≈ ' : ''}{gb(p.mib)} GB
             </span>
           ))}
           <span className="flex items-center gap-1.5">
@@ -118,8 +118,6 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
         ) : null}
         {use.brainUnknown ? (
           <p className="text-sm text-muted-foreground">The brain's share is not known for this model, so it is left out.</p>
-        ) : use.brainHere && !use.brainMeasured ? (
-          <p className="text-sm text-muted-foreground">The brain's share is estimated from the size of its model.</p>
         ) : null}
         {r ? (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3 text-sm text-muted-foreground">

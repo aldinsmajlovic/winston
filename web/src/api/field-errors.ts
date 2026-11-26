@@ -1,6 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import type { ErrorSchema } from '@rjsf/utils'
 import { locPath, type ValidationError } from './client'
+import { scrollBehavior } from '@/lib/motion'
 import { deref, getIn, isRecord, SECRET_SUFFIX, type JsonSchema, type Path } from '@/lib/schema'
 
 // Errors from a refused save (422), shown beside the fields they belong to. The save flow calls
@@ -37,6 +38,16 @@ export function fieldErrorsFrom(error: unknown): FieldError[] {
  * prefix, so ids are unique on the page and a 422's loc finds its field. */
 export function fieldId(loc: Path): string {
   return ['cfg', ...loc].join('_')
+}
+
+/** Where a path is drawn on this page: the field itself, else the closest section above it. */
+export function drawnAt(loc: Path): HTMLElement | null {
+  for (let n = loc.length; n > 0; n--) {
+    const id = fieldId(loc.slice(0, n))
+    const element = document.getElementById(id) ?? document.getElementById(`${id}__title`)
+    if (element) return element
+  }
+  return null
 }
 
 /** The schemas on the way to `loc`, one per key, as far as the schema goes. */
@@ -78,14 +89,11 @@ export function showFieldErrors(error: unknown, root: JsonSchema): FieldError[] 
   // this page: the field itself, else the closest section above it.
   window.setTimeout(() => {
     for (const e of found) {
-      for (let n = e.loc.length; n > 0; n--) {
-        const id = fieldId(e.loc.slice(0, n))
-        const element = document.getElementById(id) ?? document.getElementById(`${id}__title`)
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-          if (element instanceof HTMLElement && 'focus' in element) element.focus({ preventScroll: true })
-          return
-        }
+      const element = drawnAt(e.loc)
+      if (element) {
+        element.scrollIntoView({ behavior: scrollBehavior(), block: 'center' })
+        element.focus({ preventScroll: true })
+        return
       }
     }
   }, 50)

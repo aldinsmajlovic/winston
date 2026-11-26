@@ -250,8 +250,9 @@ Talk, reached from the wizard, says his brain is stopped.
 ### The steps
 
 The wizard is its own page, `/setup`: his logo, "Set up" and his name, "Step 1 of 5: Brain and voice",
-and the steps, with a check for each one done and "(skipped)" for each one skipped. Under them is the
-step, with Back (from the second step on), Skip for now and its own button at the bottom.
+and the steps, with a check in the circle for each one done and a dash for each one skipped. Under
+them is the step, with Back (from the second step on), Skip for now and its own button at the bottom.
+The next step opens at its top, where the mark of the one just left grows in.
 
 Each step saves without asking, and nothing restarts while you go through them: what a step changed
 in a running engine (a new voice, say) waits, and Finish restarts it. One still installing is left

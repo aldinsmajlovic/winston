@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Check } from 'lucide-react'
+import { Check, Minus } from 'lucide-react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
 import { useErrorsUnder } from '@/api/field-errors'
 import { $api, fetchClient, type EngineStatus, type Presets, type SetupState } from '@/api/client'
@@ -60,6 +60,8 @@ export default function SetupPage() {
   const name = $api.useQuery('get', '/api/status').data?.assistant
   const mark = $api.useMutation('put', '/api/setup/steps/{step}', { onSuccess: (data) => client.setQueryData(setupKey, data) })
   useTitle('Set up')
+  // A new step opens at its top, where the steps' marks show the one just left turn.
+  useEffect(() => window.scrollTo({ top: 0 }), [step])
   // The link's key has set its cookie by now: out of the address bar, so it is not bookmarked or passed on.
   useEffect(() => {
     if (new URLSearchParams(search).has('key')) void navigate(pathname, { replace: true })
@@ -87,7 +89,7 @@ export default function SetupPage() {
   // Done or skipped, on to the next step; a step picked up after setup ended goes back to Status.
   const next = async (how: 'done' | 'skipped') => {
     await mark.mutateAsync({ params: { path: { step } }, body: { state: how } })
-    void navigate(state.active ? `/setup/${order[order.indexOf(step) + 1]}` : '/status')
+    void navigate(state.active ? `/setup/${order[order.indexOf(step) + 1]}` : '/status', { state: { left: step } })
   }
   return (
     <Frame name={name} state={state} order={order} current={step}>
@@ -101,11 +103,16 @@ export default function SetupPage() {
   )
 }
 
+/** A mark arriving: it grows into place on Material's curve for what enters (`ease-enter`). */
+const ARRIVE = 'animate-in fade-in zoom-in-50 duration-300 ease-enter'
+
 type FrameProps = { name?: string; state?: SetupState; order?: string[]; current?: string; children: ReactNode }
 
 /** His presence and "Set up <name>", the step it is on, the steps with each one's mark, then the step. */
 function Frame({ name, state, order = [], current, children }: FrameProps) {
   const at = current ? order.indexOf(current) : -1
+  // The step just done or skipped: its mark arrives as it turns, so you see what became of it.
+  const left = (useLocation().state as { left?: string } | null)?.left
   return (
     <div className="flex min-h-svh flex-col items-center">
       <header className="flex w-full max-w-3xl items-center gap-3 px-4 pt-8 pb-6 sm:gap-4">
@@ -132,14 +139,19 @@ function Frame({ name, state, order = [], current, children }: FrameProps) {
                     >
                       <span
                         className={cn(
-                          'flex size-6 shrink-0 items-center justify-center rounded-full border text-xs',
+                          'flex size-6 shrink-0 items-center justify-center rounded-full border text-xs transition-colors duration-300',
                           id === current && 'border-primary bg-primary text-primary-foreground',
                         )}
                       >
-                        {done === 'done' ? <Check className="size-3.5" aria-label="Done" /> : i + 1}
+                        {done === 'done' ? (
+                          <Check className={cn('size-3.5', id === left && ARRIVE)} aria-label="Done" />
+                        ) : done === 'skipped' ? (
+                          <Minus className={cn('size-3.5', id === left && ARRIVE)} aria-label="Skipped" />
+                        ) : (
+                          i + 1
+                        )}
                       </span>
                       {titleOf(id)}
-                      {done === 'skipped' ? <span className="font-normal text-muted-foreground">(skipped)</span> : null}
                     </Link>
                   </li>
                 )

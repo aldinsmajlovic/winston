@@ -80,7 +80,7 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await expect(page.getByText('A room box was skipped. It waits under Set up next on Status.')).toBeVisible()
     await expect(page.getByText('Brain and voice was skipped. It waits under Set up next on Status.')).toBeVisible()
     await expect(page.getByText('Home Assistant was skipped. It waits under Set up next on Status.')).toBeVisible()
-    await expect(page.getByRole('navigation', { name: 'Setup steps' }).getByRole('link', { name: /Brain and voice/ })).toContainText('(skipped)')
+    await expect(page.getByRole('navigation', { name: 'Setup steps' }).getByRole('link', { name: 'Skipped Brain and voice' })).toBeVisible()
     await expect(page.getByText('Step 5 of 5: Who can open his pages')).toBeVisible()
     await expect(page.getByText('Who can open this page', { exact: true })).toBeVisible()
     await fits(page, width, 'Who can open his pages')
