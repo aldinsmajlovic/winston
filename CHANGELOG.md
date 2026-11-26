@@ -3,6 +3,24 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.18 (unreleased)
+
+- Winston has a colour of his own, petrol: on his mark, buttons, switches and the page you are on. Save
+  stays grey until there is something to save, and on a phone every button and field is easier to tap.
+- Setup shows its picks for your computer in one card, with how much there is to download against the
+  free space, and every step after the first has Back. Its last step gives the address to open on a phone.
+- Finishing setup now starts the brain when Brain and voice was skipped; before, every request failed
+  while Talk said Ready.
+- Home Assistant without a token yet is a step under Set up next rather than an error, and Talk no
+  longer counts on it until it answers.
+- Talk is first in the Settings sidebar. An extension's page says what it can reach right under its
+  switch, an action that uses the internet says so, and settings that belong to a switch stay folded
+  while it is off.
+- Ways to talk has one From Home Assistant card for the integration and Assist, saying which to use,
+  with a warning once Assist's open port is on.
+- Clearer wording throughout: "his computer" where "this computer" was wrong on a phone, add buttons
+  that say what they add, and what he did in the past tense.
+
 ## 0.1.17 (2026-11-26)
 
 - The memory bar follows vLLM's share of the card as set in How it runs, as the model search already did,
