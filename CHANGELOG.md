@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.19 (unreleased)
+## 0.1.19 (2026-11-26)
 
 - The brain's Model opens a dialog of models to choose by: each with the memory it needs at your context
   and whether it fits, where it comes from, its size, context, license, downloads and last update.
