@@ -38,7 +38,8 @@ channels:
 ### Rooms for screens
 
 - **Names match** without regard to case or spacing.
-- **The picker offers** the boxes' rooms and Home Assistant's areas, and says what each choice shares.
+- **The picker offers** the boxes' rooms and Home Assistant's areas, each with how many of its entities
+  are exposed to Winston, and which room's box shares its microphone.
 - **A room with no box** works too, for a wall tablet in a room of its own: "the lights" there means
   the Home Assistant area of the room's name.
 - **A Home Assistant satellite** (with [Assist](assist.md) on) is in the room of its area in Home

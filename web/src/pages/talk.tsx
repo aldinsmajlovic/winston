@@ -52,7 +52,7 @@ function RoomChoice({ value, name, what }: { value: string; name: string; what: 
     <SelectItem value={value}>
       <span className="flex flex-col">
         {name}
-        <span className="text-muted-foreground">{what}</span>
+        {what && <span className="text-muted-foreground">{what}</span>}
       </span>
     </SelectItem>
   )
@@ -73,13 +73,13 @@ function RoomPicker({ room, rooms, onChange, locked }: { room: string; rooms: Ro
         <SelectValue>{locked ? `${shown}. Stop talking to change it.` : shown}</SelectValue>
       </SelectTrigger>
       <SelectContent position="popper" align="start" className="max-w-80">
-        <RoomChoice value={NO_ROOM} name="No room" what="A typed conversation shared by screens without a room" />
+        <RoomChoice value={NO_ROOM} name="No room" what="Name the room when you ask about its devices" />
         {choices.map((r) => (
           <RoomChoice
             key={r.name}
             value={r.name}
             name={capitalize(r.name)}
-            what={r.box ? `Share the conversation and microphone with the ${r.name} box` : `Share the conversation with other screens there; "the lights" means its lights`}
+            what={capitalize([r.exposed, r.box && `with the ${r.name} box's microphone`].filter(Boolean).join(', '))}
           />
         ))}
       </SelectContent>
