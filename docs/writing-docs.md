@@ -91,6 +91,9 @@ reader wants to do, and a section over about 100 lines, or a page over about 300
   A shot is named for its page in lower case with dashes (`status`, `ways-to-talk`, `wall`), and
   `extensions-news` for an extension's page.
 
+  The README's first picture, `hero`, is History in a window with the wall display on a tablet in
+  front, composed from their shots. After retaking either, run `uv run python scripts/hero.py`.
+
   Take them against a running `winstond` with Playwright and the system Chromium. Never capture
   anything from `data/` that is personal: entity names, phone numbers, memory facts, tokens.
   For the Home Assistant page, point a throwaway instance at `tests/fake_ha.py --seed home`, a made-up

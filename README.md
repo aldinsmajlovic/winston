@@ -11,8 +11,8 @@ voice, does what you asked, and stops when you say his name over him. Everything
 machine by default, and any part can be swapped for a hosted service.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/talk-dark.png">
-  <img src="docs/images/talk-light.png" alt="The Talk page: an announcement from Home Assistant, a typed request that dims the lights, a spoken reminder from a room box, and a question about the weather" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
+  <img src="docs/images/hero-light.png" alt="Winston's History page, with his diary of the day and each spoken request from the kitchen with how fast he answered, and in front a wall tablet where he is speaking the evening's weather" width="800">
 </picture>
 
 ## Install
