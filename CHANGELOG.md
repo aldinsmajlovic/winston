@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.16 (unreleased)
+## 0.1.16 (2026-11-26)
 
 - The memory bar no longer counts a running vLLM brain twice, once as the brain and again as other
   programs, which made a setup that runs fine read as not fitting.
