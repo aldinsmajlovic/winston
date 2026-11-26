@@ -29,7 +29,7 @@ function useHashTarget() {
     const el = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null
     if (!el) return
     el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    ;(el.closest('[data-slot="card"]') ?? el).classList.add('flash')
+    ;(el.closest('[data-slot="card"]') ?? el).classList.add('outline-2', 'outline-offset-4', 'outline-transparent', 'animate-flash')
   }, [hash])
 }
 
