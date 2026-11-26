@@ -120,15 +120,17 @@ HINT_ICONS = {"assistant": "assistant", "voice": "voice", "contact": "discord", 
 def _hint_words(cfg: WinstonConfig, params: dict) -> Options:
     """The hint words Winston adds by himself (core/hints.py), grouped by where they come from: an
     extension's words under `extension:<id>`, with its name as the hint and its icon. Common words are
-    left out, since the correction never touches them. `source` says what hearing does with the words."""
+    left out, since the correction never touches them. `source` says what hearing does with the words, for the
+    draft's hearing and Correct misheard names when given (`provider`, `fix`), else the saved ones."""
     from winston.config.registry import get as get_adapter
     from winston.core.hints import SOURCES, automatic, is_common
     try:
-        takes = bool(getattr(get_adapter("stt", cfg.stt.provider), "supports_hints", False))
+        takes = bool(getattr(get_adapter("stt", params.get("provider") or cfg.stt.provider), "supports_hints", False))
     except Exception:                                                   # noqa: BLE001
         takes = False
+    fix = cfg.stt.fix_misspellings if params.get("fix") is None else params["fix"]
     note = ("Hearing is given these words before it listens." if takes else
-            "" if cfg.stt.fix_misspellings else "Correct misheard names is off, so these names are not used.")
+            "" if fix else "Correct misheard names is off, so these names are not used.")
     host = params.get("extensions")
     seen: set[str] = set()
     choices = []

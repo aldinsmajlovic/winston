@@ -31,7 +31,9 @@ The rest of the metadata tells the form what to draw (docs/architecture.md, "Con
 - `widget`: "slider" for a number felt rather than typed, "args" for a command line (one argument per line),
   "time", "time_range", "hint_words".
 - `group`: fields of one section with the same group get one heading before the first of them.
-- `options_search`: with `options`, what is typed is sent as `q`, so the server can search further."""
+- `options_search`: with `options`, what is typed is sent as `q`, so the server can search further. A list
+  that answers without `served_by` (a hosted brain) has nothing to search or download: the search and the
+  field's `help`, which is about them, are left out."""
 import os
 from typing import Annotated, Any, Literal
 
@@ -253,12 +255,13 @@ class LLMConfig(Model):
                                                          secret=secret("LLM_API_KEY", "API key",
                                                                        "From your provider's account page.")))
     model: str = Field(title="Model",
-                       description="Downloaded lists the models the engine can load from his computer. Typing "
+                       description="Running lists what the brain's server serves now. For a brain he runs, "
+                                   "Downloaded lists the models the engine can load from his computer, and typing "
                                    "searches Hugging Face for what the engine loads (and Ollama's library for "
                                    "Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are "
                                    "listed once it is picked or named exactly.",
                        json_schema_extra=ui(restarts=["llm", "{brains}"], options="llm_models", options_search=True,
-                                            help="Type to search for more, or paste a model's link. One not on this "
+                                            help="Type to search for more, or paste a model's link. One not on his "
                                                  "computer is downloaded before the brain starts."))
     warm_up: bool = Field(True, title="Ready before the first question",
                           description="He has the brain read his instructions and tools when it starts, when a box "

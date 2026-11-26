@@ -80,6 +80,11 @@ expect("the other sources keep their own groups",
 bare = {c.value: c for c in _hint_words(music, {}).choices}
 expect("an extension the host has not described is named by its id", bare["Radiohead"].hint == "music",
        bare.get("Radiohead"))
+notes = [_hint_words(music, {"provider": p, "fix": f}).source
+         for p, f in [("openai_transcription", False), ("parakeet", True), ("parakeet", False)]]
+expect("the note follows the draft's hearing and Correct misheard names, not the saved ones",
+       notes == ["Hearing is given these words before it listens.", "",
+                 "Correct misheard names is off, so these names are not used."], notes)
 texts.clear("music")
 
 # corrections

@@ -401,5 +401,6 @@ The Hearing card has:
   correction never changes, are left out. Removing one crosses it out with Add back and stores it in
   `stt.hint_words_removed`, so it stays out when its source lists it again (a lamp alias that keeps
   getting misheard into other words, say).
-- **A line under them** saying what the current engine does with the words, with a link to History,
-  Marked to see what he misheard (with recordings off, to Assistant to turn them on).
+- **A line under them** saying what the picked engine does with the words, following an unsaved pick
+  of the engine or of Correct misheard names, with a link to History, Marked to see what he misheard
+  (with recordings off, to Assistant to turn them on).

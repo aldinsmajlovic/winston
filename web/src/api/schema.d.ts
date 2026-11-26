@@ -3140,7 +3140,7 @@ export interface components {
             api_key_env?: string | null;
             /**
              * Model
-             * @description Downloaded lists the models the engine can load from his computer. Typing searches Hugging Face for what the engine loads (and Ollama's library for Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are listed once it is picked or named exactly.
+             * @description Running lists what the brain's server serves now. For a brain he runs, Downloaded lists the models the engine can load from his computer, and typing searches Hugging Face for what the engine loads (and Ollama's library for Ollama); a GGUF model is offered at its 4-bit size, and its other sizes are listed once it is picked or named exactly.
              */
             model: string;
             /**
@@ -7517,6 +7517,10 @@ export interface operations {
                 extension?: string | null;
                 /** @description extension_choices: its @ext.choices list */
                 choices?: string | null;
+                /** @description hint_words: the draft hearing adapter */
+                provider?: string | null;
+                /** @description hint_words: the draft's Correct misheard names */
+                fix?: boolean | null;
             };
             header?: never;
             path: {

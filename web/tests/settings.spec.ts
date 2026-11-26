@@ -346,18 +346,24 @@ test('a server on your network: one address, how it switches thinking and an opt
   await expect(page.getByText('How thinking is switched', { exact: true })).toHaveCount(1)
 })
 
-test('the API key is asked for a hosted brain, not for Ollama on this computer', async ({ page }) => {
+test('the API key is asked for a hosted brain, the model search and download only on this computer', async ({ page }) => {
   await open(page, '/brain')
   const runsOn = page.getByRole('combobox', { name: 'Runs on' })
+  const searchHelp = page.getByText(/^Type to search for more/)
   await runsOn.click()
   await page.getByRole('option', { name: /^Ollama/ }).click()
   await page.getByRole('alertdialog').getByRole('button', { name: 'Replace' }).click()      // the copy's brain is its own
   await expect(runsOn).toContainText('Ollama')
   await expect(page.getByText('API address', { exact: true })).toBeVisible()
   await expect(page.getByText('API key', { exact: true })).toHaveCount(0)
+  await expect(searchHelp).toBeVisible()
   await runsOn.click()
   await page.getByRole('option', { name: /^Hosted/ }).click()
   await expect(page.getByText('API key', { exact: true })).toBeVisible()
+  // The provider's list: nothing to search on the Hub or download.
+  await expect(searchHelp).toHaveCount(0)
+  await page.locator('#cfg_llm_model').click()
+  await expect(page.getByPlaceholder('Search, or type a name')).toBeVisible()
 })
 
 test('a refused save opens the How it runs that holds the field', async ({ page }) => {

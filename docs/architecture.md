@@ -226,6 +226,7 @@ Each field's `json_schema_extra` tells the form what to draw (`ui(...)` and `sec
 | `unit` | The suffix on a number (`"s"`, `"min"`, `"MB"`); titles carry none |
 | `labels` | Words for a choice's values; on a number, names for special values, keyed by the value as text (`{"0": "Off"}`) |
 | `options`, `options_query` | A live list, and what to ask it |
+| `options_search` | What is typed is sent as `q`, so the server searches further; a list without `served_by` (a hosted brain) drops the search and the field's `help` |
 | `icons`, `icon` | An icon per choice; one on a section's title |
 | `widget` | `slider` for a value felt rather than typed, `args` for a command line (one argument per line, a repeated flag warned), `time`, `time_range`, `hint_words`. Without it a number is a number input |
 | `group` | The fields of a section that share it get one heading before the first of them |

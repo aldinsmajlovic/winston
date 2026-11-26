@@ -1792,10 +1792,12 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
                                                                        "to list the downloads it can load"),
                           tool: str | None = Query(None, description="extension_tools: the read tool they must have"),
                           extension: str | None = Query(None, description="extension_choices: the extension to ask"),
-                          choices: str | None = Query(None, description="extension_choices: its @ext.choices list")):
+                          choices: str | None = Query(None, description="extension_choices: its @ext.choices list"),
+                          provider: str | None = Query(None, description="hint_words: the draft hearing adapter"),
+                          fix: bool | None = Query(None, description="hint_words: the draft's Correct misheard names")):
         out = await options(name, app.state.cfg, {"base_url": base_url, "domain": domain, "q": q, "engine": engine, "model": model,
                                                   "tool": tool, "extension": extension, "choices": choices,
-                                                  "extensions": extensions})
+                                                  "provider": provider, "fix": fix, "extensions": extensions})
         if out is None:
             raise HTTPException(404, f"no options named {name}")
         return out

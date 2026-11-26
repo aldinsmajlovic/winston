@@ -136,8 +136,8 @@ function FieldTemplate(props: FieldTemplateProps) {
   const context = props.registry.formContext as FormContext | undefined
   const ownLabel = inList || schema.type === 'boolean' || uiSchema?.['ui:widget'] === 'checkbox'
   // A switch draws its help under its label; a section or a map under its heading; the names field
-  // under its own label, above the words it adds by itself.
-  const ownHelp = ownLabel || schema.type === 'object' || (schema as Meta).widget === 'hint_words'
+  // under its own label, above the words it adds by itself; a searching list once it knows it searches.
+  const ownHelp = ownLabel || schema.type === 'object' || (schema as Meta).widget === 'hint_words' || !!(schema as Meta).options_search
   return (
     <div className="flex flex-col gap-2">
       {displayLabel && !ownLabel ? (
@@ -320,7 +320,11 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
     const t = setTimeout(() => setQ(typed.trim()), 300)
     return () => clearTimeout(t)
   }, [typed])
-  const { choices, loading, problem } = useOptions(meta.options ?? '', q ? { ...meta.options_query, q } : meta.options_query)
+  const { choices, loading, problem, servedBy } = useOptions(meta.options ?? '', q ? { ...meta.options_query, q } : meta.options_query)
+  // A hosted brain's list is what its server serves: nothing to search or download, so neither the search
+  // nor the help about it applies. Unknown until the list is read.
+  const searches = !!meta.options_search && !!servedBy
+  const help = searches ? <Help text={meta.help} /> : null
   // A list that could not be fetched (no token yet, server down) leaves a text box and says why,
   // unless its section is off and nothing is expected to work yet.
   if (problem && !loading && choices.length === 0) {
@@ -334,23 +338,27 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
           onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
         />
         {meta.waits ? null : <Help text={problem} />}
+        {help}
       </div>
     )
   }
   return (
-    <Combobox
-      id={id}
-      value={value ?? ''}
-      choices={choices}
-      custom
-      loading={loading}
-      problem={problem}
-      disabled={disabled || readonly}
-      onChange={(v) => onChange(v)}
-      onClear={schema.default === null ? () => onChange(undefined) : undefined}
-      placeholder={meta.placeholder}
-      onSearch={meta.options_search ? setTyped : undefined}
-    />
+    <div className="flex flex-col gap-2">
+      <Combobox
+        id={id}
+        value={value ?? ''}
+        choices={choices}
+        custom
+        loading={loading}
+        problem={problem}
+        disabled={disabled || readonly}
+        onChange={(v) => onChange(v)}
+        onClear={schema.default === null ? () => onChange(undefined) : undefined}
+        placeholder={meta.placeholder}
+        onSearch={searches ? setTyped : undefined}
+      />
+      {help}
+    </div>
   )
 }
 

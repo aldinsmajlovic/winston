@@ -181,7 +181,7 @@ works when he was started with `winston up`, as the service does. Add a custom e
 
 A bar on top of the Brain and Voice pages (and the wizard's first step) shows how full the NVIDIA or
 AMD card would be with the picks on the page, before saving. Without a card it is **Computer memory**,
-since the brain then runs on the processor.
+since a brain on his computer then runs on the processor; the bar says so only while it does.
 
 - **Parts**: other programs, the brain, More to keep in mind (what the context adds past 16K), the
   voice and hearing on the card, in steps of grey from the brain, darkest, to other programs, palest.
@@ -257,6 +257,9 @@ box says so ("Search, or paste a link"). Anything typed can still be used as is 
   context". Raising the share in How it runs lists it again. Downloaded repos are greyed the same way.
   A long context can still not fit; then Status says so when the brain starts.
 - Offline, typing finds nothing and says nothing; a typed name still works.
+- **A brain he does not run** (hosted, or a server on your network not known to be Ollama) lists what
+  its server serves, and nothing is searched or downloaded: the box says "Search, or type a name" and
+  Model has no help line. Until the list for a new Runs on arrives, the old engine's list is not shown.
 - What is typed goes to the Hub (and to ollama.com for Ollama), and nothing else does.
 
 Checked by `tests/model_search_cases.py`, against a fake Hub and Ollama page.

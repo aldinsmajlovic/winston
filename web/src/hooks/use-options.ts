@@ -1,4 +1,3 @@
-import { keepPreviousData } from '@tanstack/react-query'
 import { $api, type Config, type Options } from '@/api/client'
 import { useConfig } from '@/api/config'
 import { useDraft } from '@/hooks/use-draft'
@@ -34,13 +33,23 @@ function model(name: string, config: Config | undefined): string | undefined {
   return name === 'llm_models' ? config?.llm?.model : undefined
 }
 
+/** hint_words says what the draft's hearing does with the words, so its note follows a pick before Save. */
+function hearing(name: string, config: Config | undefined) {
+  return name === 'hint_words' ? { provider: config?.stt?.provider, fix: config?.stt?.fix_misspellings } : {}
+}
+
 export function optionsParams(name: string, config: Config | undefined, query?: OptionsQuery) {
   return {
     params: {
       path: { name },
-      query: { ...query, base_url: baseUrl(name, config), engine: engine(name, config), model: model(name, config) },
+      query: { ...query, base_url: baseUrl(name, config), engine: engine(name, config), model: model(name, config), ...hearing(name, config) },
     },
   }
+}
+
+/** What a list is read from: its query without the typed search and the picked model. */
+function source(init: ReturnType<typeof optionsParams> | undefined): string {
+  return JSON.stringify(init && { ...init.params, query: { ...init.params.query, q: undefined, model: undefined } })
 }
 
 /** Whether a restart of the brain has to download its model first: the engine's list of what it can load
@@ -66,11 +75,15 @@ export function useOptions(name: string, query?: OptionsQuery, enabled = true) {
   const status = $api.useQuery('get', '/api/status', {}, { enabled: !!slot, refetchInterval: slot ? 5_000 : false })
   const down = !!slot && !!(draft ?? config.data)?.engines?.[slot] &&
     status.data?.engines.find((e) => e.name === slot)?.state !== 'healthy'
-  const result = $api.useQuery('get', '/api/options/{name}', optionsParams(name, draft ?? config.data, query), {
+  const init = optionsParams(name, draft ?? config.data, query)
+  const result = $api.useQuery('get', '/api/options/{name}', init, {
     staleTime: 30_000,
     enabled: enabled && name !== '',
     refetchInterval: down ? 5_000 : false,      // listed as soon as the engine is up
-    placeholderData: keepPreviousData,          // a search typed on keeps the list it had meanwhile
+    // A search typed on or a model picked keeps the list it had meanwhile; another engine or address does not,
+    // as that list (and whether it searches) is not the new one's.
+    placeholderData: (prev, prevQuery) =>
+      source(prevQuery?.queryKey[2] as typeof init | undefined) === source(init) ? prev : undefined,
   })
   const data = result.data
   return {

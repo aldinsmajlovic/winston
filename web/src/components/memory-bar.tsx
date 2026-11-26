@@ -79,7 +79,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
       <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <CardTitle>{system ? 'Computer memory' : 'Graphics memory'}</CardTitle>
         <span className="text-sm text-muted-foreground">
-          {system ? 'No graphics card, so the brain runs on the processor' : plan.gpu}, {gb(use.total)} GB
+          {system ? (use.brainHere ? 'No graphics card, so the brain runs on the processor' : 'No graphics card') : plan.gpu}, {gb(use.total)} GB
         </span>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
