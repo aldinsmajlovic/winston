@@ -64,6 +64,33 @@ uv run winston setup
 From a clone, setup uses `./data` as the data directory. Developing stays the same: `uv sync`,
 `pnpm build`, `uv run winston up`.
 
+### On Unraid or Proxmox
+
+Make a Linux virtual machine (Debian 13 or Ubuntu 24.04) and run the install script in it, as on any
+other computer.
+
+| Where | Use it? |
+| --- | --- |
+| A virtual machine | Yes |
+| The Unraid host | No: it has no systemd for the service, and its root filesystem lives in memory, so the install under `~/.local` is gone after a restart |
+| A Docker app (Unraid's Apps, Compose) | No: Winston is not an image. He starts his own containers and voice environments, so he would need Docker's socket and the graphics card passed in |
+| A Proxmox LXC container | Not yet tried. Setup finds systemd there, but Docker inside needs nesting, and a graphics card its device files and the host's driver |
+
+Give the virtual machine:
+
+- **A bridged network** (`br0` on Unraid, `vmbr0` on Proxmox), not NAT, so Home Assistant and the
+  room boxes reach him and he reaches them.
+- **The processor's own features.** Proxmox's default processor type, `x86-64-v2-AES`, hides AVX2,
+  which a brain on the processor relies on: set it to `host`. Unraid passes them through by default.
+- **Memory.** Setup sizes the brain and its context to what the virtual machine has: 16 GB runs
+  Granite 8B on the processor, 8 GB a 4B model.
+- **The graphics card, passed through whole** (IOMMU switched on in the BIOS), with its driver
+  installed in the virtual machine, since setup never installs one. The card is then the virtual
+  machine's alone: a media server on the host can no longer transcode on it. Without a card to spare,
+  the `ollama` or `hosted` [profile](#picking-for-your-hardware) needs none.
+- **The Voice PE's USB device** (Espressif's `303a:1001`) for the wizard's [room box](#4-a-room-box)
+  step, or set the box up [through Home Assistant](voice-pe.md#with-home-assistant) instead.
+
 ### What `winston setup` does
 
 It reads the computer and says what it found: the distribution, the graphics card and its driver,
