@@ -94,7 +94,7 @@ assert fill(16376, 300 + VOICES["breeze2"], BRAINS["granite4.2:8b"]) == 40
 
 # ---- Read from this computer -------------------------------------------------------------------------------
 
-OURS = ("llama-server", "vllm", "ollama", "/services/tts-", "/services/stt-")   # his engines' processes
+OURS = ("llama-server", "vllm", "ollama", "/services/tts-", "/services/stt-")   # his engines' processes, any case
 AMD_MIN = 4096   # ponytail: an AMD device with less is an integrated one's carve-out, not a card for the brain
 
 
@@ -155,11 +155,13 @@ def here() -> Memory:
         or amd() or ram(Path("/proc/meminfo").read_text())
 
 
-def _cmd(pid: str) -> str:
+def _ours(pid: str) -> bool:
+    """Whether a process is one of his engines'. Any case: vLLM renames the one holding the card VLLM::EngineCore."""
     try:
-        return Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
+        cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").lower()
     except OSError:
-        return ""
+        return False
+    return any(o in cmd for o in OURS)
 
 
 def other(m: Memory) -> int | None:
@@ -174,11 +176,11 @@ def other(m: Memory) -> int | None:
         for line in _run(["nvidia-smi", "--query-compute-apps=pid,used_memory",
                           "--format=csv,noheader,nounits"]).splitlines():
             pid, _, mib = line.partition(",")
-            if any(o in _cmd(pid.strip()) for o in OURS) and mib.strip().isdigit():
+            if mib.strip().isdigit() and _ours(pid.strip()):
                 ours += int(mib)
     else:
         for proc in Path("/proc").glob("[0-9]*"):
-            if any(o in _cmd(proc.name) for o in OURS):
+            if _ours(proc.name):
                 try:
                     ours += next(int(line.split()[1]) for line in (proc / "status").read_text().splitlines()
                                  if line.startswith("RssAnon:")) // 1024

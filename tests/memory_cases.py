@@ -4,8 +4,10 @@ copy named by its context.
 
     uv run python tests/memory_cases.py
 """
+import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from harness import check, finish_checks
@@ -64,6 +66,15 @@ check("the computer's memory: in use is all but what is available",
       memory.ram("MemTotal:       16384000 kB\nMemFree:  100 kB\nMemAvailable:   12288000 kB\n"),
       memory.Memory("ram", None, 16000, 4000))
 check("an AMD card cannot say what his engines hold", memory.other(memory.Memory("amd", "x", 16368, 900)), 900)
+# vLLM renames the process holding the card VLLM::EngineCore: still his brain, not another program's 16 GB.
+fake = subprocess.Popen(["bash", "-c", "exec -a VLLM::EngineCore sleep 30"])
+time.sleep(0.2)
+run = memory._run
+memory._run = lambda cmd: f"{fake.pid}, 16000\n99999999, 500\n"
+check("an NVIDIA card: vLLM's renamed engine is his, the rest other programs",
+      memory.other(memory.Memory("nvidia", "x", 24576, 22700)), 6700)
+memory._run = run
+fake.kill()
 
 # ---- Estimates ----
 check("an unmeasured brain: its weights, the overhead, and the measured cost per 1K",
