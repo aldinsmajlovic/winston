@@ -25,7 +25,7 @@ import httpx  # noqa: E402
 from winston import setup  # noqa: E402
 from winston.api import setup_link  # noqa: E402
 
-ip = setup._lan_address()
+ip = setup.lan_address()
 if not ip:
     print("setup link: skipped, this computer has no network address to come from")
     sys.exit(0)

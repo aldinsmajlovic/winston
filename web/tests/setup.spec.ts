@@ -41,16 +41,28 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await expect(page).toHaveURL(/\/setup\/brain$/)
     await expect(page.locator('h1')).toHaveText(/^Set up \S/)
     await expect(page.getByText('Step 1 of 5: Brain and voice')).toBeVisible()
+    // The picks in one card; Change opens a pick's card from the Brain and Voice pages, and Done closes it.
+    await expect(page.locator('[data-slot="card-title"]', { hasText: 'Picked for this computer' })).toBeVisible()
+    await expect(page.locator('[data-slot="card-title"]', { hasText: 'What runs his brain' })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Back' })).toHaveCount(0)  // the first step
     for (const title of ['What runs his brain', 'Speaking', 'Hearing']) {
+      await page.getByRole('button', { name: `Change ${title.toLowerCase()}` }).click()
       await expect(page.locator('[data-slot="card-title"]', { hasText: title })).toBeVisible()
     }
     // Every pick there is a preset: How it runs stays on the Brain and Voice pages.
     await expect(page.getByRole('button', { name: 'How it runs', exact: true })).toHaveCount(0)
     await fits(page, width, 'Brain and voice')
+    await page.getByRole('button', { name: 'Done with speaking' }).click()
+    await expect(page.locator('[data-slot="card-title"]', { hasText: 'Speaking' })).toHaveCount(0)
 
     await page.getByRole('button', { name: 'Skip for now' }).click()
     await expect(page).toHaveURL(/\/setup\/home_assistant$/)
     await expect(page.getByText('Step 2 of 5: Home Assistant')).toBeVisible()
+    // Back goes to the step before, as it was left.
+    await page.getByRole('link', { name: 'Back' }).click()
+    await expect(page).toHaveURL(/\/setup\/brain$/)
+    await page.goBack()
+    await expect(page).toHaveURL(/\/setup\/home_assistant$/)
     await fits(page, width, 'Home Assistant')
     await page.getByRole('button', { name: 'Skip for now' }).click()
     await expect(page).toHaveURL(/\/setup\/who$/)
@@ -69,8 +81,17 @@ for (const [label, width, height] of [['desktop', 1400, 860], ['phone', 390, 844
     await expect(page.getByText('Brain and voice was skipped. It waits under Set up next on Status.')).toBeVisible()
     await expect(page.getByText('Home Assistant was skipped. It waits under Set up next on Status.')).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Setup steps' }).getByRole('link', { name: /Brain and voice/ })).toContainText('(skipped)')
+    await expect(page.getByText('Step 5 of 5: Who can open his pages')).toBeVisible()
     await expect(page.getByText('Who can open this page', { exact: true })).toBeVisible()
-    await fits(page, width, 'Done')
+    await fits(page, width, 'Who can open his pages')
+    // Open to the network, it gives the address a phone opens, when this computer has one; then back.
+    const { address } = await (await page.request.get('/api/setup')).json()
+    const who = page.getByRole('combobox', { name: 'Who can open this page' })
+    await who.click()
+    await page.getByRole('option', { name: 'Every device on your network' }).click()
+    if (address) await expect(page.getByText(`From a phone or another device here, open http://${address}:`)).toBeVisible()
+    await who.click()
+    await page.getByRole('option', { name: 'This computer only' }).click()
 
     await page.getByRole('button', { name: 'Finish and go to Talk' }).click()
     await expect(page).toHaveURL(/:\d+\/$/)
@@ -164,7 +185,7 @@ test('the wizard renames him without asking, and his personality follows as on t
   writeFileSync(personaFile, persona)
   try {
     await page.reload()
-    // His personality is the document from its own page, here in the step.
+    // His personality's first rule is in the step; the document from its own page folds under it.
     await expect(page.getByText(`You are ${old}, a butler and voice assistant`)).toBeVisible()
     // The smoke test's copy has every engine off.
     await expect(page.getByText('Speaking is off, so a voice cannot be heard.')).toBeVisible()

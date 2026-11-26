@@ -222,7 +222,7 @@ Talk, reached from the wizard, says his brain is stopped.
 
 The wizard is its own page, `/setup`: his logo, "Set up" and his name, "Step 1 of 5: Brain and voice",
 and the steps, with a check for each one done and "(skipped)" for each one skipped. Under them is the
-step, with Skip for now and its own button at the bottom.
+step, with Back (from the second step on), Skip for now and its own button at the bottom.
 
 Each step saves without asking, and nothing restarts while you go through them: what a step changed
 in a running engine (a new voice, say) waits, and Finish restarts it. One still installing is left
@@ -235,9 +235,9 @@ and voice: skipped during setup." with Set it up) after the wizard ends.
 | --- | --- | --- |
 | [1. Brain and voice](#1-brain-and-voice) | The brain and the voice engines, preselected for your hardware | Saves a changed pick and starts the engines, which download what they lack |
 | [2. Home Assistant](#2-home-assistant) | Sign in to Home Assistant or paste a token, then the devices he may use and whether Assist may use him | Makes him his own token there, switches its MCP server on for an administrator, saves the device list |
-| [3. Who he is](#3-who-he-is) | His name, reply language, personality and voice | Saves them, and his new name in his personality too |
+| [3. Who he is](#3-who-he-is) | His name, reply language, personality (folded under its first rule) and voice | Saves them, and his new name in his personality too |
 | [4. A room box](#4-a-room-box) | A Voice PE on USB-C, its Wi-Fi and its room | Flashes Winston's firmware, gives it Wi-Fi, adds it as a room box |
-| [5. Done](#5-done) | Who can open this page from now on | Ends setup mode and opens Talk |
+| [5. Who can open his pages](#5-who-can-open-his-pages) | Who can open this page from now on, and the address a phone opens | Ends setup mode and opens Talk |
 
 #### 1. Brain and voice
 
@@ -246,17 +246,20 @@ and voice: skipped during setup." with Set it up) after the wizard ends.
   <img src="images/setup-light.png" alt="The setup wizard's Brain and voice step: the graphics memory bar at 92% with the picks recommended for the card, then llama.cpp with the 27B" width="720">
 </picture>
 
-The profile's picks, preselected, on the cards of the Brain and Voice pages: Runs on, the brain's
-model and its own settings, and each one's size against the free space, with Download. How it runs is
-left out: every pick here is a preset, and the Brain and Voice pages keep it for later.
+The profile's picks, preselected, in one card, **Picked for this computer**: what runs his brain,
+speaking and hearing, each with what it still downloads and **Change**, then what is downloaded in all
+against the free space ("24.2 GB to download in all, 312 GB free."), and a warning when it does not fit.
+Change opens that pick's card from the Brain and Voice pages under it (Runs on, the brain's model and
+its own settings), and Done closes it. How it runs is left out: every pick here is a preset, and the
+Brain and Voice pages keep it for later.
 
 A **Graphics memory** bar (**Computer memory** without a graphics card) sits on top and stays
 in view ([web UI](web-ui.md#graphics-memory)). Here it also says whether the picks are the ones
 recommended for this computer, with **Use the recommendation** once you have changed one. The recommendation is the
 profile setup picked, with the context filled last ([hardware](hardware.md#context-filled-last)).
 
-- **Download and continue** saves a changed pick and confirms the sizes ("24.2 GB in all. Brain: its
-  Docker image (2.6 GB) and the model (15.4 GB). Speaking: its Python packages (6.3 GB).").
+- **Download and continue** saves a changed pick, without a confirm: the card above it already says
+  what it downloads.
 - It then starts the engines. Each downloads what it lacks and then runs, with its progress on its
   card and on Status, while you go on with the next steps.
 - With nothing to download, the button is Continue.
@@ -318,8 +321,9 @@ goes on.
 - **His name and reply language**, as on the Assistant page. The reply language only changes what he
   answers in, not his voice or hearing, and the field says so: an English-only voice reads other
   languages badly.
-- **His personality**, as on its own page. It is the same document: each rule edited, deleted or
-  added saves at once, with Undo.
+- **His personality**: its first rule, with the whole document folded under it (Read and change it,
+  with how many rules it has). It is the document from its own page: each rule edited, deleted or added
+  saves at once, with Undo.
 - **His voice**, as on the Voice page, with Hear this voice beside it and Your voices under it. The
   voices are the bundled clips, the speech server's own, and those he cloned when asked. Your voices
   says how: tell him "clone my voice" on the Talk page, and the person agrees out loud first.
@@ -375,11 +379,13 @@ When something is in the way:
 - **The box is unplugged midway.** The step says the box does not answer.
 - **One talk with the port at a time.** The page's look at the box waits while esptool writes.
 
-#### 5. Done
+#### 5. Who can open his pages
 
 - It opens with what Finish does: "Last, who can open his pages from now on. Finish ends setup and
   takes you to Talk, where you talk to him."
 - Who can open this page from now on, as on Status, with the same warning when it is the whole network.
+  Open to the network, it also gives the address to type on a phone ("From a phone or another device
+  here, open http://192.168.1.20:8700."), this computer's address there.
 - What was skipped.
 - **Finish and go to Talk** saves, ends setup mode, restarts what waits for a restart, starts the engines
   setup held back when Brain and voice was skipped, and opens Talk.

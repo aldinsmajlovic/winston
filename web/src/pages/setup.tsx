@@ -2,8 +2,9 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router'
+import { useErrorsUnder } from '@/api/field-errors'
 import { $api, fetchClient, type EngineStatus, type Presets, type SetupState } from '@/api/client'
-import { partName, pendingRestarts, useEngineActions, useStatus } from '@/api/status'
+import { pendingRestarts, useEngineActions, useStatus } from '@/api/status'
 import { ClonedVoices } from '@/components/cloned-voices'
 import { LoadError, useTitle } from '@/components/page'
 import { Presence } from '@/components/presence'
@@ -11,15 +12,17 @@ import { MemoryBar } from '@/components/memory-bar'
 import { SectionForm } from '@/components/section-form'
 import { runsHere, SlotCard } from '@/components/slot-card'
 import { StatusLine } from '@/components/status-line'
+import { Fold } from '@/components/fold'
+import { KindIcon } from '@/components/kind-icon'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useConfirm } from '@/hooks/use-confirm'
-import { amountOf, before, useInstall } from '@/hooks/use-install'
+import { amountOf, useInstall } from '@/hooks/use-install'
 import { useSecretStatus } from '@/hooks/use-secrets'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { useVoicePreviews } from '@/hooks/use-voice-previews'
-import { capitalize, joinNames } from '@/lib/format'
-import type { Kind } from '@/lib/presets'
+import { capitalize, size } from '@/lib/format'
+import { matchPreset, type Kind } from '@/lib/presets'
 import { allBut, setIn } from '@/lib/schema'
 import { SETUP_STEPS } from '@/lib/setup'
 import { HomeAssistantSections } from '@/pages/home-assistant'
@@ -41,7 +44,7 @@ const TTS = ['tts']
 const KINDS: Kind[] = ['llm', 'tts', 'stt']
 const LOCAL = ['127.0.0.1', 'localhost', '::1']
 
-const titleOf = (id: string) => SETUP_STEPS[id]?.title ?? 'Done'
+const titleOf = (id: string) => SETUP_STEPS[id]?.title ?? 'Who can open his pages'
 
 /** The first run (docs/setup.md): his presence and the steps, each done, skipped or still to come, then
  * the step. Opened from the setup link on another device, or on this computer without it. A step can be
@@ -180,45 +183,101 @@ function HomeAssistantStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
 
 export type StepProps = { page: SettingsState; presets: Presets; next: (how: 'done' | 'skipped') => Promise<void> }
 
-/** The profile's picks as on the Brain and Voice pages, each with what it still needs downloaded. Until
- * this step is done winstond starts none of them, since a start downloads what it lacks. Its button saves a
- * changed pick and starts them all: each downloads what it needs, with its progress on its card and on
- * Status, then runs, while the next steps go on. */
+const PICKS: { kind: Kind; title: string }[] = [
+  { kind: 'llm', title: 'What runs his brain' },
+  { kind: 'tts', title: 'Speaking' },
+  { kind: 'stt', title: 'Hearing' },
+]
+
+/** The profile's picks in one card, each with what it still downloads and Change, which opens its card from
+ * the Brain and Voice pages under it; then the download in all against the free space, and the memory bar.
+ * Until this step is done winstond starts none of them, since a start downloads what it lacks. Its button
+ * saves a changed pick, then starts the engines, which download what they lack while the next steps go on. */
 function BrainStep({ page, presets, next }: StepProps) {
-  const ask = useConfirm()
   const { startAll } = useEngineActions()
   const [busy, run] = useBusy()
+  const [open, setOpen] = useState<Kind[]>([])
   const installs = { llm: useInstall(page, 'llm'), tts: useInstall(page, 'tts'), stt: useInstall(page, 'stt') }
+  // A refused save opens the card that holds the field.
+  const errors = {
+    llm: useErrorsUnder([['engines', 'llm'], LLM]),
+    tts: useErrorsUnder([['engines', 'tts'], TTS]),
+    stt: useErrorsUnder([['engines', 'stt'], ['stt']]),
+  }
   // What still has to start downloading: a part already on its way goes on by itself.
-  const waiting = KINDS.map((k) => ({ kind: k, parts: installs[k].missing.filter((p) => p.state !== 'running') })).filter((w) => w.parts.length)
+  const waiting = KINDS.flatMap((k) => installs[k].missing.filter((p) => p.state !== 'running'))
+  const plans = KINDS.map((k) => installs[k].plan.data).filter((d) => d !== undefined)
+  const free = plans.find((d) => d.parts.some((p) => !p.installed))?.free
+  const shorts = plans.map((d) => d.short).filter((x) => !!x)
   const go = () =>
     run(async () => {
       if (!(await page.save())) return
-      if (waiting.length) {
-        const amount = amountOf(waiting.flatMap((w) => w.parts))
-        const choice = await ask({
-          title: 'Download what he needs?',
-          lines: [
-            ...(amount ? [`${capitalize(amount.trim())} in all.`] : []),
-            ...waiting.map((w) => `${partName(w.kind)}: ${joinNames(w.parts.map(before))}.`),
-            'Each part starts once it is here, and you can set up the rest meanwhile.',
-          ],
-          choices: [{ label: 'Download', value: 'yes' }],
-        })
-        if (!choice) return
-      }
       // The supervisor downloads what each one lacks before it starts it (Installing on Status).
       await startAll.mutateAsync({})
       await next('done')
     })
+  const shown = PICKS.filter((p) => open.includes(p.kind) || errors[p.kind])
   return (
     <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Picked for this computer</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <ul className="flex flex-col divide-y">
+            {PICKS.map(({ kind, title }) => {
+              const preset = presets[kind].find((p) => p.id === matchPreset(kind, page.value, presets[kind]))
+              const off = page.value.engines?.[kind]?.enabled === false
+              const missing = installs[kind].missing
+              const amount = amountOf(missing).trim()
+              const expanded = open.includes(kind)
+              return (
+                <li key={kind} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="text-sm text-muted-foreground">{title}</span>
+                    <span className="flex items-center gap-2 font-medium">
+                      {preset && !off ? <KindIcon name={preset.icon} /> : null}
+                      {off ? 'Off' : preset?.title ?? 'Custom'}
+                    </span>
+                    {off ? null : missing.some((p) => p.state === 'running') ? (
+                      <span className="text-sm text-muted-foreground">Downloading</span>
+                    ) : missing.length ? (
+                      <span className="text-sm text-muted-foreground">{amount ? `${amount} to download` : 'Downloads what it needs'}</span>
+                    ) : null}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-expanded={expanded}
+                    aria-label={`${expanded ? 'Done with' : 'Change'} ${title.toLowerCase()}`}
+                    onClick={() => setOpen(expanded ? open.filter((k) => k !== kind) : [...open, kind])}
+                  >
+                    {expanded ? 'Done' : 'Change'}
+                  </Button>
+                </li>
+              )
+            })}
+          </ul>
+          {waiting.length ? (
+            <p className="border-t pt-3 text-sm text-muted-foreground">
+              {`${capitalize(amountOf(waiting).trim() || 'Some parts')} to download in all${free != null ? `, ${size(free)} free` : ''}. Each part starts once it is here, and you can set up the rest meanwhile.`}
+            </p>
+          ) : null}
+          {shorts.map((x) => (
+            <StatusLine key={x} tone="warning">{`Not enough room: ${x}.`}</StatusLine>
+          ))}
+        </CardContent>
+      </Card>
+      {shown.map(({ kind, title }) =>
+        kind === 'llm' ? (
+          <SlotCard key={kind} page={page} kind="llm" title={title} presets={presets.llm} setup>
+            <SectionForm page={page} path={LLM} omit={[...OWN_CARDS, ...runsHere('llm', page.value)]} />
+          </SlotCard>
+        ) : (
+          <SlotCard key={kind} page={page} kind={kind} title={title} presets={presets[kind]} setup />
+        ),
+      )}
       <MemoryBar page={page} presets={presets} recommend />
-      <SlotCard page={page} kind="llm" title="What runs his brain" presets={presets.llm} setup>
-        <SectionForm page={page} path={LLM} omit={[...OWN_CARDS, ...runsHere('llm', page.value)]} />
-      </SlotCard>
-      <SlotCard page={page} kind="tts" title="Speaking" presets={presets.tts} setup />
-      <SlotCard page={page} kind="stt" title="Hearing" presets={presets.stt} setup />
       <StepActions label={waiting.length ? 'Download and continue' : 'Continue'} busy={busy || page.saving} onClick={() => void go()} onSkip={() => void run(() => next('skipped'))} />
     </>
   )
@@ -247,15 +306,7 @@ function WhoStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
   return (
     <>
       <SectionForm page={page} path={ASSISTANT} title="Who he is" />
-      <Card>
-        <CardHeader>
-          <CardTitle>His personality</CardTitle>
-          <CardDescription>Instructions only you can change. Each edit is saved at once, with Undo.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <PersonalityDocument />
-        </CardContent>
-      </Card>
+      <PersonalityCard />
       <SectionForm page={page} path={TTS} title="His voice" omit={allBut(page.schema, TTS, ['voice'])} adornments={{ voice: previews.voice }}>
         {speakingLine(tts, page.value.engines?.tts?.enabled === false)}
       </SectionForm>
@@ -274,6 +325,27 @@ function WhoStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
   )
 }
 
+/** His personality's first rule, and the whole document folded under it: it is long, and most keep it. */
+function PersonalityCard() {
+  const behaviour = $api.useQuery('get', '/api/persona').data?.behaviour ?? []
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>His personality</CardTitle>
+        <CardDescription>Instructions only you can change. Each edit is saved at once, with Undo.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {behaviour[0] ? <p>{behaviour[0]}</p> : null}
+        <Fold title="Read and change it" summary={behaviour.length > 1 ? `${behaviour.length} rules on how he behaves` : undefined}>
+          <div className="pt-2">
+            <PersonalityDocument />
+          </div>
+        </Fold>
+      </CardContent>
+    </Card>
+  )
+}
+
 /** Who can open this page once setup is done, what was skipped, and Finish, which ends setup mode. From
  * another device that this computer alone may open afterwards, it says so before and where to go after. */
 function DoneStep({ page, state, name }: { page: SettingsState; state: SetupState; name?: string }) {
@@ -286,6 +358,8 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
   const host = page.value.control?.host?.trim() ?? '127.0.0.1'
   const port = page.value.control?.port ?? 8700
   const haSetUp = !!page.value.providers?.home_assistant?.url
+  // Every address of this computer: the one the network knows it by; one address: that one.
+  const reach = ['0.0.0.0', '::', ''].includes(host) ? state.address : host
   const closing = state.remote && LOCAL.includes(host)
   const him = name ?? 'he'
   const skipped = state.order.filter((id) => state.steps[id] === 'skipped')
@@ -308,6 +382,11 @@ function DoneStep({ page, state, name }: { page: SettingsState; state: SetupStat
       <SectionForm page={page} path={CONTROL} title="Web address">
         {!LOCAL.includes(host) ? (
           <div className="flex flex-col items-start gap-2">
+            {reach ? (
+              <p>
+                From a phone or another device here, open <span className="font-medium">{`http://${reach}:${port}`}</span>.
+              </p>
+            ) : null}
             <StatusLine tone="warning">Anyone on your network can control {name ?? 'him'}{haSetUp ? ' and your home' : ''}.</StatusLine>
             <p className="text-sm text-muted-foreground">While it is open to your network, keys cannot be pasted on these pages.</p>
           </div>

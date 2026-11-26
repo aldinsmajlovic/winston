@@ -182,6 +182,8 @@ class SetupState(BaseModel):
     remote: bool = Field(description="This request comes from another device, not the computer Winston runs on")
     order: list[str] = Field(description="The wizard's steps before Done, in order")
     steps: dict[str, Literal["done", "skipped"]] = Field(description="The steps done or skipped so far")
+    address: str | None = Field(None, description="This computer's address on the network, for a phone: "
+                                "what Done shows once his pages are open to it")
 
 
 class Release(BaseModel):
@@ -944,10 +946,12 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return Ok()
 
     def setup_state(request: Request) -> SetupState:
+        from winston.setup import lan_address
         s = setup_link.state()
         return SetupState(active=setup_link.active(), order=list(setup_link.STEPS),
                           remote=not (request.client and secrets.loopback(request.client.host)),
-                          steps={k: v for k, v in (s.get("steps") or {}).items() if k in setup_link.STEPS})
+                          steps={k: v for k, v in (s.get("steps") or {}).items() if k in setup_link.STEPS},
+                          address=lan_address())
 
     @app.get("/api/setup", response_model=SetupState, summary="Setup mode and the wizard's steps done or skipped")
     async def setup(request: Request):

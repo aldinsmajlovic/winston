@@ -652,14 +652,17 @@ slot's server fields.
 ### Setup wizard
 
 The wizard shows his logo, "Set up <name>" and the step it is on, the steps with their marks, then the
-step with Skip for now and its own button ([setup](setup.md#the-steps)).
+step with Back (from the second step on), Skip for now and its own button ([setup](setup.md#the-steps)).
+A step opens on what it asks, short: Brain and voice is one card of picks, each with Change, and the
+personality folds under its first rule.
 
 - A step draws the owning pages' own cards and forms on the same draft (`SlotCard`, `SectionForm`,
   `HomeAssistantSections`, `PersonalityDocument`, `ClonedVoices`), so nothing is edited in two ways.
   Its button saves through the same confirm.
 - `SlotCard`'s `quietWhenStopped` leaves out the stopped line there, since the wizard starts them.
-- The step names are in `lib/setup.ts`. Skip for now and the step's button are `StepActions`, and
-  `useBusy` keeps them off while one runs.
+- The step names are in `lib/setup.ts`. Back, Skip for now and the step's button are `StepActions`,
+  and `useBusy` keeps them off while one runs. Back shows only while setup is under way: a step picked
+  up later from Status has no step before it.
 - A room box's step is its own, `pages/setup-box.tsx`, not Ways to talk's Add a box. Its address comes
   from the join and its wake word is narrowed to what the box knows. It saves the box into Room boxes
   on the same draft and through the same confirm.

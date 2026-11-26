@@ -4005,6 +4005,11 @@ export interface components {
             steps: {
                 [key: string]: "done" | "skipped";
             };
+            /**
+             * Address
+             * @description This computer's address on the network, for a phone: what Done shows once his pages are open to it
+             */
+            address?: string | null;
         };
         /** SetupStep */
         SetupStep: {

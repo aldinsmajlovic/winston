@@ -496,7 +496,8 @@ def _service(data: Path, start: bool) -> bool:
     return True
 
 
-def _lan_address() -> str | None:
+def lan_address() -> str | None:
+    """This computer's address on the network, the one another device opens; None without a network."""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("192.0.2.1", 9))           # no packet is sent; it picks the outgoing address
@@ -587,7 +588,7 @@ def run(yes: bool, profile: str | None) -> None:
             say(f"  {line}")
         return
     say("  " + typer.style(f"http://localhost:{port}", fg="cyan", bold=True) + "  on this computer")
-    if host not in ("127.0.0.1", "localhost", "::1") and (ip := _lan_address()):
+    if host not in ("127.0.0.1", "localhost", "::1") and (ip := lan_address()):
         say("  " + typer.style(f"http://{ip}:{port}", fg="cyan", bold=True) + "  from another device here")
 
 
@@ -618,7 +619,7 @@ def _links(key: str, port: int) -> list[str]:
     """The setup link for this computer, which needs no key, and for another device."""
     url = lambda u: typer.style(u, fg="cyan", bold=True)                       # noqa: E731
     out = [url(f"http://localhost:{port}/setup") + "  on this computer"]
-    if ip := _lan_address():
+    if ip := lan_address():
         out.append(url(f"http://{ip}:{port}/setup?key={key}") + "  from any device here")
     return out
 
