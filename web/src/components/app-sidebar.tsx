@@ -1,5 +1,5 @@
 import { Fragment, useEffect } from 'react'
-import { Activity, ArrowLeft, Bell, Bot, Brain, CircleAlert, ListChecks, Mic, Monitor, Moon, Puzzle, Radio, Sun } from 'lucide-react'
+import { Activity, Bell, Bot, Brain, CircleAlert, ListChecks, Mic, Monitor, Moon, Puzzle, Radio, Sun } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { NavLink, useLocation } from 'react-router'
 import { $api } from '@/api/client'
@@ -7,6 +7,7 @@ import { useNeedsAttention, useStatus } from '@/api/status'
 import { updateNeedsYou } from '@/api/update'
 import { IconButton } from '@/components/icon-button'
 import { KindIcon } from '@/components/kind-icon'
+import { Presence } from '@/components/presence'
 import { useDirtyPages } from '@/hooks/use-settings'
 import {
   DropdownMenu,
@@ -98,10 +99,13 @@ export function AppSidebar() {
       <SidebarHeader className="px-2 py-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild className="font-semibold">
+            {/* Talk, the way back to him, first and drawn like any page, with his mark */}
+            <SidebarMenuButton asChild>
               <NavLink to="/">
-                <ArrowLeft />
-                <span>{status.data?.assistant ?? ''}</span>
+                <span aria-hidden className="contents">
+                  <Presence state="idle" className="size-4" />
+                </span>
+                <span>Talk</span>
               </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>

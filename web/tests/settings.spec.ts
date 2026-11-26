@@ -391,13 +391,9 @@ test('Status lists the custom engines and who can open this page', async ({ page
   // A custom engine has no row in His parts, so its card shows while there is one.
   const custom = page.locator('[data-slot="card"]').filter({ has: page.getByText('Custom engines', { exact: true }) })
   await expect(custom.getByText('smoke', { exact: true })).toBeVisible()
-  const header = page.locator('header')
-  const add = header.getByRole('button', { name: 'Add a custom engine', exact: true })
-  if (!(await add.isVisible())) {
-    await header.getByRole('button', { name: 'More', exact: true }).click()
-    await expect(page.getByRole('menuitem', { name: 'Add a custom engine', exact: true })).toBeVisible()
-    await page.keyboard.press('Escape')
-  }
+  // Adding one is under the list it adds to, not among the page's commands.
+  await expect(custom.getByRole('button', { name: 'Add a custom engine', exact: true })).toBeVisible()
+  await expect(page.locator('header').getByRole('button', { name: 'Restart everything', exact: true })).toBeVisible()
   await expect(page.getByText('Web address', { exact: true })).toBeVisible()
   await expect(page.getByText('Who can open this page', { exact: true })).toBeVisible()
 })

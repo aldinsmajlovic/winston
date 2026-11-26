@@ -98,7 +98,8 @@ HTTPS too.
 
 ## Settings
 
-Settings opens on Status. The sidebar groups the pages; the theme and the version are at its foot.
+Settings opens on Status. The sidebar groups the pages under Talk, its first item, which leads back to
+him; the theme and the version are at its foot.
 
 | Page | What it sets | More in |
 | --- | --- | --- |
@@ -160,11 +161,12 @@ change, for Save) and Set up for Discord. Its menu has Stop and Log, and the row
 sets it up. Stop and Restart say what stops and for how long ("Stop the brain? He cannot answer
 anywhere until it starts again, about 24 s.").
 
-The header has Restart, Start all (while something is stopped), Stop all (while something runs, after
-asking) and Add a custom engine. Restart, after asking with how long each part takes to come back, stops
+The header has Restart everything, Start all (while something is stopped) and Stop all (while something
+runs, after asking). Restart everything, after asking with how long each part takes to come back, stops
 everything and runs `winston up` again in the same process, so a service or a terminal keeps it: every
 engine and channel starts fresh, and so do the settings only his own restart applies (Web address). It
-works when he was started with `winston up`, as the service does. Add a custom engine which asks a name and how it runs. Log is described with
+works when he was started with `winston up`, as the service does. Add a custom engine, under His parts
+(under Custom engines once there is one), asks a name and how it runs. Log is described with
 [status and errors](running.md#status-and-errors).
 
 ### Brain

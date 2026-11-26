@@ -316,7 +316,7 @@ The wall display (`/wall?room=`) is set up from Ways to talk, on the Talk page c
   - Ways to talk, Home Assistant, Extensions;
   - Actions, Speaking up.
 
-  His name at its top leads back to Talk; the theme menu and the version sit in its footer. On a phone
+  Talk, with his mark, is above them, drawn like any page, the way back to him; the theme menu and the version sit in its footer. On a phone
   it is a sheet that closes when you pick a page.
 - **A page's header**, in order: on a sub-page the parent as a breadcrumb ("Extensions / Spotify",
   `back`), the title, page commands as outline text buttons (`commands`), what waits for a restart,
@@ -637,8 +637,9 @@ The landing page shows, in order:
 - custom engines, once there is one;
 - the web address with its warning.
 
-Its commands are Restart (all of him, Winston included), Start all and Stop all, each only while it applies,
-and Add a custom engine.
+Its commands are Restart everything (all of him, Winston included), Start all and Stop all, each only
+while it applies. Add a custom engine is under the list it adds to: His parts, or Custom engines once
+there is one.
 
 ### Brain and Voice
 

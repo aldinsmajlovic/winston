@@ -103,6 +103,7 @@ cannot answer, the mark stays at rest and the line says why, with a link to Stat
 
 - The header of Winston's pages (Talk, History, Memory), next to his name and whether he can answer;
   it leads back to Talk.
+- The Settings sidebar, small, as the icon of Talk, its first item.
 - The wall display (`/wall`), large, as the talk button.
 - The browser tab (favicon) and the README.
 

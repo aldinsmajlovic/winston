@@ -422,8 +422,16 @@ export default function StatusPage() {
       ...processes.filter(isRunning).map((e) => `${partName(e.name)}: back in ${restartCost(e)}`),
       'This page reconnects when he is back.',
     ]
-    if (await ask({ title: `Restart ${name}?`, lines, choices: [{ label: 'Restart', value: 'yes' }] })) actions.restartWinston.mutate({})
+    if (await ask({ title: 'Restart everything?', lines, choices: [{ label: 'Restart', value: 'yes' }] })) actions.restartWinston.mutate({})
   }
+
+  // Under the list it adds to: Custom engines once there is one, else His parts.
+  const addCustom = (
+    <Button variant="outline" size="sm" className="mt-3" onClick={() => setAdding({ name: '', driver: 'docker' })}>
+      <Plus data-icon="inline-start" />
+      Add a custom engine
+    </Button>
+  )
 
   const partColumns: Column<Part>[] = [
     {
@@ -525,10 +533,9 @@ export default function StatusPage() {
       intro={`Everything ${name} runs and connects to, and whether it works.`}
       page={page}
       commands={[
-        { label: 'Restart', icon: RotateCcw, onClick: () => void restartAll() },
+        { label: 'Restart everything', icon: RotateCcw, onClick: () => void restartAll() },
         ...(processes.some((e) => !isRunning(e)) ? [{ label: 'Start all', icon: Play, onClick: () => actions.startAll.mutate({}) }] : []),
         ...(processes.some(isRunning) ? [{ label: 'Stop all', icon: Square, onClick: () => void stopAll() }] : []),
-        { label: 'Add a custom engine', icon: Plus, onClick: () => setAdding({ name: '', driver: 'docker' }) },
       ]}
     >
       {needs.length ? (
@@ -554,6 +561,7 @@ export default function StatusPage() {
         </CardHeader>
         <CardContent>
           <DataTable columns={partColumns} rows={parts} rowKey={(p) => p.key} rowLink={(p) => p.to} actions={partActions} />
+          {custom.length ? null : addCustom}
         </CardContent>
       </Card>
       {gpu ? <GraphicsCard gpu={gpu} page={page} config={saved} presets={presets.data} running={processes.some(isRunning)} /> : null}
@@ -572,6 +580,7 @@ export default function StatusPage() {
               rowLink={(n) => `/status/engines/${n}`}
               actions={(n) => <RowMenu name={n} items={[{ label: 'Remove', destructive: true, onSelect: () => void remove(n) }]} />}
             />
+            {addCustom}
           </CardContent>
         </Card>
       ) : null}
