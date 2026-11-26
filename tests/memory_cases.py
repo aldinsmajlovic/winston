@@ -4,6 +4,7 @@ copy named by its context.
 
     uv run python tests/memory_cases.py
 """
+import asyncio
 import subprocess
 import sys
 import tempfile
@@ -75,6 +76,12 @@ check("an NVIDIA card: vLLM's renamed engine is his, the rest other programs",
       memory.other(memory.Memory("nvidia", "x", 24576, 22700)), 6700)
 memory._run = run
 fake.kill()
+
+check("vLLM's share: its --gpu-memory-utilization in either form, else vLLM's own 0.9",
+      [memory.vllm_share(["--gpu-memory-utilization", "0.85"]), memory.vllm_share(["--gpu-memory-utilization=0.6"]),
+       memory.vllm_share(None), memory.vllm_share(["--gpu-memory-utilization", "much"])], [0.85, 0.6, 0.9, 0.9])
+check("the bar's vLLM brain takes the share its engine is given",
+      asyncio.run(memory.brain("any/model", "vllm", "", args=["--gpu-memory-utilization", "0.8"]))["share"], 0.8)
 
 # ---- Estimates ----
 check("an unmeasured brain: its weights, the overhead, and the measured cost per 1K",

@@ -34,7 +34,6 @@ HEARING_CPU = {"fluid-speech-pro": 923, "parakeet": 1140}
 
 PER_K = 85            # an unmeasured brain's MiB per 1K of context: Granite 8B and the 27B take 83 to 91
 OVERHEAD = 1536       # an unmeasured brain's MiB beyond its weights at 16K (Granite 8B 1.7 GB, Qwen 4B 1.1 GB)
-VLLM_SHARE = 0.70     # vLLM takes its --gpu-memory-utilization share of the card, whatever the model
 GREEN, FILL = 0.80, 0.90   # the bar is green under GREEN; the recommendation grows the context up to FILL
 MIN_K, MAX_K, STEP_K = 16, 128, 4
 
@@ -189,11 +188,24 @@ def other(m: Memory) -> int | None:
     return max(0, m.used - ours)
 
 
-async def brain(model: str, kind: str | None, base: str, cpu: bool = False) -> dict[str, Any]:
+def vllm_share(args: list | None) -> float:
+    """The share of the card vLLM takes whatever the model: its --gpu-memory-utilization, else vLLM's default 0.9."""
+    args, share = [str(a) for a in args or []], 0.9
+    for i, a in enumerate(args):
+        v = args[i + 1] if a == "--gpu-memory-utilization" and i + 1 < len(args) else \
+            a.partition("=")[2] if a.startswith("--gpu-memory-utilization=") else None
+        try:
+            share = float(v) if v is not None else share
+        except ValueError:
+            pass
+    return share
+
+
+async def brain(model: str, kind: str | None, base: str, cpu: bool = False, args: list | None = None) -> dict[str, Any]:
     """A brain's memory, on the card or (cpu) the processor: measured points, points estimated from its weights,
-    vLLM's share, or nothing known."""
+    vLLM's share (from its engine's args), or nothing known."""
     if kind == "vllm":
-        return {"points": None, "measured": not cpu, "share": None if cpu else VLLM_SHARE}
+        return {"points": None, "measured": not cpu, "share": None if cpu else vllm_share(args)}
     if points := (BRAINS_CPU if cpu else BRAINS).get(model):
         return {"points": points, "measured": True, "share": None}
     weights = None

@@ -1755,7 +1755,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         base = (block.get("url") or f"http://127.0.0.1:{block.get('port', 11434)}").rstrip("/")
         m = await asyncio.to_thread(vram.here)
         cpu = m.kind == "ram"
-        brain = await vram.brain(req.model or saved.llm.model, llm_engine(block), base, cpu)
+        brain = await vram.brain(req.model or saved.llm.model, llm_engine(block), base, cpu, block.get("args"))
         # An AMD card does not say what his engines hold, so while one runs the rest is not known.
         busy = m.kind == "amd" and any(e.state in ("starting", "healthy", "unhealthy") for e in sup.items.values())
         other = None if busy else await asyncio.to_thread(vram.other, m)

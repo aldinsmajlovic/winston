@@ -100,7 +100,8 @@ After the brain and voice are picked, setup grows the context in 4K steps while 
 | Qwen3.8-27B (huihui) | 16.9 GB | 18.2 GB | 20.8 GB |
 
 Between and past these, a straight line. A brain not in the table is estimated from its weights plus
-1.5 GB, and 85 MB per 1K of context. vLLM takes its share of the card (70%) at any context.
+1.5 GB, and 85 MB per 1K of context. vLLM takes its share of the card at any context: its `--gpu-memory-utilization` (70% in the preset), as the
+model search reads it.
 
 So an 8 GB card gets 112K, a 12 GB card 20K, a 16 GB card 40K and a 24 GB card 16K. The numbers live
 in `src/winston/config/memory.py`; the memory bar in the wizard and on the Brain and Voice pages reads

@@ -292,17 +292,10 @@ async def vllm_share(engine: dict | None) -> float | None:
     """Bytes of graphics memory vLLM may use: its --gpu-memory-utilization (vLLM's default 0.9) of the card,
     None when no single NVIDIA card answers."""
     from winston.api.app import gpu_status          # lazy: the app imports this module
+    from winston.config.memory import vllm_share as share
     if not (gpu := await asyncio.to_thread(gpu_status)):
         return None
-    args, share = [str(a) for a in (engine or {}).get("args") or []], 0.9
-    for i, a in enumerate(args):
-        v = args[i + 1] if a == "--gpu-memory-utilization" and i + 1 < len(args) else \
-            a.partition("=")[2] if a.startswith("--gpu-memory-utilization=") else None
-        try:
-            share = float(v) if v is not None else share
-        except ValueError:
-            pass
-    return share * gpu.total_mb * 2 ** 20
+    return share((engine or {}).get("args")) * gpu.total_mb * 2 ** 20
 
 
 def _fits(c: Choice, size: int, share: float | None) -> Choice:
