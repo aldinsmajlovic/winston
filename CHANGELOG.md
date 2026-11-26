@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.20 (unreleased)
+## 0.1.20 (2026-11-26)
 
 - Claude can be his brain, through Anthropic's own API: pick Claude (Anthropic API) under Runs on and
   give it a key. His instructions are cached between requests, and spoken requests think as little as
