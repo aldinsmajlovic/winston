@@ -64,6 +64,7 @@ class EngineStatus(BaseModel):
     driver: str
     state: Literal["stopped", "installing", "starting", "healthy", "unhealthy", "error"]
     detail: str
+    progress: float | None = Field(None, description="0 to 1 while installing, when the sizes are known")
     since: float
     port: int
     startup_timeout: int
@@ -926,7 +927,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return Status(
             version=__version__, assistant=app.state.cfg.assistant.name,
             engines=[EngineStatus(name=m.name, kind=m.kind, driver=m.cfg.driver, state=m.state, detail=m.detail,
-                                  since=m.since, port=m.cfg.port, startup_timeout=m.cfg.startup_timeout,
+                                  progress=m.progress, since=m.since, port=m.cfg.port, startup_timeout=m.cfg.startup_timeout,
                                   started_in=m.started_in,
                                   config_changed=bool(m.pending or m.stale)) for m in sup.items.values()],
             gpu=gpu_status(),

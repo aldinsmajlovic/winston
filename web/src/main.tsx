@@ -33,7 +33,8 @@ createRoot(document.getElementById('root')!).render(
                 <App />
               </DraftProvider>
             </ConfirmProvider>
-            <Toaster />
+            {/* Expanded: a download and a start can be up together, each with its bar. */}
+            <Toaster expand />
           </TooltipProvider>
         </BrowserRouter>
       </QueryClientProvider>

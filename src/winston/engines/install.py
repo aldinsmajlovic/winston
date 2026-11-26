@@ -339,8 +339,18 @@ def line(job: Job) -> str:
     return f"{p.title}, {gb(job.done)} so far" if job.done else p.title
 
 
+def fraction(jobs: list[Job]) -> float | None:
+    """How far the jobs with a known size are, 0 to 1, or None when none has one. An image that is unpacking
+    counts as downloaded: its line says how far the unpacking is."""
+    sized = [j for j in jobs if j.part.size]
+    if not sized:
+        return None
+    return sum(j.part.size if j.stage or j.state == "done" else min(j.done, j.part.size) for j in sized) / sum(
+        j.part.size for j in sized)
+
+
 async def ensure(needs: list[Part], report) -> str:
-    """Install what is missing, calling report(text) as it goes. "" once all is there, else why not."""
+    """Install what is missing, calling report(text, fraction) as it goes. "" once all is there, else why not."""
     missing = [p for p in needs if not p.installed]
     if not missing:
         return ""
@@ -348,7 +358,7 @@ async def ensure(needs: list[Part], report) -> str:
         return short
     jobs = [start(p) for p in missing]
     while any(j.state == "running" for j in jobs):
-        report("; ".join(line(j) for j in jobs))
+        report("; ".join(line(j) for j in jobs), fraction(jobs))
         await asyncio.sleep(2)
     return "; ".join(line(j) for j in jobs if j.state == "error")
 

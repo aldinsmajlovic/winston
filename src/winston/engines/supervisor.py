@@ -29,6 +29,7 @@ class Managed:
     kind: str = "engine"            # engine | channel
     state: str = "stopped"          # stopped | installing | starting | healthy | unhealthy | error
     detail: str = ""
+    progress: float | None = None   # 0 to 1 while installing, when the sizes are known
     since: float = field(default_factory=time.time)
     started_in: float | None = None     # seconds the last successful start took
     owned: bool = False                 # this supervisor started it, so it may stop it on exit
@@ -230,12 +231,12 @@ class Supervisor:
                 if not m.pending:
                     m.detail = ""
 
-    def _set(self, m: Managed, state: str, detail: str = ""):
+    def _set(self, m: Managed, state: str, detail: str = "", progress: float | None = None):
         if state != m.state:
             m.since = time.time()
             if state == "healthy" and self.on_healthy:
                 self.on_healthy(m.name)
-        m.state, m.detail = state, detail
+        m.state, m.detail, m.progress = state, detail, progress
 
     async def healthy(self, m: Managed) -> bool:
         if not m.cfg.health:                    # no health path: up whenever the process is (hosted APIs)
@@ -293,7 +294,7 @@ class Supervisor:
             needs = await install.parts(name, self.cfg)
             if any(not p.installed for p in needs):
                 self._set(m, "installing")
-                why = await install.ensure(needs, lambda text: m.state == "installing" and self._set(m, "installing", text))
+                why = await install.ensure(needs, lambda text, f: m.state == "installing" and self._set(m, "installing", text, f))
                 if m.state != "installing":         # stopped meanwhile; the install itself goes on
                     return m
                 if why:

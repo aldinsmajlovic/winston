@@ -97,6 +97,22 @@ HTTPS. To show it in Home Assistant, add a Webpage card pointing at the wall dis
 Assistant itself is on HTTPS, the browser blocks a plain `http://` page inside it, so Winston needs
 HTTPS too.
 
+## Notices
+
+Every page but the wall display says what happens to his parts in a notice at the bottom right, one
+per part, each replacing the last:
+
+- an engine installing: "Installing the brain, 42%", what it is getting ("The model, 6.2 of 16.4 GB")
+  and a bar, then "Installed the brain, starting it", then "The brain is running";
+- an engine starting: "Starting the brain" with how long it takes, then that it runs;
+- any part, engine or channel, that fails ("The speaking voice failed" and why) or stops answering,
+  with Status.
+
+Installing, starting and a failure stay until they change or you close them; a closed one comes back
+only when the part's state changes. The state a page opens on is not a notice, except a part already
+installing or starting: Status says the rest. They follow `/api/status` (`progress` is how far an
+install is, 0 to 1, while the sizes are known).
+
 ## Settings
 
 Settings opens on Status. The sidebar groups the pages under Talk, its first item, which leads back to

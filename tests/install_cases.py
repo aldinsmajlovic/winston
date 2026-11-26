@@ -249,7 +249,7 @@ async def main():
     # ---- Not enough space ----
     real = shutil.disk_usage
     install.shutil.disk_usage = lambda p: namedtuple("du", "total used free")(10**9, 10**9 - 1_000_000, 1_000_000)
-    short = await install.ensure(parts, lambda text: None)
+    short = await install.ensure(parts, lambda text, f: None)
     install.shutil.disk_usage = real
     check("a pick bigger than the free space is refused with both numbers", (short.startswith("needs 10 MB on "),
                                                                              short.endswith(", 1 MB free")), (True, True))
@@ -261,6 +261,10 @@ async def main():
     image_stages: list = []
     image_marks, model_marks = await asyncio.gather(watch(jobs[0], stages=image_stages), watch(jobs[1]))
     check("both installed", [j.state for j in jobs], ["done", "done"])
+    check("and their progress is the whole way", install.fraction(jobs), 1.0)
+    half = [install.Job(install.Part("a", "a", None, 100, False), done=50),
+            install.Job(install.Part("b", "b", None, None, False), done=7)]
+    check("progress counts only the parts with a size", install.fraction(half), 0.5)
     check("the image's pull reported its layers as they came", (len(set(image_marks)) > 1, jobs[0].done), (True, 10_000_000))
     downloading = sorted({d for st, d in image_stages if st == ""})
     unpacking = [d for st, d in image_stages if st == "unpacking"]

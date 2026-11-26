@@ -2,6 +2,7 @@ import { Component, type ReactNode } from 'react'
 import { generatePath, Navigate, Outlet, Route, Routes, useLocation, useNavigationType, useParams } from 'react-router'
 import { $api } from '@/api/client'
 import { AppSidebar } from '@/components/app-sidebar'
+import { EngineToasts } from '@/components/engine-toasts'
 import { Button } from '@/components/ui/button'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import ActionsPage from '@/pages/actions'
@@ -80,6 +81,8 @@ export default function App() {
   const { pathname } = useLocation()
   return (
     <PageError path={pathname}>
+      {/* Not on a wall display: nobody there to read them. */}
+      {pathname === '/wall' ? null : <EngineToasts />}
       <Routes>
         <Route path="/" element={<SetupFirst><TalkPage /></SetupFirst>} />
         <Route path="/history" element={<TurnsPage />} />

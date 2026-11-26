@@ -2220,6 +2220,11 @@ export interface components {
             state: "stopped" | "installing" | "starting" | "healthy" | "unhealthy" | "error";
             /** Detail */
             detail: string;
+            /**
+             * Progress
+             * @description 0 to 1 while installing, when the sizes are known
+             */
+            progress?: number | null;
             /** Since */
             since: number;
             /** Port */

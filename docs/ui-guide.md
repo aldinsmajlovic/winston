@@ -107,6 +107,7 @@ Errors are never silent.
 | --- | --- | --- |
 | An action failed | Its reason in a toast | The query client, for every mutation that does not show its own error. `meta: { showsErrors: true }` opts out |
 | A page could not load | An error icon, the reason and Retry, in place of its skeleton | `LoadError`. `PageSkeleton` shows it by itself when a query the page waits on failed |
+| A part fails or stops answering | A notice with why and Status, on every page but the wall display | `EngineToasts`, from the status stream ([notices](web-ui.md#notices)) |
 | A page fails to draw | "This page hit a problem. Your unsaved changes are kept." and Try again, never a blank screen | `PageError` in `App.tsx` |
 
 ### Dates and times

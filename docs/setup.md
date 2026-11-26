@@ -200,7 +200,9 @@ why it failed with Try again.
   running.
 - A cut download picks up where it was.
 - A saved engine that still lacks something gets it when it starts, and says Installing on Status,
-  not Failed. One that does not fit is not started.
+  not Failed. One that does not fit is not started. Every page but the wall display shows it as a
+  notice with its bar until it runs ([notices](web-ui.md#notices)), so Download and continue in the
+  wizard can be followed through the next steps.
 
 A voice's own weights are not sized first, since its library chooses the files (Pocket loads a 0.2 GB
 model from an 18 GB repo). The server fetches them on its first start, and the supervisor waits while
