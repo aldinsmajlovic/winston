@@ -3,6 +3,18 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.20 (unreleased)
+
+- Claude can be his brain, through Anthropic's own API: pick Claude (Anthropic API) under Runs on and
+  give it a key. His instructions are cached between requests, and spoken requests think as little as
+  they can, so he answers quickly.
+- Downloading, installing and starting a part of Winston shows a notice with its progress on every page,
+  and a part that fails or stops answering says why.
+- Retraining Okay Winston on your own voice is one script, `services/voice-pe/wake.py`: record takes,
+  train, and flash the box.
+- A skipped setup step holds a dash in its circle instead of pushing the last step onto a second line.
+  Motion is calmer and follows reduce motion, and a save rings each card it changed.
+
 ## 0.1.19 (2026-11-26)
 
 - The brain's Model opens a dialog of models to choose by: each with the memory it needs at your context
