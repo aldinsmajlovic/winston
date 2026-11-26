@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.15 (unreleased)
+## 0.1.15 (2026-11-26)
 
 - Restart on Status restarts all of Winston from the page: every part, and the settings that wait for
   his own restart.
