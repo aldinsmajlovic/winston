@@ -33,6 +33,8 @@ Do:
   semantic colour, which belongs to the sentence saying the verdict.
 - **Links and commands look different.** A link is underlined text in the text colour, always, not
   only on hover. A command is a button, never bare text ("Copy it", "Remove").
+  - A link to one setting carries its id (`/assistant#cfg_logging_turns`): the page scrolls it to the
+    middle and rings its card for a moment (`useHashTarget` in `page.tsx`).
 - **Save is an outline, greyed, until the draft has changes**; then it fills with the accent.
 - **Every field has an edge**, the front's composer and search fields too, and every dropdown, searchable
   or not, is the same outlined field. An off switch has a mid-grey track, so it reads as a control.

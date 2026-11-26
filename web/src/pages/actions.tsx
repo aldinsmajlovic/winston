@@ -115,7 +115,7 @@ export default function ActionsPage() {
           enough.
         </StatusLine>
         {canReachPhone(page.value) ? null : (
-          <StatusLine tone="warning" action={{ label: 'Set your phone', to: '/speaking-up' }}>
+          <StatusLine tone="warning" action={{ label: 'Set your phone', to: '/speaking-up#cfg_speak_up_phone' }}>
             No phone is set, so he can only ask on the Talk page.
           </StatusLine>
         )}

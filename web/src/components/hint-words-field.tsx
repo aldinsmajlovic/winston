@@ -209,7 +209,7 @@ export function HintWordsField({ schema, formData, onChange, fieldPathId, disabl
         ) : (
           <>
             Turn on recordings in{' '}
-            <Link to="/assistant" className={LINK}>
+            <Link to="/assistant#cfg_logging_turns" className={LINK}>
               Assistant
             </Link>{' '}
             to see what he misheard.

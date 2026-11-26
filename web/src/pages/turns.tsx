@@ -171,11 +171,11 @@ export default function TurnsPage() {
           <div className="m-auto flex max-w-md flex-col items-center gap-4 py-8 text-center text-muted-foreground">
             <p>{`History shows what you said and what he did while recordings are on, kept for ${keepDays} days.`}</p>
             <Button asChild variant="outline">
-              <Link to="/assistant">Turn on recordings</Link>
+              <Link to="/assistant#cfg_logging_turns">Turn on recordings</Link>
             </Button>
           </div>
         ) : data?.enabled === false ? (
-          <StatusLine tone="muted" action={{ label: 'Turn on recordings', to: '/assistant' }}>
+          <StatusLine tone="muted" action={{ label: 'Turn on recordings', to: '/assistant#cfg_logging_turns' }}>
             Recordings are off, so new requests are not kept.
           </StatusLine>
         ) : null}

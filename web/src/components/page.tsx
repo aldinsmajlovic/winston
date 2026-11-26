@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { useQueryClient, type Query } from '@tanstack/react-query'
 import { CircleAlert, EllipsisVertical, LoaderCircle, RotateCw, type LucideIcon } from 'lucide-react'
-import { Link } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { $api, errorText } from '@/api/client'
 import { IconButton } from '@/components/icon-button'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,18 @@ export function useTitle(title?: string) {
     const text = [title, name].filter(Boolean).join(' · ')
     if (text) document.title = text
   }, [title, name])
+}
+
+/** A link to a setting (`/assistant#cfg_logging_turns`, a section's or a field's id) lands on it:
+ * scrolled to the middle, its card ringed for a moment. */
+function useHashTarget() {
+  const { hash } = useLocation()
+  useEffect(() => {
+    const el = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    ;(el.closest('[data-slot="card"]') ?? el).classList.add('flash')
+  }, [hash])
 }
 
 /** Something the page does now (Start all, Add an MCP server), as opposed to a setting that waits for Save. */
@@ -72,6 +84,7 @@ type Props = {
 
 export function Page({ title, back, intro, commands, actions, footer, children }: Props) {
   useTitle(title)
+  useHashTarget()
   return (
     <>
       {/* Laid out by its own width, not the window's, since the sidebar takes part of it. As it narrows the

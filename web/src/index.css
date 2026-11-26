@@ -137,3 +137,12 @@
     @apply font-sans;
     }
 }
+/* Where a link to a setting lands (useHashTarget): a ring that holds, then fades. */
+@keyframes flash {
+  0%, 50% { outline-color: var(--ring); }
+}
+.flash {
+  outline: 2px solid transparent;
+  outline-offset: 4px;
+  animation: flash 2.5s ease-out;
+}
