@@ -10,16 +10,17 @@ import { applyPreset, matchPreset, type Kind } from '@/lib/presets'
 import { setIn } from '@/lib/schema'
 import { cn } from '@/lib/utils'
 
-const FILL: Record<Use['tone'], string> = { ok: 'fill-success', warn: 'fill-warning', bad: 'fill-destructive' }
 const TEXT: Record<Use['tone'], string> = { ok: 'text-success', warn: 'text-warning', bad: 'text-destructive' }
-// How strongly each part takes the colour, brain first; 0 is other programs, in grey.
-const SHADE: Record<Part['strength'], string> = { 0: '', 1: 'opacity-25', 2: 'opacity-40', 3: 'opacity-60', 4: '' }
+// The parts in steps of ink, brain darkest, other programs palest; the verdict's colour is only in its sentence.
+const SHADE: Record<Part['strength'], string> = {
+  0: 'fill-foreground/15',
+  1: 'fill-foreground/30',
+  2: 'fill-foreground/45',
+  3: 'fill-foreground/65',
+  4: 'fill-foreground',
+}
 const W = 1000          // the bar's drawing width; it stretches to the card
 const GAP = 3
-
-function shade(p: Part, tone: Use['tone']): string {
-  return p.strength ? cn(FILL[tone], SHADE[p.strength]) : 'fill-muted-foreground/45'
-}
 
 function verdict(use: Use, system: boolean): [string, string] {
   const pct = use.share * 100
@@ -51,8 +52,8 @@ function isRecommended(r: Picks, page: SettingsState, presets: Presets): boolean
     && matchPreset('tts', c, presets.tts) === r.tts && matchPreset('stt', c, presets.stt) === r.stt
 }
 
-/** How full the graphics card (or without one, the computer's memory) would be with the draft's picks, in
- * green, amber or red, kept in view while the picks below change (pinned from tablet width up; on a phone it
+/** How full the graphics card (or without one, the computer's memory) would be with the draft's picks, said
+ * in green, amber or red, kept in view while the picks below change (pinned from tablet width up; on a phone it
  * would cover a third of the screen). In the setup wizard (recommend), also whether they are the picks
  * recommended here, with a way back to them. */
 export function MemoryBar({ page, presets, recommend }: { page: SettingsState; presets: Presets; recommend?: boolean }) {
@@ -76,7 +77,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
   return (
     <Card className="z-10 shadow-sm sm:sticky sm:top-2" aria-live="polite">
       <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <CardTitle>{system ? 'Memory' : 'Graphics memory'}</CardTitle>
+        <CardTitle>{system ? 'Computer memory' : 'Graphics memory'}</CardTitle>
         <span className="text-sm text-muted-foreground">
           {system ? 'No graphics card, so the brain runs on the processor' : plan.gpu}, {gb(use.total)} GB
         </span>
@@ -84,7 +85,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
       <CardContent className="flex flex-col gap-3">
         <svg viewBox={`0 0 ${W} 20`} preserveAspectRatio="none" className="h-5 w-full overflow-hidden rounded-md bg-muted" role="img" aria-label={`${gb(use.used)} of ${gb(use.total)} GB`}>
           {bars(use.parts, scale).map(({ p, x, w }) => (
-            <rect key={p.label} x={x} y={0} width={w} height={20} className={shade(p, use.tone)}>
+            <rect key={p.label} x={x} y={0} width={w} height={20} className={SHADE[p.strength]}>
               <title>{`${p.label}: ${gb(p.mib)} GB`}</title>
             </rect>
           ))}
@@ -94,12 +95,17 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
           {use.parts.map((p) => (
             <span key={p.label} className="flex items-center gap-1.5">
               <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
-                <rect width={10} height={10} rx={2} className={shade(p, use.tone)} />
+                <rect width={10} height={10} rx={2} className={SHADE[p.strength]} />
               </svg>
               {p.label} {gb(p.mib)} GB
             </span>
           ))}
-          <span>Free {gb(Math.max(0, use.total - use.used))} GB</span>
+          <span className="flex items-center gap-1.5">
+            <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
+              <rect x={0.5} y={0.5} width={9} height={9} rx={2} className="fill-muted stroke-muted-foreground/50" />
+            </svg>
+            Free {gb(Math.max(0, use.total - use.used))} GB
+          </span>
         </div>
         <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
           <span className={cn('font-medium', TEXT[use.tone])}>

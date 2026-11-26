@@ -228,7 +228,7 @@ export function AddField({ label, placeholder = label, multiline, onAdd }: AddPr
     <form onSubmit={submit} className="mt-1 flex flex-col gap-1">
       <label
         className={cn(
-          'flex gap-2.5 rounded-3xl bg-card px-4 text-muted-foreground focus-within:ring-3 focus-within:ring-ring/50',
+          'flex gap-2.5 rounded-3xl border border-input bg-card px-4 text-muted-foreground focus-within:ring-3 focus-within:ring-ring/50',
           multiline ? 'min-h-10 items-start py-2' : 'h-10 items-center',
           error && 'ring-1 ring-destructive',
         )}
@@ -360,7 +360,7 @@ export function Heading({ title, description, onEditAll, onRename, onDelete }: H
   return (
     <div className="mb-1.5 flex flex-col gap-0.5">
       <div className="flex items-center gap-3">
-        <h3 className="min-w-0 flex-1 text-lg font-semibold">{title}</h3>
+        <h3 className="min-w-0 flex-1 text-lg font-semibold in-data-[slot=card]:text-sm">{title}</h3>
         <RowMenu
           name={title}
           items={[

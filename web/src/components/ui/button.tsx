@@ -10,14 +10,14 @@ const buttonVariants = cva(
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/80",
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-border bg-background text-foreground hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
         ghost:
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
         destructive:
           "bg-destructive text-primary-foreground hover:bg-destructive/90 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-foreground underline underline-offset-4",
       },
       size: {
         default:
@@ -33,6 +33,11 @@ const buttonVariants = cva(
         "icon-lg": "size-9",
       },
     },
+    // Below sm a button is at least 40px, a finger's size; a link stays the size of the text it sits in.
+    compoundVariants: [
+      { variant: ["default", "outline", "secondary", "ghost", "destructive"], size: ["default", "sm", "lg"], class: "max-sm:min-h-10" },
+      { variant: ["default", "outline", "secondary", "ghost", "destructive"], size: ["icon", "icon-sm", "icon-lg"], class: "max-sm:min-h-10 max-sm:min-w-10" },
+    ],
     defaultVariants: {
       variant: "default",
       size: "default",

@@ -59,8 +59,8 @@ A ring, and inside it a disc cut by a soft W: filled below the W, open above it.
 middle 70% of the width and the line runs flat to the edge on both sides. The ring and the gap inside
 it are equally wide.
 
-The mark is one colour, the page's text colour (`currentColor` under `text-foreground`): near-black
-on the light theme, near-white on the dark one, so it reads the same on either. Every page draws him
+The mark is one colour, his accent, petrol (`currentColor` under `text-primary`, the UI's `--primary`):
+deep on the light theme, pale on the dark one, so it reads the same on either. Every page draws him
 through one component, `web/src/components/presence.tsx`, so he looks and moves the same everywhere.
 
 The geometry lives in `web/src/lib/mark.ts`, in a 100 by 100 viewBox:
@@ -73,7 +73,7 @@ The geometry lives in `web/src/lib/mark.ts`, in a 100 by 100 viewBox:
 | W span | `span` | 0.7: the share of the width the W takes |
 | Softness | `soft` | 0.85: 0 is straight segments, 1 is full curves |
 
-`web/public/favicon.svg` and `docs/images/logo.svg` are the mark at rest (`#191816`, `#EFEEEB` on a
+`web/public/favicon.svg` and `docs/images/logo.svg` are the mark at rest (`#186175`, `#84CBDC` on a
 dark system theme), generated from the same geometry by `node scripts/mark-svg.ts` in `web/`. Rerun
 it after changing the shape.
 

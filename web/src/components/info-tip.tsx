@@ -12,7 +12,7 @@ export function InfoTip({ text, label }: { text?: string | null; label?: string 
       <PopoverTrigger
         type="button"
         aria-label={label ? `About ${label}` : 'More information'}
-        className="relative inline-flex rounded-sm text-muted-foreground after:absolute after:-inset-2.5 hover:text-foreground"
+        className="relative inline-flex rounded-sm text-muted-foreground after:absolute after:-inset-3.5 hover:text-foreground"
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
       >

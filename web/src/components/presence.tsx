@@ -48,10 +48,10 @@ export function Presence({ state, className }: { state: MarkState; className?: s
     }
   }, [state])
 
-  // One colour, the page's text: a ring, and inside it a disc filled below the W and open above it.
+  // One colour, his accent (petrol): a ring, and inside it a disc filled below the W and open above it.
   // The running light is a gap cut along the W; the speaking glow fades the fill.
   return (
-    <svg viewBox="0 0 100 100" role="img" aria-label={`${name} is ${LABEL[state].toLowerCase()}`} className={cn('shrink-0 text-foreground', className)}>
+    <svg viewBox="0 0 100 100" role="img" aria-label={`${name} is ${LABEL[state].toLowerCase()}`} className={cn('shrink-0 text-primary', className)}>
       <defs>
         <mask id={`${id}-open`}>
           <rect width="100" height="100" fill="white" />

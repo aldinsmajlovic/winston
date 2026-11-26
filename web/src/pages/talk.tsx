@@ -424,7 +424,7 @@ export default function TalkPage() {
             onChange={(event) => setText(event.target.value)}
             placeholder={room ? `Message ${name} in the ${room}` : `Message ${name}`}
             aria-label="Message"
-            className="h-14 rounded-full border-0 bg-card pr-14 pl-6 text-base shadow-none md:text-base"
+            className="h-14 rounded-full bg-card pr-14 pl-6 text-base shadow-none md:text-base"
           />
           <IconButton
             type="button"

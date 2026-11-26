@@ -12,7 +12,7 @@ export function StatusTip({ icon: Icon, className, label, lines }: { icon: Lucid
       <PopoverTrigger
         type="button"
         aria-label={label}
-        className="relative inline-flex after:absolute after:-inset-2.5"
+        className="relative inline-flex after:absolute after:-inset-3.5"
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
       >

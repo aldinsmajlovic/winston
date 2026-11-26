@@ -97,7 +97,7 @@ export function AccountField({ id, ext, field, name, label, disabled }: Props) {
       </Button>
       <p className="text-sm text-muted-foreground">
         Your app must list {callback()} as a redirect URI.{' '}
-        <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => void copyCallback()}>
+        <Button type="button" variant="outline" size="sm" onClick={() => void copyCallback()}>
           Copy it
         </Button>
       </p>

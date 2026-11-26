@@ -4,9 +4,9 @@ import { writeFileSync } from 'node:fs'
 import { MARK, REST, paths } from '../src/lib/mark.ts'
 
 const d = paths(REST)
-// The page's text colour: near-black, near-white on a dark ground.
+// His accent, petrol: deep on a light ground, pale on a dark one (src/index.css, --primary).
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-<style>svg{color:#191816}@media (prefers-color-scheme:dark){svg{color:#EFEEEB}}</style>
+<style>svg{color:#186175}@media (prefers-color-scheme:dark){svg{color:#84CBDC}}</style>
 <defs><mask id="open"><rect width="100" height="100" fill="#fff"/><path d="${d.upper}" fill="#000"/></mask></defs>
 <circle cx="50" cy="50" r="${MARK.radius - 2 * MARK.ring}" fill="currentColor" mask="url(#open)"/>
 <circle cx="50" cy="50" r="${MARK.radius - MARK.ring / 2}" fill="none" stroke="currentColor" stroke-width="${MARK.ring}"/>

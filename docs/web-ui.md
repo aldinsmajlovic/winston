@@ -177,12 +177,13 @@ works when he was started with `winston up`, as the service does. Add a custom e
 #### Graphics memory
 
 A bar on top of the Brain and Voice pages (and the wizard's first step) shows how full the NVIDIA or
-AMD card would be with the picks on the page, before saving. Without a card it is **Memory**, the
-computer's own, since the brain then runs on the processor.
+AMD card would be with the picks on the page, before saving. Without a card it is **Computer memory**,
+since the brain then runs on the processor.
 
 - **Parts**: other programs, the brain, More to keep in mind (what the context adds past 16K), the
-  voice and hearing on the card. Each part's size is in the legend.
-- **Colour**: green under 80%, amber to 100%, red past it.
+  voice and hearing on the card, in steps of grey from the brain, darkest, to other programs, palest.
+  Each part's size is in the legend, and Free has its own swatch.
+- **Colour**: only the verdict's sentence, green under 80%, amber to 100%, red past it.
 - **Verdict**: "22.1 of 24.0 GB, 92%. Fits, only just." Past 100% on a card, Ollama runs part of the
   brain on the processor, about three times slower, and the other engines do not start. In the
   computer's memory, it runs out: he slows to a crawl, or a program is stopped.

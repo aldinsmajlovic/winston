@@ -147,7 +147,7 @@ export function AppSidebar() {
         <ThemeMenu />
         {/* A new release, checked by winstond every few hours, links to Status's Updates. */}
         {updateNeedsYou(update.data) && update.data?.latest ? (
-          <NavLink to="/status" className="ml-auto text-xs text-primary underline-offset-4 hover:underline">
+          <NavLink to="/status" className="ml-auto text-xs text-foreground underline underline-offset-4">
             Version {update.data.latest} is out
           </NavLink>
         ) : (

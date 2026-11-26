@@ -113,7 +113,8 @@ export function SaveControls({ page }: { page: SettingsState }) {
           Discard
         </Button>
       ) : null}
-      <Button size="sm" className="max-sm:hidden" disabled={!page.dirty || page.saving} onClick={() => void page.save()}>
+      {/* Filled, in his colour, only once there is something to save; until then an outline, greyed. */}
+      <Button variant={page.dirty ? 'default' : 'outline'} size="sm" className="max-sm:hidden" disabled={!page.dirty || page.saving} onClick={() => void page.save()}>
         <Save data-icon="inline-start" />
         Save
       </Button>

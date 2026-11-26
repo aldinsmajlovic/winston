@@ -89,7 +89,7 @@ export function SecretField({ id, names, resolve, label, placeholder, disabled, 
         <span className="text-sm whitespace-nowrap text-warning">Not set</span>
       )}
       {isSet ? (
-        <Button type="button" variant="ghost" size="sm" disabled={disabled} onClick={() => void remove()}>
+        <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={() => void remove()}>
           Remove
         </Button>
       ) : null}

@@ -322,7 +322,7 @@ export default function MemoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full bg-card px-4 text-muted-foreground focus-within:ring-3 focus-within:ring-ring/50">
+          <label className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full border border-input bg-card px-4 text-muted-foreground focus-within:ring-3 focus-within:ring-ring/50">
             <Search className="size-4 shrink-0" />
             <input
               role="searchbox"

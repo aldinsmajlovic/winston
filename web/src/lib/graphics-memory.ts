@@ -26,7 +26,7 @@ export function at(points: Points, k: number): number {
   return v0 + ((v1 - v0) * (k - k0)) / (k1 - k0)
 }
 
-/** strength: how strongly a part takes the bar's colour; 0 is other programs, in grey. */
+/** strength: how dark a part is drawn, brain darkest; 0 is other programs, palest. */
 export type Part = { label: string; mib: number; strength: 0 | 1 | 2 | 3 | 4 }
 export type Use = {
   total: number

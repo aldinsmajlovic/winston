@@ -195,9 +195,9 @@ function NoDescription() {
   return null
 }
 
-/** A quiet heading inside a card, over a group of fields. */
+/** A heading inside a card over a group of fields, a rule above it so the group reads as its own part. */
 function GroupHeading({ children }: { children: ReactNode }) {
-  return <h3 className="mt-2 text-sm font-semibold">{children}</h3>
+  return <h3 className="mt-2 border-t pt-4 text-sm font-semibold">{children}</h3>
 }
 
 /** Fields in schema order, except that fields sharing a `group` follow one heading, after the fields
@@ -227,7 +227,12 @@ function ObjectFieldTemplate({ title, properties, schema, fieldPathId, registry,
   const root = fieldPathId.path.length === 0
   return (
     <>
-      {title ? <TitleField id={titleId(fieldPathId)} title={title} schema={schema} uiSchema={uiSchema} registry={registry} /> : null}
+      {/* a nested section's heading has a rule above it, as a group's does */}
+      {title ? (
+        <div className={root ? undefined : 'mt-2 border-t pt-4'}>
+          <TitleField id={titleId(fieldPathId)} title={title} schema={schema} uiSchema={uiSchema} registry={registry} />
+        </div>
+      ) : null}
       <div className="flex flex-col gap-4">
         {grouped(properties, groupOf)}
         {root ? extras.end : null}

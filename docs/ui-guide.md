@@ -27,7 +27,17 @@ The web UI has two areas. Both use one component library and no hand-written CSS
 Do:
 
 - One typeface, Hanken Grotesk, in sentence case everywhere.
-- One accent colour, `--primary`. Semantic colours (ok, warning, error) are not the accent.
+- One accent colour, petrol (`--primary`): filled buttons, a switch that is on, sliders, focus rings,
+  the selected page in the sidebar, setup's step number and his mark. Text, links and the semantic
+  colours (ok, warning, error) are not the accent, and a chart's parts are steps of ink, never a
+  semantic colour, which belongs to the sentence saying the verdict.
+- **Links and commands look different.** A link is underlined text in the text colour, always, not
+  only on hover. A command is a button, never bare text ("Copy it", "Remove").
+- **Save is an outline, greyed, until the draft has changes**; then it fills with the accent.
+- **Every field has an edge**, the front's composer and search fields too, and every dropdown, searchable
+  or not, is the same outlined field. An off switch has a mid-grey track, so it reads as a control.
+- **Four steps of heading**: the page title; a card's title, semibold; a heading inside a card, with a
+  rule above it so its fields read as their own part; then a field's label, the lightest.
 - Light and dark come from the theme tokens.
 
 Don't:
@@ -37,8 +47,7 @@ Don't:
 - No glows, gradients or decorative shadows, and nothing hand-tuned per theme.
 - No inline styles, no custom CSS classes, no em dashes. The build fails on all three.
 
-Winston's logo is the one exception to the colour and shading rules: its own two colours (`--mark-*`)
-with a gentle shade in each field. It stays out of the rest of the UI, and other logos stay one colour.
+Winston's mark is drawn in the accent ([identity](identity.md#the-mark)). Other logos stay one colour.
 
 ### What the UI shows
 
@@ -60,6 +69,8 @@ with a gentle shade in each field. It stays out of the rest of the UI, and other
   - a tooltip only names an icon button.
 
   Two gaps are still open: the mark's words on Talk and a blocked preview's reason sit in tooltips.
+- **Below `sm` a control is a finger's size**: every button, field and dropdown is at least 40 px tall,
+  and an (i), a state's word and a switch have a tap area about that size around them.
 - **Pages work at 360 px wide** with a 16 px gutter and no sideways scroll. The smoke test checks every
   page at 390 px.
 - **The header follows its own width** (the sidebar shares the window). Two or more commands fold into
@@ -622,7 +633,7 @@ The landing page shows, in order:
 - Needs you and Set up next, while they apply;
 - Updates, while a new release is out or an update is under way (else after custom engines);
 - his parts by role, each a row linking to its page, with one text command and a `RowMenu`;
-- graphics memory;
+- graphics memory (computer memory, without a graphics card);
 - custom engines, once there is one;
 - the web address with its warning.
 

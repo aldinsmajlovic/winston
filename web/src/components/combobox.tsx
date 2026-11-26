@@ -98,7 +98,7 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className="w-full justify-between font-normal"
+          className="w-full justify-between border-input bg-transparent font-normal hover:bg-transparent"
         >
           <span className="flex min-w-0 items-center gap-2">
             <ChoicePicture choice={current} className="size-5" />
