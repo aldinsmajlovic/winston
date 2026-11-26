@@ -221,20 +221,30 @@ test('a pasted key shows as Saved and never comes back from the server', async (
   await open(page, '/ways-to-talk')
   // The key is pasted; the variable it is stored under is config.yaml only.
   await expect(page.getByText('Token variable', { exact: true })).toHaveCount(0)
+  // Discord is off in the copy, so its fields are folded; switching it on shows them at once, before Save.
+  const discord = page.getByRole('switch', { name: 'Talk to him on Discord', exact: true })
+  await expect(page.getByLabel('Bot token', { exact: true })).toHaveCount(0)
+  await discord.click()
   // Exact: once a token is saved, the contacts field checks it with Discord and a made-up one gets an
   // icon labelled "Discord refused the bot token", which a loose match would find too. The key's state is
-  // a word beside the field, and Discord is off in the copy: a key under a switched-off section never warns.
+  // a word beside the field: switched on, a key not yet pasted says so.
   const field = page.getByLabel('Bot token', { exact: true })
-  await expect(field.locator('..').getByText('Not set', { exact: true })).toHaveCount(0)
+  await expect(field.locator('..').getByText('Not set', { exact: true })).toBeVisible()
   await expect(field).toHaveAttribute('placeholder', 'Paste the bot token')
   await field.fill(secret)
+  // Off again before Save, so the copy's Discord does not start: the pasted key is saved all the same.
+  await discord.click()
   await save(page)
   await page.reload()
   await open(page, '/ways-to-talk')
+  await discord.click()
   const row = page.getByLabel('Bot token', { exact: true }).locator('..')
   await expect(row.getByText('Saved', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Bot token', { exact: true })).toHaveAttribute('placeholder', 'Paste to replace it')
   await expect(page.getByLabel('Bot token', { exact: true })).toHaveValue('')
+  // Off again, as saved: nothing is left to save.
+  await discord.click()
+  await expect(page.locator('header').getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
 
   for (const url of ['/api/config', '/api/secrets', '/api/status', '/api/config/schema']) {
     const body = await (await page.request.get(url)).text()

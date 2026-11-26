@@ -147,9 +147,9 @@ function switchedOff(s: JsonSchema, value: unknown, root: JsonSchema): string | 
 
 /** A self-contained form schema: refs inlined, `hidden` fields dropped, no root title. With the draft
  * config, a field whose `when` does not hold is left out, a section's `enabled_by` switch carries
- * `section_switch`, the fields under it (and every setting of an extension that is off) carry `waits`
- * while it is off, and a `secret` name field gets a value field in its place, drawn even when the name
- * field itself is hidden. */
+ * `section_switch` and while it is off the rest of the section is left out (folded until switched on,
+ * which shows it at once, before Save), every setting of an extension that is off carries `waits`, and a
+ * `secret` name field gets a value field in its place, drawn even when the name field itself is hidden. */
 export function prune(schema: JsonSchema, root: JsonSchema, options: PruneOptions, depth = 0): JsonSchema {
   return pruneAt(schema, root, options, depth, { path: options.path, slot: undefined })
 }
@@ -171,12 +171,17 @@ function pruneAt(schema: JsonSchema, root: JsonSchema, options: PruneOptions, de
     const extensionOff = ext !== undefined && config !== undefined && getIn(config, ['extensions', ext, 'enabled']) !== true
     const driver = options.driver ?? (typeof getIn(value, ['driver']) === 'string' ? (getIn(value, ['driver']) as string) : undefined)
     const properties: Record<string, JsonSchema> = {}
+    let folded = 0
     for (const [key, child] of Object.entries(s.properties)) {
       const field = deref(child, root)
       if (depth === 0 && options.omit?.includes(key)) continue
       if (config !== undefined && isRecord(field.when) && !holds(field.when, config, slot)) continue
       if (driver && field.drivers && !field.drivers.includes(driver)) continue
-      const waits = (off !== undefined && key !== off) || extensionOff
+      if (off !== undefined && key !== off) {
+        folded++
+        continue
+      }
+      const waits = extensionOff
       if (ext !== undefined && isAccount(field.account)) {
         properties[key] = accountField(field, field.account, String(ext), key)
         continue
@@ -191,9 +196,9 @@ function pruneAt(schema: JsonSchema, root: JsonSchema, options: PruneOptions, de
       if (key === s.enabled_by) pruned.section_switch = true
       properties[key] = waits ? { ...pruned, waits: true } : pruned
     }
-    // A switch with nothing else shown keeps its own help: nothing visible waits for it.
+    // A switch with nothing under it, on or off, keeps its own help: nothing waits for it.
     const own = typeof s.enabled_by === 'string' ? properties[s.enabled_by] : undefined
-    if (own && Object.keys(properties).length === 1) delete own.section_switch
+    if (own && Object.keys(properties).length === 1 && !folded) delete own.section_switch
     out.properties = properties
     out.required = s.required?.filter((k) => k in properties)
   }

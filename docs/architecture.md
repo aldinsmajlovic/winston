@@ -233,7 +233,7 @@ Each field's `json_schema_extra` tells the form what to draw (`ui(...)` and `sec
 | `when` | Leaves a field out unless a condition holds: `{"engines.{slot}.driver": ["external", null]}`, any other dotted path, or `{"cmd_uses": "tts.streaming."}`. `{slot}` is the section's `slot` |
 | `hidden` | Never drawn, so set in config.yaml only: a variable's name, a port, a path, a Literal with one value, or a measured timing no label could explain ([running](running.md#settings-only-in-configyaml) lists them) |
 | `empty_means_off` | A cleared field is saved as `""` |
-| `enabled_by` | On a section: its switch, which the form marks `section_switch`. While it is off, the other fields (and every setting of an extension that is off) are marked `waits`: full contrast, still editable, no "Not set" on key fields, and the switch's help reads "Off. These settings wait until you switch it on." unless it has its own |
+| `enabled_by` | On a section: its switch, which the form marks `section_switch`. While it is off, the form leaves the other fields out and the switch's help reads "Off. Switch it on to set it up." unless it has its own; switching it on shows them at once, before Save. Every setting of an extension that is off is marked `waits`: no "Not set" on key fields |
 | `secret` | `{default, label, help, optional}` on a field that names a variable in `data/.env`: draws a field to paste the key, never the variable's name. `help` says where to get the key; an `optional` one never warns, and an extension's stays out of its `needs` |
 | `key_title`, `value_title`, `key_options`, `key_options_query` | A map, drawn as a table with Add and a dialog |
 

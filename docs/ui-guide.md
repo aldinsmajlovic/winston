@@ -347,9 +347,10 @@ required asterisk.
 - **A field that does not apply is not there.** The schema says when it applies (`when`: the engine's
   driver, the engine command, another field; `drivers`; `hidden`), and the form leaves it out
   otherwise.
-- **Under a section switch that is off** (`enabled_by`), fields keep full contrast and stay editable.
-  The switch's help says "Off. These settings wait until you switch it on." unless it has its own, and
-  keys do not warn (prune marks the switch `section_switch` and the rest `waits`).
+- **A section whose switch is off** (`enabled_by`) shows only its switch, whose help says "Off. Switch it
+  on to set it up." unless it has its own (prune marks it `section_switch` and leaves the rest out).
+  Switching it on shows the rest at once, before Save, so a key can be pasted before anything starts.
+  An extension that is off keeps its settings in view, marked `waits`, and its keys do not warn.
 - **A cleared field** saves what it shows where empty means something. A field marked
   `empty_means_off` (quiet hours, chime, health path, quantization) saves `''` when cleared, so the
   default does not quietly come back. Any other cleared field falls back to its default.

@@ -13,8 +13,8 @@ The rest of the metadata tells the form what to draw (docs/architecture.md, "Con
   section is left out of the form unless every condition holds. "{slot}" in a path is the section's `slot`
   (llm, tts, stt); null in the values matches a missing key. cmd_uses holds when the slot's engine args or
   cmd contain "{<prefix>"; remote when the slot's base_url is not on this computer.
-- `enabled_by` (on a section): the sibling switch that turns the section on; while it is off the other
-  fields wait for it but stay editable.
+- `enabled_by` (on a section): the sibling switch that turns the section on; while it is off the UI shows
+  only the switch, and switching it on shows the rest at once, before Save.
 - `hidden`: never drawn, config.yaml only (a variable's name, an address, a port, a path, a Literal with one
   value, a value another control sets, or a measured timing; docs/running.md lists them).
   Every other field is drawn where its section is.
@@ -815,7 +815,7 @@ class SpeakUpConfig(Model):
 
 class TurnsConfig(Model):
     """The turn record (core/turns.py, docs/understanding.md)."""
-    model_config = section("voice", "satellite")
+    model_config = section("voice", "satellite", enabled_by="enabled")
     enabled: bool = Field(False, title="Keep recordings of what you say",
                           description="Also how long each step took, to find and mark his mistakes and test changes "
                                       "on them.",

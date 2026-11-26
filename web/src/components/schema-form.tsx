@@ -70,7 +70,7 @@ type Meta = JsonSchema & {
   unit?: string // drawn after a number: "s", "min", "MB"
   group?: string // fields sharing one follow one heading
   section_switch?: boolean // the switch its section's other fields wait for
-  waits?: boolean // under a section switch that is off
+  waits?: boolean // a setting of an extension that is off
   secret_field?: SecretMeta
   account_field?: AccountFieldMeta
   placeholder?: string // what an empty picker means
@@ -86,7 +86,7 @@ function enumChoices(schema: Meta): Choice[] {
   return values.map((v) => ({ value: v, label: schema.labels?.[v] ?? humanize(String(v)), icon: schema.icons?.[v] }))
 }
 
-const WAITING = 'Off. These settings wait until you switch it on.'
+const WAITING = 'Off. Switch it on to set it up.'
 
 /** "Not saved yet: still Ollama" under an edited field, naming what is in effect until Save. A list or a
  * nested section says only that it is not saved; its entries and fields carry their own line. */
@@ -106,7 +106,7 @@ function Unsaved({ schema, at, context }: { schema: Meta; at: Path; context?: Fo
 }
 
 /** Switch, label and (i), the help under the label. A section's own switch with no help of its own
- * says, while off, that the rest of the section waits for it. */
+ * says, while off, that switching it on shows the rest of the section. */
 function SwitchWidget({ id, value, label, disabled, readonly, onChange, schema }: WidgetProps) {
   const meta = schema as Meta
   return (

@@ -65,23 +65,28 @@ CHUNK = 8192                        # bytes per read
 BOX_WAIT = 5.0                      # seconds the relay holds the music for a box that is connecting
 
 
+# After the name and his Home Assistant account: the keys Connect and the searches need, then how it plays.
+KEYS = "Account and keys"
+PLAYBACK = "Playback"
+
+
 class SpotifySettings(Settings):
     name: str = Field("Winston", title="Speaker name in Spotify")
     library: str | None = Entity(domain="media_player", default=None, title="Your Spotify account in Home Assistant",
                                  description="Home Assistant's Spotify player: your playlists, albums, artists and "
                                              "songs by name, read hourly.")
     client_id: str = Secret("SPOTIFY_CLIENT_ID", title="Client ID variable", label="Client ID", optional=True,
-                            group="Keys",
+                            group=KEYS,
                             help="From your app at developer.spotify.com; with its secret, he can search all of "
                                  "Spotify, not only your library.",
                             description="The app Home Assistant's Spotify integration uses will do.")
     client_secret: str = Secret("SPOTIFY_CLIENT_SECRET", title="Client secret variable", label="Client secret",
-                                optional=True, group="Keys", help="From the same app as the client ID.")
+                                optional=True, group=KEYS, help="From the same app as the client ID.")
     account: bool = Account("SPOTIFY_ACCOUNT", authorize="https://accounts.spotify.com/authorize",
                             token="https://accounts.spotify.com/api/token",
                             scopes=["user-library-read", "user-top-read", "user-read-recently-played",
                                     "playlist-read-private", "playlist-read-collaborative"],
-                            client_id="client_id", client_secret="client_secret", group="Keys",
+                            client_id="client_id", client_secret="client_secret", group=KEYS,
                             title="Your whole library", label="Spotify account",
                             help="Signs in with the app above, so he knows every song you like, play and keep in "
                                  "your playlists, not only the newest 48.",
@@ -89,14 +94,14 @@ class SpotifySettings(Settings):
                                         "artists. Signed in, he reads all your liked songs, your top and recent ones "
                                         "and your own playlists, with their artists, for songs you know.")
     listenbrainz_token: str = Secret("LISTENBRAINZ_TOKEN", title="ListenBrainz token variable",
-                                     label="ListenBrainz token", optional=True, group="Keys",
+                                     label="ListenBrainz token", optional=True, group=KEYS,
                                      help="From listenbrainz.org/settings (a free account); with the client ID, he "
                                           "can make a mix for a mood.")
-    names: dict[str, str] = Field(default_factory=dict, title="Your names for playlists", key_title="Playlist",
+    names: dict[str, str] = Field(default_factory=dict, group=PLAYBACK, title="Your names for playlists", key_title="Playlist",
                                   value_title="What you call it", key_choices="playlists",
                                   help="Several names separated by commas; albums and artists work too.",
                                   description="An emoji is already known by its own name (\"drum emoji\").")
-    mix_playlist: str | None = Field(None, title="Playlist for mixes", choices="own_playlists",
+    mix_playlist: str | None = Field(None, group=PLAYBACK, title="Playlist for mixes", choices="own_playlists",
                                      placeholder="None: Spotify's queue",
                                      description="A mix is then one list: what you ask for next replaces it, and "
                                                  "previous works. In Spotify's queue, a mix's songs follow whatever "
@@ -105,28 +110,28 @@ class SpotifySettings(Settings):
                                  group="When you say not now")
     quiet_resets_hours: float = Field(1, ge=0, title="Or until the music has been off for", unit="h",
                                       group="When you say not now")
-    sleep_fade_minutes: float = Field(30, ge=1, le=120, title="Sleep fade", unit="min",
+    sleep_fade_minutes: float = Field(30, ge=1, le=120, group=PLAYBACK, title="Sleep fade", unit="min",
                                       description="A sleep timer fades the music out over this long, then pauses it "
                                                   "without a word; a longer timer plays as it was first.")
     first_volume: int = Field(60, ge=0, le=100, title="Volume", unit="%",
                               group="First music of the day", help="0 leaves it as it was.")
     first_after_hours: float = Field(6, ge=0, title="After the music has been off for", unit="h",
                                      group="First music of the day")
-    listens: bool = Field(False, title="Send what plays to ListenBrainz",
+    listens: bool = Field(False, group=PLAYBACK, title="Send what plays to ListenBrainz",
                           help="Songs played here go to your public ListenBrainz profile, with your ListenBrainz token.",
                           description="A song counts after half its length or four minutes, so ListenBrainz's "
                                       "statistics and recommendations include it. Spotify itself never hears what "
                                       "this speaker plays.")
-    pause_on_leave: bool = Field(False, title="Pause when you leave",
+    pause_on_leave: bool = Field(False, group=PLAYBACK, title="Pause when you leave",
                                  help="Needs your person in Home Assistant, set under Speaking up.")
     mood_mixes: Literal["listenbrainz", "spotify_radio", "both_in_turn"] = Field(
-        "listenbrainz", title="A mood plays as",
+        "listenbrainz", group=PLAYBACK, title="A mood plays as",
         labels={"listenbrainz": "A ListenBrainz mix from your artists", "spotify_radio": "Spotify's radio",
                 "both_in_turn": "Both, taking turns"},
         description="A ListenBrainz mix: two of your artists that fit and artists like them. Spotify's radio: from "
                     "one of them, shaped by your listening; no searches. Both, taking turns: one then the other, said "
                     "the same way, for a blind test.")
-    bitrate: Literal[320, 160, 96] = Field(320, title="Stream quality",
+    bitrate: Literal[320, 160, 96] = Field(320, group=PLAYBACK, title="Stream quality",
                                            labels={"320": "320 kbps (best)", "160": "160 kbps", "96": "96 kbps"})
     api_port: int = Field(3678, ge=1024, le=65535, hidden=True, title="Receiver port",
                           description="go-librespot's API, on 127.0.0.1 only.")

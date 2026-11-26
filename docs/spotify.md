@@ -55,26 +55,28 @@ DJ's) is left out.
 
 ## Settings
 
-Keys are under `extensions.spotify.settings` in config.yaml.
+Keys are under `extensions.spotify.settings` in config.yaml. On the page, the name and the Home Assistant account
+come first, then Account and keys, Playback, When you say not now and First music of the day, each under its
+own heading.
 
 | On the page | Key | Default | What it does |
 | --- | --- | --- | --- |
 | Speaker name in Spotify | `name` | Winston | The speaker's name in the Spotify app |
 | Your Spotify account in Home Assistant | `library` | None | Home Assistant's Spotify player: your library by name, read hourly |
-| Client ID, Client secret | `client_id`, `client_secret` | Not set | Your app's keys, to search all of Spotify |
-| Your whole library | `account` | Not connected | Signs in with your app, for every song you like, play and keep in playlists |
-| ListenBrainz token | `listenbrainz_token` | Not set | Mixes for a mood or a genre |
-| Your names for playlists | `names` | Empty | Your own words for a playlist, album or artist |
-| Playlist for mixes | `mix_playlist` | None: Spotify's queue | Keeps each mix in one playlist ([a mix is one list](#a-mix-is-one-list)) |
-| A mood plays as | `mood_mixes` | A ListenBrainz mix | Or Spotify's radio, or both in turn ([mixes](#mixes-for-a-mood-or-a-genre)) |
+| Account and keys: Client ID, Client secret | `client_id`, `client_secret` | Not set | Your app's keys, to search all of Spotify |
+| Account and keys: Your whole library | `account` | Not connected | Signs in with your app, for every song you like, play and keep in playlists |
+| Account and keys: ListenBrainz token | `listenbrainz_token` | Not set | Mixes for a mood or a genre |
+| Playback: Your names for playlists | `names` | Empty | Your own words for a playlist, album or artist |
+| Playback: Playlist for mixes | `mix_playlist` | None: Spotify's queue | Keeps each mix in one playlist ([a mix is one list](#a-mix-is-one-list)) |
+| Playback: A mood plays as | `mood_mixes` | A ListenBrainz mix | Or Spotify's radio, or both in turn ([mixes](#mixes-for-a-mood-or-a-genre)) |
+| Playback: Sleep fade | `sleep_fade_minutes` | 30 min | How long a sleep timer fades the music |
+| Playback: Send what plays to ListenBrainz | `listens` | Off | Sends what the speakers play to your public ListenBrainz profile |
+| Playback: Pause when you leave | `pause_on_leave` | Off | Pauses when your person under Speaking up leaves home |
+| Playback: Stream quality | `bitrate` | 320 kbps | 160 or 96 for a slow or metered connection |
 | When you say not now: Keeps the artist out for | `not_now_hours` | 24 h | How long "not this artist" lasts |
 | When you say not now: Or until the music has been off for | `quiet_resets_hours` | 1 h | Ends it sooner after a quiet spell |
-| Sleep fade | `sleep_fade_minutes` | 30 min | How long a sleep timer fades the music |
 | First music of the day: Volume | `first_volume` | 60% | The volume the day's first music starts at; 0 leaves it as it was |
 | First music of the day: After the music has been off for | `first_after_hours` | 6 h | What counts as the first music of the day |
-| Send what plays to ListenBrainz | `listens` | Off | Sends what the speakers play to your public ListenBrainz profile |
-| Pause when you leave | `pause_on_leave` | Off | Pauses when your person under Speaking up leaves home |
-| Stream quality | `bitrate` | 320 kbps | 160 or 96 for a slow or metered connection |
 
 Config.yaml only ([running](running.md#settings-only-in-configyaml)): the variables the keys are
 stored under, and the receiver's two ports on 127.0.0.1, `api_port` (3678, its API) and `stream_port`
