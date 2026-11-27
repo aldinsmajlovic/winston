@@ -58,11 +58,15 @@ def speak_times(text: str, clock: str) -> str:
 
 class SpokenText(BaseTextFilter):
     def __init__(self, cfg: WinstonConfig):
-        self._clock = region.resolve(cfg)["time_format"]
+        # The words are English, so in another reply language the time stays as written for the voice to read
+        # ("Klockan är 17:30" was "Klockan är seventeen thirty"). ponytail: no words per language until a
+        # voice is heard misreading one.
+        english = cfg.assistant.language.strip().lower().startswith("en")
+        self._clock = region.resolve(cfg)["time_format"] if english else None
 
     async def filter(self, text: str) -> str:
         # The LLM sometimes streams a lone "." before a tool call. Nothing to say: Pipecat's gate after the
         # filters then drops it before TTSStartedFrame, which would tell the box to start fetching a reply.
         if not any(c.isalnum() for c in text):
             return ""
-        return speak_times(text, self._clock)
+        return speak_times(text, self._clock) if self._clock else text

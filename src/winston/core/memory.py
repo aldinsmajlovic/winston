@@ -33,7 +33,11 @@ PROMPT_WARN = 6000     # characters of facts; past this the prompt grows enough 
 _SECRET = re.compile(
     r"\b(?:passwords?|passcodes?|passphrases?|pin(?: code)?|api keys?|tokens?|secrets?|private keys?|"
     r"(?:door|alarm|gate|lock|access|entry) codes?|card numbers?|cvc|cvv|iban|personnummer|social security)\b"
-    r"|\b\d(?:[ -]?\d){12,}\b"                                       # card-length digit runs
+    # The same words in the other languages his hearing knows, inside compounds too ("wifilösenordet", "Türcode").
+    # ponytail: the common European ones only; a language missing here still has the remember tool's own rule.
+    r"|lösenord|passwort|kennwort|geheimzahl|wachtwoord|passord|kodeord|adgangskode|salasana|contraseña"
+    r"|mot de passe|hasło|pinkod|pincode|(?:port|dörr|dør|larm|tür|deur|grind|zugangs|toegangs)(?:kod|code)"
+    r"|\b\d(?:[ -]?\d){12,}\b"                                    # card-length digit runs
     r"|\b(?=[A-Za-z0-9_\-]*\d)(?=[A-Za-z0-9_\-]*[A-Za-z])[A-Za-z0-9_\-]{24,}\b",   # key-like strings
     re.IGNORECASE)
 

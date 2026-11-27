@@ -9,7 +9,7 @@ on ([extensions](extensions.md); web search, Ask Claude and watched sensors are
 
 | Tool | What it does | Needs | Limits |
 | --- | --- | --- | --- |
-| `remember` | Stores one fact in `data/memory/*.md`, or corrects one (`replaces`), optionally until a day; committed to git there | Memory on (Remember what you tell him) | 300 characters; secrets refused; `replaces` must match a stored fact exactly |
+| `remember` | Stores one fact in `data/memory/*.md`, or corrects one (`replaces`), optionally until a day; committed to git there | Memory on (Remember what you tell him) | 300 characters; secrets refused ([in other languages too](languages.md#secrets-in-memory)); `replaces` must match a stored fact exactly |
 | `forget` | Removes one fact and says which ("Forgotten: ..."); committed to git there | Memory on | Exact match only |
 | `send_message` | A Discord DM to a listed contact or you | `DISCORD_BOT_TOKEN`, `channels.discord.contacts` | Listed names only |
 | `clone_voice` | Records a friend who agrees out loud and speaks in their voice ([voices](voices.md#cloned-voices)) | The voice channel | Spoken consent, checked for the words and for the same voice as the sample; typed channels only say to ask by voice |

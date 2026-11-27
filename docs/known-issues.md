@@ -19,6 +19,12 @@ are in [plan.md](plan.md); smaller rough edges in the web UI are in its UI track
 | --- | --- | --- |
 | **He cannot ask first per device.** One Home Assistant action turns on a lamp or unlocks a lock, so a lock runs as freely as a lamp. | Leave out of his devices any you want asked about first ([Home Assistant](home-assistant.md)). | Needs a flag per device and a confirm step; open. |
 
+## Languages
+
+| Issue | Do this instead | Where it stands |
+| --- | --- | --- |
+| **Some lines stay English** whatever the reply language, and "stop", "never mind" and reminder times are understood in English only ([languages](languages.md#still-in-english)). | Say those in English. | The plan's Languages track. |
+
 ## Reporting one
 
 Open an [issue](https://github.com/aldinsmajlovic/winston/issues) with what you said or typed, what he

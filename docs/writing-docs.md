@@ -42,6 +42,7 @@ links to it.
 | `docs/voice-benchmarks.md` | A dated record of the voice and hearing benchmarks |
 | `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
+| `docs/languages.md` | Another language: what he answers in, hears and says, and what is still English |
 | `docs/computer.md` | The computer server: opening things, status, logs and updates on each computer |
 | `docs/home-assistant.md`, `docs/assist.md`, `docs/ha-integration.md`, `docs/announcements.md`, `docs/discord.md` | Their one subject |
 | `docs/extensions.md` | The extension standard: what one is, permissions, writing one |
