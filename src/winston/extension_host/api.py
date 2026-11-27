@@ -168,6 +168,8 @@ class BrainTool(BaseModel):
     icon: str | None = Field(None, description="Its extension's icon: a lucide name, or simple-icons:<slug> for a maker's logo")
     timeout: float = 10
     shortcut_only: bool = Field(False, description="Run by a shortcut only; the model is not offered it")
+    private: bool = Field(False, description="Its extension may read memory: while locked down a guarded conversation "
+                                             "asks your phone for it, as for an action")
 
 
 class ToolResult(BaseModel):

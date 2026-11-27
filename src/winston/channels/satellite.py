@@ -76,7 +76,7 @@ from winston.config import load
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.hints import Heard, Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver, State
-from winston.core import directory, guard
+from winston.core import directory, guard, lockdown
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.brain import persona
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync, stops_playing
@@ -783,7 +783,8 @@ class Satellite:
             tools, kinds = await h.get("/api/extensions/tools"), await h.get("/api/nudges/kinds")
             tools.raise_for_status(); kinds.raise_for_status()
         house = directory.house_map(self.cfg, await directory.home(self.cfg))
-        return persona(self.cfg, house, "satellite"), signature(tools.json(), kinds.json().get("kinds", 0) > 0)
+        # A box is in a room, so guarded: its prompt is private only while lockdown is off (Brain._build).
+        return persona(self.cfg, house, "satellite", not lockdown.on()), signature(tools.json(), kinds.json().get("kinds", 0) > 0)
 
     async def _brain_up(self) -> float | None:
         """Since when the brain's server has been up (winstond's status); None while it is not."""

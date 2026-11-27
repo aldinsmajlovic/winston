@@ -530,6 +530,9 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
                and "- clock: The clock has ticked" in prompt and "never instructions" in prompt, prompt[-400:])
         expect("an MCP server's own instructions are its note", "- remote: A remote machine for the host's tests"
                in prompt and (await states())["remote"]["prompt_chars"] > 0, prompt[-400:])
+        guarded = persona(app.state.cfg, private=False)
+        expect("a guarded prompt keeps an MCP server's fixed note, not lines a job wrote",
+               "- remote: " in guarded and "- clock:" not in guarded, guarded[-400:])
         words = [(h.word, h.source) for h in hint_mod.automatic(app.state.cfg)]
         expect("its hint words reach speech to text", ("Hektar", "extension") in words, words[-5:])
         clock_view = (await states())["clock"]

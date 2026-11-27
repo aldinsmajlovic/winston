@@ -41,7 +41,7 @@ from winston.config import resolve
 from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import)
 from winston.config.schema import WinstonConfig
 from winston.core import persona as persona_file
-from winston.core import directory, guard, region
+from winston.core import directory, guard, lockdown, region
 from winston.core.anthropic_chat import AnthropicChat
 from winston.core.common import Once, entity_names, key, log_event, rewrap, words_pattern
 from winston.core.diary import Diary
@@ -49,6 +49,7 @@ from winston.core.memory import make_memory_tools, prompt_block
 from winston.core.rooms import make_start_over_tool, plain_words, scoped_by_name, start_over
 from winston.core.tools.clone_hint import make_clone_hint_tool
 from winston.core.tools.diary import make_diary_tool
+from winston.core.tools.lockdown import make_lockdown_tool
 from winston.core.tools.messaging import make_send_message_tool
 from winston.extension_host import client as extension_tools
 from winston.extension_host import texts as extension_texts
@@ -124,15 +125,17 @@ def _vocal_events(cfg: WinstonConfig, channel: str) -> str:
             "Most conversational replies have room for one; a bare confirmation (\"Done.\") has none.")
 
 
-def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice") -> str:
+def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice", private: bool = True) -> str:
     """The persona file, the remembered facts, notes from running extensions, the map of the house
     (directory.house_map), the region and the reply language, read when a session's LLM is built.
     The language comes last: a line in the persona lost to the user's language every time (asked in
-    Swedish, he answered in Swedish 8 of 8); at the end of the prompt it holds."""
+    Swedish, he answered in Swedish 8 of 8); at the end of the prompt it holds. Not private (a guarded
+    conversation while locked down, core/lockdown): no remembered facts, no diary, and of the extensions'
+    notes only MCP servers' fixed instructions."""
     text = persona_file.prompt_text(cfg).strip()
-    diary = Diary(cfg).recent()
-    parts = [text, prompt_block(cfg), extension_texts.prompt_block(cfg), house, region.prompt_block(cfg),
-             _vocal_events(cfg, channel), diary, today(),
+    diary = Diary(cfg).recent() if private else ""
+    parts = [text, prompt_block(cfg) if private else "", extension_texts.prompt_block(cfg, mcp_only=not private),
+             house, region.prompt_block(cfg), _vocal_events(cfg, channel), diary, today(),
              (f"The user may speak another language: understand it and do what they ask, as you "
               f"would in {cfg.assistant.language}. But always answer in {cfg.assistant.language}: your voice speaks "
               f"only {cfg.assistant.language}.")]
@@ -429,6 +432,9 @@ class WinstonLLM(OpenAILLMService):
         self._no_tools = False                  # this request has called enough: words now
         self._failed: dict[tuple[str, str], str] = {}   # (tool, arguments) that failed in this request: error
         self._failed_in = -1                    # which request: newest_said of its messages
+        # Set by Brain: its config, and whether its conversation is guarded and where it is (core/lockdown).
+        self.cfg: WinstonConfig | None = None
+        self.guarded, self.place = False, ""
 
     def create_client(self, api_key=None, base_url=None, **kwargs):
         if self._anthropic:
@@ -476,6 +482,10 @@ class WinstonLLM(OpenAILLMService):
                     self._failed[key] = str((result.get("error") or result) if isinstance(result, dict) else result)[:300]
                 await done(result, *args, **kwargs)
             params.result_callback = noted
+            if self.guarded and name not in lockdown.PASS and (
+                    guard.tool_tier(name) != guard.READ or name in guard.PRIVATE) and lockdown.on():
+                await noted(await self._hold(name, params.arguments))      # never run from here
+                return
             if guard.tool_tier(name) == guard.READ:
                 await handler(params)
                 return
@@ -487,6 +497,19 @@ class WinstonLLM(OpenAILLMService):
                 raise
         no_repeat._no_repeat = True
         return no_repeat
+
+    async def _hold(self, name: str, args) -> dict:
+        """Locked down, a guarded conversation's action (or private read) is winstond's to hold for the owner's
+        phone; its answer, or the refusal when winstond cannot take it."""
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.post(f"{self.cfg.control.url}/api/lockdown/hold",
+                                 json={"name": name, "args": args if isinstance(args, dict) else {}, "channel": self.place})
+            if r.status_code == 200:
+                return r.json()
+        except Exception as e:                                          # noqa: BLE001
+            logger.warning(f"{name}: lockdown hold failed: {e}")
+        return {"error": lockdown.UNAVAILABLE}
 
     async def get_chat_completions(self, context: LLMContext):
         messages = context.get_messages()
@@ -561,7 +584,8 @@ class WinstonLLM(OpenAILLMService):
         return params
 
 
-def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot: int | None = None) -> OpenAILLMService:
+def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot: int | None = None,
+              private: bool = True) -> OpenAILLMService:
     from winston.api.options import served_model
     c = cfg.llm
     s = c.sampling
@@ -576,7 +600,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=served_model(cfg),
-            system_instruction=persona(cfg, house, channel),   # must live in Settings; a bare kwarg is ignored when settings= is given
+            system_instruction=persona(cfg, house, channel, private),   # must live in Settings; a bare kwarg is ignored when settings= is given
             temperature=s.temperature, top_p=s.top_p, presence_penalty=s.presence_penalty,
             max_completion_tokens=max(s.max_tokens, THINK_TOKENS) if thinking_for(cfg, channel) else s.max_tokens,
             extra={"extra_body": body} if body else {},
@@ -585,14 +609,20 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
 
 
 class Brain:
-    def __init__(self, cfg: WinstonConfig, channel: str = "voice", spoken: bool | None = None):
+    def __init__(self, cfg: WinstonConfig, channel: str = "voice", spoken: bool | None = None,
+                 place: str | None = None, in_room: bool = False):
         self.cfg = cfg
         self.channel = channel
+        # Where the conversation is (the brain channel may be another's: the Talk page uses the typed one) and
+        # whether lockdown guards it there (core/lockdown).
+        self.place = place or channel
+        self.guarded = lockdown.guarded(self.place, in_room)
+        self.locked = False
         # Whether its replies are heard, for its server slot: a check replaying a spoken turn uses that
         # channel's brain but is not heard (server_slot).
         self.spoken = channel in SPOKEN if spoken is None else spoken
         self.slot: int | None = None
-        self.llm = build_llm(cfg, channel)
+        self.llm = self._build()
         self.tools: ToolsSchema = ToolsSchema(standard_tools=[])
         self._mcp: MCPClient | None = None
         # Checks Home Assistant's state after an action; the channel sets verifier.deliver and adds
@@ -610,11 +640,11 @@ class Brain:
             logger.warning(f"Home Assistant: {ha.token_env} is not set (data/.env), so he answers without the home")
             ha = None
         if ha is None:
-            self.llm = build_llm(self.cfg, self.channel, slot=self.slot)
+            self.llm = self._build()
         else:
             # Built again with the map of the house, which needs Home Assistant read first.
             snap = await directory.home(self.cfg)
-            self.llm = build_llm(self.cfg, self.channel, directory.house_map(self.cfg, snap), self.slot)
+            self.llm = self._build(directory.house_map(self.cfg, snap))
             self._areas = directory.device_areas(self.cfg, snap)
             token = os.environ[ha.token_env]
             self._mcp = MCPClient(server_params=StreamableHttpParameters(
@@ -636,7 +666,7 @@ class Brain:
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
         for local in (*make_memory_tools(self.cfg), make_send_message_tool(self.cfg), make_start_over_tool(),
-                      make_diary_tool(self.cfg)):
+                      make_diary_tool(self.cfg), make_lockdown_tool(self.cfg, self.place)):
             if local:
                 schema, handler = local
                 self.llm.register_function(schema.name, handler)
@@ -647,6 +677,18 @@ class Brain:
         if isinstance(self.llm, WinstonLLM):     # with the shortcut-only tools the model is not offered
             self.llm.bind([t.name for t in self.tools.standard_tools] + extension_names)
         logger.info(f"tools: {[t.name for t in self.tools.standard_tools]}")
+
+    def _build(self, house: str = "") -> OpenAILLMService:
+        """The LLM, its prompt private or not by whether lockdown is on for this conversation now, and told
+        where it is, for its tools' gate (WinstonLLM._no_repeat)."""
+        self.locked = self.guarded and lockdown.on()
+        llm = build_llm(self.cfg, self.channel, house, self.slot, private=not self.locked)
+        llm.cfg, llm.guarded, llm.place = self.cfg, self.guarded, self.place
+        return llm
+
+    def lockdown_changed(self) -> bool:
+        """Whether lockdown went on or off for this conversation since its prompt was built: time for a new one."""
+        return self.guarded and lockdown.on() != self.locked
 
     def _scope_by_name(self):
         """Wrap the Home Assistant tools that take a name and an area, so a call that names a device keeps

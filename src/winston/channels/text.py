@@ -116,7 +116,9 @@ class TextSession:
 
     async def start(self):
         cfg = self.cfg
-        self.brain = Brain(cfg, channel=self.brain_channel, spoken=self.channel in SPOKEN); await self.brain.start()
+        self.brain = Brain(cfg, channel=self.brain_channel, spoken=self.channel in SPOKEN, place=self.channel,
+                           in_room=self.room is not None)
+        await self.brain.start()
         self.brain.verifier.channel = self.channel          # its log says web or discord, not text
         for schema, handler in self._tools:
             self.brain.add_tool(schema, handler)
@@ -195,11 +197,15 @@ class TextSession:
 
 async def stale(s: TextSession, idle_secs: float) -> bool:
     """Whether a channel should close this conversation and start a new one: not while it answers, and
-    only once it has idled for idle_secs or the extension tools on offer changed (a conversation keeps
-    the tools it started with). Checked when the conversation is next used."""
+    only once it has idled for idle_secs, lockdown changed for it (its prompt has memory or not), or the
+    extension tools on offer changed (a conversation keeps the tools it started with). Checked when the
+    conversation is next used."""
     if s.busy:
         return False
     if time.monotonic() - s.last_used > idle_secs:
+        return True
+    if s.brain.lockdown_changed():
+        logger.info(f"{s.channel}: lockdown changed; a new conversation")
         return True
     if changed := await tools_changed(s.brain):
         logger.info(f"{s.channel}: extension tools changed; a new conversation with them")

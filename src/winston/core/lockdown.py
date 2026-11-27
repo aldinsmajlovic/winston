@@ -23,7 +23,7 @@ def state() -> dict | None:
         text = path.read_text()
     except FileNotFoundError:
         return None
-    except OSError:
+    except (OSError, ValueError):       # ValueError: bytes that are not text
         return {"since": None, "by": "unknown"}
     try:
         d = json.loads(text)

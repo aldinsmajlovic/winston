@@ -21,6 +21,8 @@ expect("on", L.turn_on("voice") and L.on() and L.state()["by"] == "voice")
 expect("on twice is a no-op", L.turn_on("cli") is False and L.state()["by"] == "voice")
 (DATA / "lockdown.json").write_text("{not json")
 expect("an unreadable file counts as on", L.on())
+(DATA / "lockdown.json").write_bytes(b"\xff\xfe{")
+expect("so does one that is not text", L.on())
 expect("off", L.turn_off("his computer") and not L.on() and L.turn_off("x") is False)
 expect("guarded places", [L.guarded(p, False) for p in ("voice", "satellite", "assist", "web", "discord", "text")]
        == [True, True, True, False, False, False] and L.guarded("discord", True))
@@ -207,6 +209,94 @@ async def winstond():
                     ended = False
             expect("a stream open from another Host ends when lockdown comes on", ended)
             await api.post("/api/lockdown", json={"on": False})
+
+            # The brain (core/brain.py): a guarded conversation holds its actions and knows nothing private.
+            from datetime import date, timedelta
+            from pipecat.processors.aggregators.llm_context import LLMContext
+            from winston.core import guard
+            from winston.core.brain import Brain
+
+            class Params:
+                def __init__(self, args):
+                    self.arguments, self.result, self.context = args, None, LLMContext()
+                    self.function_name, self.tool_call_id = "", "call_test"
+
+                async def result_callback(self, result, **_):
+                    self.result = result
+
+            fact, entry = "The porch lamp is the blue one.", "A quiet day; the porch lamp stayed blue."
+            with (DATA / "memory" / "home.md").open("a") as f:
+                f.write(f"\n- {fact}\n")
+            (DATA / "memory" / "diary").mkdir(parents=True, exist_ok=True)
+            (DATA / "memory" / "diary" / f"{date.today() - timedelta(1)}.md").write_text(entry)
+
+            async def brain(place):
+                b = Brain(app.state.cfg.model_copy(deep=True), channel="text", place=place)
+                await b.start()
+                return b
+
+            def schema(b, name):
+                return next(t for t in b.tools.standard_tools if t.name == name or t.name.endswith("__" + name))
+
+            async def call(b, name, args=None):
+                p = Params(args or {})
+                p.function_name = schema(b, name).name
+                await b.llm._functions[p.function_name].handler(p)
+                return p.result
+
+            def acted(since):
+                return [w for w in fake.writes[since:] if w["type"].startswith("mcp/")]
+
+            turn_on = {"name": "Taklampa"}
+            await api.post("/api/lockdown", json={"on": True})
+            box = await brain("satellite")
+            prompt = box.llm._settings.system_instruction
+            expect("locked down, a box's prompt has no memory and no diary", fact not in prompt and entry not in prompt
+                   and "# What you remember" not in prompt, prompt[-600:])
+            expect("Home Assistant's turn on is scoped by name, so wrapped twice",
+                   {"name", "area"} <= set(schema(box, "HassTurnOn").properties or {}))
+            before, writes = len(await confirmations()), len(fake.writes)
+            r = await call(box, "HassTurnOn", turn_on)
+            expect("its action waits for the phone, held exactly once, and has not run",
+                   r == {"waiting": True, "note": L.WAITING} and len(await confirmations()) == before + 1
+                   and not acted(writes), (r, acted(writes)))
+            expect("get_diary is not available", await call(box, "get_diary") == {"error": L.UNAVAILABLE})
+            expect("start_over runs", await call(box, "start_over") == {"started_over": True})
+            expect("an extension tool that may read memory is private", "friend_note" in guard.PRIVATE
+                   and "probe_state" not in guard.PRIVATE)
+
+            dm = await brain("discord")
+            writes = len(fake.writes)
+            r = await call(dm, "HassTurnOn", turn_on)
+            expect("locked down, a Discord DM outside a room has memory and acts at once",
+                   fact in dm.llm._settings.system_instruction and acted(writes), (r, acted(writes)))
+
+            await api.post("/api/lockdown", json={"on": False})
+            late = await brain("satellite")
+            expect("built while off, a box has memory and is current",
+                   fact in late.llm._settings.system_instruction and not late.lockdown_changed())
+            await api.post("/api/lockdown", json={"on": True})
+            before, writes = len(await confirmations()), len(fake.writes)
+            r = await call(late, "HassTurnOn", turn_on)
+            expect("turned on mid-conversation, its next action is held anyway, and it knows to start afresh",
+                   r == {"waiting": True, "note": L.WAITING} and len(await confirmations()) == before + 1
+                   and not acted(writes) and late.lockdown_changed(), r)
+
+            late.cfg.control.port = free_port()
+            before, writes = len(await confirmations()), len(fake.writes)
+            r = await call(late, "HassTurnOn", turn_on)
+            expect("winstond out of reach: refused, nothing run, nothing queued",
+                   r == {"error": L.UNAVAILABLE} and not acted(writes) and len(await confirmations()) == before, r)
+
+            r = await call(box, "lockdown", {"on": False})
+            expect("lockdown off from a box waits for the phone, and it stays on",
+                   r == {"waiting": True, "note": L.WAITING} and L.on(), r)
+            await api.post("/api/lockdown", json={"on": False})
+            r = await call(box, "lockdown", {"on": True})
+            expect("lockdown on from a box is at once", r == {"locked_down": True} and L.on(), r)
+            await api.post("/api/lockdown", json={"on": False})
+            for b in (box, dm, late):
+                await b.close()
         finally:
             await api.aclose()
             await host.stop_all()

@@ -142,6 +142,8 @@ async def register(brain, channel: str) -> list[str]:
     live.know_extension_tools(tools)
     for tool in tools:
         guard.set_tier(tool["name"], guard.READ if tool["tier"] == "read" else guard.ACT)
+        if tool.get("private"):
+            guard.PRIVATE.add(tool["name"])
         handler = make_handler(brain.cfg, tool, channel, lambda: brain.on_slow)
         if tool.get("shortcut_only"):           # a shortcut's call runs it by name; the model is not told of it
             brain.llm.register_function(tool["name"], handler)

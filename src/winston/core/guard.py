@@ -10,6 +10,9 @@ READ, ACT = "read", "act"
 
 # Tools that say their own tier (extensions declare one per tool), by the name the brain sees.
 DECLARED: dict[str, str] = {}
+# Reads that reach what he knows about the user (the diary, an extension that may read memory): while locked
+# down a guarded conversation asks the phone for them as for an action (core/lockdown).
+PRIVATE: set[str] = {"get_diary"}
 
 
 def set_tier(name: str, tier: str) -> None:
