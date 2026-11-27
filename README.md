@@ -74,13 +74,20 @@ Setup, with or without Home Assistant adopting the box: [Voice PE](docs/voice-pe
 - **Using it:** [setup](docs/setup.md), [running](docs/running.md), [Home Assistant](docs/home-assistant.md),
   [Home Assistant integration](docs/ha-integration.md), [Assist](docs/assist.md),
   [tools](docs/tools.md), [voices](docs/voices.md), [announcements](docs/announcements.md),
-  [Discord](docs/discord.md), [computers](docs/computer.md)
+  [Discord](docs/discord.md), [computers](docs/computer.md), [known issues](docs/known-issues.md)
 - **Rooms:** [Voice PE satellite](docs/voice-pe.md), [rooms](docs/rooms.md)
 - **Extending it:** [extensions](docs/extensions.md), [built-in extensions](docs/built-in-extensions.md)
 - **How it works:** [architecture](docs/architecture.md), [hardware](docs/hardware.md),
   [decisions](docs/decisions.md)
 - **Contributing:** [UI guide](docs/ui-guide.md), [identity](docs/identity.md),
   [writing docs](docs/writing-docs.md)
+
+## Built with AI
+
+Most of Winston's code and docs are written with Claude, Anthropic's coding assistant; nearly every
+commit carries its Co-Authored-By line. A person decides what gets built and why, and a step only
+counts as done once it works on real hardware: the GPU, Home Assistant and Voice PE boxes in a lived-in
+home.
 
 ## Licence
 

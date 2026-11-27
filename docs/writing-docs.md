@@ -50,6 +50,7 @@ links to it.
 | `docs/built-in-extensions.md` | The extensions that come with Winston |
 | `docs/spotify.md`, `docs/vulnerabilities.md` | Their one extension |
 | `docs/direction.md` | Where Winston is going and why, from research across the alternatives (dated) |
+| `docs/known-issues.md` | What does not work yet for a user, what to do instead, and a link to where it stands |
 | `docs/plan.md` | Milestones, their status, and what was measured when |
 | `docs/decisions.md` | What changed and why, one line each |
 
