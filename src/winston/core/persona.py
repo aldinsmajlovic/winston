@@ -67,10 +67,20 @@ def read(cfg: WinstonConfig) -> dict:
     return {"title": title or cfg.assistant.name, "behaviour": out[BEHAVE], "instructions": out[INSTRUCT]}
 
 
+def pronouns(cfg: WinstonConfig) -> str:
+    """The user's pronouns (assistant.pronouns) as a sentence, for whatever talks about them: the
+    prompt and the diary. Empty when not set."""
+    p = cfg.assistant.pronouns
+    return f"The user's pronouns are {p}." if p else ""
+
+
 def identity(cfg: WinstonConfig) -> str:
     """The line that opens the prompt. assistant.name is the one source of his name; the file's own
-    title and rules follow it, and a rename offers to rewrite them (rename_lines, rename)."""
-    return f"Your name is {cfg.assistant.name}."
+    title and rules follow it, and a rename offers to rewrite them (rename_lines, rename). Then how he
+    addresses the user and their pronouns, when set: settings, so the owner's word beats a guess."""
+    a = cfg.assistant
+    address = f'Address the user as "{a.address.strip()}".' if a.address.strip() else ""
+    return " ".join(s for s in (f"Your name is {a.name}.", address, pronouns(cfg)) if s)
 
 
 def prompt_text(cfg: WinstonConfig) -> str:

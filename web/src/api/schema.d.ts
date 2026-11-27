@@ -1652,6 +1652,19 @@ export interface components {
              */
             name?: string;
             /**
+             * What he calls you
+             * @description How he addresses you when he speaks to you. Empty leaves it to his personality and what he remembers.
+             * @default
+             */
+            address?: string;
+            /**
+             * Your pronouns
+             * @description How he refers to you when he talks about you, as in his diary.
+             * @default
+             * @enum {string}
+             */
+            pronouns?: "" | "he/him" | "she/her" | "they/them";
+            /**
              * Personality file
              * @description The file in the data folder his personality is read from. Edit its words under Assistant, Personality.
              * @default persona.md
@@ -4821,6 +4834,8 @@ export interface components {
             /**
              * @default {
              *       "name": "Winston",
+             *       "address": "",
+             *       "pronouns": "",
              *       "persona": "persona.md",
              *       "language": "English"
              *     }

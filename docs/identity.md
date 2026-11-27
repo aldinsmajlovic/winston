@@ -1,7 +1,7 @@
 # Identity
 
-Who Winston is to the people he talks to: his name, his personality, and the mark that shows what he
-is doing.
+Who Winston is to the people he talks to: his name, how he addresses you, his personality, and the mark
+that shows what he is doing.
 
 <img src="images/logo.svg" alt="Winston's logo" width="120">
 
@@ -31,6 +31,19 @@ by default.
 A rename restarts the voice, satellite and Discord channels. Two names do not change with his: a room
 box's wake word, set per box under Ways to talk ([Voice PE](voice-pe.md)), and Speaker name in
 Spotify, a setting of its own ([built-in extensions](built-in-extensions.md#spotify)).
+
+## How he addresses you
+
+What he calls you (`assistant.address`) and Your pronouns (`assistant.pronouns`: he/him, she/her or
+they/them) sit under Who he is on the Assistant page and in the setup wizard. Set, they follow his name
+in the prompt's opening line:
+
+> Your name is Winston. Address the user as "ma'am". The user's pronouns are she/her.
+
+What he calls you is for when he speaks to you; your pronouns for when he talks about you, as in his
+diary, which gets the same line. Left empty, nothing is added and it is up to his personality and what
+he remembers. It is one setting for whoever talks to him: he does not tell voices apart, so a guest is
+addressed the same way. The plain lines said when his wording of a nudge fails address no one.
 
 ## His personality
 

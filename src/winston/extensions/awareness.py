@@ -58,7 +58,7 @@ async def check_goodnight(ctx):
 
     await ctx.nudge("goodnight", Nudge(
         about=str(evening),
-        say="Goodnight, sir. Sleep well.",
+        say="Goodnight. Sleep well.",
         facts={"turns": len(answered), "quiet_minutes": int(quiet_for / 60)},
         expires=datetime.combine(evening + timedelta(days=1), time(EXPIRES_HOUR), now.tzinfo),
     ))

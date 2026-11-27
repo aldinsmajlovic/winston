@@ -79,6 +79,14 @@ class AssistantConfig(Model):
                                   "Renaming offers to change it in his personality too.",
                       json_schema_extra=ui(help="Saving a new name offers to change it in his personality too. A "
                                                 "room box's wake word is set under Ways to talk."))
+    address: str = Field("", title="What he calls you",
+                         description="How he addresses you when he speaks to you. Empty leaves it to his "
+                                     "personality and what he remembers.",
+                         json_schema_extra=ui(placeholder="Sir, ma'am or your first name"))
+    pronouns: Literal["", "he/him", "she/her", "they/them"] = Field(
+        "", title="Your pronouns", description="How he refers to you when he talks about you, as in his diary.",
+        json_schema_extra=ui(labels={"": "Not set", "he/him": "He/him", "she/her": "She/her",
+                                     "they/them": "They/them"}))
     persona: str = Field("persona.md", title="Personality file",
                          description="The file in the data folder his personality is read from. Edit its words "
                                      "under Assistant, Personality.",

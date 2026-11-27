@@ -118,10 +118,10 @@ def _vocal_events(cfg: WinstonConfig, channel: str) -> str:
     if "tts-breeze2" not in cwd and "tts-breeze2" not in cmd:
         return ""
     return ("Your voice turns [sigh], [laugh], [cough] and [clears throat] into real sounds when you write them "
-            "in a reply. Use them the way a person would: a [laugh] after a joke, yours or his, a [sigh] before "
+            "in a reply. Use them the way a person would: a [laugh] after a joke, yours or the user's, a [sigh] before "
             "bad news or with sympathy, a [clears throat] before a correction or something formal. For example "
-            "\"[laugh] I walked right into that one, sir.\" or \"[sigh] Rain all weekend, I'm afraid.\" "
-            "Most conversational replies have room for one; a bare confirmation (\"Done, sir.\") has none.")
+            "\"[laugh] I walked right into that one.\" or \"[sigh] Rain all weekend, I'm afraid.\" "
+            "Most conversational replies have room for one; a bare confirmation (\"Done.\") has none.")
 
 
 def persona(cfg: WinstonConfig, house: str = "", channel: str = "voice") -> str:

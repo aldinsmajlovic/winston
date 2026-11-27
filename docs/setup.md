@@ -347,10 +347,11 @@ goes on.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/setup-who-dark.png">
-  <img src="images/setup-who-light.png" alt="The setup wizard's Who he is step: his name and reply language, his personality with its first rule and the rest folded under Read and change it, and his voice" width="720">
+  <img src="images/setup-who-light.png" alt="The setup wizard's Who he is step: his name, what he calls you, your pronouns and his reply language, his personality with its first rule and the rest folded under Read and change it, and his voice" width="720">
 </picture>
 
-- **His name and reply language**, as on the Assistant page. The reply language only changes what he
+- **His name, what he calls you, your pronouns and his reply language**, as on the Assistant page
+  ([how he addresses you](identity.md#how-he-addresses-you)). The reply language only changes what he
   answers in, not his voice or hearing, and the field says so: an English-only voice reads other
   languages badly.
 - **His personality**: its first rule, with the whole document folded under it (Read and change it,

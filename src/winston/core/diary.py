@@ -149,8 +149,10 @@ class Diary:
             weekday = ""
 
         manner = "".join(f"- {r}\n" for r in persona.read(self.cfg)["behaviour"])
+        who = persona.pronouns(self.cfg)
         prompt = DIARY_PROMPT.format(name=self.cfg.assistant.name, date=day, weekday=weekday, log=log_text,
-                                     manner=f"Your manner:\n{manner}\n" if manner else "")
+                                     manner=(f"Your manner:\n{manner}\n" if manner else "")
+                                     + (f"{who}\n\n" if who else ""))
         text = await self._ask(prompt, talking=talking)
         if not text:
             return None

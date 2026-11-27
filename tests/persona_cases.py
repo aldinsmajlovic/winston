@@ -40,6 +40,13 @@ expect("the file's own rules still follow", "You are Winston, a butler." in prom
 expect("reading the prompt never writes the file", scratch.read_text() == before)
 expect("the page still shows the file's title", persona.read(mira)["title"] == "Winston")
 
+# How he addresses the user: after his name when set, nothing when not.
+ma = cfg.model_copy(update={"assistant": cfg.assistant.model_copy(update={"address": " ma'am ", "pronouns": "she/her"})})
+expect("address and pronouns follow his name", persona.prompt_text(ma).startswith(
+    "# Winston\n\nYour name is Winston. Address the user as \"ma'am\". The user's pronouns are she/her.\n\n- "),
+    repr(persona.prompt_text(ma)[:120]))
+expect("unset, neither is said", persona.identity(cfg) == "Your name is Winston." and persona.pronouns(cfg) == "")
+
 scratch.write_text("# Winston\n\n## How you behave\n\n- You are Winston, a butler. Winston's voice is calm.\n"
                    "- Run `winston announce` or ask winstond; WinstonConfig and Winstons stay.\n\n"
                    "## Instructions\n\n- Call GetDateTime for the time.\n")
