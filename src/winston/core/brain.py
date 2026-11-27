@@ -216,6 +216,21 @@ def chat_client(cfg: WinstonConfig, timeout: float) -> AsyncOpenAI | AnthropicCh
     return AsyncOpenAI(base_url=c.base_url, api_key=api_key(c.api_key_env), timeout=timeout)
 
 
+async def check_brain(cfg: WinstonConfig):
+    """The Brain card's Check: one tiny question (".", one token back, no instructions or tools) with the saved
+    key and model. Whether it answered, in words, noted like any brain call (engines/brain_health)."""
+    from winston.api.options import BrainCheck, served_model
+    t0 = time.perf_counter()
+    try:
+        await chat_client(cfg, timeout=20).chat.completions.create(
+            model=served_model(cfg), messages=[{"role": "user", "content": "."}], max_tokens=1)
+    except Exception as e:                                              # noqa: BLE001
+        return BrainCheck(ok=False, text=brain_health.failed("check", e))
+    ms = round((time.perf_counter() - t0) * 1000)
+    brain_health.worked("check", f"works, answered in {ms} ms")
+    return BrainCheck(ok=True, text=f"Works, answered in {ms} ms", ms=ms)
+
+
 def keep_alive(cfg: WinstonConfig) -> int | str | None:
     """How long an Ollama brain keeps its model after a request; None for any other server. Ollama's own 5
     minutes cost the next first word 4 to 7 s on a 3090 and 1 to 6 minutes on the processor (docs/hardware.md),

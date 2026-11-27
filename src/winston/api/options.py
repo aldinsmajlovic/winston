@@ -68,6 +68,12 @@ class Options(BaseModel):
     served_by: str | None = None  # llm_models: the engine the Downloaded group was read for, if known
 
 
+class BrainCheck(BaseModel):
+    ok: bool
+    text: str                   # "Works, answered in 640 ms", or why not ("Key refused (401)")
+    ms: int | None = None
+
+
 class HomeAssistantCheck(BaseModel):
     ok: bool
     detail: str = ""

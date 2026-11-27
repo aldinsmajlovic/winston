@@ -1152,6 +1152,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/engines/llm/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the brain one tiny question with the saved key and model: whether it answers, and why not */
+        post: operations["check_llm_api_engines_llm_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/engines/{name}/start": {
         parameters: {
             query?: never;
@@ -1806,6 +1823,15 @@ export interface components {
              * @default
              */
             password?: string;
+        };
+        /** BrainCheck */
+        BrainCheck: {
+            /** Ok */
+            ok: boolean;
+            /** Text */
+            text: string;
+            /** Ms */
+            ms?: number | null;
         };
         /** BrainMemory */
         BrainMemory: {
@@ -7310,6 +7336,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_llm_api_engines_llm_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainCheck"];
                 };
             };
         };

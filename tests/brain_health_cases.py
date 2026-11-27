@@ -165,5 +165,20 @@ check("a warm-up refused is a failure", failure(), "Key refused (401)")
 warm(answering)
 check("one that answers clears it", failure(), "")
 
+# The Check button's request: one tiny question with the saved key and model.
+from winston.core.brain import check_brain  # noqa: E402
+
+clear()
+r = asyncio.run(check_brain(cfg_at(refusing)))
+check("a check with a refused key", (r.ok, r.text, r.ms), (False, "Key refused (401)", None))
+check("is noted like a real call", failure(), "Key refused (401)")
+r = asyncio.run(check_brain(cfg_at(answering)))            # credit topped up, or the key fixed
+check("a check that answers", (r.ok, r.text.startswith("Works, answered in "), isinstance(r.ms, int)),
+      (True, True, True))
+check("clears the note", failure(), "")
+check("and is in the Log", log_tail(1)[0].endswith(f"  check  works, answered in {r.ms} ms"), True)
+r = asyncio.run(check_brain(cfg_at(answering, api_key_env="NOPE_KEY")))
+check("no key saved", (r.ok, r.text), (False, "NOPE_KEY is not set (data/.env)"))
+
 finish_checks("brain health: failures in words, the note as the Brain's status, brain.log as its Log, cleared by a "
-              "call that works, a restart or a save; conversations and the warm-up report")
+              "call that works, a restart or a save; conversations and the warm-up report; the check")

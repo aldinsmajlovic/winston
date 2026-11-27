@@ -30,7 +30,7 @@ from winston import __version__, setup as releases
 from winston.api.lockdown import router as lockdown_router
 from winston.api import room_box as usb_box, secrets, setup_link, updates
 from winston.providers import ha_signin, improv
-from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
+from winston.api.options import PROVIDERS as OPTION_NAMES, BrainCheck, HomeAssistantCheck, Options, check_home_assistant, options
 from winston.config import load, repo_root, save
 from winston.config.loader import apply_changes, get_in, version as file_version
 from winston.config.presets import LLM, PROFILES, TTS, stt_presets
@@ -41,11 +41,11 @@ from winston.channels.assist import Assist
 from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.common import failure_words, key
-from winston.core.brain import Brain, api_key
+from winston.core.brain import Brain, api_key, check_brain
 from winston.core import lines, lockdown, memory, persona, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
 from winston.core.rooms import BoxState, MicHold, Rooms, RoomState, SyncRequest, SyncResult
-from winston.engines import install
+from winston.engines import brain_health, install
 from winston.engines.supervisor import Supervisor
 from winston.extension_host import accounts
 from winston.extension_host.api import LogLines, router as extensions_router
@@ -1518,6 +1518,11 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             raise HTTPException(503, "The Talk page microphone is not running. Status shows why.")
         return JSONResponse(r.json(), status_code=r.status_code)
 
+    @app.post("/api/engines/llm/check", response_model=BrainCheck,
+              summary="Ask the brain one tiny question with the saved key and model: whether it answers, and why not")
+    async def check_llm():
+        return await check_brain(app.state.cfg)
+
     @app.post("/api/engines/{name}/start", response_model=Ok)
     async def start(name: str):
         managed(name)
@@ -1687,6 +1692,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     async def secret_changed(name: str) -> SecretResult:
         dump = _dump(app.state.cfg)
         st = secret_status(name, dump)
+        if name == app.state.cfg.llm.api_key_env:
+            brain_health.clear()                    # a new key: judged on its next call
         sup.mark_stale(r for r in st.restarts if r != "control")
         if "control" in st.restarts:
             control_secrets.add(name)
