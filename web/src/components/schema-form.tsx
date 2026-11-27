@@ -352,7 +352,7 @@ function OptionsWidget({ id, value, disabled, readonly, onChange, schema }: Widg
         value={value ?? ''}
         choices={choices}
         custom
-        loading={loading}
+        loading={loading || typed.trim() !== q}
         problem={problem}
         disabled={disabled || readonly}
         onChange={(v) => onChange(v)}

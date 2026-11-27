@@ -2,19 +2,23 @@ import type { ComponentProps, MouseEvent } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { $api, type ModelFacts } from '@/api/client'
 import { useConfig } from '@/api/config'
-import { ChoiceName, ChoicePicture, Combobox, type Choice, type RowActions } from '@/components/combobox'
+import { ChoiceName, ChoicePicture, Combobox, type Choice, type Filter, type RowActions } from '@/components/combobox'
 import { KindIcon } from '@/components/kind-icon'
-import { Badge } from '@/components/ui/badge'
+import { UseBar } from '@/components/memory-bar'
+import { Button } from '@/components/ui/button'
 import { useDraft } from '@/hooks/use-draft'
 import { useGraphicsMemory } from '@/hooks/use-graphics-memory'
 import { capitalize, size } from '@/lib/format'
 import { at, gb, memoryUse, type Use } from '@/lib/graphics-memory'
 import { cn } from '@/lib/utils'
 
-type Fit = { mib: number; tone: Use['tone']; measured: boolean }
+type Fit = { mib: number; tone: Use['tone']; measured: boolean; use: Use }
 
-const TONE: Record<Use['tone'], string> = { ok: 'text-success', warn: 'text-warning', bad: 'text-destructive' }
+// Quiet when it fits; the verdict's colour only on a model that does not, its words for a screen reader.
+const TONE: Record<Use['tone'], string> = { ok: '', warn: 'text-warning', bad: 'text-destructive' }
 const VERDICT: Record<Use['tone'], string> = { ok: 'fits', warn: 'only just fits', bad: 'does not fit' }
+// The Hub's and Ollama's tags in the app's words (an action, not a tool).
+const TAGS: Record<string, string> = { vision: 'sees images', tools: 'uses actions', thinking: 'can think first', MoE: 'mixture of experts' }
 const count = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 })
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
 
@@ -27,9 +31,18 @@ function ago(iso: string): string {
 }
 
 /** What a choice's hint says beyond the facts the row shows (its size, downloads, how many sizes): why it is
- * greyed, that Ollama pulls its own copy, that it is not downloaded yet. */
+ * greyed, that Ollama pulls its own copy, that it is not downloaded yet. Sentence case, but vLLM stays vLLM. */
 function extra(hint?: string | null): string {
-  return (hint ?? '').split(', ').filter((p) => !/^\d[\d.]* (GB|MB)$|downloads$|sizes?$/.test(p)).join(', ')
+  const s = (hint ?? '').split(', ').filter((p) => !/^\d[\d.]* (GB|MB)$|downloads$|sizes?$/.test(p)).join(', ')
+  return /^[a-z][a-z ]/.test(s) ? capitalize(s) : s
+}
+
+/** "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_XL" as its name, its size and who made it. */
+function parts(label: string): { name: string; tag: string | null; maker: string | null } {
+  const i = label.lastIndexOf(':')
+  const path = (i > 0 ? label.slice(0, i) : label).replace(/^hf\.co\//, '')
+  const j = path.lastIndexOf('/')
+  return { name: path.slice(j + 1), tag: i > 0 ? label.slice(i + 1) : null, maker: j > 0 ? path.slice(0, j) : null }
 }
 
 const stop = (e: MouseEvent) => e.stopPropagation()
@@ -47,16 +60,28 @@ function useModelFit() {
   const fit = (f?: ModelFacts | null): Fit | null => {
     if (!plan?.total_mb || !cfg || !presets.data || !f?.points) return null
     const use = memoryUse({ ...plan, brain: { points: f.points, measured: !!f.measured, share: null } }, cfg, presets.data)
-    return use.brainHere ? { mib: at(f.points, k), tone: use.tone, measured: !!f.measured } : null
+    return use.brainHere ? { mib: at(f.points, k), tone: use.tone, measured: !!f.measured, use } : null
   }
   return { fit, plan, k }
 }
 
-/** One model: its name and source, the memory it takes and whether that fits, what it is, and the facts to
- * choose by. A GGUF repo's other sizes are a search away; Ollama's sizes are picked from the row. */
+/** The memory bar as it would be with this model, and the brain's share of it. */
+function Memory({ fit }: { fit: Fit }) {
+  return (
+    <span className="flex shrink-0 items-center gap-2 pt-0.5">
+      {/* important: a command item sizes every icon in it to 16 px */}
+      <UseBar use={fit.use} className="h-1.5! w-16! rounded-full sm:w-24!" decorative />
+      <span className={cn('w-17 text-right text-xs font-medium tabular-nums', TONE[fit.tone])}>
+        {fit.measured ? '' : '≈ '}{gb(fit.mib)} GB<span className="sr-only">, {VERDICT[fit.tone]}</span>
+      </span>
+    </span>
+  )
+}
+
+/** One model: its name and size, the memory it would take, what it is, and the few facts to choose by. A GGUF
+ * repo's other sizes are a search away; Ollama's are picked from the row. */
 function ModelRow({ choice: c, act, fit }: { choice: Choice; act: RowActions; fit: Fit | null }) {
   const f = c.facts
-  const more = extra(c.hint)
   if (!f) {
     return (
       <>
@@ -66,56 +91,54 @@ function ModelRow({ choice: c, act, fit }: { choice: Choice; act: RowActions; fi
       </>
     )
   }
+  const { name, tag, maker } = parts(c.label)
+  const about = maker && f.description ? `${maker}, ${f.description.replace(/^Made from/, 'made from')}` : maker ?? f.description
   const facts = [
+    extra(c.hint),
     f.params && `${f.params} parameters`,
-    f.bytes && `${size(f.bytes)} of weights`,
-    f.context && `up to ${Math.round(f.context / 1024)}K tokens`,
-    f.license,
+    !fit && f.bytes && `${size(f.bytes)} of weights`,
+    f.context && `${Math.round(f.context / 1024)}K tokens`,
+    ...(f.tags ?? []).map((t) => TAGS[t] ?? t),
     f.downloads != null && `${count.format(f.downloads)} downloads`,
-    f.likes ? `${count.format(f.likes)} likes` : null,
     f.updated && `updated ${ago(f.updated)}`,
   ].filter((x): x is string => !!x)
   const ollama = f.source === 'Ollama'
-  const name = c.value.split(':')[0]
+  const base = c.value.split(':')[0]
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-1 py-1">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <span className="flex min-w-0 items-center gap-2">
-          <KindIcon name={ollama ? 'ollama' : f.source ? 'huggingface' : null} />
-          <ChoiceName text={c.label} className="truncate font-medium" />
-        </span>
-        {fit ? (
-          <span className={cn('shrink-0 text-xs font-medium tabular-nums', TONE[fit.tone])}>
-            {fit.measured ? '' : '≈ '}{gb(fit.mib)} GB, {VERDICT[fit.tone]}
+    <div className="flex min-w-0 flex-1 flex-col gap-1 py-1.5">
+      <div className="flex items-start gap-3">
+        <span className="flex min-w-0 flex-1 gap-2">
+          <span className="pt-0.5">
+            <KindIcon name={ollama ? 'ollama' : f.source ? 'huggingface' : null} />
           </span>
-        ) : null}
+          <span className="min-w-0 break-words">
+            <span className="font-medium">{name}</span>
+            {tag ? <span className="text-muted-foreground"> {tag}</span> : null}
+          </span>
+        </span>
+        {fit ? <Memory fit={fit} /> : null}
       </div>
-      {f.description || more ? (
-        <p className="line-clamp-2 text-xs text-muted-foreground">{[f.description, more && capitalize(more)].filter(Boolean).join('. ')}</p>
-      ) : null}
+      {about ? <p className="line-clamp-2 text-xs text-muted-foreground">{about}</p> : null}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {facts.map((t) => <span key={t}>{t}</span>)}
-        {f.tags?.map((t) => <Badge key={t} variant="secondary">{t}</Badge>)}
         {ollama && f.sizes?.length ? (
           <span className="flex flex-wrap items-center gap-1">
             Sizes
             {f.sizes.map((s) => (
-              <button key={s} type="button" className="rounded-md border px-1.5 hover:bg-background hover:text-foreground"
-                onClick={(e) => { stop(e); act.pick(`${name}:${s}`) }}>
+              <Button key={s} type="button" variant="outline" size="sm" onClick={(e) => { stop(e); act.pick(`${base}:${s}`) }}>
                 {s}
-              </button>
+              </Button>
             ))}
           </span>
         ) : null}
         {!ollama && f.repo && (f.sizes?.length ?? 0) > 1 ? (
-          <button type="button" className="rounded-md border px-1.5 hover:bg-background hover:text-foreground"
-            onClick={(e) => { stop(e); act.search(f.repo!) }}>
+          <Button type="button" variant="outline" size="sm" onClick={(e) => { stop(e); act.search(f.repo!) }}>
             {f.sizes!.length} sizes
-          </button>
+          </Button>
         ) : null}
         {f.link ? (
           <a href={f.link} target="_blank" rel="noreferrer" onClick={stop}
-            className="inline-flex items-center gap-1 underline-offset-4 hover:text-foreground hover:underline">
+            className="inline-flex items-center gap-1 text-foreground underline underline-offset-4">
             {f.source} <ExternalLink className="size-3!" aria-hidden />
           </a>
         ) : null}
@@ -127,13 +150,15 @@ function ModelRow({ choice: c, act, fit }: { choice: Choice; act: RowActions; fi
 /** The brain's Model: the searchable list in a dialog of rows with what each model is and whether it fits. */
 export function ModelPicker(props: ComponentProps<typeof Combobox>) {
   const { fit, plan, k } = useModelFit()
-  const where = plan?.memory === 'system' ? "the computer's" : plan?.gpu ? `the ${plan.gpu}'s` : "the card's"
-  const memory = plan?.total_mb && props.choices.some((c) => fit(c.facts))
-    ? `Memory is the brain's with ${k}K tokens in mind (≈ where estimated from its size). Green fits ${where} ` +
-      `${gb(plan.total_mb)} GB beside his voice and hearing, amber only just, red does not.`
-    : undefined
+  const fits = plan?.total_mb ? props.choices.some((c) => fit(c.facts)) : false
+  const bar = plan?.memory === 'system' ? 'computer memory' : 'graphics memory'
+  const filters: Filter[] = [
+    ...(fits ? [{ label: 'Fits', keep: (c: Choice) => (fit(c.facts)?.tone ?? 'bad') !== 'bad' }] : []),
+    ...(props.choices.some((c) => c.facts?.tags?.includes('vision')) ? [{ label: 'Sees images', keep: (c: Choice) => !!c.facts?.tags?.includes('vision') }] : []),
+  ]
   return (
-    <Combobox {...props} title="Model" description={memory}
+    <Combobox {...props} title="Model" filters={filters}
+      description={fits ? `Each bar is the ${bar} bar with that model and ${k}K tokens in mind.` : undefined}
       row={(c, act) => <ModelRow choice={c} act={act} fit={fit(c.facts)} />} />
   )
 }

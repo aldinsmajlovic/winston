@@ -240,22 +240,28 @@ top-p, presence penalty and the longest reply, for when your model's page recomm
 
 #### Choosing a model
 
-Model opens a dialog with search at the top and a row for each model. Each row has:
+Model opens a dialog with search at the top, Fits and Sees images beside it to narrow the list, and a row
+for each model. A row is only chosen, by a click or Enter; Use this model takes it, and Cancel leaves the
+model as it was, since a new model costs a download and a restart. While the server searches, the search
+field's icon turns and an empty list says Searching, not Nothing matches.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/brain-model-dark.png">
-  <img src="images/brain-model-light.png" alt="The Model dialog: a search for qwen3.8 27b, each find with its memory and whether it fits, what it is made from, parameters, size, context, license, downloads and its sizes" width="720">
+  <img src="images/brain-model-light.png" alt="The Model dialog: a search for qwen3.8 27b, each find with a small memory bar and its memory, what it is made from, parameters, context, downloads and its sizes, and Use this model at the bottom" width="720">
 </picture>
 
 | Part of the row | Where it comes from |
 | --- | --- |
-| Name, and where it comes from (Hugging Face or Ollama), linked to its page | The model's name; for Ollama, a name without `hf.co/` |
-| Memory and a verdict: "≈ 18.1 GB, does not fit" | Its memory at How much he keeps in mind, as the [graphics memory](#graphics-memory) bar would count it if it were picked: green fits beside the voice, hearing and other programs, amber only just (80% or more), red does not. Measured for the brains in [hardware](hardware.md#context-filled-last), else estimated from the weights (≈) |
-| What it is | Hugging Face: "Made from" its base model. Ollama: the library's own description |
-| Parameters, weights, longest context, license, downloads, likes, last update | The Hub's model API (parameters and context from the GGUF header). Ollama's library gives downloads and the last update; a pulled model, its size and parameters from Ollama |
-| Tags | vision and MoE from the Hub's tags; tools, vision and thinking from Ollama's library |
-| Sizes | A GGUF repo: "26 sizes" searches that repo, listing each with its memory. Ollama: each size (`8b`) picks `name:8b` |
-| A note | Why it is greyed, "Not downloaded yet", "Ollama pulls its own copy" |
+| Name, then its size in grey ("Qwen3.8-27B-GGUF UD-Q4_K_XL") | The model's name; for Ollama, a name without `hf.co/` |
+| A small memory bar and the brain's memory ("≈ 17.9 GB") | The [graphics memory](#graphics-memory) bar as it would be with this model at How much he keeps in mind, in the same steps of ink, with a notch where the card ends when it does not fit. The number is in the text colour when it fits, amber when only just (80% or more), red when not. Measured for the brains in [hardware](hardware.md#context-filled-last), else estimated from the weights (≈) |
+| Who made it and what it is | Hugging Face: the repo's owner and "made from" its base model. Ollama: the library's own description |
+| Parameters, longest context, what it can do, downloads, last update | The Hub's model API (parameters and context from the GGUF header). Ollama's library gives downloads and the last update; a pulled model, its size and parameters from Ollama. What it can do in words: sees images, uses actions, can think first. The weights' size only where the row has no memory bar |
+| Sizes | A GGUF repo: "26 sizes" searches that repo, listing each with its memory. Ollama: each size (`8b`) chooses `name:8b` |
+| A link to its page | Hugging Face or Ollama, underlined |
+| A note | Why it is greyed ("vLLM only"), "Not downloaded yet", "Ollama pulls its own copy" |
+
+Fits keeps the models whose bar fits, only just included; Sees images keeps those tagged vision. Each is
+offered only while some model in the list has what it asks for.
 
 The memory is shown only for a brain Winston runs on this computer: not for a hosted brain, a server on
 your network, or vLLM, which takes its share of the card whatever the model (a vLLM model too big for

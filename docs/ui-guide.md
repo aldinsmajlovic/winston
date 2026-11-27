@@ -391,6 +391,10 @@ required asterisk.
   (`options`), or for an extension its own list (`Field(choices=...)`). It renders as a searchable
   dropdown (`Combobox`) that still takes a typed value, and `placeholder` says what empty means ("Not
   set", "Same as Home Assistant").
+- A pick that costs a download and a restart (the brain's Model) is a dialog of rows with filters beside
+  its search. A click or Enter only chooses a row; Use this model takes it.
+- While a server searches, the search field's icon turns and an empty list says Searching, never
+  "Nothing matches." before the answer is in.
 - A list that cannot be fetched (no token yet, the server down) leaves a plain text box with the
   reason as a visible line under it. A value the list does not hold is looked up by itself and marked
   when it is not found.

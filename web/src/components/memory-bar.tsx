@@ -43,6 +43,30 @@ function bars(parts: Part[], scale: number): { p: Part; x: number; w: number }[]
   })
 }
 
+/** The bar: the parts in steps of ink along the card, and where they do not fit, a dashed line where it ends.
+ * The model picker draws one small per model (`decorative`, its row says the numbers). */
+export function UseBar({ use, className, decorative }: { use: Use; className: string; decorative?: boolean }) {
+  const scale = Math.max(use.total, use.used)
+  const end = (use.total / scale) * W
+  return (
+    <svg viewBox={`0 0 ${W} 20`} preserveAspectRatio="none" className={cn('w-full overflow-hidden bg-muted', className)}
+      {...(decorative ? { 'aria-hidden': true } : { role: 'img', 'aria-label': `${gb(use.used)} of ${gb(use.total)} GB` })}>
+      {bars(use.parts, scale).map(({ p, x, w }) => (
+        <rect key={p.label} x={x} y={0} width={w} height={20} className={SHADE[p.strength]}>
+          <title>{`${p.label}: ${p.estimate ? '≈ ' : ''}${gb(p.mib)} GB`}</title>
+        </rect>
+      ))}
+      {use.used > use.total ? (
+        // on a halo of the background, so the card's end shows on the brain's ink too
+        <>
+          <line x1={end} x2={end} y1={0} y2={20} className="stroke-background" strokeWidth={4} vectorEffect="non-scaling-stroke" />
+          <line x1={end} x2={end} y1={0} y2={20} className="stroke-foreground" strokeDasharray="3 2" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        </>
+      ) : null}
+    </svg>
+  )
+}
+
 /** Whether the draft holds the picks recommended for this card. */
 type Picks = { llm: string; model: string; tts?: string | null; stt: string; context: number }
 
@@ -61,7 +85,6 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
   if (!plan?.total_mb) return null
   const system = plan.memory === 'system'
   const use = memoryUse(plan, page.value, presets)
-  const scale = Math.max(use.total, use.used)
   const [head, more] = verdict(use, system)
   const r = recommend ? plan.recommended : null
   const back = () =>
@@ -83,14 +106,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
         </span>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <svg viewBox={`0 0 ${W} 20`} preserveAspectRatio="none" className="h-5 w-full overflow-hidden rounded-md bg-muted" role="img" aria-label={`${gb(use.used)} of ${gb(use.total)} GB`}>
-          {bars(use.parts, scale).map(({ p, x, w }) => (
-            <rect key={p.label} x={x} y={0} width={w} height={20} className={SHADE[p.strength]}>
-              <title>{`${p.label}: ${p.estimate ? '≈ ' : ''}${gb(p.mib)} GB`}</title>
-            </rect>
-          ))}
-          {use.used > use.total ? <line x1={(use.total / scale) * W} x2={(use.total / scale) * W} y1={0} y2={20} className="stroke-foreground" strokeDasharray="3 2" strokeWidth={2} /> : null}
-        </svg>
+        <UseBar use={use} className="h-5 rounded-md" />
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
           {use.parts.map((p) => (
             <span key={p.label} className="flex items-center gap-1.5">

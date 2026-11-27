@@ -13,7 +13,7 @@ import {
   InputGroup,
   InputGroupAddon,
 } from "@/components/ui/input-group"
-import { SearchIcon, CheckIcon } from "lucide-react"
+import { SearchIcon, CheckIcon, LoaderCircleIcon } from "lucide-react"
 
 function Command({
   className,
@@ -63,13 +63,15 @@ function CommandDialog({
   )
 }
 
+// Every field has an edge (ui-guide), the search in a dropdown too; busy turns its icon into a spinner.
 function CommandInput({
   className,
+  busy,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & { busy?: boolean }) {
   return (
     <div data-slot="command-input-wrapper" className="p-1 pb-0">
-      <InputGroup className="h-8! rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
+      <InputGroup className="rounded-lg! shadow-none! *:data-[slot=input-group-addon]:pl-2!">
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
@@ -79,7 +81,7 @@ function CommandInput({
           {...props}
         />
         <InputGroupAddon>
-          <SearchIcon className="size-4 shrink-0 opacity-50" />
+          {busy ? <LoaderCircleIcon className="size-4 shrink-0 animate-spin" aria-label="Searching" /> : <SearchIcon className="size-4 shrink-0 opacity-50" />}
         </InputGroupAddon>
       </InputGroup>
     </div>

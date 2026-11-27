@@ -28,6 +28,9 @@ export type Choice = {
 /** What a rich row can do besides being picked: type a search (a repo's sizes), or pick a value of its own. */
 export type RowActions = { search: (text: string) => void; pick: (value: string) => void }
 
+/** A toggle beside the dialog's search that keeps only the choices it holds for ("Fits"). */
+export type Filter = { label: string; keep: (choice: Choice) => boolean }
+
 type Props = {
   id?: string
   value: string | undefined
@@ -48,6 +51,8 @@ type Props = {
   row?: (choice: Choice, act: RowActions) => ReactNode
   title?: string
   description?: ReactNode
+  /** The dialog's filters, offered while they apply; toggled on together, a choice must pass each. */
+  filters?: Filter[]
 }
 
 const SEARCH_FROM = 8
@@ -81,12 +86,16 @@ export function ChoiceName({ text, className }: { text: string; className?: stri
 
 /** A dropdown of choices fetched from somewhere, searchable when long; with `custom` a typed
  * value that is not listed can be used as is. With `row`, a dialog of rich rows instead. */
-export function Combobox({ id, value, choices, onChange, custom, loading, problem, disabled, placeholder, onClear, onSearch, row, title, description }: Props) {
+export function Combobox({ id, value, choices: all, onChange, custom, loading, problem, disabled, placeholder, onClear, onSearch, row, title, description, filters = [] }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const current = choices.find((c) => c.value === value)
+  const [on, setOn] = useState<string[]>([])
+  // In the dialog a row is only chosen, by click or Enter, and Use takes it: a model costs a download and a restart.
+  const [chosen, setChosen] = useState('')
+  const choices = all.filter((c) => filters.every((f) => !on.includes(f.label) || f.keep(c)))
+  const current = all.find((c) => c.value === value)
   const typed = search.trim()
-  // cmdk leaves forceMount items out of its count, so it would hide their group and say Nothing found.
+  // cmdk leaves forceMount items out of its count, so it would hide their group and say Nothing matches.
   const found = choices.some((c) => c.searched)
   // A pasted link is the server's to read, not a value to use as is.
   const offerTyped = custom && typed !== '' && !typed.includes('://') && !choices.some((c) => c.value === typed)
@@ -94,11 +103,16 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
     setSearch(text)
     onSearch?.(text)
   }
-  const pick = (v: string) => {
-    onChange(v)
-    setOpen(false)
-    type('')
+  const show = (o: boolean) => {
+    setOpen(o)
+    setChosen(value ?? '')
+    if (!o) type('')
   }
+  const take = (v: string) => {
+    onChange(v)
+    show(false)
+  }
+  const pick = row ? setChosen : take
   const trigger = (
     <Button
       id={id}
@@ -131,18 +145,42 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
   )
   const list = (
     <Command filter={filter} className={cn(row && 'min-h-0 flex-1 rounded-none! bg-transparent')}>
-      {choices.length >= SEARCH_FROM || custom ? (
-        <CommandInput placeholder={onSearch ? 'Search, or paste a link' : custom ? 'Search, or type a name' : 'Search'} value={search} onValueChange={type} />
+      {all.length >= SEARCH_FROM || custom ? (
+        <div className={cn(row && 'flex flex-col gap-2 p-3 sm:flex-row sm:items-center')}>
+          <div className="min-w-0 flex-1">
+            <CommandInput placeholder={onSearch ? 'Search, or paste a link' : custom ? 'Search, or type a name' : 'Search'}
+              value={search} onValueChange={type} busy={!!loading && !!typed} />
+          </div>
+          {row && filters.length ? (
+            <div role="group" aria-label="Show only" className="flex gap-1">
+              {filters.map((f) => (
+                <Button key={f.label} type="button" variant="ghost" size="sm" aria-pressed={on.includes(f.label)} className="aria-pressed:bg-accent"
+                  onClick={() => setOn((o) => (o.includes(f.label) ? o.filter((x) => x !== f.label) : [...o, f.label]))}>
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
-      <CommandList className={cn(row && 'max-h-none flex-1')}>
-        {found ? null : <CommandEmpty>{problem ?? 'Nothing found'}</CommandEmpty>}
+      <CommandList className={cn(row && 'max-h-none flex-1 px-2')}>
+        {found ? null : (
+          <CommandEmpty>
+            {loading ? (
+              <span className="inline-flex items-center gap-2 text-muted-foreground">
+                <LoaderCircle className="size-4 animate-spin" aria-hidden />
+                {typed ? 'Searching' : 'Loading'}
+              </span>
+            ) : problem ?? 'Nothing matches.'}
+          </CommandEmpty>
+        )}
         {onClear && value ? (
           <CommandGroup>
             <CommandItem
               value="none"
               onSelect={() => {
                 onClear()
-                setOpen(false)
+                show(false)
               }}
             >
               <span className="text-muted-foreground">None</span>
@@ -150,13 +188,14 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
           </CommandGroup>
         ) : null}
         {groups(choices).map(([group, items]) => (
-          <CommandGroup key={group} heading={group || undefined} forceMount={items.some((c) => c.searched)}>
+          <CommandGroup key={group} heading={group || undefined} forceMount={items.some((c) => c.searched)}
+            className={cn(row && '[&+&]:border-t **:[[cmdk-group-heading]]:pt-3 **:[[cmdk-group-heading]]:text-sm **:[[cmdk-group-heading]]:text-foreground')}>
             {items.map((c) => (
               <CommandItem
                 key={c.value}
                 forceMount={c.searched}
                 value={`${c.label} ${c.value}`}
-                data-checked={c.value === value}
+                data-checked={c.value === (row ? chosen : value)}
                 disabled={c.disabled}
                 onSelect={() => pick(c.value)}
               >
@@ -181,9 +220,10 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
       </CommandList>
     </Command>
   )
-  if (row)
+  if (row) {
+    const changed = !!chosen && chosen !== value
     return (
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={show}>
         <DialogTrigger asChild>{trigger}</DialogTrigger>
         <DialogContent className="flex h-[min(48rem,calc(100dvh-2rem))] flex-col gap-0 p-0 sm:max-w-3xl">
           <DialogHeader className="border-b p-4 pr-12">
@@ -191,11 +231,23 @@ export function Combobox({ id, value, choices, onChange, custom, loading, proble
             {description ? <DialogDescription>{description}</DialogDescription> : null}
           </DialogHeader>
           {list}
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t p-3">
+            {changed ? (
+              <span className="mr-auto min-w-0 truncate text-sm text-muted-foreground">
+                {all.find((c) => c.value === chosen)?.label ?? chosen}
+              </span>
+            ) : null}
+            <Button type="button" variant="outline" onClick={() => show(false)}>Cancel</Button>
+            <Button type="button" variant={changed ? 'default' : 'outline'} disabled={!changed} onClick={() => take(chosen)}>
+              Use this {title?.toLowerCase() ?? 'one'}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     )
+  }
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={show}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
         {list}

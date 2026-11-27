@@ -324,8 +324,15 @@ test('the model box searches as you type, and a typed name can still be used', a
   await box.fill('my-own/model')
   await asked
   await expect(page.getByRole('option', { name: 'smoke/Found-GGUF:Q4_K_M' })).toBeVisible()
-  await expect(page.getByText('Nothing found')).toHaveCount(0)
+  await expect(page.getByText('Nothing matches.')).toHaveCount(0)
+  // Enter only chooses a row: a model is taken with Use, since it costs a download and a restart.
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  const use = page.getByRole('button', { name: 'Use this model' })
+  await expect(use).toBeEnabled()
+  await expect(page.locator('#cfg_llm_model')).not.toContainText('Found-GGUF')
   await page.getByRole('option', { name: 'Use my-own/model' }).click()
+  await use.click()
   await expect(page.locator('#cfg_llm_model')).toContainText('my-own/model')
 })
 
@@ -515,6 +522,7 @@ test('the brain model lists running and downloaded models, and a model not on di
 
   // On disk: the restart costs what it did last time.
   await page.getByRole('option', { name: /smoke\/Other-GGUF:Q8_0/ }).click()
+  await page.getByRole('button', { name: 'Use this model' }).click()
   await header.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(dialog).toContainText('Brain: restarts, about 12 s')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
@@ -523,6 +531,7 @@ test('the brain model lists running and downloaded models, and a model not on di
   await page.locator('#cfg_llm_model').click()
   await page.getByPlaceholder('Search').fill('smoke/New-GGUF:Q4_K_M')
   await page.getByRole('option', { name: 'Use smoke/New-GGUF:Q4_K_M' }).click()
+  await page.getByRole('button', { name: 'Use this model' }).click()
   await header.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(dialog).toContainText('Brain: restarts, downloads the model first, size unknown, so it may take many minutes')
   await dialog.getByRole('button', { name: 'Cancel' }).click()
