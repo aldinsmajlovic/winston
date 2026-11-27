@@ -197,19 +197,22 @@ works when he was started with `winston up`, as the service does. Add a custom e
 #### Graphics memory
 
 A bar on top of the Brain and Voice pages (and the wizard's first step) shows how full the NVIDIA or
-AMD card would be with the picks on the page, before saving. Without a card it is **Computer memory**,
-since a brain on his computer then runs on the processor; the bar says so only while it does.
+AMD card would be with the picks on the page, before saving. Its title names the card and its size
+("NVIDIA GeForce RTX 3090, 24.0 GB"). Without a card it is **Computer memory** with the computer's
+size, since a brain on his computer then runs on the processor.
 
-- **Without a card**: a brain on the processor gets "Fits, but too slow to talk to." with the measured
-  wait and what answers in seconds instead ([hardware](hardware.md#speed-on-the-processor)). In the
-  wizard, the recommended hosted brain says why it is recommended.
+- **Without a card**: a brain on the processor gets "Fits, but too slow to talk to: over a minute to
+  his first word. A hosted brain answers in seconds." ([hardware](hardware.md#speed-on-the-processor)).
+  In the wizard, the recommended hosted brain says why it is recommended.
 - **Parts**: other programs, the brain, More to keep in mind (what the context adds past 16K), the
   voice and hearing on the card, in steps of grey from the brain, darkest, to other programs, palest.
-  Each part's size is in the legend, and Free has its own swatch.
-- **Colour**: only the verdict's sentence, green under 80%, amber to 100%, red past it.
-- **Verdict**: "22.1 of 24.0 GB, 92%. Fits, only just." Past 100% on a card, Ollama runs part of the
-  brain on the processor, about three times slower, and the other engines do not start. In the
-  computer's memory, it runs out: he slows to a crawl, or a program is stopped.
+  Each part's size is in the legend, and Free has its own swatch while there is any.
+- **Verdict**: one status line, its icon in the tone's colour (green under 80%, amber to 100%, red past
+  it) and one short sentence, with no numbers, since the bar and Free say how full it is: "Fits
+  easily.", "Fits, with little room left for other programs.", "Fits, only just: other programs may
+  push it over." Past 100% on a card, "Does not fit: part of the brain runs on the processor, about
+  three times slower." on Ollama, else "Does not fit, so it will not start."; in the computer's memory,
+  "Does not fit: he slows to a crawl, or a program is stopped."
 
 It moves as you change a pick or the context slider. Other programs are read again every 15 seconds.
 The sizes are the measured ones in [hardware](hardware.md#context-filled-last); a brain not measured is

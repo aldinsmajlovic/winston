@@ -1,5 +1,6 @@
 import type { Presets } from '@/api/client'
 import { Button } from '@/components/ui/button'
+import { StatusLine } from '@/components/status-line'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
@@ -10,7 +11,6 @@ import { applyPreset, matchPreset, type Kind } from '@/lib/presets'
 import { setIn } from '@/lib/schema'
 import { cn } from '@/lib/utils'
 
-const TEXT: Record<Use['tone'], string> = { ok: 'text-success', warn: 'text-warning', bad: 'text-destructive' }
 // The parts in steps of ink, brain darkest, other programs palest; the verdict's colour is only in its sentence.
 const SHADE: Record<Part['strength'], string> = {
   0: 'fill-foreground/15',
@@ -22,14 +22,18 @@ const SHADE: Record<Part['strength'], string> = {
 const W = 1000          // the bar's drawing width; it stretches to the card
 const GAP = 3
 
-function verdict(use: Use, system: boolean): [string, string] {
-  const pct = use.share * 100
-  if (pct > 100)
-    return ['Does not fit.', system ? 'The computer would run out of memory: he slows to a crawl, or a program is stopped.'
-      : use.spill === 'slow' ? 'Part of the brain would run on the processor, about three times slower.' : 'What does not fit will not start.']
-  if (pct >= 90) return ['Fits, only just.', system ? 'Other programs may push it over.' : 'Other programs that use the graphics card may push it over.']
-  if (pct >= 80) return ['Fits.', system ? 'Little room left for other programs.' : 'Little room left for other programs on the graphics card.']
-  return ['Fits easily.', `${gb(use.total - use.used)} GB to spare.`]
+// The bar and Free already say how full: the verdict is its tone's icon and one short sentence.
+const TONE: Record<Use['tone'], 'ok' | 'warning' | 'error'> = { ok: 'ok', warn: 'warning', bad: 'error' }
+
+function verdict(use: Use, system: boolean): [Use['tone'], string] {
+  if (use.share > 1)
+    return ['bad', system ? 'Does not fit: he slows to a crawl, or a program is stopped.'
+      : use.spill === 'slow' ? 'Does not fit: part of the brain runs on the processor, about three times slower.' : 'Does not fit, so it will not start.']
+  // measured in hardware.md, speed on the processor
+  if (system && use.brainHere) return ['warn', 'Fits, but too slow to talk to: over a minute to his first word. A hosted brain answers in seconds.']
+  if (use.share >= 0.9) return ['warn', 'Fits, only just: other programs may push it over.']
+  if (use.share >= 0.8) return ['warn', 'Fits, with little room left for other programs.']
+  return ['ok', 'Fits easily.']
 }
 
 /** Each part's place on the bar, a small gap between them. */
@@ -85,7 +89,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
   if (!plan?.total_mb) return null
   const system = plan.memory === 'system'
   const use = memoryUse(plan, page.value, presets)
-  const [head, more] = verdict(use, system)
+  const [tone, says] = verdict(use, system)
   const r = recommend ? plan.recommended : null
   const back = () =>
     page.update((c) => {
@@ -102,7 +106,7 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
       <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <CardTitle>{system ? 'Computer memory' : 'Graphics memory'}</CardTitle>
         <span className="text-sm text-muted-foreground">
-          {system ? (use.brainHere ? 'No graphics card, so the brain runs on the processor' : 'No graphics card') : plan.gpu}, {gb(use.total)} GB
+          {system ? '' : `${plan.gpu}, `}{gb(use.total)} GB
         </span>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -116,27 +120,17 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
               {p.label} {p.estimate ? '≈ ' : ''}{gb(p.mib)} GB
             </span>
           ))}
-          <span className="flex items-center gap-1.5">
-            <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
-              <rect x={0.5} y={0.5} width={9} height={9} rx={2} className="fill-muted stroke-muted-foreground/50" />
-            </svg>
-            Free {gb(Math.max(0, use.total - use.used))} GB
-          </span>
-        </div>
-        <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-          <span className={cn('font-medium', TEXT[use.tone])}>
-            {gb(use.used)} of {gb(use.total)} GB, {Math.round(use.share * 100)}%. {head}
-          </span>
-          <span className="text-muted-foreground">{more}</span>
-        </p>
-        {system && use.brainHere ? (
-          <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="font-medium text-warning">Fits, but too slow to talk to.</span>
-            <span className="text-muted-foreground">
-              On the processor every brain that fits took over a minute before his first word in a new conversation, Granite 4.2 8B six (tried on an 8-core desktop). A hosted brain, or a server on your network with a graphics card, answers in seconds.
+          {use.used < use.total ? (
+            <span className="flex items-center gap-1.5">
+              <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
+                <rect x={0.5} y={0.5} width={9} height={9} rx={2} className="fill-muted stroke-muted-foreground/50" />
+              </svg>
+              Free {gb(use.total - use.used)} GB
             </span>
-          </p>
-        ) : system && r ? (
+          ) : null}
+        </div>
+        <StatusLine tone={TONE[tone]}>{says}</StatusLine>
+        {system && !use.brainHere && r ? (
           <p className="text-sm text-muted-foreground">No graphics card, so a hosted brain is recommended: one on the processor is too slow to talk to.</p>
         ) : null}
         {use.otherUnknown ? (

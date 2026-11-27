@@ -30,7 +30,7 @@ Do:
 - One accent colour, petrol (`--primary`): filled buttons, a switch that is on, sliders, focus rings,
   the selected page in the sidebar, setup's step number and his mark. Text, links and the semantic
   colours (ok, warning, error) are not the accent, and a chart's parts are steps of ink, never a
-  semantic colour, which belongs to the sentence saying the verdict.
+  semantic colour, which belongs to the status line saying the verdict.
 - **Links and commands look different.** A link is underlined text in the text colour, always, not
   only on hover. A command is a button, never bare text ("Copy it", "Remove").
   - A link to one setting carries its id (`/assistant#cfg_logging_turns`): the page scrolls it to the
