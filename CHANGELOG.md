@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.24 (unreleased)
+## 0.1.24 (2026-11-27)
 
 - Check on the Brain page asks his brain one tiny question with your key and model, and says whether it
   works and how fast it answered, or why not: the key refused, credit run out, a model the provider does
