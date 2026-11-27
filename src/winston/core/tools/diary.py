@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 
 from pipecat.adapters.schemas.function_schema import FunctionSchema
+from winston_sdk.when import in_english
 from pipecat.services.llm_service import FunctionCallParams
 
 from winston.config.schema import WinstonConfig
@@ -48,7 +49,7 @@ _DAYS = {"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
 
 def _resolve_day(text: str) -> str | None:
     """Turn 'yesterday', 'last tuesday', 'tuesday', a date string into YYYY-MM-DD."""
-    w = text.lower().strip().rstrip(".")
+    w = in_english(text.strip().rstrip("."))         # "igår", "i tisdags", "letzten Montag"
     today = date.today()
     if w in ("today", "now"):
         return today.isoformat()

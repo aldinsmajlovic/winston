@@ -22,6 +22,7 @@ from pathlib import Path
 from loguru import logger
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.services.llm_service import FunctionCallParams
+from winston_sdk.when import in_english
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
@@ -95,8 +96,14 @@ def clean(fact: str) -> str:
 # A weekday followed by its date ("Saturday 26 September 2026") is already absolute: an edit of a
 # stored fact runs through here again and must not add the date twice.
 _DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+# Swedish and German too: a fact is stored in the language it was said in (measured: asked for English with
+# Swedish replies, the 4B wrote 12 of 16 in Swedish or German), each match read through in_english.
 _RELATIVE = re.compile(r"\b(?:(?:on )?the day after tomorrow|(?:on )?tomorrow|(?:on )?today|tonight|(?:on )?yesterday"
-                       r"|(?:on |this |next |coming )?(?:" + "|".join(_DAYS) + r"))\b"
+                       r"|(?:on |this |next |coming )?(?:" + "|".join(_DAYS) + r")"
+                       r"|(?:i )?övermorgon|i ?morgon|i ?dag|i ?kväll|i ?natt|i ?går|übermorgen|heute abend|heute"
+                       r"|(?<!am )(?<!heute )(?<!guten )morgen|gestern"
+                       r"|(?:på |nästa |kommande |denna |am |nächsten |kommenden |diesen )?(?:måndag|tisdag|onsdag"
+                       r"|torsdag|fredag|lördag|söndag|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag))\b"
                        r"(?!,? \d{1,2}(?:st|nd|rd|th)? (?:january|february|march|april|may|june|july|august|september"
                        r"|october|november|december)\b)", re.IGNORECASE)
 
@@ -110,7 +117,7 @@ def _resolve(fact: str, today: date) -> tuple[str, list[date]]:
         return f"{d.strftime('%A')} {d.day} {d.strftime('%B %Y')}"
 
     def sub(m: re.Match) -> str:
-        w = m.group(0).lower()
+        w = in_english(m.group(0))
         if "day after tomorrow" in w:
             return f"on {when(today + timedelta(2))}"
         if "tomorrow" in w:
@@ -149,7 +156,7 @@ _WRITTEN = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)? (" + "|".join(_MONTHS) + r")
 def until_date(said: str, today: date) -> date | None:
     """remember's until: "2026-09-29", "29 September", "Friday", "tomorrow", "this week" (to Sunday),
     "next week", "this month". None when it is not a date."""
-    w = " ".join(said.lower().split()).removeprefix("until ").removeprefix("the end of ").strip(" .")
+    w = in_english(" ".join(said.lower().split())).removeprefix("until ").removeprefix("the end of ").strip(" .")
     try:
         return date.fromisoformat(w)
     except ValueError:

@@ -28,7 +28,7 @@ from winston_sdk.errors import SettingsError
 from winston_sdk.extension import Extension, JobSpec, ToolSpec
 from winston_sdk.fields import Choice, Status, When, own_choices, secret_fields, to_json
 from winston_sdk.nudge import Nudge, NudgeInfo
-from winston_sdk.when import parse_when
+from winston_sdk.when import WHEN_WORDS, parse_when
 
 CONTEXT_MAX = 300
 
@@ -239,7 +239,7 @@ class Runtime:
             if _is_when(ann):
                 whens.add(p.name)
                 optional = ann is not When
-                desc = desc or "A time as the user said it, e.g. \"at six\", \"in 20 minutes\"."
+                desc = (desc or "A time as the user said it, e.g. \"at six\", \"in 20 minutes\".") + " " + WHEN_WORDS
                 ann = Annotated[str | None if optional else str,
                                 pydantic.Field(description=desc, json_schema_extra={"x-winston-when": True})]
             elif desc:
@@ -253,7 +253,7 @@ class Runtime:
                 if kwargs.get(name) is not None:
                     at = parse_when(kwargs[name], self.clock.now(), self.day_parts)
                     if at is None:
-                        raise ToolError(f"Could not read the time {kwargs[name]!r}. Ask for one like \"at six\", "
+                        raise ToolError(f"Could not read the time {kwargs[name]!r}. Give it in English, like \"at six\", "
                                         "\"in 20 minutes\" or \"tomorrow 17:30\".")
                     kwargs[name] = When.fromisoformat(at.isoformat())
             try:

@@ -21,6 +21,7 @@ from pipecat.frames.frames import Frame, LLMContextFrame, TTSStartedFrame
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.llm_service import FunctionCallParams
+from winston_sdk.when import WHEN_WORDS
 
 from winston.config.schema import WinstonConfig
 from winston.core.announce import MENTION_MARK, mention_note
@@ -99,7 +100,8 @@ FOLLOW_UP = FunctionSchema(
                 "and why. Or an action the note names. Tell the user the time it answers with.",
     properties={"nudge": {"type": "string", "description": "The nudge id from its note."},
                 "action": {"type": "string", "description": "later, dismiss, mute, why, or an action the note names."},
-                "when": {"type": "string", "description": "For later and mute: the time as the user said it."},
+                "when": {"type": "string", "description": "For later and mute: the time as the user said it. "
+                         + WHEN_WORDS},
                 "reason": {"type": "string", "description": "For later: why, in the user's words (\"training tomorrow\")."}},
     required=["nudge", "action"])
 

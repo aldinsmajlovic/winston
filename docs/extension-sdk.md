@@ -230,6 +230,9 @@ Arguments:
   these. `T | None = None` makes one optional.
 - **`When`** is read by the core as `follow_up` reads times ("at six", "in 20 minutes", "tomorrow
   morning"; the brain sees the date and time with every message) and arrives as an aware `datetime`.
+  English, Swedish and German are read ("om tio minuter", "morgen um halb sieben"), and its
+  description asks the brain to pass the words as said rather than work out a clock time
+  ([languages](languages.md#times-you-give-him)).
 - **Limits**: `Annotated[int, Field(ge=1)]` adds limits.
 - **Names from a setting**: `Annotated[str, Choices(From("chores"))]` limits a text argument to the
   names in a `dict` setting, so the brain sees them. The tool list changes from the next

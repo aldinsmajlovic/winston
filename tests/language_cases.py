@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import tempfile
+from datetime import date, datetime
 from pathlib import Path
 
 from harness import expect, finish
@@ -21,7 +22,8 @@ from winston.core.brain import home_request, name_forms, only_name  # noqa: E402
 from winston.core.common import key  # noqa: E402
 from winston.core.rooms import dismissal, stops_playing  # noqa: E402
 from winston.extension_host.nudges import WHATS_NEW  # noqa: E402
-from winston.core.memory import check  # noqa: E402
+from winston.core.memory import absolute_dates, check, until_date  # noqa: E402
+from winston_sdk.when import in_english, parse_when  # noqa: E402
 from winston.core.spoken import SpokenText  # noqa: E402
 from winston.extension_host.services import Services  # noqa: E402
 
@@ -114,5 +116,32 @@ expect("the Swedish line read back agrees", agreed("Jag är Erik och jag godkän
 expect("with inte it does not", not agreed("Jag är Erik och jag godkänner inte att Winston kopierar min röst", line))
 expect("a no does not", not agreed("Nej tack.", line))
 expect("a line half heard does not", not agreed("Jag är Erik.", line))
+
+# Times as the brain passes them, in Swedish and German (winston_sdk.when): on Friday 27 November 2026 at 10:00.
+now = datetime(2026, 11, 27, 10, 0).astimezone()
+for said, want in (("om tio minuter", "11-27 10:10"), ("på tio minuter", "11-27 10:10"), ("i 10 minuter", "11-27 10:10"),
+                   ("imorgon klockan sju", "11-28 07:00"), ("fredag halv sex", "11-27 17:30"),
+                   ("morgen um halb sieben", "11-28 18:30"), ("in zwanzig Minuten", "11-27 10:20"),
+                   ("om en halvtimme", "11-27 10:30"), ("kvart över åtta", "11-27 20:15"),
+                   ("viertel vor neun", "11-27 20:45"), ("om tjugofem minuter", "11-27 10:25"),
+                   ("nästa måndag kl 18.30", "11-30 18:30"), ("am Freitag um 18 Uhr", "11-27 18:00"),
+                   ("i morgon bitti", "11-28 08:00"), ("halv ett", "11-27 12:30"), ("den 3 december kl 9", "12-03 09:00"),
+                   ("tomorrow at 6 am", "11-28 06:00"), ("half past seven", "11-27 19:30")):
+    at = parse_when(said, now)
+    expect(f"{said} is {want}", at is not None and f"{at:%m-%d %H:%M}" == want, at)
+expect("a day for the diary: igår, i tisdags, letzten Montag",
+       [in_english(w) for w in ("igår", "i tisdags", "letzten Montag")] == ["yesterday", "tuesday", "last monday"])
+expect("memory's until: fredag and nästa vecka as their English", until_date("fredag", now.date()) == until_date(
+       "friday", now.date()) == date(2026, 12, 4) and until_date("nästa vecka", now.date()) == date(2026, 12, 6))
+# A fact stays in the language it was said in; its days become dates as in English, habits and the past stay.
+for fact, want in (("Min syster kommer på lördag.", "Min syster kommer on Saturday 28 November 2026."),
+                   ("Hon har tandläkartid imorgon kväll.", "Hon har tandläkartid on Saturday 28 November 2026 kväll."),
+                   ("Er geht morgen Abend zum Zahnarzt.", "Er geht on Saturday 28 November 2026 Abend zum Zahnarzt."),
+                   ("Wir fahren nächsten Montag.", "Wir fahren on Monday 30 November 2026."),
+                   ("Hon tränar på lördagar.", "Hon tränar på lördagar."), ("Vi var där i lördags.", "Vi var där i lördags."),
+                   ("Er joggt am Morgen.", "Er joggt am Morgen.")):
+    expect(f"a fact's days: {fact}", absolute_dates(fact, now.date()) == want, absolute_dates(fact, now.date()))
+expect("follow-ups: när jag kommer hem, nach Hause", "home" in in_english("när jag kommer hem")
+       and "home" in in_english("wenn ich nach Hause komme"))
 
 finish()

@@ -435,7 +435,10 @@ def times():
              "tomorrow at 19:00", "Monday": "Monday 5 October at 08:00", "tonight": "error",
              "when I'm home": "when you get home", "tomorrow after work": "when you get home tomorrow, or at 18:00 "
              "if you are home by then", "Friday when I get home": "when you get home Friday, or at 18:00 if you are "
-             "home by then", "after work": "error", "": "error"}
+             "home by then", "after work": "error", "": "error",
+             "om tio minuter": "today at 20:10", "imorgon kväll": "tomorrow at 19:00", "morgen um halb sechs":
+             "tomorrow at 17:30", "när jag kommer hem": "when you get home", "imorgon efter jobbet": "when you get "
+             "home tomorrow, or at 18:00 if you are home by then", "wenn ich nach Hause komme": "when you get home"}
     bad = {}
     for text, want in cases.items():
         got = n.read_when(text)

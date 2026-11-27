@@ -75,8 +75,23 @@ Winston kopierar min röst."), and the person agrees by saying it back: at least
 and no "not" that the line does not have (inte, nicht, pas and the like). In English it is the word
 "agree" without a "don't", as before.
 
+## Times you give him
+
+A reminder, a "later", putting a nudge off and other times passed to a tool are read by code, not by
+the model, so the time he says back is the time that was set. The reader takes English, Swedish and
+German: "om tio minuter", "på fredag halv sex" (17:30), "imorgon klockan sju", "morgen um halb
+sieben" (18:30), "viertel vor neun", "när jag kommer hem". The brain is asked to pass the words as
+they were said rather than work out a clock time, since it gets "halv sex" wrong when it does (it is
+half past five). When an extension cannot read a time it asks him for it in English, so another
+language still works through him.
+
+The diary's day lookup ("igår", "i tisdags", "letzten Montag") and a memory's last day ("fredag",
+"nästa vecka") are read the same way. A fact in memory stays in the language it was said in, and its
+days are made dates when it is stored, as in English: "Min syster kommer på lördag" is kept as "Min
+syster kommer on Saturday 28 November 2026". The date is written in English, which he reads in any
+language. "På lördagar" (a habit) and "i lördags" (last Saturday) are left as they are.
+
 ## Still in English
 
-Times given to reminders and follow-ups ("in ten minutes", "imorgon kl 7") are understood in English
-only, as are words that steer him in languages other than those above, and the browser's "okay
-Winston" or "hey Winston" in a room. The work on each is the Languages track in [the plan](plan.md).
+Words that steer him in languages other than those above, and the browser's "okay Winston" or "hey
+Winston" in a room. The work on each is the Languages track in [the plan](plan.md).

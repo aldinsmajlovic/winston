@@ -109,7 +109,8 @@ Appointments, visits and other dated plans; each leaves memory after its day.
 - The facts load into the system prompt when a conversation starts, so a new session knows them
   without a restart. `winston memory` prints what the model sees.
 - Relative dates are made absolute when stored ("tomorrow evening" becomes "on Thursday 24 September
-  2026 evening"), and each fact carries the date it was noted.
+  2026 evening"), and each fact carries the date it was noted. Swedish and German days are made
+  dates too ([languages](languages.md#times-you-give-him)).
 - The tools list the topics with their descriptions, read when a conversation starts, so a topic
   added or described on the page is offered from the next conversation without a restart.
 

@@ -24,7 +24,7 @@ from typing import Any
 from loguru import logger
 from pydantic import TypeAdapter
 from winston_sdk.context import local_zone
-from winston_sdk.when import parse_when
+from winston_sdk.when import in_english, parse_when
 
 from winston.config import data_dir, resolve
 from winston.core import lines
@@ -542,7 +542,8 @@ class Nudges:
         now = self.now()
         parts = {k: dtime.fromisoformat(v) for k, v in self.host.cfg.speak_up.day_parts.items()}
         fallback = dtime.fromisoformat(self.host.cfg.speak_up.fallback_time)
-        text = (text or "").strip()
+        said = (text or "").strip()
+        text = in_english(said)                       # "när jag kommer hem", "morgen nach der Arbeit"
         if not text:
             return "Say when: \"tomorrow 17:30\", \"in two hours\", \"Monday\", \"when I'm home\"."
         if not HOME.search(text):
@@ -553,7 +554,7 @@ class Nudges:
                 return {"until": at.timestamp(), "text": self._say_time(at)}
         day_match = DAY.search(text)
         if day_match is None and not HOME.search(text):
-            return (f"{text!r} names no day or time code can read. Pass his words with the day he said "
+            return (f"{said!r} names no day or time code can read. Pass his words with the day he said "
                     f"(\"tomorrow after work\", \"today after work\"), or ask him when. Do not guess a clock time.")
         if not self.host.cfg.speak_up.home:
             return ("It is not known when he is home: no person entity is set under Speaking up. Ask for a time "
@@ -562,7 +563,7 @@ class Nudges:
             return {"home": True, "until": None, "fallback": None, "text": "when you get home"}
         day = parse_when(day_match.group(1), now, {**parts, "morning": dtime(12), "tonight": dtime(12)})
         if day is None:
-            return f"Could not read {text!r} as a time."
+            return f"Could not read {said!r} as a time."
         start = max(datetime.combine(day.date(), dtime(0), tzinfo=now.tzinfo).timestamp(), self.clock())
         fb = datetime.combine(day.date(), fallback, tzinfo=now.tzinfo)
         name = "today" if day.date() == now.date() else "tomorrow" if day.date() == now.date() + timedelta(1) \
