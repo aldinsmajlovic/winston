@@ -262,6 +262,13 @@ async def winstond():
                    and not acted(writes), (r, acted(writes)))
             expect("get_diary is not available", await call(box, "get_diary") == {"error": L.UNAVAILABLE})
             expect("start_over runs", await call(box, "start_over") == {"started_over": True})
+            before, writes = len(await confirmations()), len(fake.writes)
+            r = await call(box, "todo__get_items")
+            expect("a Home Assistant tool named in lowercase get (as a script can be) is held, not run as a read",
+                   r == {"waiting": True, "note": L.WAITING} and len(await confirmations()) == before + 1
+                   and not acted(writes), (r, acted(writes)))
+            r = await call(box, "GetLiveContext")
+            expect("Home Assistant's own reads still run", "Done" in str(r), r)
             expect("an extension tool that may read memory is private", "friend_note" in guard.PRIVATE
                    and "probe_state" not in guard.PRIVATE)
 

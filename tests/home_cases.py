@@ -55,6 +55,8 @@ check("quiet after without a line keeps One moment", first("lights out"), None)
 check("a script that ran is an action", acted(turn(("script__movie_night", '{"success": true}'))), True)
 check("a read is not", acted(turn(("homeassistant__GetLiveContext", "Live Context: ..."))), False)
 check("a failed action is not", acted(turn(("script__movie_night", "Error: no such device"))), False)
+check("one held for the phone is not", acted(turn(("script__movie_night",
+                                                   '{"waiting": true, "note": "Nothing has happened yet."}'))), False)
 check("a read then an action is", acted(turn(("homeassistant__GetLiveContext", "ok"), ("intent__HassTurnOn", "{}"))), True)
 check("an action before the newest message does not count",
       acted([*turn(("script__movie_night", "{}")), {"role": "user", "content": "[21:01] and now?"}]), False)

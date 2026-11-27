@@ -337,6 +337,7 @@ def acted(messages: list) -> bool:
         for call in m.get("tool_calls") or []:
             names[call.get("id")] = (call.get("function") or {}).get("name", "")
     return any(guard.tool_tier(names.get(cid, "get")) == guard.ACT and guard.result_ok(content)
+               and not str(content).startswith('{"waiting": true')     # held for the phone: nothing happened yet
                for cid, content in results)
 
 
@@ -483,7 +484,7 @@ class WinstonLLM(OpenAILLMService):
                 await done(result, *args, **kwargs)
             params.result_callback = noted
             if self.guarded and name not in lockdown.PASS and (
-                    guard.tool_tier(name) != guard.READ or name in guard.PRIVATE) and lockdown.on():
+                    not guard.only_looks(name) or name in guard.PRIVATE) and lockdown.on():
                 await noted(await self._hold(name, params.arguments))      # never run from here
                 return
             if guard.tool_tier(name) == guard.READ:

@@ -28,6 +28,15 @@ def tool_tier(name: str) -> str:
     return READ if base.startswith("get") else ACT
 
 
+def only_looks(name: str) -> bool:
+    """For the lockdown gate, stricter than tool_tier: a declared tier says; otherwise only Home Assistant's
+    read intents (CamelCase: GetLiveContext, HassGetState) look. A script exposed as a tool is its lowercase
+    object id, and script.getaway acts."""
+    if name in DECLARED:
+        return DECLARED[name] == READ
+    return name.split("__")[-1].startswith(("Get", "HassGet"))
+
+
 def result_ok(result) -> bool:
     """HA's MCP server reports failures as a normal result string starting with "Error"."""
     if isinstance(result, dict):
