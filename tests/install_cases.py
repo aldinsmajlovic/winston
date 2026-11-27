@@ -316,6 +316,24 @@ async def main():
     check("an Ollama he does not run gets the name as written", served_model(on), "granite4.1:8b")
     check("and so does any other server", served_model(config({"llm": LLAMA}, "fake/model-GGUF:Q4_K_M")),
           "fake/model-GGUF:Q4_K_M")
+    # Xet: bytes on the wire come steadily, the file's are written in batches; two files, the line adds up.
+    import huggingface_hub
+    marks = []
+
+    def xet(repo, f, cache_dir, tqdm_class):
+        written, wire = tqdm_class(desc=f"{f}: reconstructing file"), tqdm_class(desc=f"{f}: downloading bytes")
+        for n in (40, 40):
+            wire.update(n)
+            marks.append(job.done)
+        written.update(100)                 # the whole batch lands, a little more than came over the wire
+        marks.append(job.done)
+    real_get, huggingface_hub.hf_hub_download = huggingface_hub.hf_hub_download, xet
+    job = install.Job(install.Part("hf:x/y", "the model", None, 200, False, files=["a", "b"]))
+    await install._download(job)
+    huggingface_hub.hf_hub_download = real_get
+    check("a Xet download moves with the bytes on the wire, then with what is written", marks,
+          [40, 80, 100, 140, 180, 200])
+
     big = install.Part("hf:x", "the model", None, 16_400_000_000, False)
     check("a part's line says how far it is", install.line(install.Job(big, done=6_200_000_000)), "the model, 6.2 GB of 16.4 GB")
     check("and nothing yet is nothing", install.line(install.Job(big, done=0)), "the model, 0 MB of 16.4 GB")

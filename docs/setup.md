@@ -195,6 +195,8 @@ why it failed with Try again.
 - A Docker image is then unpacked, which can take minutes after the last byte: its line says Unpacking
   and the bar counts again. On Docker's containerd image store (the default since Docker 29) it moves
   a layer at a time and pulses in between, since Docker reports unpacking there in seconds, not bytes.
+- A model from the Hub's Xet storage is written to disk in batches of a GB or more. The bar follows
+  the bytes on the wire between batches, so it keeps moving rather than sitting still and jumping.
 
 - It downloads in winstond, so it carries on with the page closed, and the engine that runs now keeps
   running.

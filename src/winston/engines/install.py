@@ -449,20 +449,25 @@ async def _download(job: Job) -> None:
     from tqdm.auto import tqdm
     repo = job.part.key.removeprefix("hf:").partition(":")[0]
 
+    # Xet opens two bars per file: bytes written, which land in batches of a GB or more with nothing between,
+    # and bytes on the wire, which come steadily but run a little under the file's size. The line shows
+    # whichever is further, so it moves while the batches download.
+    seen = {"file": 0, "wire": 0}
+    done = 0                    # files finished before this one
+
     class Bytes(tqdm):          # every file's progress, added to the job; nothing printed
         def __init__(self, *a, **k):
-            # Xet opens a second bar for the bytes on the wire beside the file's own; the file's is the size.
-            self.counts = not str(k.get("desc", "")).endswith("downloading bytes")
+            self.kind = "wire" if str(k.get("desc", "")).endswith("downloading bytes") else "file"
             super().__init__(*a, **{**k, "disable": True})
-            if self.counts:
-                job.done += k.get("initial") or 0   # a resumed file's bytes already there
+            self.update(k.get("initial") or 0)  # a resumed file's bytes already there
 
         def update(self, n=1):
-            if self.counts:
-                job.done += n or 0
+            seen[self.kind] += n or 0
+            job.done = done + max(seen.values())
 
     for f in job.part.files:
         await asyncio.to_thread(hf_hub_download, repo, f, cache_dir=job.part.where, tqdm_class=Bytes)
+        done, seen["file"], seen["wire"] = job.done, 0, 0
 
 
 async def _ollama_pull(job: Job) -> None:
