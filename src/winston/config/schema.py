@@ -92,11 +92,12 @@ class AssistantConfig(Model):
                                      "under Assistant, Personality.",
                          json_schema_extra=ui(hidden=True))
     language: str = Field("English", title="Reply language",
-                          description="Only his instructions change: he understands what you say in any language "
-                                      "his hearing knows and answers in this one. His voice is picked on its own, "
-                                      "and an English-only voice reads other languages badly.",
-                          json_schema_extra=ui(help="What he answers in. It does not change his voice or hearing: "
-                                                    "pick a voice that speaks it."))
+                          description="Its English name, such as Swedish or German. He understands what you say in "
+                                      "any language his hearing knows and answers in this one. A voice that speaks "
+                                      "it is told to; the Voice page says when the picked one does not.",
+                          json_schema_extra=ui(help="What he answers in, by its English name (Swedish, German). A "
+                                                    "voice that speaks it switches to it; the Voice page says when "
+                                                    "yours does not."))
 
 
 class RegionConfig(Model):
@@ -909,6 +910,17 @@ def _context_to_setting(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _voice_language(data: dict[str, Any]) -> dict[str, Any]:
+    """A Pocket TTS or Qwen3-TTS command from before 2026-11-27 also passes the reply language, as their presets
+    do now, so the voice speaks it when it can (docs/languages.md)."""
+    e = (data.get("engines") or {}).get("tts")
+    cmd = list(e.get("cmd") or []) if isinstance(e, dict) else []
+    if any(f"services/tts-{s}/" in w for w in cmd for s in ("pocket", "qwen3")) \
+            and "--language" not in cmd + list(e.get("args") or []):
+        return {**data, "engines": {**data["engines"], "tts": {**e, "cmd": [*cmd, "--language", "{assistant.language}"]}}}
+    return data
+
+
 def _tools_to_extensions(data: dict[str, Any]) -> dict[str, Any]:
     """Version 2 (2026-10-12): the tools section became the built-in extensions sensors, web and claude, with the
     same settings. A Claude API key in the environment, without a token, stays the key Ask Claude uses."""
@@ -974,5 +986,5 @@ class WinstonConfig(Model):
         if isinstance(data, dict) and int(data.get("version", 1)) < 2:
             data = _tools_to_extensions(dict(data))
         if isinstance(data, dict):
-            data = _context_to_setting(data)
+            data = _voice_language(_context_to_setting(data))
         return data

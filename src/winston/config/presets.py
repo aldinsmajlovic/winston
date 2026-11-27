@@ -124,10 +124,17 @@ _CHATTERBOX_STREAMING = [                        # the Voice page's Streaming se
     "--first-secs", "{tts.streaming.first_secs}", "--lookahead-secs", "{tts.streaming.lookahead_secs}",
 ]
 
+# The languages each voice speaks, by their English names as the reply language is written (docs/languages.md),
+# from each model's card; a preset without `speaks` is not known (hosted: it depends on the model).
+_VOXCPM2_SPEAKS = ["Arabic", "Burmese", "Chinese", "Danish", "Dutch", "English", "Finnish", "French", "German", "Greek",
+                   "Hebrew", "Hindi", "Indonesian", "Italian", "Japanese", "Khmer", "Korean", "Lao", "Malay",
+                   "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swahili", "Swedish", "Tagalog", "Thai",
+                   "Turkish", "Vietnamese"]
+
 TTS: list[Fragment] = [
     {
         "id": "chatterbox", "icon": "chatterbox", "title": "Chatterbox-Turbo on the graphics card", "needs": ["cuda"],
-        "hint": "Clones a voice from a short clip, in English only. Needs an NVIDIA card.",
+        "hint": "Clones a voice from a short clip, in English only. Needs an NVIDIA card.", "speaks": ["English"],
         "engine": {
             "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 180,
             "cwd": "{repo}/services/tts-chatterbox",
@@ -142,39 +149,45 @@ TTS: list[Fragment] = [
         "id": "pocket", "icon": "pocket", "title": "Pocket TTS on the processor", "needs": [],
         "hint": "Leaves the graphics card free, with 26 voices to pick from. Cloning a voice needs its terms "
                 "accepted on Hugging Face.",
+        "speaks": ["English", "French", "German", "Italian", "Portuguese", "Spanish"],
         "engine": {
             "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
             "cwd": "{repo}/services/tts-pocket",
             "cmd": ["{repo}/services/tts-pocket/.venv/bin/python", "server.py",
-                    "--voice", "george", "--voices-dir", "{data}/voices", "--port", "8880"],
+                    "--voice", "george", "--voices-dir", "{data}/voices", "--port", "8880",
+                    "--language", "{assistant.language}"],
         },
         "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
                              "voice": "george", "sample_rate": 24000}},
     },
     *({
-        "id": id_, "icon": "huggingface", "title": title, "needs": ["cuda"], "hint": hint,
+        "id": id_, "icon": "huggingface", "title": title, "needs": ["cuda"], "hint": hint, "speaks": speaks,
         "engine": {
             "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
             "cwd": f"{{repo}}/services/tts-{id_}",
             "cmd": [f"{{repo}}/services/tts-{id_}/.venv/bin/python", "server.py",
-                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880"],
+                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880",
+                    *(["--language", "{assistant.language}"] if id_ == "qwen3" else [])],
         },
         "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
                              "voice": "vctk/p254_023", "sample_rate": rate}},
-    } for id_, title, rate, hint in (
+    } for id_, title, rate, hint, speaks in (
         ("qwen3", "Qwen3-TTS 1.7B on the graphics card", 24000,
          ("Clones a voice from a clip and its words. Needs an NVIDIA card; on one shared with the brain it can "
-          "fall behind its own speech.")),
+          "fall behind its own speech."),
+         ["Chinese", "English", "French", "German", "Italian", "Japanese", "Korean", "Portuguese", "Russian",
+          "Spanish"]),
         ("voxcpm2", "VoxCPM2 on the graphics card", 48000,
-         "Clones a voice from a clip and its words, in the finest sound. Needs an NVIDIA card."),
+         "Clones a voice from a clip and its words, in the finest sound. Needs an NVIDIA card.", _VOXCPM2_SPEAKS),
         ("gepard", "Gepard 1.1 on the graphics card", 22050,
          ("Clones a voice from a clip alone, and starts speaking soonest. Needs an NVIDIA card; it drops and "
-          "garbles more words than the others.")),
+          "garbles more words than the others."), None),
     )),
     {
         "id": "breeze2", "icon": "huggingface", "title": "Breeze TTS 2 on the graphics card", "needs": ["cuda"],
         "hint": "The most natural voice that runs here, cloned from a clip and its words. Needs an NVIDIA card, "
                 "and is for non-commercial use only.",
+        "speaks": ["Chinese", "English"],
         "engine": {
             "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
             "cwd": "{repo}/services/tts-breeze2",

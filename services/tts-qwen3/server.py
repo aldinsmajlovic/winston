@@ -24,6 +24,10 @@ import speech_server as ss
 log = ss.log
 
 
+LANGUAGES = {n.lower(): n for n in ("Chinese", "English", "French", "German", "Italian", "Japanese", "Korean",
+                                    "Portuguese", "Russian", "Spanish", "Auto")}
+
+
 class Qwen3Engine:
     builtin_voices: tuple[str, ...] = ()
 
@@ -87,14 +91,15 @@ def main():
     ap = ss.arg_parser(__doc__.splitlines()[0])
     ap.add_argument("--device", default="cuda", help="cuda or cpu")
     ap.add_argument("--model", default="Qwen/Qwen3-TTS-12Hz-1.7B-Base", help="Hugging Face id or local dir")
-    ap.add_argument("--language", default="English", help="English, or Auto to let the model tell")
+    ap.add_argument("--language", default="English", help="Winston's reply language; Auto when Qwen3-TTS lacks it")
     ap.add_argument("--first-frames", type=int, default=4, help="frames (80 ms each) before the first chunk")
     ap.add_argument("--chunk-frames", type=int, default=24, help="later chunks double up to this many frames")
     args = ap.parse_args()
     ss.setup_logging()
     import time
     t0 = time.perf_counter()
-    engine = Qwen3Engine(args.model, args.device, args.language, args.first_frames, args.chunk_frames)
+    engine = Qwen3Engine(args.model, args.device, ss.language(args.language, LANGUAGES, "Auto"), args.first_frames,
+                         args.chunk_frames)
     log.info("model %s loaded on %s in %.1f s, %d Hz", args.model, args.device, time.perf_counter() - t0,
              engine.sample_rate)
     ss.serve(engine, args)

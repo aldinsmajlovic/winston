@@ -144,4 +144,30 @@ for fact, want in (("Min syster kommer på lördag.", "Min syster kommer on Satu
 expect("follow-ups: när jag kommer hem, nach Hause", "home" in in_english("när jag kommer hem")
        and "home" in in_english("wenn ich nach Hause komme"))
 
+# The voice told the reply language (services/speech_server.language, the presets and older commands).
+import sys  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services"))
+import speech_server  # noqa: E402
+
+from winston.config.presets import TTS, preset  # noqa: E402
+from winston.engines.supervisor import _expand_model  # noqa: E402
+
+pocket = {"english": "english", "german": "german", "french": "french_24l"}
+expect("a language the voice speaks, by its English name", speech_server.language("German", pocket, "english") == "german"
+       and speech_server.language("french", pocket, "english") == "french_24l")
+expect("en-GB is English; one it lacks is the fallback", speech_server.language("en-GB", pocket, "x") == "english"
+       and speech_server.language("Swedish", pocket, "english") == "english")
+german = WinstonConfig.model_validate({"llm": {"model": "x"}, "assistant": {"language": "German"},
+                                      "engines": {"tts": preset("tts", "pocket")["engine"]}})
+expect("Pocket's preset passes the reply language", _expand_model(german.engines["tts"], german).cmd[-2:] == ["--language", "German"])
+older = {"driver": "subprocess", "port": 8880, "cmd": ["{repo}/services/tts-pocket/.venv/bin/python", "server.py"]}
+cmd = WinstonConfig.model_validate({"llm": {"model": "x"}, "engines": {"tts": older}}).engines["tts"].cmd
+expect("an older Pocket command gets it once", cmd.count("--language") == 1 and cmd[-1] == "{assistant.language}", cmd)
+other = {**older, "cmd": ["{repo}/services/tts-chatterbox/.venv/bin/python", "server.py"]}
+expect("Chatterbox does not", "--language" not in WinstonConfig.model_validate(
+    {"llm": {"model": "x"}, "engines": {"tts": other}}).engines["tts"].cmd)
+expect("of the voices only VoxCPM2 speaks Swedish", [p["id"] for p in TTS if "Swedish" in (p.get("speaks") or [])]
+       == ["voxcpm2"])
+
 finish()

@@ -80,7 +80,7 @@ export function useVoicePreviews(page: SettingsState): Record<string, ReactNode>
         label="Hear this voice"
         playing={hello.playing}
         blocked={blocked}
-        onPlay={() => void hello.play({ text: `Hello, I'm ${name}. This is how I sound.`, voice })}
+        onPlay={() => void hello.play({ text: `Hello, I'm ${name}. This is how I sound.`, voice, line: true })}
         onStop={hello.stop}
       />
     ),
@@ -93,7 +93,7 @@ export function useVoicePreviews(page: SettingsState): Record<string, ReactNode>
           text
           playing={sample.playing}
           blocked={blocked ?? problem}
-          onPlay={() => void sample.play({ text: SAMPLE, voice, streaming }, tag)}
+          onPlay={() => void sample.play({ text: SAMPLE, voice, streaming, line: true }, tag)}
           onStop={sample.stop}
         />
       </span>

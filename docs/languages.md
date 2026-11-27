@@ -7,19 +7,39 @@ they are what hears and speaks. This page covers what Winston's own code does ar
 
 Reply language (`assistant.language`, under Who he is on the Assistant page) is the last line of his
 prompt: he understands what you say in any language his hearing knows and answers in this one. A line
-earlier in the prompt lost to the language he was spoken to every time, so it stays last. It does not
-change his voice or his hearing.
+earlier in the prompt lost to the language he was spoken to every time, so it stays last. It is written
+by its English name ("Swedish", "German"; "en-GB" counts as English), which is how a voice is matched
+to it. It does not change his hearing.
 
 ## Hearing
 
 No language is passed to the hearing engines. Fluid Speech Pro and Parakeet v3 (25 European
-languages) and Qwen3-ASR detect it themselves. Names in another language, such as Home Assistant's
-room names, are best added as [hint words](voices.md#hint-words).
+languages) and Qwen3-ASR detect it themselves, so a household can speak to him in a language other
+than the one he answers in; fixing hearing to the reply language would lose that. Names in another
+language, such as Home Assistant's room names, are best added as [hint words](voices.md#hint-words).
 
 ## His voice
 
-No language is passed to the voice either: pick one that speaks your reply language
-([voices](voices.md)). Nothing checks the pick, and an English-only voice reads other languages badly.
+Pocket TTS and Qwen3-TTS are given the reply language (`--language {assistant.language}` in their
+commands; an older command gets it when the config is read) and speak it when they can. Pocket loads its
+model for the language (French is only its larger model) and keeps the voice, since every built-in voice
+has a state for each; Qwen3-TTS is told the language, or Auto when it is not one of its own. The others
+take the language from the text, or speak only theirs.
+
+| Voice | Speaks |
+| --- | --- |
+| Pocket TTS | English, French, German, Italian, Portuguese, Spanish |
+| Qwen3-TTS | Chinese, English, French, German, Italian, Japanese, Korean, Portuguese, Russian, Spanish |
+| VoxCPM2 | 30 languages, Swedish, Danish, Norwegian and Finnish among them |
+| Breeze TTS 2 | Chinese and English |
+| Chatterbox-Turbo | English |
+| Gepard, hosted | Not known here: it depends on the model |
+
+The Speaking card on the Voice page and in setup says when the voice picked does not speak the reply
+language ("This voice does not speak Swedish, his reply language, and reads it badly"). Pocket's German
+model read a German sentence so that Parakeet heard 15 of its 16 words, its English model 5 of 16 (on
+this project's machine, 2026-11-27). His own preview lines on the Voice page (Hear this voice, Play a
+sample) are said in the reply language, as [lines said by code](#lines-said-by-code) are.
 
 ## Times
 

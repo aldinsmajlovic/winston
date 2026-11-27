@@ -151,6 +151,7 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
           </Select>
           <p className="text-sm text-muted-foreground">{preset?.hint ?? 'Your own setup; change it under How it runs below.'}</p>
           <Lacking needs={preset?.needs ?? []} have={have} />
+          <NotSpoken speaks={preset?.speaks} language={page.value.assistant?.language} />
           {page.value.engines?.[kind]?.enabled === false ? (
             <StatusLine
               tone="muted"
@@ -191,6 +192,15 @@ function Lacking({ needs, have }: { needs: string[]; have?: string[] }) {
       {`${joinNames(lacking)} ${lacking.length > 1 ? 'are' : 'is'} not on his computer yet, and installing ${lacking.length > 1 ? 'them' : 'it'} needs root. Save, then in a terminal on it run: winston setup system`}
     </StatusLine>
   )
+}
+
+/** A voice that does not speak the reply language, matched by its English name as the server matches it
+ * ("en-GB" is English). Nothing for a voice whose languages are not known. */
+export function NotSpoken({ speaks, language }: { speaks?: string[] | null; language?: string }) {
+  const said = language?.trim() ?? ''
+  const word = said.toLowerCase().split(/\s+/)[0] ?? ''
+  if (!speaks || !word || speaks.some((s) => s.toLowerCase() === (word.startsWith('en') ? 'english' : word))) return null
+  return <StatusLine tone="warning">{`This voice does not speak ${said}, his reply language, and reads it badly. It speaks ${joinNames(speaks)}.`}</StatusLine>
 }
 
 /** "the model, 6.2 of 16.4 GB" during a download. */

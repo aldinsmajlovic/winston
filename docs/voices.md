@@ -39,6 +39,8 @@ xychart-beta
   too fast or too slow.
 - **A clip and its words.** Qwen3-TTS, VoxCPM2 and Breeze read a `.txt` beside the clip if there is
   one; otherwise Parakeet transcribes the clip once.
+- **Languages.** Pocket TTS and Qwen3-TTS switch to the reply language when they speak it, and the
+  Speaking card says when the voice picked does not ([languages](languages.md#his-voice)).
 
 [Hardware](hardware.md) says what each pick needs and which profiles set them up.
 
@@ -143,6 +145,8 @@ voice or streaming settings that are not saved yet, which is how the Voice page 
 - `streaming` takes the fields of `tts.streaming` with the same limits; the ones left out are the
   saved values. The whole is checked as the config is (look-ahead shorter than the first chunk), with
   a 422 when it is not.
+- `line: true` marks one of his own lines, as the Voice page's previews are: it is said in his reply
+  language, translated once and kept ([languages](languages.md#lines-said-by-code)).
 - `streaming` reaches the speech server only when the `engines.tts` command uses
   `{tts.streaming.*}`, as the Chatterbox preset does, since a hosted server could refuse fields it
   does not know.
@@ -156,7 +160,7 @@ restart of speaking before it can be heard.
 ### On the Voice page
 
 - **Hear this voice**, the play button beside Voice, says "Hello, I'm Winston. This is how I sound."
-  (with his configured name) in the voice picked, saved or not.
+  (with his configured name, in his reply language) in the voice picked, saved or not.
 - **Stream speech** and **Chunk length** are on the Speaking card for an engine whose command takes
   streaming (the Chatterbox preset). First chunk and Look-ahead are config.yaml only, or a value in
   place of their placeholder in the engine's arguments under How it runs.

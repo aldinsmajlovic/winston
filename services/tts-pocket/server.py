@@ -7,6 +7,8 @@ finished.
 
     .venv/bin/python server.py --voice george --port 8880                  # a built-in voice
     .venv/bin/python server.py --voice /path/voices/vctk/p254_023.wav --voices-dir /path/voices
+    .venv/bin/python server.py --voice george --language German                # English, French, German,
+                                                                               # Italian, Portuguese, Spanish
 
 Built-in voices need nothing beyond the model download. Cloning from a clip needs the gated
 weights: accept the terms at https://huggingface.co/kyutai/pocket-tts, then `uvx hf auth login`.
@@ -25,19 +27,25 @@ import speech_server as ss
 log = ss.log
 
 
+# Pocket's model for each language it speaks (pocket_tts/config); French comes only as the larger 24-layer one.
+# Every built-in voice has a state for each of them, so the voice stays when the language changes.
+LANGUAGES = {"english": "english", "french": "french_24l", "german": "german", "italian": "italian",
+             "portuguese": "portuguese", "spanish": "spanish"}
+
+
 class PocketEngine:
     model = "kyutai/pocket-tts"
 
-    def __init__(self, threads: int):
+    def __init__(self, threads: int, language: str = "english"):
         from pocket_tts import TTSModel
         from pocket_tts.models import tts_model
         torch.set_num_threads(threads)
         t0 = time.perf_counter()
-        self.tts = TTSModel.load_model()
+        self.tts = TTSModel.load_model(language=language)
         self.tts.eval()
         self.sample_rate = self.tts.sample_rate
         self.builtin_voices = tuple(sorted(tts_model._ORIGINS_OF_PREDEFINED_VOICES))
-        log.info("model loaded in %.1f s, sample_rate %d, %d built-in voices, %d threads",
+        log.info("%s model loaded in %.1f s, sample_rate %d, %d built-in voices, %d threads", language,
                  time.perf_counter() - t0, self.sample_rate, len(self.builtin_voices), threads)
 
     def prepare(self, source: Path | str):
@@ -59,9 +67,10 @@ class PocketEngine:
 def main():
     ap = ss.arg_parser(__doc__.splitlines()[0], voice="george")
     ap.add_argument("--threads", type=int, default=4, help="CPU threads for generation")
+    ap.add_argument("--language", default="English", help="Winston's reply language; English when Pocket lacks it")
     args = ap.parse_args()
     ss.setup_logging()
-    ss.serve(PocketEngine(args.threads), args)
+    ss.serve(PocketEngine(args.threads, ss.language(args.language, LANGUAGES, "english")), args)
 
 
 if __name__ == "__main__":

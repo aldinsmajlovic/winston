@@ -351,9 +351,9 @@ goes on.
 </picture>
 
 - **His name, what he calls you, your pronouns and his reply language**, as on the Assistant page
-  ([how he addresses you](identity.md#how-he-addresses-you)). The reply language only changes what he
-  answers in, not his voice or hearing, and the field says so: an English-only voice reads other
-  languages badly.
+  ([how he addresses you](identity.md#how-he-addresses-you)). The reply language is written by its
+  English name; Pocket TTS and Qwen3-TTS switch to it if they speak it, and His voice below says when
+  the voice picked in Brain and voice does not ([languages](languages.md#his-voice)).
 - **His personality**: its first rule, with the whole document folded under it (Read and change it,
   with how many rules it has). It is the document from its own page: each rule edited, deleted or added
   saves at once, with Undo.

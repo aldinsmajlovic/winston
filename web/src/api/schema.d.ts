@@ -1707,7 +1707,7 @@ export interface components {
             persona?: string;
             /**
              * Reply language
-             * @description Only his instructions change: he understands what you say in any language his hearing knows and answers in this one. His voice is picked on its own, and an English-only voice reads other languages badly.
+             * @description Its English name, such as Swedish or German. He understands what you say in any language his hearing knows and answers in this one. A voice that speaks it is told to; the Voice page says when the picked one does not.
              * @default English
              */
             language?: string;
@@ -3778,6 +3778,11 @@ export interface components {
             icon?: string | null;
             /** Needs */
             needs: string[];
+            /**
+             * Speaks
+             * @description A voice's languages by English name, to match assistant.language against; None: not known
+             */
+            speaks?: string[] | null;
             /** Engine */
             engine?: {
                 [key: string]: unknown;
@@ -4266,6 +4271,12 @@ export interface components {
              * @description Speak in this voice instead of tts.voice (a clip name under the server's voices directory, or a voice the server knows)
              */
             voice?: string | null;
+            /**
+             * Line
+             * @description A line of his own, such as the Voice page's previews: said in his reply language, translated once and kept as code's lines are
+             * @default false
+             */
+            line?: boolean;
             /** @description Try these streaming settings instead of the saved ones. Reaches the speech server only when its engine command uses {tts.streaming.*}; otherwise ignored (X-Streaming). */
             streaming?: components["schemas"]["SpeakStreaming"] | null;
         };

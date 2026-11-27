@@ -314,6 +314,8 @@ class SpeakRequest(BaseModel):
     voice: str | None = Field(None, min_length=1, max_length=200,
                               description="Speak in this voice instead of tts.voice (a clip name under the "
                                           "server's voices directory, or a voice the server knows)")
+    line: bool = Field(False, description="A line of his own, such as the Voice page's previews: said in his reply "
+                                          "language, translated once and kept as code's lines are")
     streaming: SpeakStreaming | None = Field(  # type: ignore[valid-type]
         None, description="Try these streaming settings instead of the saved ones. Reaches the speech server "
                           "only when its engine command uses {tts.streaming.*}; otherwise ignored (X-Streaming).")
@@ -573,6 +575,8 @@ class Preset(BaseModel):
     hint: str
     icon: str | None = None                 # a logo or kind the UI draws next to the title
     needs: list[str]
+    speaks: list[str] | None = Field(None, description="A voice's languages by English name, to match "
+                                                       "assistant.language against; None: not known")
     engine: dict[str, Any] | None = None    # EngineConfig fields for the slot, None for in-process adapters
     settings: dict[str, Any]                # section fields that go with it (llm, tts, stt)
 
@@ -1268,7 +1272,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         cfg = app.state.cfg
         t = cfg.tts
         voice = s.voice or t.voice
-        body: dict[str, Any] = {"model": t.model, "input": s.text.strip(), "voice": voice,
+        text = await lines.say(cfg, s.text.strip(), wait=30) if s.line else s.text.strip()
+        body: dict[str, Any] = {"model": t.model, "input": text, "voice": voice,
                                 "response_format": "pcm"}
         headers = {"X-Sample-Rate": str(t.sample_rate), "X-Voice": quote(voice, safe="/._-")}
         eng = cfg.engines.get("tts")

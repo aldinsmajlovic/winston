@@ -10,7 +10,7 @@ import { LoadError, useTitle } from '@/components/page'
 import { Presence } from '@/components/presence'
 import { MemoryBar } from '@/components/memory-bar'
 import { SectionForm } from '@/components/section-form'
-import { runsHere, SlotCard } from '@/components/slot-card'
+import { NotSpoken, runsHere, SlotCard } from '@/components/slot-card'
 import { StatusLine } from '@/components/status-line'
 import { Fold } from '@/components/fold'
 import { KindIcon } from '@/components/kind-icon'
@@ -96,7 +96,7 @@ export default function SetupPage() {
       <p className="text-muted-foreground">{step === DONE ? 'Last, who can open his pages from now on. Finish ends setup and takes you to Talk, where you talk to him.' : SETUP_STEPS[step].intro}</p>
       {step === 'brain' ? <BrainStep page={s.page} presets={presets.data} next={next} /> : null}
       {step === 'home_assistant' ? <HomeAssistantStep page={s.page} next={next} /> : null}
-      {step === 'who' ? <WhoStep page={s.page} next={next} /> : null}
+      {step === 'who' ? <WhoStep page={s.page} presets={presets.data} next={next} /> : null}
       {step === 'box' ? <BoxStep page={s.page} next={next} /> : null}
       {step === DONE ? <DoneStep page={s.page} state={state} name={name} /> : null}
     </Frame>
@@ -308,11 +308,12 @@ function speakingLine(tts: EngineStatus | undefined, off: boolean): ReactNode {
 }
 
 /** His name and reply language as on the Assistant page, his personality as on its own page (each edit
- * saved at once), and his voice as on the Voice page, with Hear this voice once speaking runs, and the
- * voices cloned by asking him. Its button saves, renaming him through the same confirm, which offers to
+ * saved at once), and his voice as on the Voice page, with Hear this voice once speaking runs, a word when
+ * it does not speak the reply language, and the voices cloned by asking him. Its button saves, renaming him through the same confirm, which offers to
  * change his name in his personality too. */
-function WhoStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
+function WhoStep({ page, presets, next }: StepProps) {
   const previews = useVoicePreviews(page)
+  const preset = presets.tts.find((p) => p.id === matchPreset('tts', page.value, presets.tts))
   const tts = useStatus().data?.engines.find((e) => e.name === 'tts')
   const [busy, run] = useBusy()
   return (
@@ -321,6 +322,7 @@ function WhoStep({ page, next }: Pick<StepProps, 'page' | 'next'>) {
       <PersonalityCard />
       <SectionForm page={page} path={TTS} title="His voice" omit={allBut(page.schema, TTS, ['voice'])} adornments={{ voice: previews.voice }}>
         {speakingLine(tts, page.value.engines?.tts?.enabled === false)}
+        <NotSpoken speaks={preset?.speaks} language={page.value.assistant?.language} />
       </SectionForm>
       <ClonedVoices current={page.value.tts?.voice} onUse={(voice) => page.update((c) => setIn(c, ['tts', 'voice'], voice))} />
       <StepActions

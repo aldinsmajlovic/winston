@@ -539,7 +539,7 @@ test('the brain model lists running and downloaded models, and a model not on di
   expect(errors).toEqual([])
 })
 
-test('the Voice page plays the unsaved voice and its streaming, and not an unsaved engine', async ({ page }) => {
+test('the Voice page plays the unsaved voice and its streaming, and not an unsaved engine or language', async ({ page }) => {
   const bodies: Record<string, unknown>[] = []
   await page.route('**/api/speak', async (route) => {
     bodies.push(route.request().postDataJSON() as Record<string, unknown>)
@@ -560,8 +560,10 @@ test('the Voice page plays the unsaved voice and its streaming, and not an unsav
   })
   await page.route('**/api/config', async (route) => {
     if (route.request().method() !== 'GET') return route.fallback()
-    const config = (await (await route.fetch()).json()) as { engines: Record<string, { enabled?: boolean }> }
-    await route.fulfill({ json: { ...config, engines: { ...config.engines, tts: { ...config.engines.tts, enabled: true } } } })
+    const config = (await (await route.fetch()).json()) as { engines: Record<string, { enabled?: boolean }>; assistant: object }
+    await route.fulfill({
+      json: { ...config, assistant: { ...config.assistant, language: 'Swedish' }, engines: { ...config.engines, tts: { ...config.engines.tts, enabled: true } } },
+    })
   })
   const errors = watchErrors(page)
   await open(page, '/voice')
@@ -576,6 +578,7 @@ test('the Voice page plays the unsaved voice and its streaming, and not an unsav
   await expect.poll(() => bodies.length).toBe(1)
   expect(bodies[0].voice).toBe('smoke/unsaved_voice')
   expect(String(bodies[0].text)).toMatch(/^Hello, I'm .+\. This is how I sound\.$/)
+  expect(bodies[0].line).toBe(true) // said in his reply language by winstond
 
   // The sample carries the draft's streaming and shows its time to first sound. Streaming settings are
   // drawn only for a speech engine whose command takes them ({tts.streaming.*}); the copy's may not.
@@ -598,6 +601,11 @@ test('the Voice page plays the unsaved voice and its streaming, and not an unsav
   await page.getByRole('option', { selected: false }).filter({ hasNotText: 'Custom' }).first().click()
   await expect(play).toBeDisabled()
   expect(bodies).toHaveLength(streams ? 2 : 1)
+
+  // A voice that does not speak the reply language says so: Chatterbox-Turbo speaks English only.
+  await page.locator('#tts-engine').click()
+  await page.getByRole('option', { name: /^Chatterbox-Turbo/ }).click()
+  await expect(page.getByText('This voice does not speak Swedish, his reply language, and reads it badly. It speaks English.')).toBeVisible()
   expect(errors).toEqual([])
 })
 

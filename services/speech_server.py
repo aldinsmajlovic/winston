@@ -334,6 +334,16 @@ class SpeechServer:
         return app
 
 
+def language(said: str, known: dict[str, str], other: str) -> str:
+    """Winston's reply language (its English name, "Swedish"; "en-GB" is English) as this engine's own name
+    for it from `known`, or `other` when the engine does not speak it."""
+    word = (said.strip().lower().split() or ["english"])[0]
+    word = "english" if word.startswith("en") else word
+    if word not in known:
+        log.warning("%s is not one of this voice's languages (%s); %s instead", said, ", ".join(sorted(known)), other)
+    return known.get(word, other)
+
+
 def arg_parser(description: str, voice: str | None = None) -> argparse.ArgumentParser:
     """The command line every engine shares; each adds its own options. voice is the default --voice."""
     ap = argparse.ArgumentParser(description=description)
