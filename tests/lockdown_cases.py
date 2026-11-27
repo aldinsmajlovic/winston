@@ -31,13 +31,18 @@ expect("an open window ends at end", L.windows(0, 5e9)[-1][1] == 5e9)
 L.turn_off("cli")
 
 
-def req(client, host):
-    return SimpleNamespace(client=SimpleNamespace(host=client), headers={"host": host})
+def req(client, host, listening="127.0.0.1"):
+    return SimpleNamespace(client=SimpleNamespace(host=client), headers={"host": host},
+                           scope={"server": (listening, 8700)})
 
 
 expect("this computer", this_computer(req("127.0.0.1", "127.0.0.1:8700")))
 expect("a reverse proxy is not", not this_computer(req("127.0.0.1", "winston.lan")))
 expect("another machine is not", not this_computer(req("192.168.1.20", "localhost")))
+expect("listening on a typed address, a client at that address using it is this computer",
+       this_computer(req("192.168.1.20", "192.168.1.20:8700", "192.168.1.20")))
+expect("but not through a name", not this_computer(req("192.168.1.20", "winston.lan", "192.168.1.20")))
+expect("nor from another client", not this_computer(req("192.168.1.30", "192.168.1.20:8700", "192.168.1.20")))
 
 async def winstond():
     import httpx
@@ -51,8 +56,8 @@ async def winstond():
            "providers": {"home_assistant": {"url": f"http://127.0.0.1:{ha_port}", "token_env": "HA_TOKEN",
                                             "expose": {"light.taklampa": {}}}},
            "control": {"port": api_port}, "speak_up": {"phone": "notify.mobile_app_test_phone"},
-           "extensions": {"probe": {"enabled": True}, "friend": {"enabled": True}}}
-    winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py"), env='PROBE_KEY="x"\n')
+           "extensions": {"probe": {"enabled": True}, "friend": {"enabled": True}, "trainer": {"enabled": True}}}
+    winstond_data(DATA, cfg, fixtures=("probe.py", "friend.py", "trainer.py"), env='PROBE_KEY="x"\n')
     async with FakeHA(ha_port) as fake:
         app = create_app(load(), autostart=False)
         stop = await serve(app, api_port)
@@ -68,7 +73,7 @@ async def winstond():
             return [w for w in fake.writes if w["type"] == "service/notify.mobile_app_test_phone"]
 
         async def ran():
-            return all((p := host.procs.get(i)) and p.state == "running" for i in ("probe", "friend"))
+            return all((p := host.procs.get(i)) and p.state == "running" for i in ("probe", "friend", "trainer"))
 
         try:
             await until(ran, 30)
@@ -149,8 +154,25 @@ async def winstond():
                    r1.status_code == 403 and "Locked down" in r1.json()["detail"]
                    and r2.status_code == 403 and r2.text.startswith("Winston is locked down")
                    and r3.status_code == 200, (r1.text, r2.text, r3.status_code))
-            r = await api.post("/api/nudges/mentions", json={"text": "hi"})
+            await api.post("/api/extensions/trainer/tools/story", json={"about": "https://example.com/a",
+                                                                       "say": "A story broke."})
+            r = await api.post("/api/nudges/mentions", json={"text": "what's new?"})
             expect("on: nothing is mentioned", r.json() == [], r.text)
+
+            # A speaker is listening; a nudge due now goes to the phone instead.
+            speaker = app.state.hub.subscribe("voice", "Kitchen")
+            writes = len(fake.writes)
+            nudges = host.nudges
+            noon = time.mktime(time.strptime("2026-10-01T12:00", "%Y-%m-%dT%H:%M"))
+            nudges.clock = lambda: noon
+            await api.post("/api/extensions/trainer/tools/set_gap", json={"days": 3})
+            await until(lambda: asyncio.sleep(0, result=any(r["kind"] == "rest" for r in nudges.records.values())), 10)
+            await nudges.evaluate()
+            await until(lambda: asyncio.sleep(0, result=any(
+                w["type"] == "service/notify.mobile_app_test_phone" for w in fake.writes[writes:])), 10)
+            phone = [w for w in fake.writes[writes:] if w["type"] == "service/notify.mobile_app_test_phone"]
+            expect("on: a nudge for the speakers goes to the phone, and the speaker hears nothing",
+                   phone and "3 days" in phone[0]["message"] and speaker.empty(), (phone, speaker.qsize()))
 
             r = (await api.post("/api/lockdown", json={"on": False, "channel": "voice"})).json()
             cs = await confirmations(True)
@@ -161,8 +183,30 @@ async def winstond():
             await api.post("/api/lockdown", json={"on": True})
             r = (await api.post("/api/lockdown", json={"on": False})).json()
             expect("off without a conversation is at once", not r["on"] and not r["waiting"] and not L.on(), r)
+            r = await api.post("/api/nudges/mentions", json={"text": "what's new?"})
+            expect("off: the story waits for him, not used up while locked", [g["say"] for g in r.json()]
+                   == ["A story broke."], r.text)
             r = await api.get("/api/status", headers=lan)
             expect("off: the same Host is not locked out by lockdown", "Locked down" not in r.text, r.text)
+
+            import winston.api.app as appmod
+            appmod.KEEPALIVE = 0.3
+            async with (httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as other,
+                         other.stream("GET", f"http://127.0.0.1:{api_port}/api/live", headers=lan) as stream):
+                lines = stream.aiter_lines()
+                await asyncio.wait_for(anext(lines, None), 5)           # open and receiving
+                await api.post("/api/lockdown", json={"on": True})
+
+                async def drain():
+                    async for _ in lines:
+                        pass
+                try:
+                    await asyncio.wait_for(drain(), 3)
+                    ended = True
+                except TimeoutError:
+                    ended = False
+            expect("a stream open from another Host ends when lockdown comes on", ended)
+            await api.post("/api/lockdown", json={"on": False})
         finally:
             await api.aclose()
             await host.stop_all()

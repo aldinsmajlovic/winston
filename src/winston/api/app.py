@@ -600,20 +600,32 @@ def gpu_status() -> GpuStatus | None:
     return GpuStatus(name=m.name or "", used_mb=m.used, total_mb=m.total) if m.kind != "ram" else None
 
 
-def _events(q: asyncio.Queue, close: Callable[[], object],
+KEEPALIVE = 15      # seconds without an event before a keepalive (a test shortens it)
+
+
+def _locked_out(request: Request) -> bool:
+    """Lockdown came on while this stream was open, and the client is not his computer."""
+    return lockdown.on() and not secrets.this_computer(request)
+
+
+def _events(request: Request, q: asyncio.Queue, close: Callable[[], object],
             encode: Callable[[Any], str] = lambda ev: json.dumps(ev, ensure_ascii=False),
             head: Iterable[str] = ()) -> StreamingResponse:
-    """Server-sent events: head, then each item from q as encode(item), with a keepalive after 15 s without one
-    (which also lets a dead client be noticed), and close() once the client has gone."""
+    """Server-sent events: head, then each item from q as encode(item), with a keepalive after KEEPALIVE s without
+    one (which also lets a dead client be noticed), and close() once the client has gone or lockdown shut it
+    out (checked at each wake, so within KEEPALIVE)."""
     async def gen():
         try:
             for line in head:
                 yield line
-            while True:
+            while not _locked_out(request):
                 try:
-                    yield f"data: {encode(await asyncio.wait_for(q.get(), timeout=15))}\n\n"
+                    ev = await asyncio.wait_for(q.get(), timeout=KEEPALIVE)
                 except TimeoutError:
                     yield ": keepalive\n\n"
+                else:
+                    if not _locked_out(request):
+                        yield f"data: {encode(ev)}\n\n"
         finally:
             close()
     return StreamingResponse(gen(), media_type="text/event-stream")
@@ -1094,9 +1106,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return status_payload()
 
     @app.get("/api/status/stream", summary="Status every 2 s as server-sent events (Status objects)")
-    async def status_stream():
+    async def status_stream(request: Request):
         async def gen():
-            while True:
+            while not _locked_out(request):
                 await sup.refresh()
                 yield f"data: {status_payload().model_dump_json()}\n\n"
                 await asyncio.sleep(2)
@@ -1110,20 +1122,20 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         return publish_announcement(a)
 
     @app.get("/api/events", summary="Announcements and nudges for one channel session, as server-sent events")
-    async def events(channel: Literal["voice", "satellite", "discord"] = Query(...),
+    async def events(request: Request, channel: Literal["voice", "satellite", "discord"] = Query(...),
                      room: str | None = Query(None, description="The room the session is in: nudges go to the "
                                                                 "room you are in")):
         q = hub.subscribe(channel, room)
-        return _events(q, lambda: hub.unsubscribe(channel, q), head=[": subscribed\n\n"])
+        return _events(request, q, lambda: hub.unsubscribe(channel, q), head=[": subscribed\n\n"])
 
     @app.get("/api/live", summary="What he hears, says and does: recent events, then new ones, as "
                                   "server-sent events (LiveEvent objects)")
-    async def live():
+    async def live(request: Request):
         q = feed.subscribe()
 
         def encode(ev: LiveEvent) -> str:
             return ev.model_dump_json(exclude_none=True)
-        return _events(q, lambda: feed.unsubscribe(q), encode, [f"data: {encode(ev)}\n\n" for ev in feed.backlog()])
+        return _events(request, q, lambda: feed.unsubscribe(q), encode, [f"data: {encode(ev)}\n\n" for ev in feed.backlog()])
 
     @app.post("/api/live", response_model=Ok, summary="Events from a channel process into the live feed")
     async def live_publish(events: list[LiveEvent]):
@@ -1234,9 +1246,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
 
     @app.get("/api/rooms/{room}/mic", summary="Who has the room's mic, now and on every change, as server-sent "
                                               "events ({room, held_by})")
-    async def room_mic_events(room: str):
+    async def room_mic_events(room: str, request: Request):
         q = rooms.subscribe(room)
-        return _events(q, lambda: rooms.unsubscribe(room, q))
+        return _events(request, q, lambda: rooms.unsubscribe(room, q))
 
     @app.post("/api/speak", response_class=StreamingResponse,
               responses={200: {"content": {"audio/pcm": {}}, "description": "16-bit mono PCM, rate in X-Sample-Rate",

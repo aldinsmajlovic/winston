@@ -142,9 +142,15 @@ def loopback(host: str) -> bool:
 
 
 def this_computer(request: Request) -> bool:
-    """A loopback client reached through a local Host header (not a reverse proxy)."""
+    """A loopback client reached through a local Host header (not a reverse proxy), or, when winstond listens
+    on a typed address (control.host), a client at that same address using it as the Host (winstond's own
+    processes reach it that way). A name in Host, or another client address, is never this computer."""
     host = urlsplit("//" + request.headers.get("host", "")).hostname or ""
-    return bool(request.client and loopback(request.client.host)) and host in LOCAL_HOSTS
+    client = request.client.host if request.client else None
+    if client and loopback(client) and host in LOCAL_HOSTS:
+        return True
+    listening = (request.scope.get("server") or (None,))[0]
+    return bool(client and listening and client == listening == host)
 
 
 def _port(u) -> int | None:
