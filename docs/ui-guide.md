@@ -100,6 +100,8 @@ focuses, and never decorates.
 - **The header follows its own width** (the sidebar shares the window). Two or more commands fold into
   one More menu (one stays a button), and the breadcrumb gives way when it is narrow, so the title
   keeps its room.
+- **Notices sit at the top on a phone**, so one that stays for a download never covers the bar along
+  the bottom, and every notice closes with a tap.
 - **Tables stack below `sm`**, and Save moves to a bar along the bottom. On Status a stacked row's state
   and buttons line up under its name, past the icon.
 - **A dropdown's value wraps** onto a second line in a narrow field rather than being cut mid-word.

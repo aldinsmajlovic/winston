@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { LoaderCircle } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { toast, type ExternalToast } from 'sonner'
 import type { EngineState, EngineStatus } from '@/api/client'
@@ -29,15 +30,17 @@ export function EngineToasts() {
       const What = capitalize(engineLabel(e))
       if (closed.current[e.name] !== e.state) delete closed.current[e.name]
       // Sonner merges an update into the toast it replaces, so every key is given each time.
-      const show = (kind: 'loading' | 'success' | 'error' | 'warning', title: string, o: ExternalToast = {}) =>
-        toast[kind](title, { id: `engine:${e.name}`, description: undefined, action: undefined, duration: LONG, closeButton: true, ...o })
+      const show = (kind: 'message' | 'success' | 'error' | 'warning', title: string, o: ExternalToast = {}) =>
+        toast[kind](title, { id: `engine:${e.name}`, description: undefined, action: undefined, icon: undefined, duration: LONG, closeButton: true, ...o })
       if (prev === 'installing' && e.state === 'starting') installed.current.add(e.name)
       else if (e.state !== 'starting') installed.current.delete(e.name)
       if (e.kind === 'engine' && (e.state === 'installing' || e.state === 'starting')) {
         if (closed.current[e.name]) continue
         // Closed by hand, not replaced: a dismiss by code comes after a newer status.
         const onDismiss = () => void (seen.current === now && (closed.current[e.name] = e.state))
-        show('loading', busyTitle(e, installed.current.has(e.name)), { description: <Busy e={e} />, duration: Infinity, onDismiss })
+        // Not sonner's loading kind, which has no close button: a download's notice stays for minutes.
+        show('message', busyTitle(e, installed.current.has(e.name)), { icon: <LoaderCircle className="size-4 animate-spin" />,
+          description: <Busy e={e} />, duration: Infinity, onDismiss })
       } else if (prev === undefined || prev === e.state) {
         continue
       } else if (e.state === 'healthy' && e.kind === 'engine' && (prev === 'installing' || prev === 'starting')) {

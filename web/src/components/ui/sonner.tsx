@@ -3,14 +3,18 @@
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
+  // On a phone a notice spans the width: at the bottom it covered Save, the wizard's Next and Talk's composer.
+  const phone = useIsMobile()
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      position={phone ? "top-center" : "bottom-right"}
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />

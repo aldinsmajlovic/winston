@@ -131,6 +131,30 @@ test('the steps save without restarting; Finish restarts what waits, except one 
   await page.unrouteAll({ behavior: 'ignoreErrors' })
 })
 
+test('a notice on a phone sits at the top, clear of the step\'s buttons', async ({ page }) => {
+  // The brain installing or starting is a notice for minutes; along the bottom it covered Skip for now and Next.
+  startSetup()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const starting = { name: 'llm', kind: 'engine', driver: 'docker', state: 'starting', detail: '', since: 0, port: 8000,
+    startup_timeout: 900, started_in: 12, config_changed: false }
+  await page.route('**/api/status/stream', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' }))
+  await page.route('**/api/status', async (route) => {
+    const status = (await (await route.fetch()).json()) as { engines: { name: string }[] }
+    await route.fulfill({ json: { ...status, engines: [...status.engines.filter((e) => e.name !== 'llm'), starting] } })
+  })
+  await page.goto(`/setup?key=${KEY}`)
+  const notice = page.locator('[data-sonner-toast]', { hasText: 'Starting the brain' })
+  await expect(notice).toBeVisible()
+  // A long step (its picks open) scrolls its buttons to the bottom edge, so the notice must not be there.
+  expect((await notice.boundingBox())!.y).toBeLessThan(844 / 4)
+  // At the top it covers the header's menu while the brain downloads, so it closes with a tap, not only a swipe.
+  await notice.getByRole('button', { name: 'Close toast' }).click({ timeout: 5_000 })
+  await expect(notice).toHaveCount(0)
+  await page.getByRole('button', { name: 'Skip for now' }).click({ timeout: 5_000 })
+  await expect(page).toHaveURL(/\/setup\/home_assistant$/)
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+})
+
 test('while setup is not finished, his address opens the wizard', async ({ page }) => {
   startSetup()
   await page.goto('/')

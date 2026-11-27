@@ -99,7 +99,8 @@ HTTPS too.
 
 ## Notices
 
-Every page but the wall display says what happens to his parts in a notice at the bottom right, one
+Every page but the wall display says what happens to his parts in a notice at the bottom right (at
+the top on a phone, clear of Save, the wizard's buttons and Talk's composer along the bottom), one
 per part, each replacing the last:
 
 - an engine installing: "Installing the brain, 42%", what it is getting ("The model, 6.2 of 16.4 GB")
@@ -108,7 +109,9 @@ per part, each replacing the last:
 - any part, engine or channel, that fails ("The speaking voice failed" and why) or stops answering,
   with Status.
 
-Installing, starting and a failure stay until they change or you close them; a closed one comes back
+Installing, starting and a failure stay until they change or you close them, each with its close
+button (installing and starting draw their spinner as the notice's icon, as sonner's loading notice has
+none); a closed one comes back
 only when the part's state changes. The state a page opens on is not a notice, except a part already
 installing or starting: Status says the rest. They follow `/api/status` (`progress` is how far an
 install is, 0 to 1, while the sizes are known).
