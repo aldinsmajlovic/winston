@@ -69,6 +69,7 @@ Paths are in the data folder.
 | What | Where | Set by |
 | --- | --- | --- |
 | Each engine subprocess's output | `logs/<engine>.log` | |
+| What the brain's requests did: each failure, the first that worked after one, each Check | `logs/brain.log`, a hosted brain's Log on Brain | |
 | Installing a service's venv (`uv sync`) | `logs/install-<service>.log` | |
 | The LLM container | `docker logs winston-llm` | |
 | Each extension: what it printed, every failure with its traceback | `logs/extensions/<id>.log`, its state in `state/extensions/<id>/` | |
@@ -114,6 +115,12 @@ responding, Stopped or Failed. An error says why, and stays until you start or s
   restarted, or its model or context is changed, so it is not warmed again: a system Ollama is back
   seconds after it is stopped and looks healthy, and each warm-up would stop it again. A brain
   elsewhere is never blamed for this computer's memory.
+- A brain request that fails, from a conversation, the warm-up or Check on Brain, says why:
+  `Key refused (401)`, `Out of credit (402)`, `No such model, or a wrong API address (404)`,
+  `Too many requests (429)`, `Not reachable`, or the provider's own words for any other code. The
+  brain's status is Failed with it until a request works, the brain restarts, or its settings or key are
+  saved (the note is `data/state/brain_failure.txt`). Without one, a hosted brain counts as up whenever
+  winstond runs: nothing asks it anything between requests, since each is billed.
 - A process with no health check (Discord) counts as up only after it has run for 2 seconds.
 - An engine that lacks something it needs is installed first, and says Installing with how far it is
   ("the model, 6.2 GB of 16.4 GB"): its Docker image, its venv under `services/` (`uv sync`, logged to

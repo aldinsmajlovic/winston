@@ -22,7 +22,7 @@ REQ = httpx.Request("POST", "http://x")
 
 
 def status(code: int) -> openai.APIStatusError:
-    return openai.APIStatusError("Error code: %d - {'message': 'Incorrect API key provided: sk-or-...abcd'}" % code,
+    return openai.APIStatusError(f"Error code: {code} - {{'message': 'Incorrect API key provided: sk-or-...abcd'}}",
                                  response=httpx.Response(code, request=REQ), body=None)
 
 

@@ -282,9 +282,9 @@ class Supervisor:
             if m.state in ("installing", "starting"):
                 continue
             keep = m.detail if m.pending or m.stale else ""
-            if m.name == "llm" and (why := memory.stopped_for_memory()):    # up again, and stopped again on use
-                self._set(m, "error", why)
-            elif m.name == "llm" and (why := brain_health.failure()) and await self.healthy(m):    # answered, refused
+            # Out of memory: up again, and stopped again on use. A brain failure: it answered, and refused.
+            if m.name == "llm" and ((why := memory.stopped_for_memory())
+                                    or ((why := brain_health.failure()) and await self.healthy(m))):
                 self._set(m, "error", why)
             elif await self.healthy(m):
                 self._set(m, "healthy", keep)

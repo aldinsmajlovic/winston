@@ -243,6 +243,12 @@ The What runs his brain card has, from the top:
   arguments and the rest), its state with Log and Restart while it runs, Reset to the preset while the
   block differs from the preset, the API address while Winston runs the engine, and How thinking is
   switched. A problem with the engine shows above it, never folded away.
+- **Check**, beside the brain's Log: it asks the brain one tiny question with the saved key and model and
+  answers under it, _Works, answered in 640 ms_ or why not: Key refused, Out of credit, No such model, or
+  a wrong API address, Too many requests, Not reachable. A brain call that fails for real, from a
+  conversation or the warm-up, turns the state to Failed with the same reason until a call works, the
+  brain restarts, or its settings or key are saved. A hosted brain's Log shows each check, failure and
+  recovery ([running](running.md#logs)).
 
 Think before answering and How he picks his words are cards of their own. The second holds temperature,
 top-p, presence penalty and the longest reply, for when your model's page recommends other values.

@@ -292,6 +292,7 @@ function HowItRuns({ page, kind, presets, setup }: Omit<Props, 'children' | 'tit
   const install = useInstall(page, kind)
   const [log, setLog] = useState(false)
   const lines = $api.useQuery('get', '/api/engines/{name}/log', { params: { path: { name: kind }, query: { lines: 300 } } }, { enabled: log })
+  const check = $api.useMutation('post', '/api/engines/llm/check')
   const paths = held(kind, page.value)
   const errors = useErrorsUnder([ENGINES[kind], ...paths])
   const block = page.value.engines?.[kind]
@@ -315,16 +316,23 @@ function HowItRuns({ page, kind, presets, setup }: Omit<Props, 'children' | 'tit
     })
     if (choice) actions.restart.mutate(byName)
   }
+  // The brain's Check: one tiny question with the saved key and model, answered under the state line.
+  const checkAction = kind === 'llm' ? [{ label: check.isPending ? 'Checking' : 'Check', onClick: () => check.mutate({}) }] : []
   const stateLine = (e: EngineStatus) => (
-    <StatusLine
-      tone={TONES[e.state]}
-      action={[
-        { label: 'Log', onClick: () => setLog(true) },
-        isRunning(e) ? { label: 'Restart', onClick: () => void restart(e) } : { label: 'Start', onClick: () => actions.start.mutate(byName) },
-      ]}
-    >
-      {stateText(e)}
-    </StatusLine>
+    <>
+      <StatusLine
+        tone={TONES[e.state]}
+        action={[
+          ...checkAction,
+          { label: 'Log', onClick: () => setLog(true) },
+          isRunning(e) ? { label: 'Restart', onClick: () => void restart(e) } : { label: 'Start', onClick: () => actions.start.mutate(byName) },
+        ]}
+      >
+        {stateText(e)}
+      </StatusLine>
+      {kind === 'llm' && check.data ? <StatusLine tone={check.data.ok ? 'ok' : 'error'}>{check.data.text}</StatusLine> : null}
+      {kind === 'llm' && check.isError ? <StatusLine tone="error">{errorText(check.error)}</StatusLine> : null}
+    </>
   )
   // The preset's engine block only: its settings (the model, the voice) and Start with Winston stay as chosen.
   const reset =
