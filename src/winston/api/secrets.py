@@ -141,6 +141,12 @@ def loopback(host: str) -> bool:
         return False
 
 
+def this_computer(request: Request) -> bool:
+    """A loopback client reached through a local Host header (not a reverse proxy)."""
+    host = urlsplit("//" + request.headers.get("host", "")).hostname or ""
+    return bool(request.client and loopback(request.client.host)) and host in LOCAL_HOSTS
+
+
 def _port(u) -> int | None:
     try:
         return u.port or {"http": 80, "https": 443}.get(u.scheme)
