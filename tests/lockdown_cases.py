@@ -142,6 +142,16 @@ async def winstond():
             ev = [e for e in app.state.feed._history if e.type == "lockdown"]
             expect("the feed was told, with on, since and by", ev and ev[-1].on is True and ev[-1].since and ev[-1].by, ev[-1:])
 
+            lan = {"Host": "winston.lan"}
+            r1, r2 = await api.get("/api/status", headers=lan), await api.get("/", headers=lan)
+            r3 = await api.get("/api/status", headers={"Host": f"127.0.0.1:{api_port}"})
+            expect("on: another Host gets 403, JSON under /api/, text on the page; his computer is answered",
+                   r1.status_code == 403 and "Locked down" in r1.json()["detail"]
+                   and r2.status_code == 403 and r2.text.startswith("Winston is locked down")
+                   and r3.status_code == 200, (r1.text, r2.text, r3.status_code))
+            r = await api.post("/api/nudges/mentions", json={"text": "hi"})
+            expect("on: nothing is mentioned", r.json() == [], r.text)
+
             r = (await api.post("/api/lockdown", json={"on": False, "channel": "voice"})).json()
             cs = await confirmations(True)
             expect("off from a conversation waits, and it is still on", r["waiting"] and r["on"]
@@ -151,6 +161,8 @@ async def winstond():
             await api.post("/api/lockdown", json={"on": True})
             r = (await api.post("/api/lockdown", json={"on": False})).json()
             expect("off without a conversation is at once", not r["on"] and not r["waiting"] and not L.on(), r)
+            r = await api.get("/api/status", headers=lan)
+            expect("off: the same Host is not locked out by lockdown", "Locked down" not in r.text, r.text)
         finally:
             await api.aclose()
             await host.stop_all()

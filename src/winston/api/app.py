@@ -42,7 +42,7 @@ from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.common import failure_words, key
 from winston.core.brain import Brain, api_key
-from winston.core import memory, persona, speaker, turns, voices
+from winston.core import lockdown, memory, persona, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
 from winston.core.rooms import BoxState, MicHold, Rooms, RoomState, SyncRequest, SyncResult
 from winston.engines import install
@@ -729,7 +729,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             return False
 
     async def deliver_nudge(ev: dict, where: str) -> str | None:
-        if where == "speakers" and (n := hub.publish_nudge(ev, rooms.recent())):
+        if where == "speakers" and not lockdown.on() and (n := hub.publish_nudge(ev, rooms.recent())):
             spawn(web.noted(nudge_note(ev), ev["say"]))
             spawn(assist.chat.noted(nudge_note(ev), ev["say"]))
             return f"speakers:{n}"
@@ -905,6 +905,12 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         """In setup mode another device needs the setup link's key, from its ?key= or the cookie that sets;
         this computer needs none. Once setup is done, the network address winstond opened only for setup
         is closed again, unless Who can open this page opens it."""
+        if lockdown.on() and not secrets.this_computer(request):
+            if request.url.path.startswith("/api/"):
+                return JSONResponse({"detail": "Locked down. Only the computer Winston runs on can use this "
+                                               "until lockdown is turned off."}, status_code=403)
+            return Response("Winston is locked down. Only the computer he runs on can open this page until it is "
+                            "turned off.", status_code=403, media_type="text/plain")
         remote = not (request.client and secrets.loopback(request.client.host))
         key = setup_link.key_of(request) if remote else None
         why = None

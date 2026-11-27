@@ -10,6 +10,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Body, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from winston.core import lockdown
 from winston.extension_host.host import Host, brain_name, tool_title
 from winston.extension_host.services import BadCall, Failed, Refused, Services
 
@@ -415,7 +416,7 @@ def router(host: Host, services: Services) -> APIRouter:
     @r.post("/api/nudges/mentions", response_model=list[dict[str, Any]], tags=["speaking up"],
             summary="What to mention in the conversation going on now (next-talk nudges, the briefing); each once")
     async def mentions(text: str = Body("", embed=True)):
-        if host.nudges is None:
+        if host.nudges is None or lockdown.on():
             return []
         return await host.nudges.mentions(text)
 
