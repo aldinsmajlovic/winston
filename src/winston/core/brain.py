@@ -49,6 +49,7 @@ from winston.core.diary import Diary
 from winston.core.memory import make_memory_tools, prompt_block
 from winston.core.rooms import make_start_over_tool, plain_words, scoped_by_name, start_over
 from winston.core.tools.clone_hint import make_clone_hint_tool
+from winston.engines import brain_health
 from winston.core.tools.diary import make_diary_tool
 from winston.core.tools.lockdown import make_lockdown_tool
 from winston.core.tools.messaging import make_send_message_tool
@@ -429,11 +430,12 @@ class WinstonLLM(OpenAILLMService):
 
     def __init__(self, *args, home: re.Pattern | None = None, control: str = "none", effort: str = "",
                  own: list[Own] | None = None, assistant: str = "", anthropic_api: bool = False,
-                 cfg: WinstonConfig | None = None, **kwargs):
+                 cfg: WinstonConfig | None = None, channel: str = "?", **kwargs):
         self._anthropic = anthropic_api         # read by create_client, which the parent's __init__ calls
         super().__init__(*args, **kwargs)
         self._home, self._control, self._effort = home, control, effort.strip()
         self._own, self._assistant = own or [], assistant
+        self._channel = channel                 # where its requests come from, for the Brain's Log
         self._cfg = cfg                         # for lines said in his reply language
         self.ended = False          # the turn ended quietly on purpose (quiet_after); the channel resets it
         self._think = False
@@ -565,6 +567,19 @@ class WinstonLLM(OpenAILLMService):
                 line = await lines.say(self._cfg, line, wait=0) if self._cfg else line   # kept at start (prerender)
             await self.push_frame(TTSSpeakFrame(line, append_to_context=False))
         self._think = self._think or tweak
+        # Whether the brain answered, for its status and Log (engines/brain_health). Exception, not BaseException:
+        # a request cancelled because he was talked over did not fail.
+        try:
+            stream = await self._ask(context)
+        except Exception as e:
+            brain_health.failed(self._channel, e)
+            raise
+        finally:
+            self._think = self._no_tools = False
+        brain_health.worked(self._channel)
+        return stream
+
+    async def _ask(self, context: LLMContext):
         try:
             return await super().get_chat_completions(context)
         except (BadRequestError, anthropic.BadRequestError) as e:
@@ -575,8 +590,6 @@ class WinstonLLM(OpenAILLMService):
             afresh = await lines.say(self._cfg, AFRESH_LINE, wait=0) if self._cfg else AFRESH_LINE
             await self.push_frame(TTSSpeakFrame(afresh, append_to_context=False))
             return await super().get_chat_completions(context)
-        finally:
-            self._think = self._no_tools = False
 
     def build_chat_completion_params(self, params_from_context) -> dict:
         params = super().build_chat_completion_params(params_from_context)
@@ -614,7 +627,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
         and c.thinking.control != "effort" else None
     return WinstonLLM(
         home=home, control=c.thinking.control, effort=c.thinking.home_effort, anthropic_api=c.provider == "anthropic",
-        own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name, cfg=cfg,
+        own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name, cfg=cfg, channel=channel,
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=served_model(cfg),
@@ -760,7 +773,9 @@ class Brain:
                                                     tools=self.tools if self.tools.standard_tools else None),
                                          max_tokens=1)
             logger.info(f"brain warmed in {(time.perf_counter() - t0) * 1000:.0f} ms")
+            brain_health.worked(self.channel)
         except Exception as e:                                          # noqa: BLE001
+            brain_health.failed(self.channel, e)
             logger.warning(f"brain warm-up failed: {memory.out_of_memory(self.cfg, kills, e) or e}")
 
     def new_context(self) -> LLMContext:

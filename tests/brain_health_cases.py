@@ -8,9 +8,10 @@ import asyncio
 import anthropic
 import httpx
 import openai
-from harness import check, finish_checks, scratch_data
+from harness import REPO, check, finish_checks, scratch_data
 
 data = scratch_data("winston-brain-health-")        # no state/ or logs/ yet: a fresh install
+(data / "persona.md").write_text((REPO / "examples" / "persona.md").read_text())     # the brain's instructions
 
 from winston.config.schema import Channels, EngineConfig, WinstonConfig  # noqa: E402  (after WINSTON_DATA is set)
 from winston.engines.brain_health import clear, failed, failure, log_tail, why_failed, worked  # noqa: E402
@@ -79,5 +80,90 @@ sup.items = {"llm": down}
 failed("talk", status(401)); asyncio.run(sup.refresh())
 check("a brain that is down says so, not the old note", down.state, "unhealthy")
 
+# Conversations report: WinstonLLM's request is the parent's, made to fail or answer here.
+from pipecat.processors.aggregators.llm_context import LLMContext  # noqa: E402
+from pipecat.services.openai.llm import OpenAILLMService  # noqa: E402
+
+from winston.core.brain import Brain, build_llm  # noqa: E402
+
+
+def cfg_at(port: int, **llm) -> WinstonConfig:
+    return WinstonConfig.model_validate({"llm": {"base_url": f"http://127.0.0.1:{port}/v1", "api_key_env": None,
+                                                 "model": "fake", **llm}})
+
+
+def parent(outcome):
+    async def get_chat_completions(self, context):
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+    OpenAILLMService.get_chat_completions = get_chat_completions
+
+
+def ask():
+    """What WinstonLLM's request returned, or the exception it raised."""
+    llm = build_llm(cfg_at(9), channel="text")
+    try:
+        return asyncio.run(llm.get_chat_completions(LLMContext([{"role": "user", "content": "hi"}])))
+    except BaseException as e:      # noqa: BLE001  (CancelledError too)
+        return e
+
+
+clear()
+original = OpenAILLMService.get_chat_completions
+parent(status(401)); ask()
+check("a conversation's failure is noted, with its channel",
+      (failure(), log_tail(1)[0].endswith("  text  Key refused (401)")), ("Key refused (401)", True))
+parent(asyncio.CancelledError())
+check("talked over: cancelled, not a failure", (isinstance(ask(), asyncio.CancelledError),
+                                                 log_tail(1)[0].endswith("  text  Key refused (401)")), (True, True))
+parent("stream")
+check("one that works clears it", (ask(), failure()), ("stream", ""))
+OpenAILLMService.get_chat_completions = original
+
+# The warm-up, against a brain that refuses the key and one that answers.
+import threading  # noqa: E402
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: E402
+
+import fake_openai  # noqa: E402
+from pipecat.adapters.schemas.function_schema import FunctionSchema  # noqa: E402
+from pipecat.adapters.schemas.tools_schema import ToolsSchema  # noqa: E402
+from harness import free_port  # noqa: E402
+
+
+class Refusing(BaseHTTPRequestHandler):
+    def do_POST(self):
+        body = b'{"error": {"message": "Missing Authentication header", "code": 401}}'
+        self.send_response(401)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+def serve(handler) -> int:
+    port = free_port()
+    threading.Thread(target=ThreadingHTTPServer(("127.0.0.1", port), handler).serve_forever, daemon=True).start()
+    return port
+
+
+def warm(port: int):
+    """A Brain warmed as after start(), which always gives it tools (none fails Pipecat's own check)."""
+    b = Brain(cfg_at(port))
+    b.tools = ToolsSchema(standard_tools=[FunctionSchema(name="noop", description="Nothing.", properties={},
+                                                         required=[])])
+    asyncio.run(b.warm())
+
+
+clear()
+refusing, answering = serve(Refusing), serve(fake_openai.Handler)
+warm(refusing)
+check("a warm-up refused is a failure", failure(), "Key refused (401)")
+warm(answering)
+check("one that answers clears it", failure(), "")
+
 finish_checks("brain health: failures in words, the note as the Brain's status, brain.log as its Log, cleared by a "
-              "call that works, a restart or a save")
+              "call that works, a restart or a save; conversations and the warm-up report")
