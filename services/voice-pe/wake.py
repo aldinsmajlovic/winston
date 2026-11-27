@@ -289,7 +289,7 @@ def flash(room: str | None):
     mine = model.is_file()
     print(f"building with {'your model, ' + str(model) if mine else 'the repo model (no model of yours yet)'}; "
           "the first build takes 15 to 30 min, later ones a minute")
-    subprocess.run(["uvx", "esphome@2026.9.1", *(["-s", "wake_model", str(model)] if mine else []),
+    subprocess.run(["uvx", "esphome@2026.11.1", *(["-s", "wake_model", str(model)] if mine else []),
                     "run", "voice-pe-winston.yaml", "--device", host, "--no-logs"], cwd=HERE, check=True)
 
 

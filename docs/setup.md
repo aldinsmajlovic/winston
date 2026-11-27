@@ -493,7 +493,7 @@ A tag `v*` makes CI (`.github/workflows/release.yml`) build the release:
 | File | What it is |
 | --- | --- |
 | `winston-<version>.tar.gz` | The files git tracks, the UI already built, the tag's version stamped in |
-| `voice-pe-winston-<version>.factory.bin` | Winston's Voice PE firmware, built with ESPHome 2026.9.1, the version `services/voice-pe` pins |
+| `voice-pe-winston-<version>.factory.bin` | Winston's Voice PE firmware, built with ESPHome 2026.11.1, the version `services/voice-pe` pins |
 | `install.sh` | The [install script](#with-the-install-script) |
 | `CHANGELOG.md` | What each release brings, for Status and `winston update` |
 | `SHA256SUMS` | The checksums the script, `winston update` and the wizard check against |

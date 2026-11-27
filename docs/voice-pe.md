@@ -327,6 +327,10 @@ Read from its source and checked on the box. Winston works with all of it;
 Nothing else changes, and Wi-Fi set over USB survives the flash. On stock firmware a double press
 still switches button only.
 
+The pinned ESPHome also decides the box's Sendspin player, which Music Assistant streams to in sync
+with other speakers. ESPHome 2026.11.1 carries sendspin-cpp 0.9.3: the current protocol, encrypted.
+Built with 2026.9.1 (sendspin-cpp 0.7.2), Music Assistant took the box only as a "non-compliant client".
+
 ### Building and flashing
 
 Back up the box first; writing the file back at 0 restores it exactly.
@@ -340,8 +344,8 @@ toolchain.
 
 ```sh
 cd services/voice-pe
-uvx esphome@2026.9.1 compile voice-pe-winston.yaml
-uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device /dev/ttyACM0
+uvx esphome@2026.11.1 compile voice-pe-winston.yaml
+uvx esphome@2026.11.1 upload voice-pe-winston.yaml --device /dev/ttyACM0
 ```
 
 Then set the box's wake word to `okay_winston`. Later builds go over the network in about 17 s, with
@@ -349,15 +353,16 @@ TCP 3232 open from this machine to the box (`wake.py flash` does the same, with 
 there is one):
 
 ```sh
-uvx esphome@2026.9.1 upload voice-pe-winston.yaml --device <box address>
+uvx esphome@2026.11.1 upload voice-pe-winston.yaml --device <box address>
 ```
 
 ### The voice_assistant copy
 
 `services/voice-pe/components/` holds a copy of ESPHome's `voice_assistant` component from ESPHome
-2026.9.1, changed only where it says `Winston:`. It keeps ESPHome's license (GPLv3 for the C++, MIT for
-the Python) in `components/LICENSE`, not the repo's Apache 2.0. A build must use ESPHome 2026.9.1;
-moving to a newer one means copying its component again and redoing the changes.
+2026.11.1, changed only where it says `Winston:`. It keeps ESPHome's license (GPLv3 for the C++, MIT for
+the Python) in `components/LICENSE`, not the repo's Apache 2.0. A build must use ESPHome 2026.11.1;
+moving to a newer one means copying its component again and redoing the changes. Since 2026.11, an
+`STT_END` stops a microphone that is still streaming, so Winston always sends `STT_VAD_END` first.
 
 - **The microphone stays on.** The stock component stops it when the request ends (STT_VAD_END) and
   streams nothing while it waits for the reply and plays it. The copy keeps streaming its echo-cancelled

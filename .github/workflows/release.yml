@@ -44,7 +44,7 @@ jobs:
             gh release download "$prev" --repo "$GITHUB_REPOSITORY" --pattern '*.factory.bin' --output "$fw" --clobber; then
             echo "Firmware unchanged since $prev, reusing its build"
           else
-            (cd services/voice-pe && uvx esphome@2026.9.1 compile voice-pe-winston.yaml)
+            (cd services/voice-pe && uvx esphome@2026.11.1 compile voice-pe-winston.yaml)
           fi
       - name: Build
         run: >

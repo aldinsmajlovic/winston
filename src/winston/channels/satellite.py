@@ -937,7 +937,7 @@ class Satellite:
                 self._event(Ev.VOICE_ASSISTANT_STT_START)
                 self._say("listening")
                 listened = await self._listen(run)
-                self._event(Ev.VOICE_ASSISTANT_STT_VAD_END)          # the box stops its mic and waits
+                self._event(Ev.VOICE_ASSISTANT_STT_VAD_END)          # before STT_END: the box waits, mic on
                 pcm, guess = listened or (None, None)
                 got = (await guess if guess else await self._transcribe(pcm)) if pcm is not None else None
                 heard = got.text if got else ""
