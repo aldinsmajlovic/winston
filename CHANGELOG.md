@@ -3,6 +3,22 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.22 (unreleased)
+
+- The brain's Model is easier to choose from: each model draws a small memory bar of how it would fit,
+  Fits and Sees images narrow the list, and Use this model takes your pick, so a stray Enter no longer
+  swaps it.
+- The memory bar says less: whether it fits is one short line with an icon.
+- Setting up a room box gives it a key of Winston's, and can hand Home Assistant the same key, so both
+  reach the box while Winston keeps its microphone.
+- Without a graphics card, setup recommends a hosted brain: on the processor, every brain that fits took
+  over a minute to its first word.
+- Ollama keeps his model loaded between conversations, so his first word does not wait for it to load
+  again, and lets the old model go when you switch brains.
+- A model downloading from the Hub's newer storage moves steadily instead of standing still and jumping.
+- On a phone, notices sit at the top, clear of Save and the setup buttons, and each closes with a tap.
+- Known issues lists what does not work yet and what to do instead.
+
 ## 0.1.21 (2026-11-26)
 
 - His mark says more about what he is doing: while he thinks, a bright arc circles its ring, and while he
