@@ -577,6 +577,9 @@ class Preset(BaseModel):
     hint: str
     icon: str | None = None                 # a logo or kind the UI draws next to the title
     needs: list[str]
+    way: Literal["cpu", "gpu", "hosted"] | None = Field(None, description="A voice's or hearing's way to run, which "
+                                                         "Runs on picks; its presets are the models Model offers")
+    name: str | None = Field(None, description="The model alone, as Model lists it (title says where it runs too)")
     speaks: list[str] | None = Field(None, description="A voice's languages by English name, to match "
                                                        "assistant.language against; None: not known")
     engine: dict[str, Any] | None = None    # EngineConfig fields for the slot, None for in-process adapters

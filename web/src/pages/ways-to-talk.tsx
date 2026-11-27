@@ -16,13 +16,16 @@ import { DataTable, type Column } from '@/components/templates/list-page'
 import { SettingsPage } from '@/components/templates/settings-page'
 import { Button } from '@/components/ui/button'
 import { KindIcon } from '@/components/kind-icon'
+import type { Choice } from '@/components/combobox'
+import { RoomField } from '@/components/room-field'
 import { StatusLine } from '@/components/status-line'
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useOptions } from '@/hooks/use-options'
 import { useRegion } from '@/hooks/use-region'
-import { fold, useRoomChoices } from '@/hooks/use-room'
+import { boxArea, fold, haArea, useRoomChoices } from '@/hooks/use-room'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { capitalize } from '@/lib/format'
 import { applyForm, isRecord, prune, section, setIn, type JsonSchema } from '@/lib/schema'
@@ -109,22 +112,31 @@ function ownKey(device: JsonSchema, room: string): JsonSchema {
   return { ...device, properties: { ...device.properties, key_env: { ...field, secret: { ...meta, default: name } } } }
 }
 
+/** The box schema without its Home Assistant area while the room is one of Home Assistant's areas, or not
+ * chosen yet: the room says it. */
+function ownArea(device: JsonSchema, room: string, areas: Choice[]): JsonSchema {
+  if (!areas.length || (room && !haArea(areas, room))) return device
+  return { ...device, properties: Object.fromEntries(Object.entries(device.properties ?? {}).filter(([k]) => k !== 'area')) }
+}
+
 type DialogProps = {
   page: SettingsState
   editing: Editing | null
   setEditing: Dispatch<SetStateAction<Editing | null>>
   existing: string[]
+  areas: Choice[]
   onDone: () => void
 }
 
-/** Add or edit a room box: its room, then the box's own fields. A pasted key writes its variable's name
- * into the box, as it does in a section form. */
-function BoxDialog({ page, editing, setEditing, existing, onDone }: DialogProps) {
+/** Add or edit a room box: its room, picked from Home Assistant's areas or typed, then the box's own fields,
+ * its area only for a room that is not one. A pasted key writes its variable's name into the box, as it does
+ * in a section form. */
+function BoxDialog({ page, editing, setEditing, existing, areas, onDone }: DialogProps) {
   const room = editing?.room.trim() ?? ''
   const at = [...DEVICES, room]
   const options = { config: setIn(page.value, at, editing?.value), path: at }
   // Pruned on every change, but handed to rjsf as the same object while it reads the same.
-  const pruned = JSON.stringify(prune(ownKey(section(page.schema, at), room), page.schema, options))
+  const pruned = JSON.stringify(prune(ownArea(ownKey(section(page.schema, at), room), room, areas), page.schema, options))
   const schema = useMemo(() => JSON.parse(pruned) as JsonSchema, [pruned])
   const context = useMemo<FormContext>(
     () => ({ setAt: (path, value) => setEditing((e) => e && { ...e, value: setIn(e.value, path.slice(DEVICES.length + 1), value) }) }),
@@ -140,6 +152,7 @@ function BoxDialog({ page, editing, setEditing, existing, onDone }: DialogProps)
       keyInfo={section(page.schema, DEVICES).description}
       keyValue={editing?.room ?? ''}
       onKeyChange={(r) => setEditing((e) => e && { ...e, room: r })}
+      keyInput={areas.length ? <RoomField id="item-key" value={editing?.room ?? ''} areas={areas} onChange={(r) => setEditing((e) => e && { ...e, room: r })} /> : undefined}
       existing={existing}
       original={editing?.original}
       canSubmit={room !== '' && typeof host === 'string' && host.trim() !== ''}
@@ -167,6 +180,7 @@ function RoomBoxes({ page }: { page: SettingsState }) {
   const ask = useConfirm()
   const navigate = useNavigate()
   const [editing, setEditing] = useState<Editing | null>(null)
+  const areas = useOptions('ha_areas').choices
   const devices = page.value.channels?.satellite?.devices ?? {}
   const setDevices = (next: Record<string, SatelliteDevice>) => page.update((c) => setIn(c, DEVICES, next))
   const off = !saved?.channels?.satellite?.enabled
@@ -201,7 +215,11 @@ function RoomBoxes({ page }: { page: SettingsState }) {
     const room = editing.room.trim()
     const next = { ...devices }
     if (editing.original !== undefined && editing.original !== room) delete next[editing.original]
-    next[room] = editing.value as SatelliteDevice
+    const device = { ...(editing.value as SatelliteDevice) }
+    const area = boxArea(areas, room, device.area)
+    if (area) device.area = area
+    else delete device.area
+    next[room] = device
     setDevices(next)
     setEditing(null)
   }
@@ -266,7 +284,7 @@ function RoomBoxes({ page }: { page: SettingsState }) {
           />
         </SectionForm>
       </CardContent>
-      <BoxDialog page={page} editing={editing} setEditing={setEditing} existing={Object.keys(devices)} onDone={done} />
+      <BoxDialog page={page} editing={editing} setEditing={setEditing} existing={Object.keys(devices)} areas={areas} onDone={done} />
     </Card>
   )
 }

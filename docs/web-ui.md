@@ -222,7 +222,12 @@ size, since a brain on his computer then runs on the processor.
 
 It moves as you change a pick or the context slider. Other programs are read again every 15 seconds.
 The sizes are the measured ones in [hardware](hardware.md#context-filled-last); a brain not measured is
-estimated from its weights, and the legend marks its size ≈. It stays pinned while you scroll, except on a phone.
+estimated from its weights, and the legend marks its size ≈.
+
+The card scrolls with the page. Once it is out of view above, a slim strip with only the bar and its
+verdict pins to the top edge, on the page's background with a rule under it, so the picks below change in
+sight of it. It fades in. On a phone it does not show, since a wrapped verdict would take too much of the
+screen.
 
 The What runs his brain card has, from the top:
 
@@ -345,11 +350,23 @@ Off, nothing is read ahead, which saves a hosted brain the extra requests.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
-  <img src="images/voice-light.png" alt="The Voice page: the graphics memory bar, Speaking with its voice and its closed How it runs, then Your voices, and Hearing on Fluid Speech Pro" width="720">
+  <img src="images/voice-light.png" alt="The Voice page: the graphics memory bar, Speaking on the graphics card with Breeze TTS 2 as its model and its voice, then Your voices, and Hearing on the processor with Fluid Speech Pro" width="720">
 </picture>
 
 Voice does for speaking and hearing what Brain does for the brain: the [graphics memory](#graphics-memory)
 bar, what runs each, its model or voice, and How it runs. The voices, cloning and hearing engines are in [voices](voices.md).
+
+On the Speaking and Hearing cards, Runs on is the way it runs, never a model, and Model lists the
+models that run that way, the recommended one first:
+
+| Runs on | Speaking | Hearing |
+| --- | --- | --- |
+| The processor | Pocket TTS | Fluid Speech Pro (recommended), Parakeet |
+| The graphics card | Breeze TTS 2 (recommended), Chatterbox-Turbo, Qwen3-TTS, VoxCPM2, Gepard | Qwen3-ASR 0.6B (recommended), 1.7B |
+| Hosted | the provider's model, typed | the provider's model, typed |
+
+Picking a way picks its recommended model. A hearing model set in config.yaml that no preset names shows
+under Model by its name.
 
 ## How settings pages work
 

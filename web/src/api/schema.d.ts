@@ -3811,6 +3811,16 @@ export interface components {
             /** Needs */
             needs: string[];
             /**
+             * Way
+             * @description A voice's or hearing's way to run, which Runs on picks; its presets are the models Model offers
+             */
+            way?: ("cpu" | "gpu" | "hosted") | null;
+            /**
+             * Name
+             * @description The model alone, as Model lists it (title says where it runs too)
+             */
+            name?: string | null;
+            /**
              * Speaks
              * @description A voice's languages by English name, to match assistant.language against; None: not known
              */

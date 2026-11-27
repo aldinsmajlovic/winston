@@ -285,8 +285,8 @@ Change opens that pick's card from the Brain and Voice pages under it (Runs on, 
 its own settings), and Done closes it. How it runs is left out: every pick here is a preset, and the
 Brain and Voice pages keep it for later.
 
-A **Graphics memory** bar (**Computer memory** without a graphics card) sits on top and stays
-in view ([web UI](web-ui.md#graphics-memory)). Here it also says whether the picks are the ones
+A **Graphics memory** bar (**Computer memory** without a graphics card) sits under the picks, and
+once scrolled past, its bar and verdict stay pinned along the top ([web UI](web-ui.md#graphics-memory)). Here it also says whether the picks are the ones
 recommended for his computer, with **Use the recommendation** once you have changed one. The recommendation is the
 profile setup picked, with the context filled last ([hardware](hardware.md#context-filled-last)).
 
@@ -396,7 +396,8 @@ by default, without asking.
    encrypted connection and kept in `data/.env` first. A box with a key keeps it when it is the one
    Winston saved for it; with any other (Home Assistant's, from before a flash) the step says "The box
    has a key Winston does not know. Flash it again, which erases it."
-5. **Choose its room** and Home Assistant area. When his name is not Winston, also pick a stock wake
+5. **Choose its room**: one of Home Assistant's areas, or a name typed. A typed room that is not an
+   area also asks for its Home Assistant area. When his name is not Winston, also pick a stock wake
    word (Okay Nabu, Hey Jarvis or Hey Mycroft), since the box knows Okay Winston and those three.
 6. **Use it in Home Assistant too**, on by default when Home Assistant is connected: Home Assistant
    gets the box's key and can play sound on it, and its voice assistant and firmware update for the

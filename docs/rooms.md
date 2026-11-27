@@ -22,11 +22,11 @@ and "the lights" means that room's lights. A screen with no room is a Winston of
 
 | Field | Key | What it is |
 | --- | --- | --- |
-| Room | the box's key | The room's name, like "main room" |
+| Room | the box's key | The room's name, like "main room". With Home Assistant connected it lists Home Assistant's areas and still takes a typed name |
 | Address | `host` | The box's IP address or `.local` name |
 | Encryption key | `key_env` | Only for a box Home Assistant adopted. Kept on his computer under a variable of the room's own, `VOICE_PE_KEY_MAIN_ROOM`, so two boxes never share one |
 | Wake word | `wake_word` | See [the wake word](voice-pe.md#the-wake-word) |
-| Home Assistant area | `area` | The room's name in Home Assistant, for "turn off the lights". Unset, the room's own name is used. The field lists Home Assistant's areas (`/api/options/ha_areas`) |
+| Home Assistant area | `area` | The room's name in Home Assistant, for "turn off the lights". Asked only for a room that is not one of Home Assistant's areas; unset, the room's own name is used. A room that is an area spelled another way ("living room" for "Living Room") gets the area's spelling here |
 
 ```yaml
 channels:

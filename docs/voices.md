@@ -6,12 +6,13 @@ engines, and the names he should hear right. What was measured, run by run, is o
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/voice-dark.png">
-  <img src="images/voice-light.png" alt="The Voice page: Speaking with its voice, streaming and its closed How it runs, then Your voices, and Hearing on Fluid Speech Pro" width="720">
+  <img src="images/voice-light.png" alt="The Voice page: Speaking on the graphics card with Breeze TTS 2 as its model and its voice, then Your voices, and Hearing on the processor with Fluid Speech Pro" width="720">
 </picture>
 
 ## Picking a voice
 
-Runs on, on the Speaking card of the Voice page, picks a preset. Every local one is a small engine on
+Runs on, on the Speaking card of the Voice page, picks the processor, the graphics card or hosted, and
+Model one of the voices below that run that way, Breeze TTS 2 first on the card. Every local one is a small engine on
 the same speech server, in its own venv, on port 8880. The numbers are from the benchmark runs on an
 RTX 3090 beside the 27B brain, on Winston's own lines in three voices.
 
@@ -339,7 +340,8 @@ the friend.
 ## Hearing engines
 
 Speech to text is a slot like the brain and the voice: Runs on, in the Hearing card on the Voice
-page, picks a preset. The word errors are on Winston's lines in three voices, quiet and with four
+page, picks the processor (built in, Fluid Speech Pro by default), the graphics card (Qwen3-ASR, 0.6B by
+default) or hosted, and Model the engine below. The word errors are on Winston's lines in three voices, quiet and with four
 other men talking 10 dB under the voice
 ([measurement](voice-benchmarks.md#parakeet-against-qwen3-asr-06b-8-october)).
 

@@ -97,7 +97,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-2 py-3">
-        <SidebarMenu>
+        <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
             {/* Talk, the way back to him, first and drawn like any page, with his mark */}
             <SidebarMenuButton asChild>
@@ -118,7 +118,7 @@ export function AppSidebar() {
               {i > 0 ? <SidebarSeparator /> : null}
               <SidebarGroup>
                 <SidebarGroupContent>
-                  <SidebarMenu>
+                  <SidebarMenu className="gap-0.5">
                     {group.map(({ to, label, Icon }) => {
                       const warn = to === '/status' && attention
                       return (

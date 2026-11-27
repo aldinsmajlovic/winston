@@ -499,7 +499,8 @@ runs fold at the bottom of its slot card, its driver beside the title.
 
 Above the fold, so a problem is never folded away, the card keeps:
 
-- Runs on, with the preset's line;
+- Runs on, with the preset's line; for speaking and hearing, Runs on is the way it runs (the processor,
+  the graphics card, hosted) and Model the presets that run that way, the first recommended;
 - the slot's own fields;
 - "Off, so he cannot answer." with Turn on;
 - what the pick still needs downloaded, with its size against the free space and Download (then its
@@ -684,7 +685,8 @@ there is one.
 
 ### Brain and Voice
 
-`SlotCard` (`components/slot-card.tsx`, over `Fold` in `components/fold.tsx`): Runs on, the slot's
+`SlotCard` (`components/slot-card.tsx`, over `Fold` in `components/fold.tsx`): Runs on (and for a voice or
+hearing, Model, from each preset's `way` and `name`), the slot's
 fields and, last, its closed `HowItRuns` with the state with Log and Restart, the engine block and the
 slot's server fields.
 

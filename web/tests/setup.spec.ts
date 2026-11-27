@@ -258,7 +258,21 @@ test('a room box added when Home Assistant does not take its key: said, and the 
     await use.click()
     await expect(page.getByText('Its old entry in Home Assistant is disabled, or it would come back there as a new device.')).toBeVisible()
     await use.click()
-    await page.getByLabel('Room', { exact: true }).fill('Smoke room')
+    const room = page.getByLabel('Room', { exact: true })
+    if (process.env.FAKE_HA_URL) {
+      // The room is one of Home Assistant's areas, or a name typed; only a typed one asks for its area.
+      const area = page.getByText('Home Assistant area', { exact: true })
+      await room.click()
+      await page.getByRole('option', { name: /^Kitchen/ }).click()
+      await expect(room).toHaveText('Kitchen')
+      await expect(area).toHaveCount(0)
+      await room.click()
+      await page.getByPlaceholder('Search, or type a name').fill('Smoke room')
+      await page.getByRole('option', { name: 'Use Smoke room' }).click()
+      await expect(area).toBeVisible()
+    } else {
+      await room.fill('Smoke room')
+    }
     await page.getByRole('button', { name: 'Add the box and continue' }).click()
     await expect(page.getByText(refused)).toBeVisible()
     expect(shared).toEqual([{ mac: '00:00:00:00:00:01', host: '192.0.2.50' }])

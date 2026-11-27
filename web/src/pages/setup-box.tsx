@@ -7,11 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
+import { RoomField } from '@/components/room-field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { useOptions } from '@/hooks/use-options'
 import { StepActions } from '@/components/step-actions'
 import { useBusy } from '@/hooks/use-busy'
+import { boxArea, haArea } from '@/hooks/use-room'
 import { getIn, setIn } from '@/lib/schema'
 import type { StepProps } from '@/pages/setup'
 
@@ -180,14 +182,15 @@ function Wifi({ port, onJoined, onSkip }: WifiProps) {
 
 type RoomProps = Props & { joined: BoxJoined & { ssid: string }; onSkip: () => void }
 
-/** Its room, its Home Assistant area, its wake word when his name is not Winston (the box knows only Okay
- * Winston and the stock three), and whether Home Assistant uses it too. Adding saves it as a room box and
+/** Its room (one of Home Assistant's areas or typed), its Home Assistant area for a room that is not one, its
+ * wake word when his name is not Winston (the box knows only Okay Winston and the stock three), and whether
+ * Home Assistant uses it too. Adding saves it as a room box and
  * switches the room boxes on, as Ways to talk would; then Home Assistant gets the box's key (Winston keeps the
  * microphone), or its old entry for the box is disabled. */
 function Room({ page, next, joined, onSkip }: RoomProps) {
   const disable = $api.useMutation('post', '/api/setup/box/ha-disable', OWN_ERRORS)
   const share = $api.useMutation('post', '/api/setup/box/ha-share', OWN_ERRORS)
-  const areas = useOptions('ha_areas')
+  const areas = useOptions('ha_areas').choices
   const [busy, run] = useBusy()
   const [room, setRoom] = useState('')
   const [area, setArea] = useState('')
@@ -225,10 +228,11 @@ function Room({ page, next, joined, onSkip }: RoomProps) {
   const add = () => {
     const name = room.trim()
     before.current = getIn(page.value, SATELLITE)
+    const where = boxArea(areas, name, area)
     const device = {
       host: joined.host,
       wake_word: winston ? 'okay_winston' : wake,
-      ...(area ? { area } : {}),
+      ...(where ? { area: where } : {}),
       ...(joined.key_env ? { key_env: joined.key_env } : {}),
     }
     page.update((c) => setIn(setIn(c, [...SATELLITE, 'devices', name], device), [...SATELLITE, 'enabled'], true))
@@ -244,10 +248,10 @@ function Room({ page, next, joined, onSkip }: RoomProps) {
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="box-room">Room</Label>
-            <Input id="box-room" value={room} placeholder="living room" onChange={(e) => setRoom(e.target.value)} />
+            <RoomField id="box-room" value={room} areas={areas} onChange={setRoom} />
             {taken ? <p className="text-sm text-destructive">A box is in that room already.</p> : null}
           </div>
-          {areas.choices.length ? (
+          {areas.length && room.trim() && !haArea(areas, room) ? (
             <div className="flex flex-col gap-2">
               <Label htmlFor="box-area">Home Assistant area</Label>
               <Select value={area} onValueChange={setArea}>
@@ -255,7 +259,7 @@ function Room({ page, next, joined, onSkip }: RoomProps) {
                   <SelectValue placeholder="Same as the room's name" />
                 </SelectTrigger>
                 <SelectContent position="popper" className="max-w-(--radix-select-trigger-width)">
-                  {areas.choices.map((c) => (
+                  {areas.map((c) => (
                     <SelectItem key={c.value} value={c.value}>
                       {c.label}
                     </SelectItem>

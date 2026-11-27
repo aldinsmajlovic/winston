@@ -131,60 +131,12 @@ _VOXCPM2_SPEAKS = ["Arabic", "Burmese", "Chinese", "Danish", "Dutch", "English",
                    "Norwegian", "Polish", "Portuguese", "Russian", "Spanish", "Swahili", "Swedish", "Tagalog", "Thai",
                    "Turkish", "Vietnamese"]
 
+# A voice or hearing preset is one model (`name`) on one way to run (`way`: cpu, gpu or hosted); the UI picks
+# the way under Runs on and the model under Model, and a way's first preset is its recommended model.
 TTS: list[Fragment] = [
     {
-        "id": "chatterbox", "icon": "chatterbox", "title": "Chatterbox-Turbo on the graphics card", "needs": ["cuda"],
-        "hint": "Clones a voice from a short clip, in English only. Needs an NVIDIA card.", "speaks": ["English"],
-        "engine": {
-            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 180,
-            "cwd": "{repo}/services/tts-chatterbox",
-            "cmd": ["{repo}/services/tts-chatterbox/.venv/bin/python", "server.py",
-                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880",
-                    *_CHATTERBOX_STREAMING],
-        },
-        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
-                             "voice": "vctk/p254_023", "sample_rate": 24000}},
-    },
-    {
-        "id": "pocket", "icon": "pocket", "title": "Pocket TTS on the processor", "needs": [],
-        "hint": "Leaves the graphics card free, with 26 voices to pick from. Cloning a voice needs its terms "
-                "accepted on Hugging Face.",
-        "speaks": ["English", "French", "German", "Italian", "Portuguese", "Spanish"],
-        "engine": {
-            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
-            "cwd": "{repo}/services/tts-pocket",
-            "cmd": ["{repo}/services/tts-pocket/.venv/bin/python", "server.py",
-                    "--voice", "{data}/voices/librivox/minter_card2_aged.wav", "--voices-dir", "{data}/voices", "--port", "8880",
-                    "--language", "{assistant.language}"],
-        },
-        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
-                             "voice": "librivox/minter_card2_aged", "sample_rate": 24000}},
-    },
-    *({
-        "id": id_, "icon": "huggingface", "title": title, "needs": ["cuda"], "hint": hint, "speaks": speaks,
-        "engine": {
-            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
-            "cwd": f"{{repo}}/services/tts-{id_}",
-            "cmd": [f"{{repo}}/services/tts-{id_}/.venv/bin/python", "server.py",
-                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880",
-                    *(["--language", "{assistant.language}"] if id_ == "qwen3" else [])],
-        },
-        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
-                             "voice": "vctk/p254_023", "sample_rate": rate}},
-    } for id_, title, rate, hint, speaks in (
-        ("qwen3", "Qwen3-TTS 1.7B on the graphics card", 24000,
-         ("Clones a voice from a clip and its words. Needs an NVIDIA card; on one shared with the brain it can "
-          "fall behind its own speech."),
-         ["Chinese", "English", "French", "German", "Italian", "Japanese", "Korean", "Portuguese", "Russian",
-          "Spanish"]),
-        ("voxcpm2", "VoxCPM2 on the graphics card", 48000,
-         "Clones a voice from a clip and its words, in the finest sound. Needs an NVIDIA card.", _VOXCPM2_SPEAKS),
-        ("gepard", "Gepard 1.1 on the graphics card", 22050,
-         ("Clones a voice from a clip alone, and starts speaking soonest. Needs an NVIDIA card; it drops and "
-          "garbles more words than the others."), None),
-    )),
-    {
         "id": "breeze2", "icon": "huggingface", "title": "Breeze TTS 2 on the graphics card", "needs": ["cuda"],
+        "way": "gpu", "name": "Breeze TTS 2",
         "hint": "The most natural voice that runs here, cloned from a clip and its words. Needs an NVIDIA card, "
                 "and is for non-commercial use only.",
         "speaks": ["Chinese", "English"],
@@ -199,7 +151,61 @@ TTS: list[Fragment] = [
                              "voice": "librivox/minter_card2_aged", "sample_rate": 24000}},
     },
     {
-        "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI speech URL)", "needs": ["internet"],
+        "id": "chatterbox", "icon": "chatterbox", "title": "Chatterbox-Turbo on the graphics card", "needs": ["cuda"],
+        "way": "gpu", "name": "Chatterbox-Turbo",
+        "hint": "Clones a voice from a short clip, in English only. Needs an NVIDIA card.", "speaks": ["English"],
+        "engine": {
+            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 180,
+            "cwd": "{repo}/services/tts-chatterbox",
+            "cmd": ["{repo}/services/tts-chatterbox/.venv/bin/python", "server.py",
+                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880",
+                    *_CHATTERBOX_STREAMING],
+        },
+        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
+                             "voice": "vctk/p254_023", "sample_rate": 24000}},
+    },
+    {
+        "id": "pocket", "icon": "pocket", "title": "Pocket TTS on the processor", "needs": [], "way": "cpu", "name": "Pocket TTS",
+        "hint": "Leaves the graphics card free, with 26 voices to pick from. Cloning a voice needs its terms "
+                "accepted on Hugging Face.",
+        "speaks": ["English", "French", "German", "Italian", "Portuguese", "Spanish"],
+        "engine": {
+            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
+            "cwd": "{repo}/services/tts-pocket",
+            "cmd": ["{repo}/services/tts-pocket/.venv/bin/python", "server.py",
+                    "--voice", "{data}/voices/librivox/minter_card2_aged.wav", "--voices-dir", "{data}/voices", "--port", "8880",
+                    "--language", "{assistant.language}"],
+        },
+        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
+                             "voice": "librivox/minter_card2_aged", "sample_rate": 24000}},
+    },
+    *({
+        "id": id_, "icon": "huggingface", "title": f"{name} on the graphics card", "needs": ["cuda"], "way": "gpu", "name": name,
+        "hint": hint, "speaks": speaks,
+        "engine": {
+            "driver": "subprocess", "port": 8880, "health": "/health", "startup_timeout": 300,
+            "cwd": f"{{repo}}/services/tts-{id_}",
+            "cmd": [f"{{repo}}/services/tts-{id_}/.venv/bin/python", "server.py",
+                    "--voice", "{data}/voices/vctk/p254_023.wav", "--voices-dir", "{data}/voices", "--port", "8880",
+                    *(["--language", "{assistant.language}"] if id_ == "qwen3" else [])],
+        },
+        "settings": {"tts": {"base_url": "http://127.0.0.1:8880/v1", "api_key_env": None,
+                             "voice": "vctk/p254_023", "sample_rate": rate}},
+    } for id_, name, rate, hint, speaks in (
+        ("qwen3", "Qwen3-TTS 1.7B", 24000,
+         ("Clones a voice from a clip and its words. Needs an NVIDIA card; on one shared with the brain it can "
+          "fall behind its own speech."),
+         ["Chinese", "English", "French", "German", "Italian", "Japanese", "Korean", "Portuguese", "Russian",
+          "Spanish"]),
+        ("voxcpm2", "VoxCPM2", 48000,
+         "Clones a voice from a clip and its words, in the finest sound. Needs an NVIDIA card.", _VOXCPM2_SPEAKS),
+        ("gepard", "Gepard 1.1", 22050,
+         ("Clones a voice from a clip alone, and starts speaking soonest. Needs an NVIDIA card; it drops and "
+          "garbles more words than the others."), None),
+    )),
+    {
+        "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI speech URL)", "needs": ["internet"], "way": "hosted",
+        "name": "OpenAI speech URL",
         "hint": "A cloud voice, OpenRouter by default, with one key for ElevenLabs, Gemini and others. Needs the "
                 "provider's key, and what he says leaves your network.",
         # ponytail: model, voice and rate not yet measured against OpenRouter (docs/voices.md, Hosted voice)
@@ -231,7 +237,7 @@ def _qwen3_asr(size: str, hint: str) -> Fragment:
     """Qwen3-ASR in services/stt-qwen3-asr (its own venv: `uv sync` there once), on port 8001."""
     return {
         "id": f"qwen3-asr-{size.lower()}", "icon": "huggingface", "title": f"Qwen3-ASR {size} on the graphics card",
-        "needs": ["cuda"], "hint": hint,
+        "needs": ["cuda"], "way": "gpu", "name": f"Qwen3-ASR {size}", "hint": hint,
         "engine": {
             "driver": "subprocess", "port": 8001, "health": "/health", "startup_timeout": 300,
             "cwd": "{repo}/services/stt-qwen3-asr",
@@ -246,6 +252,7 @@ def _qwen3_asr(size: str, hint: str) -> Fragment:
 STT: list[Fragment] = [
     {
         "id": "fluid-speech-pro", "icon": "huggingface", "title": "Fluid Speech Pro on the processor (built in)", "needs": [],
+        "way": "cpu", "name": "Fluid Speech Pro",
         "hint": "Hears 25 languages, and stays right when other people talk. Needs nothing more; the first start "
                 "downloads it.",
         "engine": None,
@@ -253,7 +260,8 @@ STT: list[Fragment] = [
                              "model": "FluidVoice-Labs/fluid-speech-pro-onnx", "quantization": "int8"}},
     },
     {
-        "id": "parakeet", "icon": "parakeet", "title": "Parakeet on the processor (built in)", "needs": [],
+        "id": "parakeet", "icon": "parakeet", "title": "Parakeet on the processor (built in)", "needs": [], "way": "cpu",
+        "name": "Parakeet",
         "hint": "Hears 25 European languages, the quickest. Needs nothing more; misheard names are corrected "
                 "afterwards, not known in advance.",
         "engine": None,
@@ -265,7 +273,8 @@ STT: list[Fragment] = [
     _qwen3_asr("1.7B", "Hears best with accents and in noisy rooms, with the names he should hear right given up "
                        "front. Needs an NVIDIA card."),
     {
-        "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI transcription URL)", "needs": ["internet"],
+        "id": "hosted", "icon": "cloud", "title": "Hosted (OpenAI transcription URL)", "needs": ["internet"], "way": "hosted",
+        "name": "OpenAI transcription URL",
         "hint": "A cloud service that hears for him. Needs the provider's key, and your voice leaves your network.",
         "engine": {"driver": "external", "url": "https://api.openai.com", "port": 443, "health": "",
                    "startup_timeout": 10},
@@ -278,7 +287,7 @@ STT: list[Fragment] = [
 def stt_presets() -> list[Fragment]:
     """The presets above, and a plain one for any other adapter a package registers (it runs in-process)."""
     known = {"parakeet", "openai_transcription"}
-    return STT + [{"id": name, "icon": name, "title": name.capitalize(), "needs": [],
+    return STT + [{"id": name, "icon": name, "title": name.capitalize(), "needs": [], "way": "cpu", "name": name.capitalize(),
                    "hint": "From an installed package. Runs inside Winston.",
                    "engine": None, "settings": {"stt": {"provider": name}}}
                   for name in sorted(available("stt")) if name not in known]

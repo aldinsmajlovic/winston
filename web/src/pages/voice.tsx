@@ -7,6 +7,7 @@ import { runsHere, SlotCard } from '@/components/slot-card'
 import { SettingsPage } from '@/components/templates/settings-page'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { useVoicePreviews } from '@/hooks/use-voice-previews'
+import { matchPreset } from '@/lib/presets'
 import { setIn } from '@/lib/schema'
 
 const TTS = ['tts']
@@ -23,6 +24,9 @@ export default function VoicePage() {
 
 function Voice({ page, presets }: { page: SettingsState; presets: Presets }) {
   const previews = useVoicePreviews(page)
+  // A local hearing's model is the card's Model dropdown; a hosted or custom one's is the form's own field.
+  const hearing = presets.stt.find((p) => p.id === matchPreset('stt', page.value, presets.stt))
+  const modelOnCard = hearing?.way === 'cpu' || hearing?.way === 'gpu' ? ['model'] : []
   return (
     <SettingsPage title="Voice" intro="How he sounds and how he hears you." page={page}>
       <MemoryBar page={page} presets={presets} />
@@ -31,7 +35,7 @@ function Voice({ page, presets }: { page: SettingsState; presets: Presets }) {
       </SlotCard>
       <ClonedVoices current={page.value.tts?.voice} onUse={(voice) => page.update((c) => setIn(c, ['tts', 'voice'], voice))} />
       <SlotCard page={page} kind="stt" title="Hearing" presets={presets.stt}>
-        <SectionForm page={page} path={STT} omit={runsHere('stt', page.value)} />
+        <SectionForm page={page} path={STT} omit={[...runsHere('stt', page.value), ...modelOnCard]} />
       </SlotCard>
     </SettingsPage>
   )

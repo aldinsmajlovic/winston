@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { Presets } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { StatusLine } from '@/components/status-line'
@@ -81,11 +82,20 @@ function isRecommended(r: Picks, page: SettingsState, presets: Presets): boolean
 }
 
 /** How full the graphics card (or without one, the computer's memory) would be with the draft's picks, said
- * in green, amber or red, kept in view while the picks below change (pinned from tablet width up; on a phone it
- * would cover a third of the screen). In the setup wizard (recommend), also whether they are the picks
- * recommended here, with a way back to them. */
+ * in green, amber or red. The card scrolls with the page; once it is out of view above, a slim strip of the
+ * bar and its verdict pins to the top edge on the page's background, a rule under it, so the picks below can
+ * change in sight of it (from tablet width up; on a phone a wrapped verdict would take too much of the screen).
+ * In the setup wizard (recommend), also whether they are the picks recommended here, with a way back to them. */
 export function MemoryBar({ page, presets, recommend }: { page: SettingsState; presets: Presets; recommend?: boolean }) {
   const plan = useGraphicsMemory(page.value)
+  const [card, setCard] = useState<HTMLDivElement | null>(null)
+  const [above, setAbove] = useState(false)
+  useEffect(() => {
+    if (!card) return
+    const seen = new IntersectionObserver(([e]) => setAbove(!e.isIntersecting && e.boundingClientRect.top < 0))
+    seen.observe(card)
+    return () => seen.disconnect()
+  }, [card])
   if (!plan?.total_mb) return null
   const system = plan.memory === 'system'
   const use = memoryUse(plan, page.value, presets)
@@ -102,59 +112,71 @@ export function MemoryBar({ page, presets, recommend }: { page: SettingsState; p
       return setIn(setIn(x, ['llm', 'model'], r.model), ['llm', 'context'], r.context)
     })
   return (
-    <Card className="z-10 shadow-sm sm:sticky sm:top-2" aria-live="polite">
-      <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <CardTitle>{system ? 'Computer memory' : 'Graphics memory'}</CardTitle>
-        <span className="text-sm text-muted-foreground">
-          {system ? '' : `${plan.gpu}, `}{gb(use.total)} GB
-        </span>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <UseBar use={use} className="h-5 rounded-md" />
-        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
-          {use.parts.map((p) => (
-            <span key={p.label} className="flex items-center gap-1.5">
-              <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
-                <rect width={10} height={10} rx={2} className={SHADE[p.strength]} />
-              </svg>
-              {p.label} {p.estimate ? '≈ ' : ''}{gb(p.mib)} GB
-            </span>
-          ))}
-          {use.used < use.total ? (
-            <span className="flex items-center gap-1.5">
-              <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
-                <rect x={0.5} y={0.5} width={9} height={9} rx={2} className="fill-muted stroke-muted-foreground/50" />
-              </svg>
-              Free {gb(use.total - use.used)} GB
-            </span>
-          ) : null}
-        </div>
-        <StatusLine tone={TONE[tone]}>{says}</StatusLine>
-        {system && !use.brainHere && r ? (
-          <p className="text-sm text-muted-foreground">No graphics card, so a hosted brain is recommended: one on the processor is too slow to talk to.</p>
-        ) : null}
-        {use.otherUnknown ? (
-          <p className="text-sm text-muted-foreground">Other programs are left out: this card does not say what each program holds while his engines run.</p>
-        ) : null}
-        {use.brainUnknown ? (
-          <p className="text-sm text-muted-foreground">The brain's share is not known for this model, so it is left out.</p>
-        ) : null}
-        {r ? (
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3 text-sm text-muted-foreground">
-            {isRecommended(r, page, presets) ? (
-              <span>These are the picks recommended for his computer.</span>
-            ) : (
-              <>
-                <span>Changed from the picks recommended for his computer.</span>
-                <Button variant="outline" size="sm" onClick={back}>
-                  Use the recommendation
-                </Button>
-              </>
-            )}
+    <>
+      {above ? (
+        // Takes no room in the column: no height, and its -mb-6 gives back the column's gap-6, so nothing moves
+        // when it comes. A copy of what the card says, so hidden: the card's live region says it once.
+        <div className="sticky top-0 z-10 -mb-6 h-0 max-sm:hidden" aria-hidden>
+          <div className="flex animate-in flex-col gap-2 border-b bg-background py-3 duration-300 ease-enter fade-in">
+            <UseBar use={use} className="h-2.5 rounded-sm" decorative />
+            <StatusLine tone={TONE[tone]}>{says}</StatusLine>
           </div>
-        ) : null}
-      </CardContent>
-    </Card>
+        </div>
+      ) : null}
+      <Card ref={setCard} aria-live="polite">
+        <CardHeader className="flex flex-row flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <CardTitle>{system ? 'Computer memory' : 'Graphics memory'}</CardTitle>
+          <span className="text-sm text-muted-foreground">
+            {system ? '' : `${plan.gpu}, `}{gb(use.total)} GB
+          </span>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          <UseBar use={use} className="h-5 rounded-md" />
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+            {use.parts.map((p) => (
+              <span key={p.label} className="flex items-center gap-1.5">
+                <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
+                  <rect width={10} height={10} rx={2} className={SHADE[p.strength]} />
+                </svg>
+                {p.label} {p.estimate ? '≈ ' : ''}{gb(p.mib)} GB
+              </span>
+            ))}
+            {use.used < use.total ? (
+              <span className="flex items-center gap-1.5">
+                <svg viewBox="0 0 10 10" className="size-2.5" aria-hidden>
+                  <rect x={0.5} y={0.5} width={9} height={9} rx={2} className="fill-muted stroke-muted-foreground/50" />
+                </svg>
+                Free {gb(use.total - use.used)} GB
+              </span>
+            ) : null}
+          </div>
+          <StatusLine tone={TONE[tone]}>{says}</StatusLine>
+          {system && !use.brainHere && r ? (
+            <p className="text-sm text-muted-foreground">No graphics card, so a hosted brain is recommended: one on the processor is too slow to talk to.</p>
+          ) : null}
+          {use.otherUnknown ? (
+            <p className="text-sm text-muted-foreground">Other programs are left out: this card does not say what each program holds while his engines run.</p>
+          ) : null}
+          {use.brainUnknown ? (
+            <p className="text-sm text-muted-foreground">The brain's share is not known for this model, so it is left out.</p>
+          ) : null}
+          {r ? (
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3 text-sm text-muted-foreground">
+              {isRecommended(r, page, presets) ? (
+                <span>These are the picks recommended for his computer.</span>
+              ) : (
+                <>
+                  <span>Changed from the picks recommended for his computer.</span>
+                  <Button variant="outline" size="sm" onClick={back}>
+                    Use the recommendation
+                  </Button>
+                </>
+              )}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </>
   )
 }
 

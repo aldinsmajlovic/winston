@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { $api } from '@/api/client'
+import type { Choice } from '@/components/combobox'
 import { useOptions } from '@/hooks/use-options'
 
 const KEY = 'winston.room'
@@ -66,4 +67,17 @@ export function useRoomChoices(): RoomChoice[] {
     ...rooms.map((r) => ({ ...r, exposed: exposed.get(fold(r.name)) })),
     ...choices.filter((c) => !known.has(fold(c.value))).map((c) => ({ name: c.value, box: false, exposed: c.hint ?? undefined })),
   ]
+}
+
+/** The Home Assistant area a room's name is, matched as winstond matches rooms (case and spacing do not count). */
+export function haArea(areas: Choice[], room: string): string | undefined {
+  return room.trim() ? areas.find((a) => fold(a.value) === fold(room))?.value : undefined
+}
+
+/** A room box's `area`: nothing when the room is a Home Assistant area spelled as it is there (the room's name
+ * is used), its spelling there when it differs, else the area picked for it. */
+export function boxArea(areas: Choice[], room: string, picked?: string | null): string | undefined {
+  const match = haArea(areas, room)
+  if (match) return match === room.trim() ? undefined : match
+  return picked || undefined
 }

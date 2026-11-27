@@ -19,7 +19,7 @@ import { amountOf, before, useInstall, type InstallPart } from '@/hooks/use-inst
 import type { SettingsState } from '@/hooks/use-settings'
 import { capitalize, joinNames, since, size } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { applyPreset, CUSTOM, matchPreset, presetFacts, type Kind } from '@/lib/presets'
+import { applyPreset, CUSTOM, firstSentence, matchPreset, presetFacts, slotSettings, waysOf, type Kind } from '@/lib/presets'
 import { allBut, deepEqual, hasFields, isRecord, section, setIn } from '@/lib/schema'
 
 type Props = {
@@ -85,8 +85,59 @@ function runsAsPreset(page: SettingsState, kind: Kind, preset: Preset): boolean 
   return deepEqual(full(page.value.engines?.[kind]), full(preset.engine))
 }
 
-/** One slot (brain, speaking, hearing): what it runs on as a dropdown of presets, each with what it needs,
- * then the slot's own controls and, last, its closed How it runs. Picking a preset rewrites the engine
+/** Hearing on a model of your own (any onnx-asr repo, set in config.yaml): it runs the way of the preset it
+ * matches, which names another model. A voice preset names no model, so a voice never is. */
+// eslint-disable-next-line react-refresh/only-export-components -- the Voice page omits Model's field by it
+export function ownModel(kind: Kind, config: Config, preset: Preset | undefined): boolean {
+  const model = preset ? slotSettings(preset, kind).model : undefined
+  return kind === 'stt' && !!model && model !== config.stt?.model
+}
+
+type Choice = { value: string; icon?: string | null; title: string; line: string }
+
+/** A dropdown of choices with an icon and a second line each; the trigger shows the title alone. A value no
+ * choice has is named by `custom` (or Custom), not picked. */
+function Choices({ id, value, onChange, items, custom }: { id: string; value: string; onChange: (v: string) => void; items: Choice[]; custom?: string }) {
+  const chosen = items.find((c) => c.value === value)
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue>
+          {chosen ? (
+            <>
+              <KindIcon name={chosen.icon} />
+              {chosen.title}
+            </>
+          ) : (
+            custom ?? 'Custom'
+          )}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent position="popper" className="max-w-(--radix-select-trigger-width)">
+        {items.map((c) => (
+          <SelectItem key={c.value} value={c.value}>
+            {/* The second line starts under the title, not under the icon. */}
+            <KindIcon name={c.icon} className="mt-0.5 self-start" />
+            <span className="flex flex-col gap-0.5">
+              {c.title}
+              <span className="text-xs text-muted-foreground">{c.line}</span>
+            </span>
+          </SelectItem>
+        ))}
+        {/* Only to name a config no choice matches; nothing to pick. */}
+        {chosen ? null : (
+          <SelectItem value={value} disabled>
+            {custom ?? 'Custom'}
+          </SelectItem>
+        )}
+      </SelectContent>
+    </Select>
+  )
+}
+
+/** One slot (brain, speaking, hearing): what it runs on as a dropdown of presets, each with what it needs
+ * (for speaking and hearing, the way it runs and then its Model, the presets that run that way), then the
+ * slot's own controls and, last, its closed How it runs. Picking a preset rewrites the engine
  * block and the settings that go with it, after asking when the engine block was changed by hand. */
 export function SlotCard({ page, kind, title, presets, setup, children }: Props) {
   const ask = useConfirm()
@@ -94,6 +145,9 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
   const preset = presets.find((p) => p.id === current)
   const presetsAll = $api.useQuery('get', '/api/presets').data
   const have = presetsAll?.have
+  const ways = waysOf(kind, presets)
+  const way = ways.find((w) => w.way === preset?.way)
+  const own = ownModel(kind, page.value, preset)
   const choose = async (id: string) => {
     const p = presets.find((x) => x.id === id)
     if (!p) return
@@ -116,40 +170,43 @@ export function SlotCard({ page, kind, title, presets, setup, children }: Props)
       <CardContent className="grid grid-cols-1 gap-4">
         <div className="grid gap-2">
           <Label htmlFor={`${kind}-engine`}>Runs on</Label>
-          <Select value={current} onValueChange={(id) => void choose(id)}>
-            <SelectTrigger id={`${kind}-engine`} className="w-full">
-              {/* The title alone; the list below has a second line per preset. */}
-              <SelectValue>
-                {preset ? (
-                  <>
-                    <KindIcon name={preset.icon} />
-                    {preset.title}
-                  </>
-                ) : (
-                  'Custom'
-                )}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent position="popper" className="max-w-(--radix-select-trigger-width)">
-              {presets.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {/* The second line starts under the title, not under the icon. */}
-                  <KindIcon name={p.icon} className="mt-0.5 self-start" />
-                  <span className="flex flex-col gap-0.5">
-                    {p.title}
-                    <span className="text-xs text-muted-foreground">{presetFacts(p)}</span>
-                  </span>
-                </SelectItem>
-              ))}
-              {/* Only to name a config no preset matches; nothing to pick. */}
-              {current === CUSTOM ? (
-                <SelectItem value={CUSTOM} disabled>
-                  Custom
-                </SelectItem>
-              ) : null}
-            </SelectContent>
-          </Select>
-          <p className="text-sm text-muted-foreground">{preset?.hint ?? 'Your own setup; change it under How it runs below.'}</p>
+          {ways.length ? (
+            <Choices
+              id={`${kind}-engine`}
+              value={way?.way ?? CUSTOM}
+              onChange={(w) => void choose(ways.find((x) => x.way === w)?.presets[0].id ?? '')}
+              items={ways.map((w) => ({ value: w.way, icon: w.icon, title: w.title, line: w.hint }))}
+            />
+          ) : (
+            <Choices
+              id={`${kind}-engine`}
+              value={current}
+              onChange={(id) => void choose(id)}
+              items={presets.map((p) => ({ value: p.id, icon: p.icon, title: p.title, line: presetFacts(p) }))}
+            />
+          )}
+          {/* A local voice or hearing: the models that run that way, the first recommended. A hosted one's model
+              is the provider's name for it, typed in the form below. */}
+          {way && way.way !== 'hosted' ? (
+            <>
+              <Label htmlFor={`${kind}-model`} className="mt-2">
+                Model
+              </Label>
+              <Choices
+                id={`${kind}-model`}
+                value={own ? CUSTOM : current}
+                onChange={(id) => void choose(id)}
+                items={way.presets.map((p, i) => ({
+                  value: p.id,
+                  icon: p.icon,
+                  title: p.name ?? p.title,
+                  line: `${i === 0 && way.presets.length > 1 ? 'Recommended. ' : ''}${firstSentence(p.hint)}`,
+                }))}
+                custom={own ? String(page.value.stt?.model) : undefined}
+              />
+            </>
+          ) : null}
+          <p className="text-sm text-muted-foreground">{(own ? way?.hint : preset?.hint) ?? 'Your own setup; change it under How it runs below.'}</p>
           <Lacking needs={preset?.needs ?? []} have={have} />
           <NotSpoken speaks={preset?.speaks} language={page.value.assistant?.language} />
           {page.value.engines?.[kind]?.enabled === false ? (

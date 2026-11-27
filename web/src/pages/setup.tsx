@@ -61,7 +61,10 @@ export default function SetupPage() {
   const mark = $api.useMutation('put', '/api/setup/steps/{step}', { onSuccess: (data) => client.setQueryData(setupKey, data) })
   useTitle('Set up')
   // A new step opens at its top, where the steps' marks show the one just left turn.
-  useEffect(() => window.scrollTo({ top: 0 }), [step])
+  // in braces: scrollTo now returns a promise in Chromium, which React would call as the cleanup
+  useEffect(() => {
+    window.scrollTo({ top: 0 })
+  }, [step])
   // The link's key has set its cookie by now: out of the address bar, so it is not bookmarked or passed on.
   useEffect(() => {
     if (new URLSearchParams(search).has('key')) void navigate(pathname, { replace: true })

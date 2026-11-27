@@ -85,6 +85,7 @@ const kinds: Record<string, LucideIcon> = {
   chatterbox: AudioWaveform,
   llamacpp: Layers,
   pocket: Cpu,
+  cpu: Cpu,
   process: Terminal,
   external: Globe,
   server: Server,

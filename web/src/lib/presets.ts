@@ -18,6 +18,9 @@ const NEEDS: Record<string, string> = {
   internet: 'Sends your requests out of your network',
 }
 
+/** A hint's first sentence. */
+export const firstSentence = (hint: string) => hint.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? hint
+
 /** A preset's line under its title in the Runs on list: what it needs that the title does not already name
  * ("Docker" under "llama.cpp on NVIDIA (Docker)"), then its hint's first sentence. */
 export function presetFacts(p: Preset): string {
@@ -25,8 +28,42 @@ export function presetFacts(p: Preset): string {
     .map((n) => NEEDS[n] ?? n)
     .filter((n) => !p.title.toLowerCase().includes(n.split(' ')[0].toLowerCase()))
     .join(', ')
-  const first = p.hint.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? p.hint
-  return [needs, first].filter(Boolean).join('. ')
+  return [needs, firstSentence(p.hint)].filter(Boolean).join('. ')
+}
+
+export type Way = NonNullable<Preset['way']>
+
+// Runs on for a voice or hearing is where it runs, each with what you get, then what it needs; Model then
+// picks among that way's presets, its first the recommended one.
+const WAYS: Record<'tts' | 'stt', Record<Way, [title: string, hint: string]>> = {
+  tts: {
+    cpu: ['The processor', 'Leaves the graphics card free. Needs nothing more.'],
+    gpu: ['The graphics card', 'The most natural voices, cloned from a clip. Needs an NVIDIA card.'],
+    hosted: ['Hosted', "Nothing to run here. Needs the provider's key, and what he says leaves your network."],
+  },
+  stt: {
+    cpu: ['The processor (built in)', 'Leaves the graphics card free. Needs nothing more.'],
+    gpu: ['The graphics card', 'Hears the names he should hear right, given up front. Needs an NVIDIA card.'],
+    hosted: ['Hosted', "Nothing to run here. Needs the provider's key, and your voice leaves your network."],
+  },
+}
+const WAY_ICONS: Record<Way, string> = { cpu: 'cpu', gpu: 'nvidia', hosted: 'cloud' }
+
+export type WayChoice = { way: Way; title: string; hint: string; icon: string; presets: Preset[] }
+
+/** A voice's or hearing's ways to run, in the order their presets come; none for the brain, whose Runs on
+ * picks the server and Model any model. A hosted way of one preset is called by that preset's title. */
+export function waysOf(kind: Kind, presets: Preset[]): WayChoice[] {
+  if (kind === 'llm') return []
+  const out: WayChoice[] = []
+  for (const p of presets) {
+    if (!p.way) continue
+    const w = out.find((x) => x.way === p.way)
+    if (w) w.presets.push(p)
+    else out.push({ way: p.way, title: WAYS[kind][p.way][0], hint: WAYS[kind][p.way][1], icon: WAY_ICONS[p.way], presets: [p] })
+  }
+  for (const w of out) if (w.way === 'hosted' && w.presets.length === 1) w.title = w.presets[0].title
+  return out
 }
 
 function merge(base: unknown, over: unknown): unknown {

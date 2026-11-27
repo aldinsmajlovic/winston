@@ -66,6 +66,27 @@ test('Ways to talk: Home Assistant Assist switched on shows its port, and off ag
   expect(errors).toEqual([])
 })
 
+test('Ways to talk: a box\'s room is one of Home Assistant\'s areas or typed, and only a typed one asks for its area', async ({ page }) => {
+  test.skip(!process.env.FAKE_HA_URL, 'the fake Home Assistant did not start')
+  const errors = watchErrors(page)
+  await open(page, '/ways-to-talk')
+  await page.getByRole('button', { name: 'Add a box' }).click()
+  const dialog = page.getByRole('dialog')
+  const room = dialog.getByRole('combobox', { name: 'Room' })
+  const area = dialog.getByText('Home Assistant area', { exact: true })
+  await expect(area).toHaveCount(0)
+  await room.click()
+  await page.getByRole('option', { name: /^Kitchen/ }).click()
+  await expect(room).toHaveText('Kitchen')
+  await expect(area).toHaveCount(0)
+  await room.click()
+  await page.getByPlaceholder('Search, or type a name').fill('Den')
+  await page.getByRole('option', { name: 'Use Den' }).click()
+  await expect(area).toBeVisible()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  expect(errors).toEqual([])
+})
+
 // Switched on in the draft only, as above: a save would open the copy's port and announce it.
 test('Ways to talk: the Home Assistant integration switched on shows its port, and off again leaves nothing to save', async ({ page }) => {
   const errors = watchErrors(page)
@@ -160,6 +181,21 @@ test('an extension page fits beside the sidebar: no sideways scroll at 1280 px',
     await open(page, path)
     expect(await page.locator('html').evaluate((html) => html.scrollWidth), path).toBeLessThanOrEqual(1280)
   }
+})
+
+test('the memory card scrolls away and leaves its bar and verdict pinned along the top', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 500 })
+  await open(page, '/brain')
+  const card = page.locator('[data-slot="card"]').filter({ has: page.getByText(/^(Graphics|Computer) memory$/) })
+  const says = (await card.getByText(/Fits|Does not fit/).first().textContent()) ?? ''
+  const verdicts = page.getByText(says, { exact: true })
+  await expect(verdicts).toHaveCount(1)
+  await page.locator('html').evaluate((html) => html.scrollTo(0, html.scrollHeight))
+  await expect(card).not.toBeInViewport()
+  await expect(verdicts).toHaveCount(2)
+  expect((await verdicts.nth(0).boundingBox())?.y).toBeLessThan(60)  // the strip comes first, at the top edge
+  await page.locator('html').evaluate((html) => html.scrollTo(0, 0))
+  await expect(verdicts).toHaveCount(1)
 })
 
 test('a rename is saved, still there after a reload, and changes his persona only when kept checked', async ({ page }) => {
@@ -599,14 +635,52 @@ test('the Voice page plays the unsaved voice and its streaming, and not an unsav
   // Another engine in the draft is not the one running: both wait for a save and restart.
   await page.locator('#tts-engine').click()
   await page.getByRole('option', { selected: false }).filter({ hasNotText: 'Custom' }).first().click()
+  await replaceIfAsked(page)
   await expect(play).toBeDisabled()
   expect(bodies).toHaveLength(streams ? 2 : 1)
 
   // A voice that does not speak the reply language says so: Chatterbox-Turbo speaks English only.
   await page.locator('#tts-engine').click()
+  await page.getByRole('option', { name: /^The graphics card/ }).click()
+  await replaceIfAsked(page)
+  await page.locator('#tts-model').click()
   await page.getByRole('option', { name: /^Chatterbox-Turbo/ }).click()
   await expect(page.getByText('This voice does not speak Swedish, his reply language, and reads it badly. It speaks English.')).toBeVisible()
   expect(errors).toEqual([])
+})
+
+/** Answers Replace when a new Runs on asks first, as it does when the copy's engine block is its own. */
+async function replaceIfAsked(page: Page) {
+  const ask = page.getByRole('alertdialog')
+  if (await ask.waitFor({ timeout: 1000 }).then(() => true, () => false)) await ask.getByRole('button', { name: 'Replace' }).click()
+}
+
+test('speaking and hearing: Runs on picks the way, Model the models that run that way', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1600 })      // Hearing's lists open below the fold otherwise
+  await open(page, '/voice')
+  const runsOn = page.locator('#stt-engine')
+  await runsOn.click()
+  await expect(page.getByRole('option')).toHaveText([/^The processor \(built in\)/, /^The graphics card/, /^Hosted/])
+  await page.getByRole('option', { name: /^The graphics card/ }).click()
+  await replaceIfAsked(page)
+  // The way's recommended model, and the sizes as its models; the form's own Model field is not drawn too.
+  await expect(page.locator('#stt-model')).toContainText('Qwen3-ASR 0.6B')
+  await page.locator('#stt-model').click()
+  await expect(page.getByRole('option')).toHaveText([/^Qwen3-ASR 0\.6B/, /^Qwen3-ASR 1\.7B/])
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#cfg_stt_model')).toHaveCount(0)
+  // Hosted: the provider's model is typed, so no Model dropdown.
+  await runsOn.click()
+  await page.getByRole('option', { name: /^Hosted/ }).click()
+  await replaceIfAsked(page)
+  await expect(page.locator('#stt-model')).toHaveCount(0)
+  await expect(page.locator('#cfg_stt_model')).toBeVisible()
+  // Speaking on the card starts at Breeze TTS 2, with the other card voices under Model.
+  await page.locator('#tts-engine').click()
+  await page.getByRole('option', { name: /^The graphics card/ }).click()
+  await replaceIfAsked(page)
+  await page.locator('#tts-model').click()
+  await expect(page.getByRole('option')).toHaveText([/^Breeze TTS 2/, /^Chatterbox-Turbo/, /^Qwen3-TTS/, /^VoxCPM2/, /^Gepard/])
 })
 
 test('the Hearing card shows his hint words, removes his and saves yours', async ({ page }) => {
