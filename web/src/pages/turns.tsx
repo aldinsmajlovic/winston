@@ -125,8 +125,8 @@ export default function TurnsPage() {
 
   const data = turns.data
   const days = data?.days ?? []
-  // Recordings off and none kept: only the explanation, nothing to browse.
-  const empty = data?.enabled === false && days.length === 0
+  // None kept: only the explanation, nothing to browse.
+  const empty = !!data && days.length === 0
   const markedOnly = !empty && params.get('view') === 'marked'
   const at = data ? days.indexOf(data.day) : -1
   const earlier = at >= 0 ? days[at + 1] : days[0]
@@ -169,10 +169,16 @@ export default function TurnsPage() {
         {empty ? (
           // Nothing to browse: one sentence and what fills it, centred as Talk's empty conversation is.
           <div className="m-auto flex max-w-md flex-col items-center gap-4 py-8 text-center text-muted-foreground">
-            <p>{`History shows what you said and what he did while recordings are on, kept for ${keepDays} days.`}</p>
-            <Button asChild variant="outline">
-              <Link to="/assistant#cfg_logging_turns">Turn on recordings</Link>
-            </Button>
+            {data?.enabled ? (
+              <p>{`Nothing recorded yet. What you say to him shows here, kept for ${keepDays} days.`}</p>
+            ) : (
+              <>
+                <p>{`History shows what you said and what he did while recordings are on, kept for ${keepDays} days.`}</p>
+                <Button asChild variant="outline">
+                  <Link to="/assistant#cfg_logging_turns">Turn on recordings</Link>
+                </Button>
+              </>
+            )}
           </div>
         ) : data?.enabled === false ? (
           <StatusLine tone="muted" action={{ label: 'Turn on recordings', to: '/assistant#cfg_logging_turns' }}>
@@ -202,7 +208,7 @@ export default function TurnsPage() {
             {shown.length === 0 ? (
               markedOnly ? (
                 <span className="text-muted-foreground">Nothing marked yet. The flag beside something you said marks a mistake.</span>
-              ) : data.enabled ? (
+              ) : data.enabled && !empty ? (
                 <span className="text-muted-foreground">Nothing on this day.</span>
               ) : null
             ) : (

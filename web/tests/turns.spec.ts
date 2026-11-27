@@ -15,6 +15,22 @@ function today(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// First, before any turn is written: recordings switched on with none kept yet says so, not "turn them on".
+test('History with recordings on and nothing kept yet says nothing is recorded yet', async ({ page }) => {
+  await page.goto('/history')
+  await expect(page.getByRole('link', { name: 'Turn on recordings' })).toBeVisible()
+  await page.getByRole('link', { name: 'Turn on recordings' }).click()
+  await page.getByRole('switch', { name: 'Keep recordings of what you say' }).click()
+  await page.locator('header').getByRole('button', { name: 'Save', exact: true }).click()
+  const dialog = page.getByRole('alertdialog')
+  if (await dialog.isVisible()) await dialog.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.locator('header').getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
+  await page.goBack()
+  await expect(page.getByText('Nothing recorded yet', { exact: false })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Turn on recordings' })).toHaveCount(0)
+  await expect(page.getByText('0 requests')).toHaveCount(0)      // no empty day to browse
+})
+
 test('the History page shows a day and marks a spoken request from it', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))

@@ -304,8 +304,9 @@ Drawn by: `TurnMarkControl`.
   and `?view=marked` opens the second.
 - Each spoken request has a muted header in words ("14:25, Kitchen, after the wake word, answered in
   1.5 s"), Play what he heard inside your bubble, and the rest as on Talk.
-- With recordings off and none kept, one sentence centred, as Talk's empty conversation is, with Turn on
-  recordings; with some kept, a muted line says new ones are not, with the same button.
+- With none kept, one sentence centred, as Talk's empty conversation is: with recordings off it says what
+  History shows and has Turn on recordings; with them on it says nothing is recorded yet. With recordings
+  off and some kept, a muted line says new ones are not, with the same button.
 
 ### Memory
 
