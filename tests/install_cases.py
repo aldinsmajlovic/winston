@@ -122,6 +122,11 @@ async def create(request):
     return web.json_response({"status": "success"})
 
 
+async def generate(request):
+    ASKED.append(("generate", await request.json()))
+    return web.json_response({"done": True})
+
+
 async def pull(request):
     ASKED.append(("pull", (await request.json())["model"]))
     resp = web.StreamResponse(headers={"Content-Type": "application/x-ndjson"})
@@ -143,6 +148,7 @@ app.router.add_get("/token", token)
 app.router.add_get("/ollama/api/tags", tags)        # under /ollama, so the brain's address names it
 app.router.add_post("/ollama/api/pull", pull)
 app.router.add_post("/ollama/api/create", create)
+app.router.add_post("/ollama/api/generate", generate)
 threading.Thread(target=lambda: web.run_app(app, host="127.0.0.1", port=port, handle_signals=False, print=None),
                  daemon=True).start()
 time.sleep(0.5)
@@ -310,6 +316,13 @@ async def main():
           ("healthy", [("create", {"model": "pulled:latest-16k", "from": "pulled:latest", "stream": False,
                                    "parameters": {"num_ctx": 16384}})]))
     await sup.stop("llm")
+    ASKED.clear()
+    sup = Supervisor(on := config({"llm": ollama}, "pulled"))
+    sup.cfg.llm.base_url = f"http://127.0.0.1:{port}/ollama/v1"
+    await sup.reload(config({"llm": LLAMA}, "fake/model-GGUF:Q4_K_M"))
+    check("switching the brain away from Ollama lets its model go, running or not",
+          ASKED, [("generate", {"model": "pulled:latest-16k", "keep_alive": 0})])
+    ASKED.clear()
     on = config({"llm": ollama}, "granite4.1:8b")
     check("requests to Winston's Ollama name the copy", served_model(on), "granite4.1:8b-16k")
     on.engines["llm"].enabled = False

@@ -131,18 +131,25 @@ def _exited(m: Managed) -> str:
     return f"exited with code {code}" + (f": {line}" if line else "")
 
 
-async def _release(cfg: WinstonConfig) -> None:
-    """Ollama keeps the brain's model for a while after each request (brain.keep_alive), on the processor while
-    Winston runs; stopped, he lets it go, so it does not hold the card or the computer's memory after him. A
-    failure only leaves it loaded until its time runs out."""
+def _ollama_brain(cfg: WinstonConfig) -> tuple[str, str] | None:
+    """The Ollama server and the model it keeps loaded for the brain; None for any other brain."""
     from winston.api.options import served_model
     from winston.core.brain import keep_alive
-    if await asyncio.to_thread(keep_alive, cfg) is None:
+    if keep_alive(cfg) is None:
+        return None
+    return cfg.llm.base_url.rstrip("/").removesuffix("/v1"), served_model(cfg)
+
+
+async def _release(brain: tuple[str, str] | None) -> None:
+    """Ollama keeps the brain's model for a while after each request (brain.keep_alive), on the processor while
+    Winston runs; stopped or switched to another brain, he lets it go, so it does not hold the card or the
+    computer's memory after him. A failure only leaves it loaded until its time runs out."""
+    if not brain:
         return
-    base = cfg.llm.base_url.rstrip("/").removesuffix("/v1")
+    base, model = brain
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            await c.post(f"{base}/api/generate", json={"model": served_model(cfg), "keep_alive": 0})
+            await c.post(f"{base}/api/generate", json={"model": model, "keep_alive": 0})
     except httpx.HTTPError as e:
         logger.warning(f"llm: Ollama did not let the model go ({e})")
 
@@ -195,9 +202,12 @@ class Supervisor:
     async def reload(self, cfg: WinstonConfig) -> list[str]:
         """Adopt a new config. A running engine whose config changed keeps its process and takes
         the new config on its next stop or restart; returns the names of those. One the config no
-        longer has (removed, switched off, a channel with nothing to serve) is stopped and dropped."""
+        longer has (removed, switched off, a channel with nothing to serve) is stopped and dropped. An Ollama
+        model the new config no longer names is let go now, as stop() sees only the new config; a channel still
+        on the old one loads it again on its next request, until it restarts."""
         if (cfg.llm.model, cfg.llm.context) != (self.cfg.llm.model, self.cfg.llm.context):
             memory.answered()                   # a brain that may fit: up again, it waits for a restart as any change
+        before = await asyncio.to_thread(_ollama_brain, self.cfg)
         self.cfg = cfg
         await self.refresh()                # decide on live state, not the last poll
         fresh = self._build(cfg)
@@ -220,6 +230,8 @@ class Supervisor:
         await asyncio.gather(*(self.stop(name) for name in gone if self.items[name].state != "stopped"))
         for name in gone:
             del self.items[name]
+        if before and before != await asyncio.to_thread(_ollama_brain, cfg):
+            await _release(before)
         return waiting
 
     def mark_stale(self, names, base: dict | None = None) -> list[str]:
@@ -364,7 +376,7 @@ class Supervisor:
         m.expected, m.stale = False, False
         await m.driver.stop()
         if name == "llm" and m.kind == "engine":
-            await _release(self.cfg)
+            await _release(await asyncio.to_thread(_ollama_brain, self.cfg))
         self._set(m, "stopped")
         if m.pending:
             m.pending.started_in, m.pending.owned = m.started_in, m.owned

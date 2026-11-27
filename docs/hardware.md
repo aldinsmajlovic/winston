@@ -168,7 +168,8 @@ load and for the prompt to be read again. Measured on 26 November, the same prom
 
 So every request to an Ollama brain says how long to keep it (`keep_alive`): as long as the longest
 New conversation after among the channels that are on (30 minutes by default), and on this computer
-with no graphics card for as long as Winston runs. When the brain stops, Winston lets the model go.
+with no graphics card for as long as Winston runs. When the brain stops, or is switched to another
+model or server, Winston lets the model go.
 
 Keeping it does not stop Ollama from making room: on the 3090, loading Granite unloaded another
 model that had been set to stay forever.
