@@ -433,14 +433,16 @@ def _county_key(name: str) -> str:
 
 
 async def crisis(ctx) -> None:
-    """Krisinformation.se, in English: news for your county, and every VMA for it or for all of Sweden."""
+    """Krisinformation.se, in Swedish when he answers in it and English otherwise (the two it has): news for
+    your county, and every VMA for it or for all of Sweden."""
     county = ctx.settings.county
     if not county:
         return
     want = _county_key(county)
     for path, vma in (("/vmas", True), ("/news", False)):
         try:
-            r = await ctx.http.get(f"{KRIS}{path}", params={"language": "en"}, headers={"User-Agent": AGENT})
+            r = await ctx.http.get(f"{KRIS}{path}", headers={"User-Agent": AGENT},
+                                   params={"language": "sv" if ctx.language.lower().startswith("swedish") else "en"})
             r.raise_for_status()
             items = r.json()
         except Exception as e:                                          # noqa: BLE001

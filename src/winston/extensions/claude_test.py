@@ -25,8 +25,10 @@ class Result:
     is_error: bool = False
 
 
-def harness(key: str = TOKEN, answer: str = "Tides follow the moon.", cost: float = 0.05, **settings) -> Harness:
-    h = Harness(HERE, settings=settings, secrets={"key": key}, clock=FakeClock("2026-10-12T10:00:00"))
+def harness(key: str = TOKEN, answer: str = "Tides follow the moon.", cost: float = 0.05, language: str = "English",
+            **settings) -> Harness:
+    h = Harness(HERE, settings=settings, secrets={"key": key}, clock=FakeClock("2026-10-12T10:00:00"),
+                language=language)
     h.asked = []
 
     async def query(prompt, options):
@@ -47,7 +49,15 @@ async def test_only_the_question_goes_with_the_key_it_signs_in_with():
     assert prompt == "Why are there tides?"
     assert opts.env == {"CLAUDE_CODE_OAUTH_TOKEN": TOKEN} and opts.tools == [] and opts.setting_sources == []
     assert opts.max_turns == 1 and opts.model == "claude-opus-5" and opts.effort == "low"
+    assert "Reply in plain spoken English," in opts.system_prompt
     assert await h.status() == "Signs in with a token from claude setup-token; $0.05 of $3.00 spent today"
+    await h.close()
+
+
+async def test_claude_answers_in_his_reply_language():
+    h = harness(language="Swedish")
+    await h.tool("ask", question="Varför finns tidvatten?")
+    assert "Reply in plain spoken Swedish," in h.asked[0][1].system_prompt
     await h.close()
 
 

@@ -177,3 +177,60 @@ wednesday thursday saturday sunday monday tuesday friday january february april 
 october november december weekend tonight today tomorrow yesterday
 # family and people
 mom mommy mum mummy dad daddy papa mama grandma grandpa granny gran nana grandad baby babe honey darling buddy mate boss doc sis bro auntie aunt uncle cousin nephew niece wife husband son daughter kid kids neighbour neighbor friend friends
+# Swedish, hand-written: the words a household says to him most, so none is taken from a Home Assistant
+# name as a hint word or corrected into one (docs/languages.md). Compound rooms (vardagsrummet) are left
+# out: hearing splits them ("Vardag's Rummet"), which is what hint words mend
+och att det som en ett på är av för med till den har de inte om men var jag sig från vi så kan man när
+säger hon under också efter eller nu sin där vid mot ska skulle kommer ut får finns vara hade alla andra
+mycket än här då sedan sen över bara in blir upp även vad hans hennes deras dem dig mig oss ni du min mitt
+mina din ditt dina vår vårt våra ert era denna detta dessa hit dit hur varför vem vilken vilket vilka
+varit bli blev blivit kunna kunde kunnat skall vill ville vilja måste fick gör göra gjorde gjort säga sade
+komma kom kommit går gick gått ser såg sett tar tog tagit ger gav gett vet veta visste tycker tycka tror
+tro känner känna står stå sitter sitta ligger ligga heter heta behöver behöva börjar börja slutar sluta
+hjälp hjälper hjälpa spelar spela spel sätter sätt sätta stänger stäng stänga öppnar öppna tänder tänd
+tända släcker släck släcka sänk sänka höj höja visa visar berätta berättar påminn påminna påminnelse fråga
+frågar svara svarar lyssna lyssnar prata pratar hör höra glöm glömma kolla kollar spara sparar ringa
+ringer skicka skickar läs läsa läser skriv skriva skriver köp köpa köper laga lagar äta äter sova sover
+jobba jobbar dimma dämpa ljusare mörkare varmare kallare starta stoppa pausa fortsätt nästa förra
+kök köket hall hallen toalett toaletten
+kontor kontoret garage garaget källare källaren vind vinden balkong balkongen trädgård trädgården rum
+rummet hus huset hem hemma lägenhet lägenheten dörr dörren dörrar fönster fönstret lampa lampan lampor
+lamporna ljus ljuset belysning belysningen tak taket golv golvet vägg väggen bord bordet säng sängen
+soffa soffan musik musiken låt låten volym volymen värme värmen temperatur temperaturen grader termostat
+fläkt fläkten larm larmet lås låset nyckel nycklar lista listan
+idag igår imorgon dag dagen dagar vecka veckan veckor månad månaden året timme timmen timmar minut
+minuten minuter sekund sekunder morgon morgonen förmiddag eftermiddag kväll kvällen natt natten klockan
+kvart halv måndag tisdag onsdag torsdag fredag lördag söndag helg helgen
+noll två tre fyra fem sju åtta nio tio elva tolv tjugo trettio hundra tusen första tredje
+bra dålig stor stort stora liten litet lilla små nytt nya gammal gammalt gamla varm varmt kall kallt
+mörk mörkt hög högt låg lågt lite mer mest mindre minst allt inget ingen något någon några många väldigt
+ganska redan snart igen alltid aldrig ofta ibland kanske nej tack snälla okej hej hejdå god goda gott
+rätt fel klart färdig väder vädret regn sol snö mat middag lunch frukost kaffe vatten mjölk bilen jobb
+jobbet skola skolan affär affären möte mötet tid tiden sak saker grej person folk barn barnen mamma
+pappa fru kvinna vän vänner
+# German, hand-written, for the same reasons
+der die das den dem des ein eine einen einem einer eines und oder aber nicht kein keine keinen ich du er
+sie es wir ihr mich dich sich uns euch mir dir ihm ihn ihnen mein meine meinen dein deine sein seine
+ihre unser unsere euer was wer wie wo wann warum welche welcher welches wohin woher dass ob wenn weil als
+auch noch schon nur sehr mehr viel viele wenig ganz gerade jetzt dann hier dort heute morgen gestern bald
+immer nie oft manchmal vielleicht ja nein bitte danke gut schlecht groß klein neu warm kalt hell dunkel
+laut leise mit von zu zum zur bei nach vor aus für über unter auf an im am um bis seit ohne gegen durch
+zwischen alle alles etwas nichts jemand niemand
+ist sind war waren bin bist habe hast hat haben hatte hatten kann kannst können konnte will willst
+wollen wollte muss musst müssen soll sollen darf dürfen mag möchte möchten wird werden wurde mache
+machst macht machen gemacht gehe geht gehen ging komme kommt kommen kam sage sagt sagen gesagt sehe sieht
+sehen gibt geben nehme nimmt nehmen weiß wissen finde findet finden denke denkt denken glaube heiße heißt
+brauche braucht brauchen spiele spielt spielen stelle stellt stellen schalte schaltet schalten mach öffne
+öffnen schließe schließen zeige zeigen erinnere erinnern erinnerung frage fragen antworte höre hören
+spreche sprechen sprich vergiss lies lesen schreibe schreiben kaufen kochen essen schlafen arbeiten dimme
+heller dunkler wärmer kälter weiter nächste letzte
+küche zimmer bad flur büro keller garten balkon haus wohnung tür
+türen fenster lampe lampen licht lichter decke boden wand tisch bett sofa musik lied lautstärke heizung
+temperatur grad ventilator schloss schlüssel liste
+tag tage tagen woche wochen monat jahr stunde stunden minute minuten sekunde sekunden morgens vormittag
+mittag nachmittag abend abends nacht uhr viertel halb montag dienstag mittwoch donnerstag freitag samstag
+sonntag wochenende
+null eins zwei drei vier fünf sechs sieben acht neun zehn zwölf zwanzig dreißig hundert tausend erste
+zweite dritte
+wetter regen sonne schnee mittagessen frühstück kaffee wasser milch auto arbeit schule laden termin zeit
+sache dinge leute kind kinder mutter vater frau mann freund freunde

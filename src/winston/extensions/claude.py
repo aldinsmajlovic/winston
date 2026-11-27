@@ -34,7 +34,7 @@ from claude_agent_sdk import (
 from winston_sdk import Extension, Field, Secret, Settings
 
 ext = Extension()
-SYSTEM = ("You answer questions passed on by a home voice assistant. Reply in plain spoken English, at most four "
+SYSTEM = ("You answer questions passed on by a home voice assistant. Reply in plain spoken {language}, at most four "
           "short sentences unless the question asks for more; no markdown, lists, code blocks or URLs. If the "
           "question depends on current events you cannot know, say so.")
 KINDS = {"sk-ant-oat": "CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-api": "ANTHROPIC_API_KEY"}
@@ -99,7 +99,7 @@ async def ask(ctx, question: str) -> dict:
     if spent(ctx) >= s.max_usd_per_day:
         raise RuntimeError(f"the daily Claude budget (${s.max_usd_per_day:.2f}) is used up")
     opts = ClaudeAgentOptions(tools=[], setting_sources=[], max_turns=1, model=s.model, effort=s.effort,
-                              system_prompt=SYSTEM, cwd=WORKDIR, max_budget_usd=s.max_usd_per_question, env=env)
+                              system_prompt=SYSTEM.format(language=ctx.language), cwd=WORKDIR, max_budget_usd=s.max_usd_per_question, env=env)
     text, cost, failed = [], 0.0, False
     try:
         async for m in query(prompt=question, options=opts):

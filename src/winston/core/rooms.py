@@ -415,9 +415,9 @@ def plain_words(text: str) -> str:
 
 def wake_phrases(cfg: WinstonConfig) -> set[str]:
     """What a box in the house wakes on, as words: "okay winston" from okay_winston, and the usual ways
-    of calling him by name."""
+    of calling him by name, in Swedish and German too ("hej winston", "hallo winston")."""
     name = plain_words(cfg.assistant.name)
-    phrases = {f"{w} {name}" for w in ("okay", "ok", "hey", "hi")}
+    phrases = {f"{w} {name}" for w in ("okay", "ok", "hey", "hi", "okej", "hej", "hallå", "hallo")}
     for dev in cfg.channels.satellite.devices.values():
         phrases |= {plain_words(w.replace("_", " ")) for w in (dev.wake_word or "").split(",") if w.strip()}
     return phrases

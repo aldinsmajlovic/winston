@@ -399,7 +399,8 @@ class Host:
                     continue
                 if proc.is_mcp_server and was.mcp != now.mcp:
                     await proc.restart("its command changed")
-                elif not proc.is_mcp_server and was.settings != now.settings and proc.state == "running":
+                elif not proc.is_mcp_server and proc.state == "running" and (
+                        was.settings != now.settings or old.assistant.language != new.assistant.language):
                     await self.reconfigure(ext_id)
 
     async def reconfigure(self, ext_id: str) -> None:
@@ -417,7 +418,8 @@ class Host:
         title, from what the extension said (for the log)."""
         try:
             result = await proc.call("configure", settings=self.config(proc.id).settings,
-                                     secrets=self.secret_values(proc.id), **params)
+                                     secrets=self.secret_values(proc.id), language=self.cfg.assistant.language,
+                                     **params)
         except MCPError as e:
             if e.code != INVALID_PARAMS:
                 raise

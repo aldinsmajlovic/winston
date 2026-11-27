@@ -10,7 +10,6 @@ import inspect
 import json
 import os
 import re
-import unicodedata
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +23,7 @@ from winston.config import data_dir, repo_root
 from winston.config.presets import LLM
 from winston.config.schema import WinstonConfig, server_root
 from winston.core import memory
-from winston.core.common import failure_words
+from winston.core.common import ascii_letters, failure_words
 from winston.core.voices import clones
 from winston.providers.home_assistant import HomeAssistant, state_text
 
@@ -735,8 +734,7 @@ async def _ha_entities(cfg: WinstonConfig, params: dict) -> Options:
 
 def _ha_slug(name: str) -> str:
     """Home Assistant's slugify: "Galaxy S24" is "galaxy_s24", as in the companion app's notify service."""
-    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9]+", "_", plain).strip("_")
+    return re.sub(r"[^a-z0-9]+", "_", ascii_letters(name).lower()).strip("_")
 
 
 async def _ha_notify(cfg: WinstonConfig, params: dict) -> Options:

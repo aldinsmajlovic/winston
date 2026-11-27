@@ -231,7 +231,7 @@ class Harness:
                  facts: list[dict[str, Any]] | None = None, diary: dict[str, str] | None = None, llm: Any = None,
                  others: dict[str, dict[str, Any]] | None = None, day_parts: dict[str, str] | None = None,
                  tools: dict[str, dict[str, Any]] | None = None, accounts: dict[str, str] | None = None,
-                 background: bool = True):
+                 background: bool = True, language: str = "English"):
         self.ext = load(str(target))
         self.clock = clock or FakeClock()
         self.ha = ha or FakeHA()
@@ -254,6 +254,7 @@ class Harness:
                           transport=http, log_write=lambda level, msg: self.log.append((level, msg)),
                           background=background)
         self._settings, self._secrets, self._day_parts = settings or {}, secrets or {}, day_parts
+        self._language = language                                       # his reply language, ctx.language
         self._started = False
 
     @property
@@ -262,7 +263,8 @@ class Harness:
 
     async def _start(self) -> None:
         if not self._started:
-            result = await self.rt.configure(self._settings, self._connected(self._secrets), day_parts=self._day_parts)
+            result = await self.rt.configure(self._settings, self._connected(self._secrets), day_parts=self._day_parts,
+                                             language=self._language)
             if not result["ok"]:
                 raise HandlerFailed(f"settings: {result['errors']}")
             self._started = True

@@ -11,7 +11,6 @@ The speech server resolves a voice name relative to voices/, so a clone's voice 
 import json
 import re
 import time
-import unicodedata
 import wave
 from dataclasses import asdict, dataclass
 from itertools import pairwise
@@ -20,6 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from winston.config import resolve
+from winston.core.common import ascii_letters
 
 DIR = "voices/friends"
 TARGET_RMS = 0.1        # about -20 dBFS of speech, what the reference clips sit at
@@ -51,8 +51,7 @@ def friends_dir() -> Path:
 
 def slug(name: str) -> str:
     """"Erik Åberg" -> "erik-aberg"; empty when nothing usable is left."""
-    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")[:40]
+    return re.sub(r"[^a-z0-9]+", "-", ascii_letters(name).lower()).strip("-")[:40]
 
 
 def clones() -> list[Clone]:
@@ -119,7 +118,7 @@ def save(name: str, clip: np.ndarray, consent: np.ndarray, rate: int, consent_te
     """Store a clone, replacing an earlier one of the same name, with the same-voice score when the check
     ran (score None: not checked). The clip is written last and atomically, since the speech server may
     read it the moment it exists."""
-    s = slug(name)
+    s = old.slug if (old := find(name)) else slug(name)     # one stored before ø and ß were folded keeps its files
     if not s:
         raise ValueError(f"no usable name in {name!r}")
     clip = clip[:int(MAX_CLIP_SECS * rate)]

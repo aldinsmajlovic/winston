@@ -84,7 +84,7 @@ never "Coming up". For a word at a set hour, a [reminder](#reminders) is the too
 Hard questions go to Claude: reasoning, explanations, writing, planning, maths. It runs the Claude
 Code CLI bundled with the Claude Agent SDK, in its own environment made by uv, with no tools, no
 settings and an empty working directory, for one turn. So Claude sees only the question, and the
-answer comes back marked as information.
+answer comes back marked as information, in plain spoken sentences in his reply language.
 
 **Ask Claude** (`claude_ask`) says "Let me think about that." as the call starts.
 
@@ -214,9 +214,9 @@ a topic. A feed that is not answering shows as a warning on its page.
   minutes (two feeds of one publisher count once), which the background model then judges, yes or
   no, worth interrupting for given your topics. What is already there on the first read, or when a
   feed is added, is never breaking.
-- **Crisis alerts**: with your county picked, Krisinformation.se's news for it, in English, and every
-  VMA for it or for all of Sweden, said as they come. A VMA is urgent, so it is said in quiet hours
-  too.
+- **Crisis alerts**: with your county picked, Krisinformation.se's news for it (in Swedish when he
+  answers in Swedish, otherwise in English) and every VMA for it or for all of Sweden, said as they
+  come. A VMA is urgent, so it is said in quiet hours too.
 - **Daily digest**, in the briefing (your first conversation of the day). The background model picks
   it from the day's 25 leading stories, at most once an hour until it is said: what matters most, not
   a run of crime and accidents, never two stories about one event. Each of your topics with a story

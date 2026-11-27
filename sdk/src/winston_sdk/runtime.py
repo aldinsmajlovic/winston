@@ -72,6 +72,7 @@ class Runtime:
         self._log_write = log_write or (lambda level, msg: None)
         self.settings: Any = ext.settings_model.model_construct()
         self.day_parts: dict[str, time] = {}
+        self.language = "English"         # his reply language, as winstond says
         self.configured = False
         self._run_background = background                  # off in tests that drive those tasks themselves
         self._background: list[asyncio.Task] = []
@@ -134,7 +135,8 @@ class Runtime:
 
     async def configure(self, settings: dict[str, Any] | None = None, secrets: dict[str, Any] | None = None,
                         validate_only: bool = False, validate_first: bool = False,
-                        day_parts: dict[str, str] | None = None, time_zone: str | None = None) -> dict[str, Any]:
+                        day_parts: dict[str, str] | None = None, time_zone: str | None = None,
+                        language: str | None = None) -> dict[str, Any]:
         """New settings. With `validate_first` the extension's own check runs before they take effect
         (and `@ext.on_settings` jobs run when they change after the first time); `validate_only` runs
         the check and keeps the old ones."""
@@ -159,6 +161,8 @@ class Runtime:
         if time_zone:
             from zoneinfo import ZoneInfo
             self.clock.zone = ZoneInfo(time_zone)
+        if language:
+            self.language = language
         old, first = self.settings, not self.configured
         self.settings, self.configured = new, True
         if first and self._run_background:

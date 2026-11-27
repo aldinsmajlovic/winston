@@ -5,12 +5,24 @@ import asyncio
 import json
 import re
 import time
+import unicodedata
 from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable, Iterable
 from pathlib import Path
 
 import httpx
 from loguru import logger
+
+
+# Letters NFKD does not take apart, so folding to ASCII would drop them ("Straße", "Søren", "Bæk"), mapped as
+# Home Assistant's slugify maps them.
+_UNSPLIT = str.maketrans({"ß": "ss", "ø": "o", "Ø": "O", "æ": "ae", "Æ": "Ae", "œ": "oe", "Œ": "Oe", "đ": "d",
+                          "Đ": "D", "ł": "l", "Ł": "L", "ð": "d", "Ð": "D", "þ": "th", "Þ": "Th"})
+
+
+def ascii_letters(text: str) -> str:
+    """Accents folded to plain ASCII letters: "Søren Bæk" -> "Soren Baek", "Köket" -> "Koket"."""
+    return unicodedata.normalize("NFKD", text.translate(_UNSPLIT)).encode("ascii", "ignore").decode()
 
 
 def key(name: str) -> str:

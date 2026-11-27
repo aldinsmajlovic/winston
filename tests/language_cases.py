@@ -170,4 +170,20 @@ expect("Chatterbox does not", "--language" not in WinstonConfig.model_validate(
 expect("of the voices only VoxCPM2 speaks Swedish", [p["id"] for p in TTS if "Swedish" in (p.get("speaks") or [])]
        == ["voxcpm2"])
 
+# Hint words in a Swedish or German home (core/hints.py): ordinary words are not hint words, so nothing said is
+# rewritten into one; ß, ø and æ fold as Home Assistant folds them.
+from winston.api.options import _ha_slug  # noqa: E402
+from winston.core.hints import _fold, _proper, correct  # noqa: E402
+from winston.core.rooms import wake_phrases  # noqa: E402
+from winston.core.voices import slug  # noqa: E402
+
+names = ["Taklampa i köket", "Lampa i hallen", "Golvlampa i vardagsrummet", "Lampan vid soffan", "Licht im Flur"]
+hints = sorted({w for n in names for w in n.split() if _proper(w)})
+expect("only the compound names are hint words", hints == ["Golvlampa", "Taklampa", "vardagsrummet"], hints)
+expect("lamporna is not rewritten into Lampan", correct("släck lamporna i hallen", [*hints, "Lampan"])[1] == [])
+expect("ß, ø and æ fold, not drop", (_fold("Straße"), _fold("Søren"), slug("Søren Bæk"), _ha_slug("Sørens S24"))
+       == ("strasse", "soren", "soren-baek", "sorens_s24"))
+expect("hej and hallo call him in a room with a box", {"hej winston", "hallå winston", "hallo winston", "okay winston"}
+       <= wake_phrases(english))
+
 finish()

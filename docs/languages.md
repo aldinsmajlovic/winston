@@ -77,6 +77,8 @@ not like in `lines.json`, or delete the file to have them all made again, and re
 Some words are matched on what was heard before the model reads it, because they must act at once or
 decide how he answers:
 
+- calling him by name in a room with a box ("hej Winston", "hallo Winston", "okay Winston"), which the
+  browser leaves to the box;
 - ending a conversation on a room box ("stop", "that's all", "never mind") and stopping the music;
 - the words around a shortcut's name, so "filmkväll i vardagsrummet, tack" still runs it;
 - the words that make a request a home request, so he thinks first ("tänd lamporna");
@@ -87,6 +89,31 @@ never made up: "nej" and "tack" on their own stay answers, as "no" and "thank yo
 Swedish and German are understood together, whatever the reply language, since a household may speak
 its own language to him and have him answer in English. Another language is a line added to each
 list (`rooms.py`, `brain.py`, `guard.py`, `nudges.py`).
+
+## Names he should hear right
+
+Hint words are taken from Home Assistant's names, so a Swedish or German home gives Swedish or
+German ones. Common Swedish and German words are in the built-in list beside the English
+(`core/common_words.txt`), so "köket", "Lampan" or "vid" in a device's name is not a hint word and
+nothing said is corrected into one: twelve made-up device names gave 21 hint words and now give 7, the
+compound names ("Taklampa", "vardagsrummet"), and "släck lamporna i hallen" is no longer changed to
+"släck Lampan i hallen". Compound rooms stay hint words on purpose, since hearing splits them
+("Vardag's Rummet"). Letters that do not take apart into a plain letter and an accent are
+spelled out when a word is folded for matching, as Home Assistant spells them in its ids: "Straße"
+is "strasse", "Søren" is "soren" (they dropped out before, so "Søren" matched "sren"). A cloned voice
+of such a name keeps the folder it was saved in.
+
+## Extensions
+
+An extension reads the reply language as `ctx.language` ([SDK](extension-sdk.md#its-own-state-and-the-clock)),
+sent again when it changes. News fetches Krisinformation in Swedish when he answers in Swedish
+(it has Swedish and English), and Ask Claude is asked to answer in the reply language.
+
+## The prompt
+
+His instructions, the date and the day's name in them are English whatever the reply language. The
+model reads English best, and answers in the reply language from the last line, so "fredag" is what he
+says on a Friday.
 
 ## Cloning a voice
 
@@ -113,5 +140,5 @@ language. "På lördagar" (a habit) and "i lördags" (last Saturday) are left as
 
 ## Still in English
 
-Words that steer him in languages other than those above, and the browser's "okay Winston" or "hey
-Winston" in a room. The work on each is the Languages track in [the plan](plan.md).
+Words that steer him, times and the common words in languages other than English, Swedish and German.
+Each is a list in code that another language is added to.

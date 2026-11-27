@@ -276,7 +276,7 @@ How entities reach Home Assistant is under [Home Assistant entities](extensions.
 
 ## ctx
 
-`ctx.settings`, `ctx.store`, `ctx.folder`, `ctx.now()`, `ctx.today()`, `ctx.log` and `ctx.ongoing()`
+`ctx.settings`, `ctx.store`, `ctx.folder`, `ctx.now()`, `ctx.today()`, `ctx.language`, `ctx.log` and `ctx.ongoing()`
 are not awaited. Everything else reaches winstond, Home Assistant or the network, and is awaited.
 
 ### Its own state and the clock
@@ -285,6 +285,7 @@ are not awaited. Everything else reaches winstond, Home Assistant or the network
 | --- | --- |
 | `ctx.settings` | Its settings, typed; secret fields hold their values |
 | `ctx.now()`, `ctx.today()` | The core's clock: an aware `datetime` in the home's time zone (a `ZoneInfo`, so arithmetic across daylight saving holds), and its `date`. Tests move it |
+| `ctx.language` | His reply language by its English name ("English", "Swedish"), for text he will say or a service's language; a new one arrives when it changes. `Harness(language=...)` sets it in tests |
 | `ctx.store` | A dict of JSON values in its state folder, saved (nested changes too) after every handler |
 | `ctx.folder` | That folder, `data/state/extensions/<id>/`, for SQLite or files |
 | `ctx.log.info(msg)`, `.warning`, `.error` | Its log, shown by Log on its page and by `winston ext logs` |

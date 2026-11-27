@@ -34,10 +34,13 @@ class Web:
         self.kris_news: list[dict] = []
         self.kris_vmas: list[dict] = []
         self.asked: list[tuple[str, dict]] = []
+        self.kris_language: list[str | None] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         url = str(request.url).split("?")[0]
         self.asked.append((url, dict(request.headers)))
+        if url.startswith("https://api.krisinformation.se/"):
+            self.kris_language.append(request.url.params.get("language"))
         if url == "https://api.krisinformation.se/v3/news":
             return httpx.Response(200, json=self.kris_news)
         if url == "https://api.krisinformation.se/v3/vmas":
@@ -58,10 +61,10 @@ OUTLETS = {"BBC": "https://bbc.test/rss", "Guardian": "https://guardian.test/rss
            "BBC Europe": "https://bbc.test/europe/rss"}
 
 
-def harness(web: Web, llm=None, **settings) -> Harness:
+def harness(web: Web, llm=None, language="English", **settings) -> Harness:
     feeds = {name: {"url": url, "source": "BBC" if name.startswith("BBC") else name} for name, url in OUTLETS.items()}
     s = {"sweden_en": False, "world": False, "feeds": feeds, **settings}
-    return Harness(HERE, settings=s, http=httpx.MockTransport(web.handle), llm=llm,
+    return Harness(HERE, settings=s, http=httpx.MockTransport(web.handle), llm=llm, language=language,
                    clock=FakeClock(START, zone="Europe/Stockholm"))
 
 
@@ -191,6 +194,15 @@ async def test_crisis_news_for_the_county_and_vmas():
     assert h.pushed[1][1].links[0].url == "https://www.krisinformation.se/a"
     await h.run("read")
     assert len(h.pushed) == 2                          # each once
+    assert set(web.kris_language) == {"en"}, web.kris_language
+    await h.close()
+
+
+async def test_crisis_in_swedish_when_he_answers_in_it():
+    web = Web()
+    h = harness(web, language="Swedish", county="Stockholms län")
+    await first_read(web, h)
+    assert web.kris_language and set(web.kris_language) == {"sv"}, web.kris_language
     await h.close()
 
 

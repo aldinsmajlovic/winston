@@ -288,6 +288,11 @@ class Ctx:
         return self.now().date()
 
     @property
+    def language(self) -> str:
+        """His reply language by its English name ("English", "Swedish"), for text he will say."""
+        return self._rt.language
+
+    @property
     def http(self) -> httpx.AsyncClient:
         if self._http is None:
             self._http = self._rt.make_http(self)

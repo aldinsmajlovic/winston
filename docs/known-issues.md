@@ -23,7 +23,7 @@ are in [plan.md](plan.md); smaller rough edges in the web UI are in its UI track
 
 | Issue | Do this instead | Where it stands |
 | --- | --- | --- |
-| **Times, "stop", "never mind" and the like are understood in English, Swedish and German only** ([languages](languages.md#still-in-english)). | Say those in one of them. | The plan's Languages track. |
+| **Times, "stop", "never mind" and the like are understood in English, Swedish and German only** ([languages](languages.md#still-in-english)). | Say those in one of them. | A line added to each list for another language. |
 
 ## Reporting one
 

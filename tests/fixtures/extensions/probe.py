@@ -57,6 +57,12 @@ async def switch_off(ctx, entity_id: str) -> str:
 
 
 @ext.tool(tier="read", outside=False)
+async def language(ctx) -> str:
+    """His reply language, as winstond told it."""
+    return ctx.language
+
+
+@ext.tool(tier="read", outside=False)
 async def home(ctx) -> bool:
     """Whether the user is home."""
     return await ctx.presence.home()

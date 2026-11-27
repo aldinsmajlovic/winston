@@ -379,7 +379,8 @@ Qwen3-ASR as its context, a Whisper-style server as its prompt. Parakeet cannot,
   and p, g and k, v and f, s and z are one sound) and is spelled close to it (difflib ratio 0.7, 0.85
   for words of five letters or fewer) becomes that word. "Winson", "Windsun" and "Winsten" become
   Winston, "Vardag's Rummet" becomes Vardagsrummet.
-- A common English word is never changed (a built-in list, `core/common_words.txt`). Two words run
+- A common English, Swedish or German word is never changed (a built-in list, `core/common_words.txt`;
+  [languages](languages.md#names-he-should-hear-right)). Two words run
   together only when neither is common, or when together they spell the hint word exactly. So
   "wind", "win some", "Wind sun" and "one plus" stay. So do other names that are not close enough
   (Wilson, Eric, Marie, Alden) and a hint word with more after it (Erika, Winstons).

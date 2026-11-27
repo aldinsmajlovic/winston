@@ -13,7 +13,6 @@ clone consent check all transcribe and correct the same way."""
 import asyncio
 import re
 import time
-import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from functools import cache
@@ -23,6 +22,7 @@ import numpy as np
 from loguru import logger
 
 from winston.config.schema import WinstonConfig
+from winston.core.common import ascii_letters
 
 MIN_LETTERS = 3             # shorter words are never hint words
 SIMILAR = 0.7               # spelling similarity (difflib ratio) a correction needs at least,
@@ -47,8 +47,7 @@ def common_words() -> frozenset[str]:
 
 def _fold(s: str) -> str:
     """Lower case letters only, accents folded: "Vardag's" -> "vardags", "Köket" -> "koket"."""
-    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z]", "", s)
+    return re.sub(r"[^a-z]", "", ascii_letters(s).lower())
 
 
 def is_common(word: str) -> bool:

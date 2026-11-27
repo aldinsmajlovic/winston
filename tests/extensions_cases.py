@@ -206,6 +206,13 @@ async def run(ha_port: int, api_port: int, llm_runner, llm_seen):
         expect("a setting saves", r.status_code == 200, r.text)
         r = (await api.post("/api/extensions/probe/tools/state", json={"entity_id": "light.kok"})).json()
         expect("picking an entity lets it read that entity", r["ok"] and r["result"]["state"] == "off", r)
+        said = (await api.post("/api/extensions/probe/tools/language", json={})).json()
+        r = await api.patch("/api/config", json={"changes": [{"path": ["assistant", "language"], "value": "Swedish"}]})
+        expect("a new reply language saves", r.status_code == 200, r.text)
+        now = (await api.post("/api/extensions/probe/tools/language", json={})).json()
+        expect("an extension knows the reply language, and a new one at once", (said.get("result"), now.get("result"))
+               == ("English", "Swedish"), (said, now))
+        await api.patch("/api/config", json={"changes": [{"path": ["assistant", "language"], "value": "English"}]})
         r = await api.patch("/api/config", json={"changes": [{"path": ["extensions", "probe", "settings", "mode"],
                                                               "value": "bad"}]})
         detail = r.json().get("detail", [{}])
