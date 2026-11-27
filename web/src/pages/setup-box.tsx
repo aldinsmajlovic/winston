@@ -84,7 +84,7 @@ function Firmware({ port, state, onStarted, onKeep, onSkip, busy }: FirmwareProp
           {flash?.stage === 'error' ? <StatusLine tone="error">{flash.error}</StatusLine> : null}
           {start.error ? <StatusLine tone="error">{errorText(start.error)}</StatusLine> : null}
           {!running ? (
-            <p className="text-sm text-muted-foreground">Flashing erases the box, Wi-Fi and any key Home Assistant gave it included.</p>
+            <p className="text-sm text-muted-foreground">Flashing erases the box, its Wi-Fi and its key included. Winston gives it a new key once it is on Wi-Fi.</p>
           ) : null}
           {info?.winston && !running ? (
             <div>
@@ -181,16 +181,18 @@ function Wifi({ port, onJoined, onSkip }: WifiProps) {
 type RoomProps = Props & { joined: BoxJoined & { ssid: string }; onSkip: () => void }
 
 /** Its room, its Home Assistant area, its wake word when his name is not Winston (the box knows only Okay
- * Winston and the stock three), and Home Assistant's old entry for it. Adding saves it as a room box and
- * switches the room boxes on, as Ways to talk would. */
+ * Winston and the stock three), and whether Home Assistant uses it too. Adding saves it as a room box and
+ * switches the room boxes on, as Ways to talk would; then Home Assistant gets the box's key (Winston keeps the
+ * microphone), or its old entry for the box is disabled. */
 function Room({ page, next, joined, onSkip }: RoomProps) {
   const disable = $api.useMutation('post', '/api/setup/box/ha-disable', OWN_ERRORS)
+  const share = $api.useMutation('post', '/api/setup/box/ha-share', OWN_ERRORS)
   const areas = useOptions('ha_areas')
   const [busy, run] = useBusy()
   const [room, setRoom] = useState('')
   const [area, setArea] = useState('')
   const [wake, setWake] = useState(STOCK_WAKE[0].value)
-  const [offEntry, setOffEntry] = useState(true)
+  const [shared, setShared] = useState(joined.ha)
   const [adding, setAdding] = useState('')
   const before = useRef<unknown>(null)
   const winston = (page.value.assistant?.name ?? 'Winston').trim().toLowerCase() === 'winston'
@@ -208,12 +210,11 @@ function Room({ page, next, joined, onSkip }: RoomProps) {
         setAdding('')
         return
       }
-      if (entry && offEntry) {
-        try {
-          await disable.mutateAsync({ body: { entry_id: entry.entry_id } })
-        } catch {
-          return                // the box is saved: its sentence shows, and Continue goes on
-        }
+      try {
+        if (joined.ha && shared) await share.mutateAsync({ body: { mac: joined.mac, host: joined.host } })
+        else if (entry) await disable.mutateAsync({ body: { entry_id: entry.entry_id } })
+      } catch {
+        return                  // the box is saved: its sentence shows, and Continue goes on
       }
       await next('done')
     })
@@ -224,7 +225,12 @@ function Room({ page, next, joined, onSkip }: RoomProps) {
   const add = () => {
     const name = room.trim()
     before.current = getIn(page.value, SATELLITE)
-    const device = { host: joined.host, wake_word: winston ? 'okay_winston' : wake, ...(area ? { area } : {}) }
+    const device = {
+      host: joined.host,
+      wake_word: winston ? 'okay_winston' : wake,
+      ...(area ? { area } : {}),
+      ...(joined.key_env ? { key_env: joined.key_env } : {}),
+    }
     page.update((c) => setIn(setIn(c, [...SATELLITE, 'devices', name], device), [...SATELLITE, 'enabled'], true))
     setAdding(name)
   }
@@ -277,19 +283,29 @@ function Room({ page, next, joined, onSkip }: RoomProps) {
               <p className="text-sm text-muted-foreground">The box knows Okay Winston and these three.</p>
             </div>
           ) : null}
-          {entry ? (
+          {joined.ha ? (
             <div className="flex flex-col gap-2">
-              <StatusLine tone="warning">Home Assistant had this box, and its entry there would come back as a new device.</StatusLine>
               <div className="flex items-center gap-3">
-                <Switch id="box-ha-off" checked={offEntry} onCheckedChange={setOffEntry} />
-                <Label htmlFor="box-ha-off">Disable it in Home Assistant</Label>
+                <Switch id="box-ha-share" checked={shared} onCheckedChange={setShared} />
+                <Label htmlFor="box-ha-share">Use it in Home Assistant too</Label>
               </div>
+              <p className="text-sm text-muted-foreground">
+                {shared
+                  ? "Home Assistant gets the box's key and can play sound on it. Its voice assistant for the box is switched off, so Winston keeps the microphone."
+                  : entry
+                    ? 'Its old entry in Home Assistant is disabled, or it would come back there as a new device.'
+                    : 'Home Assistant leaves the box alone.'}
+              </p>
             </div>
+          ) : entry ? (
+            <StatusLine tone="warning">Home Assistant had this box. Its old entry there is disabled, or it would come back as a new device.</StatusLine>
           ) : null}
+          {share.isPending ? <StatusLine tone="muted">Giving Home Assistant the box&apos;s key. This takes up to 30 s.</StatusLine> : null}
           {disable.error ? <StatusLine tone="error">{errorText(disable.error)}</StatusLine> : null}
+          {share.error ? <StatusLine tone="error">{errorText(share.error)}</StatusLine> : null}
         </CardContent>
       </Card>
-      {disable.error ? (
+      {disable.error || share.error ? (
         <StepActions label="Continue" busy={busy} onClick={() => void run(() => next('done'))} />
       ) : (
         <StepActions label="Add the box and continue" busy={busy || page.saving || !room.trim() || taken} onClick={add} onSkip={onSkip} />

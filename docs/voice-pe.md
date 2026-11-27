@@ -23,18 +23,22 @@ the quicker one.
 On a computer set up with `winston setup`, plug the box in with USB-C. The wizard's A room box step
 ([setup](setup.md#the-steps)) then:
 
-1. puts Winston's firmware on the box, from Winston's release. This erases the box, so a box Home
-   Assistant had adopted loses its key; the step offers to disable its old entry there.
+1. puts Winston's firmware on the box, from Winston's release. This erases the box, its key included.
 2. gives the box Wi-Fi over Improv Serial, from the networks it sees.
-3. checks that Winston reaches it there.
+3. checks that Winston reaches it there and gives it a key of his own, kept in `data/.env` as
+   `VOICE_PE_KEY_` and the end of its MAC (`VOICE_PE_KEY_0A1B2C`).
 4. adds it as a room box, with Listen through room boxes on.
+5. with Use it in Home Assistant too on (the default when Home Assistant is connected), gives Home
+   Assistant the same key and switches off its voice assistant and firmware update for the box
+   ([sharing it](#sharing-it-with-home-assistant)). Off, Home Assistant's old entry for the box is
+   disabled.
 
 A box already on the network is added with Add a box, in Settings, Ways to talk, Room boxes.
 
 ### Without Home Assistant
 
-A box that was never adopted has no API encryption, so Winston needs no key and nothing else takes the
-microphone.
+A box that was never adopted has no key, so Winston needs none and nothing else takes the microphone. The
+wizard gives a box a key; this way leaves it without one, open to anything on the network.
 
 1. Plug the box into the Winston machine with USB-C. It shows up as `/dev/ttyACM0` (Espressif USB
    JTAG/serial).
@@ -42,22 +46,23 @@ microphone.
    ("Connect", then "Configure Wi-Fi"). Its serial log then prints its IP address.
 3. In Settings, Ways to talk, Room boxes, use Add a box and leave Encryption key empty. Switch on
    Listen through room boxes and save.
-4. When Home Assistant offers the discovered box, ignore it. Adopting it gives it a key and makes Home
-   Assistant the client that takes the microphone.
+4. When Home Assistant offers the discovered box, ignore it. Adopting it gives the box a key and makes
+   Home Assistant the client that takes the microphone.
 
 ### With Home Assistant
 
-Only one client can hold a box's voice assistant, first come first served. While Home Assistant is
-connected to the box, Winston gets nothing.
+Only one client can hold a box's voice assistant, first come first served. While Home Assistant's
+voice assistant for the box is on, Winston gets nothing. Both can use the box when it is off there
+([sharing it](#sharing-it-with-home-assistant)).
 
 1. Set the box up with the Home Assistant app as usual (Wi-Fi, adoption, firmware update) and talk to
    Assist once, so the hardware is known good.
 2. Get its API encryption key. Home Assistant makes it during adoption and keeps it in
    `.storage/core.config_entries`, as the ESPHome entry's `noise_psk`. Read it with the File editor or
    SSH add-on.
-3. In Home Assistant, disable the box's ESPHome entry (Settings, Devices, ESPHome, the box, disable).
-   The LEDs, dial and button keep working, since they run on the box. Enable the entry again for
-   firmware updates.
+3. In Home Assistant, disable the box's Assist satellite entity (Settings, Devices, ESPHome, the box),
+   so Winston gets the microphone, or the whole ESPHome entry. The LEDs, dial and button keep working,
+   since they run on the box.
 4. In Settings, Ways to talk, Room boxes, use Add a box: its room, its address, the encryption key (kept
    on this computer and never shown again) and its wake word. Switch on Listen through room boxes and
    save. Saving starts the room boxes, or offers to restart them when they already run, and the box's
@@ -73,6 +78,24 @@ channels:
     devices:
       living room: {host: 192.168.1.50, key_env: VOICE_PE_KEY, wake_word: hey_jarvis}
 ```
+
+### Sharing it with Home Assistant
+
+The box can be Winston's room box and Home Assistant's speaker at once: Home Assistant plays sounds,
+text to speech and media on it, and Winston keeps the microphone. Both need the box's key. The wizard
+sets this up after it gives the box his key:
+
+- **Home Assistant had the box:** its old key no longer matches, so Home Assistant asks for the box's
+  key again (a reauthentication prompt), and Winston answers it. A prompt left from before the flash is
+  deleted first, and a disabled entry is enabled.
+- **Home Assistant never had it:** Winston adds the box there with the key, after deleting Home
+  Assistant's own discovery of it.
+- **Then, on Home Assistant's side:** the box's Assist satellite is switched off, so Winston gets the
+  microphone, and its firmware update too, which would put the stock firmware back.
+
+Home Assistant must reach the box on TCP 6053, and the box must reach Home Assistant on its own port
+(8123) to fetch what Home Assistant plays. When Home Assistant does not ask for the key within 30 s, the
+step says so and goes on with the box saved.
 
 ### The network
 

@@ -7,7 +7,10 @@ tools follow the exposed domains as the real one's do. And signing in as Home As
 redirect_uri on another address than the client_id, as Home Assistant does), /auth/token and /auth/revoke,
 the websocket's auth/current_user, auth/refresh_tokens, auth/delete_refresh_token and
 auth/long_lived_access_token (a name once), and the MCP server's config flow for an administrator, which
-switches it on (`mcp_on`, off with --no-mcp). `admin` makes its user an administrator or not.
+switches it on (`mcp_on`, off with --no-mcp). `admin` makes its user an administrator or not. And a Voice PE in
+its ESPHome integration, as far as Winston's wizard shares one (`add_box`): an entry with a key, reloading it, the
+key prompt Home Assistant opens when the box's key no longer matches (reauth_confirm), adding the box with its key,
+and the box's entities, available once its entry has the box's key.
 
 Every write is recorded, so a test can check exactly what Winston sent (for example that it never sent
 a "name"). GET /fake/log returns the writes so far, in order.
@@ -156,6 +159,7 @@ class FakeHA:
             web.post("/auth/revoke", self.revoke), web.post("/api/config/config_entries/flow", self.flow_start),
             web.post("/api/config/config_entries/flow/{flow_id}", self.flow_step),
             web.delete("/api/config/config_entries/flow/{flow_id}", self.flow_delete),
+            web.post("/api/config/config_entries/entry/{entry_id}/reload", self.entry_reload),
         ])
         self.subscribers: dict[web.WebSocketResponse, dict[int, str]] = {}
         self.runner: web.AppRunner | None = None
@@ -179,6 +183,8 @@ class FakeHA:
         self.refresh: dict[str, dict] = {}            # refresh token id -> {token, access, client_name, type}
         self.n = 0
         self.config_entries: list[dict] = []          # config_entries/get; a check adds an ESPHome box's own
+        self.box: dict | None = None                  # a Voice PE: {mac, host, key, reachable}; add_box
+        self.flows: dict[str, dict] = {}              # config flows in progress, by flow_id
 
     # ------------------------------------------------------------ REST
 
@@ -228,11 +234,78 @@ class FakeHA:
     def _drop(self, rid: str):
         self.tokens.discard(self.refresh.pop(rid)["access"])
 
+    # ------------------------------------------------------------ ESPHome: a Voice PE's key
+
+    BOX_ENTITIES = ("assist_satellite.voice_box", "update.voice_box_firmware", "media_player.voice_box")
+
+    def add_box(self, mac: str, host: str, key: str, entry_psk: str | None = None, disabled: bool = False):
+        """The box at `host` with its key, and, given entry_psk, Home Assistant's entry for it with that key."""
+        self.box = {"mac": mac, "host": host, "key": key, "reachable": True}
+        if entry_psk is not None:
+            self._box_entry(entry_psk, "user" if disabled else None)
+
+    def _box_entry(self, psk: str, disabled_by: str | None = None):
+        self.devices = [d for d in self.devices if d["id"] != "dev_box"] + [
+            {"id": "dev_box", "name": "Voice box", "name_by_user": None, "area_id": None,
+             "connections": [["mac", self.box["mac"].lower()]], "config_entries": ["entry_box"]}]
+        self.config_entries = [e for e in self.config_entries if e["entry_id"] != "entry_box"] + [
+            {"entry_id": "entry_box", "domain": "esphome", "title": "Voice box", "disabled_by": disabled_by, "psk": psk}]
+        for eid in self.BOX_ENTITIES:
+            self.registry[eid] = {"entity_id": eid, "id": f"reg_{eid}", "area_id": None, "platform": "esphome",
+                                  "has_entity_name": True, "original_name": eid, "device_id": "dev_box",
+                                  "disabled_by": None, "aliases": []}
+            self.states[eid] = {"entity_id": eid, "state": "unavailable", "attributes": {},
+                                "last_changed": "2026-09-24T07:00:00+00:00"}
+        self._box_connect()
+
+    def _box_connect(self):
+        """Home Assistant connecting to the box with its entry's key: its entities come back, or it asks for the key."""
+        entry = next((e for e in self.config_entries if e["entry_id"] == "entry_box"), None)
+        if not self.box or not entry or entry["disabled_by"] or not self.box["reachable"]:
+            return
+        on = entry["psk"] == self.box["key"]
+        for eid in self.BOX_ENTITIES:
+            self.states[eid]["state"] = ("idle" if on else "unavailable")
+        if not on and not any(f["context"].get("entry_id") == "entry_box" for f in self.flows.values()):
+            fid = self._new("flow")
+            self.flows[fid] = {"flow_id": fid, "handler": "esphome", "step_id": "reauth_confirm",
+                               "context": {"source": "reauth", "entry_id": "entry_box"}}
+
+    async def entry_reload(self, request):
+        await self._gate(request)
+        self.writes.append({"type": "config_entries/reload", "entry_id": request.match_info["entry_id"]})
+        self._box_connect()
+        return web.json_response({"require_restart": False})
+
+    def _esphome_step(self, fid: str, body: dict):
+        flow = self.flows[fid]
+        if flow["step_id"] == "user":
+            if not self.box or body.get("host") != self.box["host"]:
+                return {"type": "form", "flow_id": fid, "step_id": "user", "errors": {"base": "connection_error"}}
+            flow["step_id"] = "encryption_key"
+            return {"type": "form", "flow_id": fid, "step_id": "encryption_key", "errors": {}}
+        if body.get("noise_psk") != self.box["key"]:
+            return {"type": "form", "flow_id": fid, "step_id": flow["step_id"], "errors": {"base": "invalid_psk"}}
+        del self.flows[fid]
+        self.writes.append({"type": "config_entries/esphome", "step_id": flow["step_id"]})
+        if flow["step_id"] == "reauth_confirm":
+            next(e for e in self.config_entries if e["entry_id"] == "entry_box")["psk"] = body["noise_psk"]
+            self._box_connect()
+            return {"type": "abort", "flow_id": fid, "reason": "reauth_successful"}
+        self._box_entry(body["noise_psk"])
+        return {"type": "create_entry", "flow_id": fid, "title": "Voice box"}
+
     async def flow_start(self, request):
         await self._gate(request)
         if not self.user["is_admin"]:
             raise web.HTTPUnauthorized()
         body = await request.json()
+        if body.get("handler") == "esphome":
+            if self.box and any(f["context"].get("unique_id") == self.box["mac"].lower() for f in self.flows.values()):
+                return web.json_response({"type": "abort", "flow_id": "x", "reason": "already_in_progress"})
+            fid = self._new("flow")
+            self.flows[fid] = {"flow_id": fid, "handler": "esphome", "step_id": "user", "context": {"source": "user"}}
+            return web.json_response({"type": "form", "flow_id": fid, "handler": "esphome", "step_id": "user", "errors": {}})
         if body.get("handler") == "winston" and self.winston_installed:
             return web.json_response({"type": "form", "flow_id": "flow_w", "handler": "winston", "step_id": "user",
                                       "errors": {}})
@@ -246,6 +319,8 @@ class FakeHA:
     async def flow_step(self, request):
         await self._gate(request)
         body = await request.json()
+        if request.match_info["flow_id"] in self.flows:
+            return web.json_response(self._esphome_step(request.match_info["flow_id"], body))
         if request.match_info["flow_id"] == "flow_w":
             return await self._winston_step(body)
         if request.match_info["flow_id"] != "flow_1" or not body.get("llm_hass_api"):
@@ -274,6 +349,7 @@ class FakeHA:
     async def flow_delete(self, request):
         await self._gate(request)
         self.writes.append({"type": "config_entries/flow_delete", "flow_id": request.match_info["flow_id"]})
+        self.flows.pop(request.match_info["flow_id"], None)
         return web.json_response({})
 
     async def api_root(self, request):
@@ -359,7 +435,11 @@ class FakeHA:
             if entry is None:
                 raise LookupError("Config entry not found")
             entry["disabled_by"] = msg["disabled_by"]
+            if entry["entry_id"] == "entry_box":
+                self._box_connect()
             return {"require_restart": False}
+        if t == "config_entries/flow/progress":
+            return copy.deepcopy(list(self.flows.values()))
         if t == "homeassistant/expose_entity/list":
             return {"exposed_entities": {eid: {"conversation": True} for eid in sorted(self.exposed)}}
         if t == "homeassistant/expose_entity":

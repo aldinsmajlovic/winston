@@ -113,7 +113,8 @@ flowchart TB
     long-lived token named Winston and its MCP server switched on.
   - A room box over USB (`api/room_box.py`): found by its USB id in sysfs, flashed through
     `uvx esptool`, given Wi-Fi over Improv Serial (`providers/improv.py`), then reached over its
-    ESPHome API. One talk with the port at a time.
+    ESPHome API and given a key of Winston's, which Home Assistant gets too. One talk with the port at
+    a time.
 
 ## The brain
 

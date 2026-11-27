@@ -254,11 +254,19 @@ class HAEntry(BaseModel):
 class BoxJoined(BaseModel):
     host: str = Field(description="The box's address on that network")
     mac: str
+    key_env: str | None = Field(description="The variable in data/.env holding the key Winston gave the box; none for "
+                                            "a box that cannot take one")
+    ha: bool = Field(description="Home Assistant answered, so the box can be shared with it")
     ha_entry: HAEntry | None = Field(description="Home Assistant's ESPHome entry for the box, if it has one")
 
 
 class HAEntryRef(BaseModel):
     entry_id: str
+
+
+class BoxShare(BaseModel):
+    mac: str = Field(pattern=r"^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$")
+    host: str = Field(min_length=1, max_length=253)
 
 
 class ChatMessage(BaseModel):
@@ -1017,15 +1025,25 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         except improv.ImprovError as e:
             raise HTTPException(422, str(e)) from None
         try:
-            mac = await usb_box.reach(host, body.ssid)
+            mac, key_env = await usb_box.reach(host, body.ssid)
         except usb_box.BoxError as e:
             raise HTTPException(409, str(e)) from None
+        ha, entry = False, None
         try:
-            entry = await usb_box.ha_entry(app.state.cfg, mac)
+            entry, ha = await usb_box.ha_entry(app.state.cfg, mac), True
         except Exception as e:      # noqa: BLE001  Home Assistant down or refusing must not stop the box's setup
             logger.info(f"room box: Home Assistant's entry for {mac} not read: {type(e).__name__}: {e}")
-            entry = None
-        return BoxJoined(host=host, mac=mac, ha_entry=entry and HAEntry(**entry))
+        return BoxJoined(host=host, mac=mac, key_env=key_env, ha=ha and key_env is not None,
+                         ha_entry=entry and HAEntry(**entry))
+
+    @app.post("/api/setup/box/ha-share", status_code=204,
+              summary="Give Home Assistant the box's key and leave Winston its microphone: its voice assistant and "
+                      "firmware update for the box are switched off there")
+    async def setup_box_ha_share(body: BoxShare):
+        try:
+            await usb_box.share(app.state.cfg, body.mac, body.host)
+        except usb_box.BoxError as e:
+            raise HTTPException(502, str(e)) from None
 
     @app.post("/api/setup/box/ha-disable", status_code=204,
               summary="Disable Home Assistant's old ESPHome entry for the box, so it does not come back as a new device")

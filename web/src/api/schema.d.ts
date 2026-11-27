@@ -429,6 +429,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setup/box/ha-share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Give Home Assistant the box's key and leave Winston its microphone: its voice assistant and firmware update for the box are switched off there */
+        post: operations["setup_box_ha_share_api_setup_box_ha_share_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/setup/box/ha-disable": {
         parameters: {
             query?: never;
@@ -1684,6 +1701,16 @@ export interface components {
             host: string;
             /** Mac */
             mac: string;
+            /**
+             * Key Env
+             * @description The variable in data/.env holding the key Winston gave the box; none for a box that cannot take one
+             */
+            key_env: string | null;
+            /**
+             * Ha
+             * @description Home Assistant answered, so the box can be shared with it
+             */
+            ha: boolean;
             /** @description Home Assistant's ESPHome entry for the box, if it has one */
             ha_entry: components["schemas"]["HAEntry"] | null;
         };
@@ -1703,6 +1730,13 @@ export interface components {
         BoxPort: {
             /** Port */
             port: string;
+        };
+        /** BoxShare */
+        BoxShare: {
+            /** Mac */
+            mac: string;
+            /** Host */
+            host: string;
         };
         /** BoxState */
         BoxState: {
@@ -5675,6 +5709,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BoxJoined"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    setup_box_ha_share_api_setup_box_ha_share_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BoxShare"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

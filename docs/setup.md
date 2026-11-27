@@ -386,19 +386,23 @@ by default, without asking.
    about 8 s after it starts, so the step asks again for up to 15 s while it sees none. The password
    goes to the box over the cable and nowhere else: it is not kept, logged or sent back. A wrong one
    says "The box could not join Home. Check the password." and is tried again without a new flash.
-4. **Winston checks he reaches it.** The box prints its address in its log once it has joined, and
-   Winston checks he reaches its ESPHome API there (port 6053). When he cannot, as from another
+4. **Winston reaches it and gives it his key.** The box prints its address in its log once it has
+   joined, and Winston reaches its ESPHome API there (port 6053). When he cannot, as from another
    network, the step says so ("The box joined Home at 192.168.1.50, but his computer cannot reach it
-   there (port 6053).") and nothing is saved. A box that still has a key from Home Assistant, because
-   it was not flashed, is said to need a flash.
+   there (port 6053).") and nothing is saved. A box without a key gets a new one, sent over an
+   encrypted connection and kept in `data/.env` first. A box with a key keeps it when it is the one
+   Winston saved for it; with any other (Home Assistant's, from before a flash) the step says "The box
+   has a key Winston does not know. Flash it again, which erases it."
 5. **Choose its room** and Home Assistant area. When his name is not Winston, also pick a stock wake
    word (Okay Nabu, Hey Jarvis or Hey Mycroft), since the box knows Okay Winston and those three.
-6. **Add the box and continue** saves it as a room box and switches the room boxes on.
-
-A box Home Assistant had adopted loses its key with the flash and would come back as a new device
-there. The step says so, with Disable it in Home Assistant, on by default; enable its ESPHome entry
-again for a stock firmware update. When Home Assistant does not disable the entry, the step says why
-and to disable it there by hand, and Continue goes on with the box saved.
+6. **Use it in Home Assistant too**, on by default when Home Assistant is connected: Home Assistant
+   gets the box's key and can play sound on it, and its voice assistant and firmware update for the
+   box are switched off, so Winston keeps the microphone
+   ([Voice PE](voice-pe.md#sharing-it-with-home-assistant)). Off, Home Assistant's old entry for the
+   box is disabled, or it would come back there as a new device.
+7. **Add the box and continue** saves it as a room box, switches the room boxes on, then does what
+   step 6 says. When Home Assistant does not take the key or disable the entry, the step says why, and
+   Continue goes on with the box saved.
 
 When something is in the way:
 

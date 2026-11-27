@@ -11,6 +11,7 @@ disabled.
     uv run python tests/room_box_cases.py
 """
 import asyncio
+import base64
 import functools
 import subprocess
 import hashlib
@@ -23,6 +24,7 @@ import time
 from pathlib import Path
 
 import httpx
+from dotenv import dotenv_values
 from fake_box import FakeBox, Net
 from harness import check, finish_checks, free_port, scratch_data, winstond_data
 
@@ -30,10 +32,12 @@ data = scratch_data("winston-room-box-")
 tmp = Path(tempfile.mkdtemp(prefix="winston-room-box-tree-"))
 os.environ["XDG_CACHE_HOME"] = str(tmp / "cache")
 
+from aioesphomeapi import ZERO_NOISE_PSK  # noqa: E402
 from aioesphomeapi import api_pb2 as pb  # noqa: E402
 from aioesphomeapi.core import MESSAGE_TYPE_TO_PROTO  # noqa: E402
 
 from fake_ha import TOKEN, FakeHA  # noqa: E402
+from noise.connection import NoiseConnection  # noqa: E402
 from winston.api import room_box  # noqa: E402
 from winston.config import load  # noqa: E402
 
@@ -107,13 +111,57 @@ def varint(n: int) -> bytes:
             return out
 
 
-async def esphome_api(port: int, host: str = "127.0.0.1", key: bool = False):
-    """The box's ESPHome API, plaintext as a box without a key speaks it: the handshake and its device info."""
-    async def serve(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        def send(msg):
-            payload = msg.SerializeToString()
-            writer.write(b"\x00" + varint(len(payload)) + varint(TYPE_OF[type(msg)]) + payload)
+class ApiBox:
+    """The box's ESPHome API as Winston's firmware speaks it, with the stock `encryption:`: without a key it speaks
+    plaintext and Noise with the all-zeros key, and takes a key once (NoiseEncryptionSetKeyRequest); with one it
+    speaks Noise with that key only. `can_key` False: a firmware without encryption. `takes` False: refuses a key."""
 
+    def __init__(self, key: str | None = None, can_key: bool = True, takes: bool = True):
+        self.key, self.can_key, self.takes = key, can_key, takes
+        self.keys_set: list[str] = []
+        self.server: asyncio.Server | None = None
+
+    async def start(self, port: int, host: str = "127.0.0.1") -> "ApiBox":
+        self.server = await asyncio.start_server(self.serve, host, port)
+        return self
+
+    def close(self):
+        self.server.close()
+
+    def answer(self, msg):
+        if isinstance(msg, pb.HelloRequest):
+            return pb.HelloResponse(api_version_major=1, api_version_minor=12, name="home-assistant-voice-0a1b2c")
+        if isinstance(msg, pb.DeviceInfoRequest):
+            return pb.DeviceInfoResponse(name="home-assistant-voice-0a1b2c", mac_address=MAC.upper(),
+                                         api_encryption_supported=self.can_key,
+                                         api_encryption_provisionable=self.can_key and self.key is None)
+        if isinstance(msg, pb.NoiseEncryptionSetKeyRequest):
+            ok = self.takes and self.key is None and len(base64.b64decode(msg.key)) == 32
+            if ok:
+                self.key = msg.key.decode()
+                self.keys_set.append(self.key)
+            return pb.NoiseEncryptionSetKeyResponse(success=ok)
+        if isinstance(msg, pb.DisconnectRequest):
+            return pb.DisconnectResponse()
+        if isinstance(msg, pb.PingRequest):
+            return pb.PingResponse()
+        return None
+
+    async def serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        try:
+            first = (await reader.readexactly(1))[0]
+            if first == 0x01 and self.can_key:
+                await self.noise(reader, writer)
+            elif first == 0x00 and (self.key is None or not self.can_key):
+                await self.plain(reader, writer)
+            else:                   # plaintext to a box with a key: it answers in Noise frames only
+                writer.write(b"\x01\x00\x00")
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+    async def plain(self, reader, writer):
         async def read_varint() -> int:
             n = shift = 0
             while True:
@@ -122,27 +170,46 @@ async def esphome_api(port: int, host: str = "127.0.0.1", key: bool = False):
                 shift += 7
                 if not b & 0x80:
                     return n
-        if key:                     # a box with Home Assistant's key: answers in Noise frames only
-            await reader.read(1)
-            writer.write(b"\x01\x00\x00")
-            return
+        while True:
+            size, kind = await read_varint(), await read_varint()
+            msg = MESSAGE_TYPE_TO_PROTO[kind]()
+            msg.ParseFromString(await reader.readexactly(size))
+            if reply := self.answer(msg):
+                payload = reply.SerializeToString()
+                writer.write(b"\x00" + varint(len(payload)) + varint(TYPE_OF[type(reply)]) + payload)
+            await reader.readexactly(1)
+
+    async def noise(self, reader, writer):
+        async def frame() -> bytes:
+            head = await reader.readexactly(3)
+            if head[0] != 0x01:
+                raise ConnectionError("not a Noise frame")
+            return await reader.readexactly((head[1] << 8) | head[2])
+
+        def send(payload: bytes):
+            writer.write(bytes((0x01, len(payload) >> 8, len(payload) & 0xFF)) + payload)
+        await reader.readexactly(2)                         # the rest of the client's empty hello frame
+        hello = await frame()
+        send(b"\x01home-assistant-voice-0a1b2c\x00" + MAC.replace(":", "").lower().encode() + b"\x00")
+        proto = NoiseConnection.from_name(b"Noise_NNpsk0_25519_ChaChaPoly_SHA256")
+        proto.set_as_responder()
+        proto.set_psks(base64.b64decode(self.key or ZERO_NOISE_PSK))
+        proto.set_prologue(b"NoiseAPIInit\x00\x00")
+        proto.start_handshake()
         try:
-            while True:
-                await reader.readexactly(1)
-                size, kind = await read_varint(), await read_varint()
-                msg = MESSAGE_TYPE_TO_PROTO[kind]()
-                msg.ParseFromString(await reader.readexactly(size))
-                if isinstance(msg, pb.HelloRequest):
-                    send(pb.HelloResponse(api_version_major=1, api_version_minor=12, name="home-assistant-voice-0a1b2c"))
-                elif isinstance(msg, pb.DeviceInfoRequest):
-                    send(pb.DeviceInfoResponse(name="home-assistant-voice-0a1b2c", mac_address=MAC.upper()))
-                elif isinstance(msg, pb.DisconnectRequest):
-                    send(pb.DisconnectResponse())
-                elif isinstance(msg, pb.PingRequest):
-                    send(pb.PingResponse())
-        except (asyncio.IncompleteReadError, ConnectionError):
-            pass
-    return await asyncio.start_server(serve, host, port)
+            proto.read_message(hello[1:])
+        except Exception:           # noqa: BLE001  a key that is not the box's: as ESPHome says it
+            send(b"\x01Handshake MAC failure")
+            return
+        send(b"\x00" + proto.write_message())
+        while True:
+            data = proto.decrypt(await frame())
+            msg = MESSAGE_TYPE_TO_PROTO[(data[0] << 8) | data[1]]()
+            msg.ParseFromString(data[4:])
+            if reply := self.answer(msg):
+                payload = reply.SerializeToString()
+                kind = TYPE_OF[type(reply)]
+                send(proto.encrypt(bytes((kind >> 8, kind & 0xFF, len(payload) >> 8, len(payload) & 0xFF)) + payload))
 
 
 async def flashed(port: str) -> tuple[list[int], room_box.Flash, set[int]]:
@@ -217,24 +284,43 @@ async def main():
         await asyncio.sleep(0.05)
 
     api_port = free_port()
-    server = await esphome_api(api_port)
-    check("reached, by its MAC", await room_box.reach("127.0.0.1", "Home", api_port), MAC)
+    api = await ApiBox().start(api_port)
+    name = "VOICE_PE_KEY_000001"
+    check("reached, by its MAC, and given a key of Winston's", await room_box.reach("127.0.0.1", "Home", api_port),
+          (MAC, name))
+    key = os.environ.get(name)
+    check("the key: 32 random bytes, the box's, and kept in data/.env",
+          (len(base64.b64decode(key or "")), api.keys_set, dotenv_values(data / ".env").get(name) == key),
+          (32, [key], True))
+    check("reached again with it, and the key kept", (await room_box.reach("127.0.0.1", "Home", api_port), api.keys_set,
+                                                      os.environ[name]), ((MAC, name), [key], key))
     try:
         await room_box.reach("127.0.0.2", "Home")
         far = "no error"
     except room_box.BoxError as e:
         far = str(e)
     check("not reachable", far, "The box joined Home at 127.0.0.2, but his computer cannot reach it there (port 6053).")
-    server.close()
-    keyed = await esphome_api(api_port, key=True)
-    try:
-        await room_box.reach("127.0.0.1", "Home", api_port)
-        why_key = "no error"
-    except room_box.BoxError as e:
-        why_key = str(e)
-    check("a box with Home Assistant's key, said as that", why_key,
-          "The box has a key from Home Assistant, so Winston cannot talk to it. Flash it again, which erases the key.")
-    keyed.close()
+    api.close()
+
+    async def why(box_api: ApiBox) -> str:
+        await box_api.start(api_port)
+        try:
+            await room_box.reach("127.0.0.1", "Home", api_port)
+            return "no error"
+        except room_box.BoxError as e:
+            return str(e)
+        finally:
+            box_api.close()
+    unknown = "The box has a key Winston does not know. Flash it again, which erases it."
+    check("a box with a key that is not Winston's, said as that", await why(ApiBox(key=base64.b64encode(bytes(range(32))).decode())),
+          unknown)
+    os.environ.pop(name)
+    check("a box with Winston's key once it is gone from data/.env", await why(ApiBox(key=key)), unknown)
+    check("a box that refuses the key", await why(ApiBox(takes=False)), "The box did not take Winston's key. Flash it again.")
+    old = ApiBox(can_key=False)
+    await old.start(api_port)
+    check("a firmware without encryption: no key", await room_box.reach("127.0.0.1", "Home", api_port), (MAC, None))
+    old.close()
 
     ha_port = free_port()
     winstond_data(data, {"llm": {"model": "fake", "base_url": "http://127.0.0.1:9/v1"},
@@ -261,6 +347,65 @@ async def main():
         check("an entry Home Assistant would not disable, in words", refused,
               "Home Assistant did not disable its old entry for the box (config_entries/disable: Config entry not "
               "found). Disable it there by hand, under ESPHome.")
+
+        # Sharing the box: Home Assistant gets Winston's key, and Winston keeps the microphone.
+        room_box.SHARE_SECS = 5
+        mine, before = base64.b64encode(bytes(31) + b"\x01").decode(), base64.b64encode(bytes(range(32))).decode()
+        os.environ[name] = mine
+        box_off = {"assist_satellite.voice_box": "user", "update.voice_box_firmware": "user", "media_player.voice_box": None}
+
+        async def shared() -> str:
+            try:
+                await room_box.share(cfg, MAC.upper(), "127.0.0.9")
+                return "shared"
+            except room_box.BoxError as e:
+                return str(e)
+
+        def box_entry() -> dict:
+            return next(e for e in ha.config_entries if e["entry_id"] == "entry_box")
+        ha.config_entries = [e for e in ha.config_entries if e["entry_id"] != "entry_box"]
+        ha.devices = [d for d in ha.devices if d["id"] != "dev_box"]
+        ha.add_box(MAC, "127.0.0.9", mine, entry_psk=before)           # the key it had before the flash
+        stale = next(iter(ha.flows))
+        ha.writes.clear()
+        check("the old entry given Winston's key through Home Assistant's prompt", (await shared(), box_entry()["psk"]),
+              ("shared", mine))
+        check("the prompt left from before deleted first", ha.writes[0], {"type": "config_entries/flow_delete", "flow_id": stale})
+        check("its voice assistant and firmware update off there, its speaker kept",
+              {e: ha.registry[e]["disabled_by"] for e in FakeHA.BOX_ENTITIES}, box_off)
+        check("and reloaded, so it lets the microphone go now", ha.writes[-1],
+              {"type": "config_entries/reload", "entry_id": "entry_box"})
+        ha.writes.clear()
+        check("again: Home Assistant has the key, so nothing is asked", (await shared(), ha.flows,
+              [w["type"] for w in ha.writes]), ("shared", {}, ["config_entries/reload"]))
+
+        ha.add_box(MAC, "127.0.0.9", mine, entry_psk=before, disabled=True)
+        check("a disabled entry enabled and given the key", (await shared(), box_entry()["psk"], box_entry()["disabled_by"]),
+              ("shared", mine, None))
+
+        ha.config_entries = [e for e in ha.config_entries if e["entry_id"] != "entry_box"]
+        ha.devices = [d for d in ha.devices if d["id"] != "dev_box"]
+        for eid in FakeHA.BOX_ENTITIES:
+            ha.registry.pop(eid)
+        ha.flows = {"flow_found": {"flow_id": "flow_found", "handler": "esphome", "step_id": "discovery_confirm",
+                                   "context": {"source": "zeroconf", "unique_id": MAC.lower()}}}
+        ha.writes.clear()
+        check("a box Home Assistant never had: added with the key", (await shared(), box_entry()["psk"]), ("shared", mine))
+        check("its discovery of the box deleted first, then added", [w["type"] for w in ha.writes][:2],
+              ["config_entries/flow_delete", "config_entries/esphome"])
+        check("and its voice assistant and update off", {e: ha.registry[e]["disabled_by"] for e in FakeHA.BOX_ENTITIES},
+              box_off)
+
+        ha.add_box(MAC, "127.0.0.9", before, entry_psk=base64.b64encode(bytes(32)).decode())
+        check("a box with a key that is not Winston's: Home Assistant refuses his", await shared(),
+              "Home Assistant refused the box's key ({'base': 'invalid_psk'}).")
+        ha.add_box(MAC, "127.0.0.9", mine, entry_psk=before)
+        ha.box["reachable"] = False
+        ha.flows.clear()
+        check("Home Assistant cannot reach the box", await shared(),
+              "Home Assistant did not ask for the box's key within 5 s. Check that it reaches the box (port 6053).")
+        os.environ.pop(name)
+        check("no key for the box", await shared(), "Winston has no key for this box. Connect it to Wi-Fi again.")
     box.close()
 
 
@@ -269,7 +414,7 @@ async def api():
     global box
     box = FakeBox([Net("Home", -50), Net("Cafe", -70, secured=False)], PW, "127.0.0.3")
     os.environ["WINSTON_SYS_TTY"] = str(sysfs(box.port, "sys-api"))
-    server = await esphome_api(6053, "127.0.0.3")
+    api_box = await ApiBox().start(6053, "127.0.0.3")
     port = free_port()
     winstond_data(data, {"llm": {"model": "fake", "base_url": "http://127.0.0.1:9/v1"},
                          "channels": {"voice": {"enabled": False}, "satellite": {"enabled": False},
@@ -312,13 +457,19 @@ async def api():
             check("a refused body does not echo the password", PW in r.text, False)
             r = await c.post("/api/setup/box/wifi", json={"port": box.port, "ssid": "Hidden", "password": PW})
             check("a network the scan did not show", (r.status_code, r.json()),
-                  (200, {"host": "127.0.0.3", "mac": MAC.upper(), "ha_entry": None}))
-            server.close()
+                  (200, {"host": "127.0.0.3", "mac": MAC.upper(), "key_env": "VOICE_PE_KEY_000001", "ha": False,
+                         "ha_entry": None}))
+            api_box.close()
             box.address = "127.0.0.4"
             r = await c.post("/api/setup/box/wifi", json={"port": box.port, "ssid": "Home", "password": PW})
             check("a box this computer cannot reach", (r.status_code, r.json()["detail"]),
                   (409, "The box joined Home at 127.0.0.4, but his computer cannot reach it there (port 6053)."))
             check("nothing saved", (await c.get("/api/config")).json()["channels"]["satellite"]["devices"], {})
+            r = await c.post("/api/setup/box/ha-share", json={"mac": "not a mac", "host": "127.0.0.3"})
+            check("a share for no MAC refused", r.status_code, 422)
+            r = await c.post("/api/setup/box/ha-share", json={"mac": MAC, "host": "127.0.0.3"})
+            check("a share without Home Assistant, in words", (r.status_code, r.json()["detail"].startswith(
+                "Home Assistant did not take the box's key")), (502, True))
             r = await c.post("/api/setup/box/ha-disable", json={"entry_id": "entry_box"})
             check("Home Assistant not there to disable it, in words",
                   (r.status_code, r.json()["detail"].startswith("Home Assistant did not disable its old entry")),

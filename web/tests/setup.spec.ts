@@ -205,19 +205,23 @@ test('the wizard renames him without asking, and his personality follows as on t
   expect(errors).toEqual([])
 })
 
-test('a room box added when Home Assistant does not disable its old entry: said, and the wizard goes on', async ({ page }) => {
+test('a room box added when Home Assistant does not take its key: said, and the wizard goes on', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(e.message))
   startSetup({ brain: 'done', home_assistant: 'done', who: 'done' })
   const before = (await (await page.request.get('/api/config')).json()).channels.satellite
   // The box as the step's routes describe it, flashed and joined at a documentation address (RFC 5737),
-  // with Home Assistant's old entry for it, which Home Assistant then refuses to disable.
+  // given Winston's key, with Home Assistant's old entry for it, which then does not take the key.
   const port = '/dev/ttyACM0'
-  const refused = 'Home Assistant did not disable its old entry for the box (offline). Disable it there by hand, under ESPHome.'
+  const refused = "Home Assistant did not ask for the box's key within 30 s. Check that it reaches the box (port 6053)."
+  const shared: unknown[] = []
   await page.route('**/api/setup/box', (r) => r.fulfill({ json: { ports: [port], info: { firmware: 'Home Assistant Voice PE', version: '25.10.0', winston: false }, flash: { port, stage: 'done', percent: 100, error: '' } } }))
   await page.route('**/api/setup/box/networks', (r) => r.fulfill({ json: [{ ssid: 'Home', rssi: -50, secured: true }] }))
-  await page.route('**/api/setup/box/wifi', (r) => r.fulfill({ json: { host: '192.0.2.50', mac: '00:00:00:00:00:01', ha_entry: { entry_id: 'entry_box', title: 'Home Assistant Voice 0a1b2c', disabled: false } } }))
-  await page.route('**/api/setup/box/ha-disable', (r) => r.fulfill({ status: 502, json: { detail: refused } }))
+  await page.route('**/api/setup/box/wifi', (r) => r.fulfill({ json: { host: '192.0.2.50', mac: '00:00:00:00:00:01', key_env: 'VOICE_PE_KEY_000001', ha: true, ha_entry: { entry_id: 'entry_box', title: 'Home Assistant Voice 0a1b2c', disabled: false } } }))
+  await page.route('**/api/setup/box/ha-share', (r) => {
+    shared.push(r.request().postDataJSON())
+    return r.fulfill({ status: 502, json: { detail: refused } })
+  })
   try {
     await page.goto('/setup/box')
     await page.getByRole('combobox', { name: 'Network' }).click()
@@ -225,17 +229,22 @@ test('a room box added when Home Assistant does not disable its old entry: said,
     await page.getByLabel('Password', { exact: true }).fill('a password')
     await page.getByRole('button', { name: 'Connect' }).click()
     await expect(page.getByText('It joined Home, and Winston reaches it at 192.0.2.50.')).toBeVisible()
-    await expect(page.getByRole('switch', { name: 'Disable it in Home Assistant' })).toBeChecked()
+    const use = page.getByRole('switch', { name: 'Use it in Home Assistant too' })
+    await expect(use).toBeChecked()
+    await use.click()
+    await expect(page.getByText('Its old entry in Home Assistant is disabled, or it would come back there as a new device.')).toBeVisible()
+    await use.click()
     await page.getByLabel('Room', { exact: true }).fill('Smoke room')
     await page.getByRole('button', { name: 'Add the box and continue' }).click()
     await expect(page.getByText(refused)).toBeVisible()
+    expect(shared).toEqual([{ mac: '00:00:00:00:00:01', host: '192.0.2.50' }])
     await expect(page.getByText('A box is in that room already.')).toHaveCount(0)
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page).toHaveURL(/\/setup\/done$/)
     await expect(page.getByText('A room box was skipped.', { exact: false })).toHaveCount(0)
     const saved = (await (await page.request.get('/api/config')).json()).channels.satellite
     expect(saved.enabled).toBe(true)
-    expect(saved.devices['Smoke room']).toMatchObject({ host: '192.0.2.50' })
+    expect(saved.devices['Smoke room']).toMatchObject({ host: '192.0.2.50', key_env: 'VOICE_PE_KEY_000001' })
     // Ways to talk lists it like a box added there.
     await page.goto('/ways-to-talk')
     await expect(page.getByRole('row', { name: /^Smoke room / })).toBeVisible()
