@@ -245,10 +245,11 @@ The What runs his brain card has, from the top:
   switched. A problem with the engine shows above it, never folded away.
 - **Check**, beside the brain's Log: it asks the brain one tiny question with the saved key and model and
   answers under it, _Works, answered in 640 ms_ or why not: Key refused, Out of credit, No such model, or
-  a wrong API address, Too many requests, Not reachable. A brain call that fails for real, from a
-  conversation or the warm-up, turns the state to Failed with the same reason until a call works, the
-  brain restarts, or its settings or key are saved. A hosted brain's Log shows each check, failure and
-  recovery ([running](running.md#logs)).
+  a wrong API address, Too many requests, Not reachable, or the provider's own message. A request that
+  fails for a reason that lasts (the key, credit, the model, a request the provider refuses), from a
+  conversation or the warm-up, turns the state to Failed with the same reason until one works, the brain
+  restarts, or its settings or key are saved; one that passes (busy, a hiccup, out of reach) is only in
+  the Log. A hosted brain's Log shows each check, failure and recovery ([running](running.md#logs)).
 
 Think before answering and How he picks his words are cards of their own. The second holds temperature,
 top-p, presence penalty and the longest reply, for when your model's page recommends other values.

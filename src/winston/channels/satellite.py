@@ -790,7 +790,8 @@ class Satellite:
         """Since when the brain's server has been up (winstond's status); None while it is not."""
         async with httpx.AsyncClient(base_url=self.cfg.control.url, timeout=3) as h:
             engines = (await h.get("/api/status")).json().get("engines", [])
-        return next((e["since"] for e in engines if e["name"] == "llm" and e["state"] == "healthy"), None)
+        return next((e["since"] for e in engines if e["name"] == "llm" and (e["state"] == "healthy" or e.get("refused"))),
+                    None)
 
     async def _prewarm(self):
         """Every PREWARM_SECS while the box is idle: when the prompt a new conversation would get has changed

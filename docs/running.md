@@ -115,12 +115,15 @@ responding, Stopped or Failed. An error says why, and stays until you start or s
   restarted, or its model or context is changed, so it is not warmed again: a system Ollama is back
   seconds after it is stopped and looks healthy, and each warm-up would stop it again. A brain
   elsewhere is never blamed for this computer's memory.
-- A brain request that fails, from a conversation, the warm-up or Check on Brain, says why:
-  `Key refused (401)`, `Out of credit (402)`, `No such model, or a wrong API address (404)`,
-  `Too many requests (429)`, `Not reachable`, or the provider's own words for any other code. The
-  brain's status is Failed with it until a request works, the brain restarts, or its settings or key are
-  saved (the note is `data/state/brain_failure.txt`). Without one, a hosted brain counts as up whenever
-  winstond runs: nothing asks it anything between requests, since each is billed.
+- A brain request that fails, from a conversation, the warm-up or Check on Brain, says why in
+  `logs/brain.log`: `Key refused (401)`, `Out of credit (402)`, `No such model, or a wrong API address
+  (404)`, `Too many requests (429)`, `Not reachable`, or the provider's own message for any other code
+  (OpenRouter answers a model it does not have with 400: `Refused (400): deepseek/no-such-model is not a
+  valid model ID`). A reason that lasts (400 to 404, or the key not set) is also the brain's status,
+  Failed, until a request works, the brain restarts, or its settings or key are saved (the note is
+  `data/state/brain_failure.txt`). A brain that refuses still counts as up: the channels start and
+  background asks go ahead, and only its requests fail. Without a failure, a hosted brain counts as up
+  whenever winstond runs: nothing asks it anything between requests, since each is billed.
 - A process with no health check (Discord) counts as up only after it has run for 2 seconds.
 - An engine that lacks something it needs is installed first, and says Installing with how far it is
   ("the model, 6.2 GB of 16.4 GB"): its Docker image, its venv under `services/` (`uv sync`, logged to

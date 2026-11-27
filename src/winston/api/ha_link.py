@@ -135,7 +135,7 @@ class HALink:
     def snapshot(self) -> dict[str, Any]:
         cfg = self.cfg
         rooms = [{"name": r, "state": self.states.get(r.strip().casefold(), "idle")} for r in configured(cfg)]
-        engines = [{"name": name, "title": TITLES.get(name, name.replace("_", " ").capitalize()), "up": m.state == "healthy"}
+        engines = [{"name": name, "title": TITLES.get(name, name.replace("_", " ").capitalize()), "up": m.up}
                    for name, m in self.sup.items.items()]
         exts = []
         for ext_id, d in sorted(self.host.described.items()):

@@ -71,6 +71,8 @@ class EngineStatus(BaseModel):
     startup_timeout: int
     started_in: float | None = None     # seconds the last start took, for "about N minutes"
     config_changed: bool = False        # saved settings or secrets wait for a restart (pending or stale)
+    refused: bool = Field(False, description="The brain answers but refuses its requests (its key, credit or model): "
+                                             "Failed, yet up")
 
 
 class InstallRequest(BaseModel):
@@ -671,9 +673,9 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     extensions.on_entity = ha_link.changed
 
     def llm_up() -> bool:
-        """The brain's server (engines.llm) is healthy, or Winston neither runs nor checks one."""
+        """The brain's server (engines.llm) is up, or Winston neither runs nor checks one."""
         m = sup.items.get("llm")
-        return m is None or m.state == "healthy"
+        return m is None or m.up
     extension_services.llm_up = llm_up                    # and wait for it to load
     extensions.on_feed = lambda ev: feed.publish(LiveEvent(**ev))
     extensions.scheduler = Scheduler(extensions, extension_services)
@@ -961,7 +963,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             engines=[EngineStatus(name=m.name, kind=m.kind, driver=m.cfg.driver, state=m.state, detail=m.detail,
                                   progress=m.progress, since=m.since, port=m.cfg.port, startup_timeout=m.cfg.startup_timeout,
                                   started_in=m.started_in,
-                                  config_changed=bool(m.pending or m.stale)) for m in sup.items.values()],
+                                  config_changed=bool(m.pending or m.stale), refused=m.refused) for m in sup.items.values()],
             gpu=gpu_status(),
             extensions=[ExtensionBrief(id=i, name=extensions.described.get(i, {}).get("manifest", {}).get("name", i),
                                        state=p.state, detail=p.detail)

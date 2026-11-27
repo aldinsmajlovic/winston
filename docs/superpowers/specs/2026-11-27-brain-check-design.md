@@ -73,6 +73,11 @@ when it breaks later (credit runs out mid-week).
 - The Brain card gets a Check button beside Log and Restart, with the answer under it as a `StatusLine`
   (as the Home Assistant connection check does).
 
+Changed after the review: only a lasting failure (400 to 404, the key not set) is the note, and a brain
+that refuses keeps `Managed.up` true, so the channels start and background asks go ahead. A passing one
+(429, 5xx, out of reach) is in the Log only. Only the provider's `message` is shown for other codes:
+OpenRouter's whole body names the account.
+
 ## Acceptance (on hardware)
 
 - OpenRouter with a made-up key: Check says Key refused; the status turns red with it; the Log has the line.

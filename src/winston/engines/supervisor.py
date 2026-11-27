@@ -39,6 +39,13 @@ class Managed:
     needs_env: list[str] = field(default_factory=list)  # variables it cannot start without (data/.env)
     expected: bool = False              # started and not stopped on purpose: an exit is a crash
     log_start: int = 0                  # size of its log when last started: older lines are another run's
+    refused: bool = False               # the brain answers but refuses its requests (brain_health): Failed, yet up
+
+    @property
+    def up(self) -> bool:
+        """Serving: healthy, or a brain that answers and refuses (its key, credit or model), which is still up for
+        starting the channels and for background asks; only its requests fail."""
+        return self.state == "healthy" or self.refused
 
     @property
     def health_url(self) -> str:
@@ -282,12 +289,15 @@ class Supervisor:
             if m.state in ("installing", "starting"):
                 continue
             keep = m.detail if m.pending or m.stale else ""
-            # Out of memory: up again, and stopped again on use. A brain failure: it answered, and refused.
-            if m.name == "llm" and ((why := memory.stopped_for_memory())
-                                    or ((why := brain_health.failure()) and await self.healthy(m))):
+            m.refused = False
+            if m.name == "llm" and (why := memory.stopped_for_memory()):    # up again, and stopped again on use
                 self._set(m, "error", why)
             elif await self.healthy(m):
-                self._set(m, "healthy", keep)
+                if m.name == "llm" and (why := brain_health.failure()):    # it answers, and refuses
+                    m.refused = True
+                    self._set(m, "error", why)
+                else:
+                    self._set(m, "healthy", keep)
             elif await m.driver.running():
                 self._set(m, "unhealthy", keep or "process up, health check failing")
             elif m.state == "error":            # kept until it is started or stopped again
@@ -391,7 +401,7 @@ class Supervisor:
     async def start_all(self) -> list[Managed]:
         engines = [n for n, m in self.items.items() if m.kind == "engine"]
         await asyncio.gather(*(self.start(n) for n in engines))          # engines in parallel
-        if all(self.items[n].state == "healthy" for n in engines):
+        if all(self.items[n].up for n in engines):     # a brain refusing its key still lets them start
             channels = [n for n, m in self.items.items() if m.kind == "channel"]
             await asyncio.gather(*(self.start(n) for n in channels))
         return list(self.items.values())

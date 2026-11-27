@@ -31,7 +31,17 @@ check("403", why_failed(status(403)), "Key refused (403)")
 check("402", why_failed(status(402)), "Out of credit (402)")
 check("404", why_failed(status(404)), "No such model, or a wrong API address (404)")
 check("429", why_failed(status(429)), "Too many requests (429)")
-check("other codes say the provider's words", why_failed(status(500)).startswith("Refused (500): "), True)
+check("another code with no words of its own", why_failed(status(500)), "Refused (500)")
+# OpenRouter answers a model that does not exist with 400; the whole body also names the account.
+openrouter = openai.APIStatusError(
+    "Error code: 400 - {'error': {'message': 'deepseek/no-such-model is not a valid model ID', 'code': 400}, "
+    "'user_id': 'user_abc'}", response=httpx.Response(400, request=REQ),
+    body={"message": "deepseek/no-such-model is not a valid model ID", "code": 400})
+check("other codes say only the provider's message", why_failed(openrouter),
+      "Refused (400): deepseek/no-such-model is not a valid model ID")
+claude = anthropic.APIStatusError("x", response=httpx.Response(400, request=REQ),
+                                  body={"type": "error", "error": {"type": "invalid_request_error", "message": "bad"}})
+check("Claude's message too", why_failed(claude), "Refused (400): bad")
 check("Claude's errors too",
       why_failed(anthropic.APIStatusError("x", response=httpx.Response(401, request=REQ), body=None)),
       "Key refused (401)")
@@ -52,6 +62,23 @@ check("a check's line is kept even with no note", log_tail(1)[0].endswith("  che
 failed("talk", status(401)); clear()
 check("clear removes the note", failure(), "")
 
+# Only a lasting failure is the brain's status; a passing one (busy, a hiccup, out of reach) is in the Log only,
+# so one bad minute does not leave him Failed until someone talks.
+from winston.core.brain import KeyNotSet  # noqa: E402
+
+check("a passing failure still has its words", failed("talk", status(429)), "Too many requests (429)")
+check("but is no note", failure(), "")
+check("it is in the Log", log_tail(1)[0].endswith("  talk  Too many requests (429)"), True)
+failed("talk", openai.APIConnectionError(request=REQ))
+check("nor is out of reach", failure(), "")
+failed("talk", status(503))
+check("nor a server's hiccup", failure(), "")
+failed("talk", status(400))
+check("a bad request is lasting (OpenRouter's missing model)", failure(), "Refused (400)")
+failed("talk", KeyNotSet("LLM_API_KEY is not set (data/.env)"))
+check("so is no key", failure(), "LLM_API_KEY is not set (data/.env)")
+clear()
+
 # The Brain's status and Log, on a supervisor with a hosted brain (no health path: up while winstond runs).
 here = WinstonConfig.model_validate({"llm": {"model": "m", "base_url": "https://openrouter.ai/api/v1"}})
 sup = Supervisor.__new__(Supervisor)
@@ -63,8 +90,9 @@ sup.on_healthy = None
 
 failed("talk", status(402)); asyncio.run(sup.refresh())
 check("a hosted brain with a failure is Failed with it", (llm.state, llm.detail), ("error", "Out of credit (402)"))
+check("but up: it answers, so channels start and background asks go ahead", (llm.refused, llm.up), (True, True))
 worked("talk"); asyncio.run(sup.refresh())
-check("and Running once one works", llm.state, "healthy")
+check("and Running once one works", (llm.state, llm.refused), ("healthy", False))
 failed("talk", status(401)); asyncio.run(sup.start("llm"))
 check("a restart clears it", failure(), "")
 failed("talk", status(401))
@@ -78,7 +106,28 @@ near = EngineConfig(driver="external", port=9, health="/v1/models", startup_time
 down = Managed("llm", near, ExternalDriver("llm", near))
 sup.items = {"llm": down}
 failed("talk", status(401)); asyncio.run(sup.refresh())
-check("a brain that is down says so, not the old note", down.state, "unhealthy")
+check("a brain that is down says so, not the old note", (down.state, down.up), ("unhealthy", False))
+
+# A key refused while the engines start (the warm-up, as the status stream refreshes) keeps no channel stopped.
+llm = Managed("llm", ext, ExternalDriver("llm", ext))
+slow = Managed("slow", ext, ExternalDriver("slow", ext))
+voice = Managed("voice", ext, ExternalDriver("voice", ext), kind="channel")
+sup.items = {"llm": llm, "slow": slow, "voice": voice}
+started, start = [], sup.start
+
+
+async def starting(name, wait=True):
+    started.append(name)
+    if name == "slow":                  # loads after the brain is up and has been refused
+        await asyncio.sleep(0.2)
+        failed("warm-up", status(401)); await sup.refresh()
+        return slow
+    return voice if name == "voice" else await start(name, wait)
+sup.start = starting
+asyncio.run(sup.start_all())
+check("refused during startup", llm.state, "error")
+check("the channels still start", "voice" in started, True)
+sup.start = start
 
 # Conversations report: WinstonLLM's request is the parent's, made to fail or answer here.
 from pipecat.processors.aggregators.llm_context import LLMContext  # noqa: E402

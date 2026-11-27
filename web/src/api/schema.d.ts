@@ -2352,6 +2352,12 @@ export interface components {
              * @default false
              */
             config_changed?: boolean;
+            /**
+             * Refused
+             * @description The brain answers but refuses its requests (its key, credit or model): Failed, yet up
+             * @default false
+             */
+            refused?: boolean;
         };
         /** EntityValue */
         EntityValue: {

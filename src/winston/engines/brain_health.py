@@ -8,6 +8,9 @@ from pathlib import Path
 
 from winston.config import data_dir
 
+# Answers that last until something is changed (the key, credit, the model or the request): the brain's status.
+# Any other failure (busy, a server's hiccup, out of reach) passes, so it is in the Log only.
+LASTING = {400, 401, 402, 403, 404}
 # Fixed words for what the person can act on. The provider's own text is left out: a refused key's may echo it.
 WORDS = {401: "Key refused", 403: "Key refused", 402: "Out of credit", 404: "No such model, or a wrong API address",
          429: "Too many requests"}
@@ -28,7 +31,12 @@ def why_failed(e: BaseException) -> str:
     if code in WORDS:
         return f"{WORDS[code]} ({code})"
     if code is not None:
-        return f"Refused ({code}): {str(e)[:200]}"
+        # Only the provider's message: the whole body can be an HTML page or name the account (OpenRouter's user_id).
+        # OpenAI's client keeps the error object as body, Anthropic's the whole answer.
+        body = getattr(e, "body", None)
+        inner = body.get("error", body) if isinstance(body, dict) else None
+        said = inner.get("message") if isinstance(inner, dict) else None
+        return f"Refused ({code}): {str(said)[:200]}" if said else f"Refused ({code})"
     if unreachable(e):
         return "Not reachable"
     return str(e)[:200] or type(e).__name__
@@ -40,11 +48,17 @@ def log(channel: str, text: str) -> None:
         f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {channel}  {text}\n")
 
 
+def lasting(e: BaseException) -> bool:
+    from winston.core.brain import KeyNotSet
+    return getattr(e, "status_code", None) in LASTING or isinstance(e, KeyNotSet)
+
+
 def failed(channel: str, e: BaseException) -> str:
-    """A brain call from channel failed: noted for the status and logged. Returns the words."""
+    """A brain call from channel failed: logged, and noted for the status when it lasts. Returns the words."""
     why = why_failed(e)
-    _note().parent.mkdir(parents=True, exist_ok=True)
-    _note().write_text(why)
+    if lasting(e):
+        _note().parent.mkdir(parents=True, exist_ok=True)
+        _note().write_text(why)
     log(channel, why)
     return why
 

@@ -199,12 +199,16 @@ def unreachable(e: BaseException) -> bool:
     return False
 
 
+class KeyNotSet(RuntimeError):
+    """The brain's key variable is named but not set: a lasting failure (engines/brain_health)."""
+
+
 def api_key(env_name: str | None) -> str:
     """The key named by config, or "local" for servers that want none. A named but unset variable is an error."""
     if not env_name:
         return "local"
     if not (key := os.environ.get(env_name)):
-        raise RuntimeError(f"{env_name} is not set (data/.env)")
+        raise KeyNotSet(f"{env_name} is not set (data/.env)")
     return key
 
 
