@@ -61,8 +61,9 @@ in it.
 
 Turning lockdown on or off starts every room's conversation afresh and restarts the Talk page
 microphone, so nothing said before carries into the guests' evening, and his memory is back the
-moment it is off. While it is on, a guarded conversation gets none of what he said on his own, an
-announcement or a nudge from before included.
+moment it is off. While it is on, a typed, Assist or Discord conversation gets none of what he said
+on his own, an announcement or a nudge from before included. An announcement played on a room box
+still joins that box's conversation, since everyone in the room heard it.
 
 ## Turning it on and off
 

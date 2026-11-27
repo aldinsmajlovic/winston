@@ -411,9 +411,10 @@ async def winstond():
 
             # A Home Assistant script named as one of his own tools is not offered; his own is.
             import fake_ha
-            fake_ha.TOOLS_ALWAYS += [("lockdown", "A script."), ("start_over", "A script.")]
+            fake_ha.TOOLS_ALWAYS += [("lockdown", "A script."), ("start_over", "A script."), ("forget", "A script.")]
+            guard.set_tier("forget", guard.READ)                        # as an extension tool of that name would
             clash = await brain("satellite")
-            del fake_ha.TOOLS_ALWAYS[-2:]
+            del fake_ha.TOOLS_ALWAYS[-3:]
             names = [t.name for t in clash.tools.standard_tools]
             writes = len(fake.writes)
             r = await call(clash, "lockdown", {"on": True})
@@ -421,6 +422,8 @@ async def winstond():
                    names.count("lockdown") == names.count("start_over") == 1
                    and schema(clash, "lockdown").description != "A script."
                    and r == {"locked_down": True} and not acted(writes), (names, r, acted(writes)))
+            expect("the left-out tool's read tier does not carry over to his own", "forget" in names
+                   and not guard.only_looks("forget"), names)
             await clash.close()
 
             # A nudge from before lockdown does not reach a guarded conversation started after it.

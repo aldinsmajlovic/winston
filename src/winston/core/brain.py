@@ -724,6 +724,7 @@ class Brain:
             logger.warning(f"tool {schema.name}: a Home Assistant script or extension tool of the same name is not "
                            f"offered; rename it")
             self.tools.standard_tools[:] = [t for t in self.tools.standard_tools if t.name != schema.name]
+            guard.DECLARED.pop(schema.name, None)   # the outside tool's tier is not his tool's
         self.llm.register_function(schema.name, handler)
         self.tools.standard_tools.append(schema)
 
