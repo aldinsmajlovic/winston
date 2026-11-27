@@ -76,7 +76,7 @@ from winston.config import load
 from winston.config.schema import SatelliteDevice, WinstonConfig
 from winston.core.hints import Heard, Hearing
 from winston.core.live import FeedPoster, LiveEvent, LiveObserver, State
-from winston.core import directory, guard
+from winston.core import directory, guard, lines
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.brain import persona
 from winston.core.rooms import MicLease, RoomLink, area, dismissal, http_sync, stops_playing
@@ -434,8 +434,8 @@ class Satellite:
             return
         logger.info(f"{self.room}: double press, " + ("button only" if self.button_only else
                                                     f"wake word {', '.join(self._wake_words)} on"))
-        await self.speak({"type": "line", "text": BUTTON_ONLY_LINE if self.button_only else WAKE_WORD_LINE},
-                         chime=False)
+        line = BUTTON_ONLY_LINE if self.button_only else WAKE_WORD_LINE
+        await self.speak({"type": "line", "text": await lines.say(self.cfg, line)}, chime=False)
 
     async def _speak_up(self):
         async for ev in subscribe(self.cfg, "satellite", self.room):

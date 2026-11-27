@@ -35,6 +35,7 @@ from pipecat.observers.base_observer import BaseObserver, FramePushed
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
+from winston.core import lines
 from winston.core.common import Once, entity_names, key, log_event, rewrap
 from winston.core.guard import ACT, result_ok, tool_tier
 from winston.providers.home_assistant import HomeAssistant
@@ -477,6 +478,7 @@ class Verifier:
             text = self._text(checks)
             if not text:
                 continue
+            text = await lines.say(self.cfg, text)
             self._delivering = True
             try:
                 logger.info(f"state check correction: {text!r}")

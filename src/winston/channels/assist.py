@@ -34,7 +34,7 @@ from winston.channels.text import UNREACHABLE, error_text
 from winston.channels.web import WebChat
 from winston.config.memory import OutOfMemory
 from winston.config.schema import WinstonConfig
-from winston.core import directory
+from winston.core import directory, lines
 from winston.core.announce import Hub, nudge_note
 from winston.core.live import Feed, LiveEvent
 from winston.core.rooms import Rooms, room_for_area
@@ -102,7 +102,7 @@ class Handler(AsyncEventHandler):
             text, more = await self.answer(req)
             await self.write_event(Handled(text=text, continue_conversation=more).event())
         except Unanswered as e:
-            await self.write_event(NotHandled(text=str(e)).event())
+            await self.write_event(NotHandled(text=await lines.say(self.cfg, str(e), wait=1)).event())
         return False
 
 
@@ -195,6 +195,7 @@ class Assist:
             try:
                 await listener.start(cfg, a.port, self.answer, self._seen)
                 self.listener, self._as = listener, want
+                self._spawn(lines.warm(cfg, (NO_BRAIN, NO_MEMORY, FAILED)))    # kept while the brain answers
             except OSError as e:
                 self.error = (f"Port {a.port} is in use by another program." if e.errno == errno.EADDRINUSE
                               else f"Port {a.port} could not be opened: {e.strerror or e}.")

@@ -40,6 +40,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 from winston.config import resolve
 from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import)
 from winston.config.schema import WinstonConfig
+from winston.core import lines
 from winston.core import persona as persona_file
 from winston.core import directory, guard, region
 from winston.core.anthropic_chat import AnthropicChat
@@ -417,11 +418,13 @@ class WinstonLLM(OpenAILLMService):
     after the box's conversation passed 16,384 tokens got silence until it was reset by hand."""
 
     def __init__(self, *args, home: re.Pattern | None = None, control: str = "none", effort: str = "",
-                 own: list[Own] | None = None, assistant: str = "", anthropic_api: bool = False, **kwargs):
+                 own: list[Own] | None = None, assistant: str = "", anthropic_api: bool = False,
+                 cfg: WinstonConfig | None = None, **kwargs):
         self._anthropic = anthropic_api         # read by create_client, which the parent's __init__ calls
         super().__init__(*args, **kwargs)
         self._home, self._control, self._effort = home, control, effort.strip()
         self._own, self._assistant = own or [], assistant
+        self._cfg = cfg                         # for lines said in his reply language
         self.ended = False          # the turn ended quietly on purpose (quiet_after); the channel resets it
         self._think = False
         self._line_for: str | None = None       # the user message a line was already said for
@@ -523,6 +526,7 @@ class WinstonLLM(OpenAILLMService):
             if line is None:
                 self._lines += 1
                 line = HOME_LINES[(self._lines - 1) % len(HOME_LINES)]
+                line = await lines.say(self._cfg, line, wait=0) if self._cfg else line   # kept at start (prerender)
             await self.push_frame(TTSSpeakFrame(line, append_to_context=False))
         self._think = self._think or tweak
         try:
@@ -532,7 +536,8 @@ class WinstonLLM(OpenAILLMService):
             if not ("exceed" in str(e) or "too long" in str(e)) or not await start_over(context):
                 raise
             logger.warning(f"the conversation outgrew the model's context; a new one from the newest request ({e})")
-            await self.push_frame(TTSSpeakFrame(AFRESH_LINE, append_to_context=False))
+            afresh = await lines.say(self._cfg, AFRESH_LINE, wait=0) if self._cfg else AFRESH_LINE
+            await self.push_frame(TTSSpeakFrame(afresh, append_to_context=False))
             return await super().get_chat_completions(context)
         finally:
             self._think = self._no_tools = False
@@ -572,7 +577,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
         and c.thinking.control != "effort" else None
     return WinstonLLM(
         home=home, control=c.thinking.control, effort=c.thinking.home_effort, anthropic_api=c.provider == "anthropic",
-        own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name,
+        own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name, cfg=cfg,
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=served_model(cfg),

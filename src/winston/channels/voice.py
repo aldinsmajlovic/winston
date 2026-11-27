@@ -42,7 +42,8 @@ from pipecat.workers.runner import WorkerRunner
 
 from winston.config import load, resolve
 from winston.config.schema import WinstonConfig
-from winston.core.brain import HOME_LINES, Brain, Clock, ToolCallLogObserver, api_key
+from winston.core import lines
+from winston.core.brain import AFRESH_LINE, HOME_LINES, Brain, Clock, ToolCallLogObserver, api_key
 from winston.channels.clone import MicTap, make_voice_tools
 from winston.core.announce import note, nudge_note, subscribe
 from winston.core.reply import ReplyFilter, ReplySentences
@@ -112,13 +113,20 @@ _takes: dict[tuple[str, str], list[bytes]] = {}       # (voice, line): 16-bit PC
 _turn: dict[tuple[str, str], int] = {}
 
 
+def online(cfg: WinstonConfig) -> str:
+    return f"{cfg.assistant.name} online."
+
+
 async def prerender(cfg: WinstonConfig = CFG):
-    """Fill the takes of HOME_LINES in cfg.tts.voice; filled lines are skipped."""
+    """Keep the lines code says in his reply language (core/lines.py), then fill the takes of HOME_LINES in
+    cfg.tts.voice; filled lines are skipped."""
     c = cfg.tts
+    await lines.warm(cfg, (*HOME_LINES, AFRESH_LINE, online(cfg)))
     try:
         async with httpx.AsyncClient(base_url=c.base_url, timeout=60,
                                      headers={"Authorization": f"Bearer {api_key(c.api_key_env)}"}) as h:
             for line in HOME_LINES:
+                line = await lines.say(cfg, line, wait=0)
                 takes = _takes.setdefault((c.voice, line), [])
                 while len(takes) < TAKES:
                     r = await h.post("/audio/speech", json={"input": line, "voice": c.voice, "model": c.model,
@@ -326,7 +334,8 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments):
         logger.info(f"client connected{f' in {room}' if room else ''}")
         # Not in the conversation: a panel that reconnected ten times left ten of these in the room's
         # history, and the model took "Winston online." for an answer (2026-10-01).
-        await worker.queue_frames([TTSSpeakFrame(f"{CFG.assistant.name} online.", append_to_context=False)])
+        await worker.queue_frames([TTSSpeakFrame(await lines.say(CFG, online(CFG), wait=1),
+                                                 append_to_context=False)])
         warming.add(t := asyncio.create_task(brain.warm())); t.add_done_callback(warming.discard)
         warming.add(t := asyncio.create_task(prerender())); t.add_done_callback(warming.discard)
         if CFG.announce.enabled:

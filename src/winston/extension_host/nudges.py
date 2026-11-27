@@ -27,6 +27,7 @@ from winston_sdk.context import local_zone
 from winston_sdk.when import parse_when
 
 from winston.config import data_dir, resolve
+from winston.core import lines
 from winston.core.announce import in_quiet_hours
 from winston.extension_host import texts
 from winston.extension_host.sources import read_json, write_json
@@ -454,6 +455,7 @@ class Nudges:
             if what not in ("speakers", "phone"):
                 return self._hold(rec, why) if what == "hold" else False
             where = what
+        rec["say"] = await lines.say(self.host.cfg, rec["say"])       # said when his own wording does not come
         via = await self.deliver(self.payload(rec, spec), where)
         if via is None:
             return self._hold(rec, "nothing can deliver it (no speaker connected, no phone or Discord)")

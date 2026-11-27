@@ -35,11 +35,26 @@ and door or PIN code in Swedish, Norwegian, Danish, German, Dutch, French, Spani
 inside compound words too ("wifilösenordet", "Türcode"). In another language only the tool's own rule
 holds: he is told never to store passwords, codes or keys.
 
+## Lines said by code
+
+Some lines are said by code, not worded by him: the short lines while he sees to a home request
+("One moment."), the one when a conversation grew too long, "Winston online." in the browser, the
+box's lines after a double press, corrections when a device did not respond, an extension's filler
+while it works, Assist's error lines, and a nudge's plain line when his own wording does not come in
+time, which is also what your phone and Discord get, with the phone's buttons.
+
+In another reply language each is translated by his brain's model the first time it is needed, with
+no tools and on the slot background calls use, and kept in `data/state/lines.json`, so it costs
+nothing after that. A line with names in it, such as a correction, is a line of its own. The lines
+said while he thinks are translated when a room box's channel starts or a browser connects, before
+their takes are rendered, so a request never waits for one. When no translation comes in time (his brain is loading or down) the
+line is said in English, and the translation still lands for next time. How good a translation is
+follows his brain: a 4B model makes mistakes a larger one does not. Change a translation you do
+not like in `lines.json`, or delete the file to have them all made again, and restart Winston.
+
 ## Still in English
 
-Some lines are said by code, not by him, and stay English whatever the reply language: the short
-lines while he sees to a home request, corrections when a device did not respond, the fillers while
-an extension works, the steps of cloning a voice, and a nudge's plain line when his own wording does
-not come in time. Words that steer him without the model, such as "stop" and "never mind" on a room
-box, a shortcut's name said with other words, and times given to reminders ("in ten minutes"), are
-understood in English only. The work on each is the Languages track in [the plan](plan.md).
+Cloning a voice, its consent line included, is English. Words that steer him without the model, such
+as "stop" and "never mind" on a room box, a shortcut's name said with other words, and times given
+to reminders ("in ten minutes"), are understood in English only. The work on each is the Languages
+track in [the plan](plan.md).
