@@ -3,6 +3,33 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.23 (unreleased)
+
+- Lockdown, for evenings when people you do not trust are over: say "lock down", or turn it on from
+  Status or with `winston lockdown on`. While it is on, an action asked for near a room box waits for
+  you to confirm it on your phone, he keeps what he knows about you to himself, and only his computer
+  opens his pages. Only you can turn it off.
+- Tell him what to call you and your pronouns under Who he is, so he addresses you as you like and
+  refers to you rightly in his diary.
+- In another reply language, the lines Winston says itself ("One moment.", a correction, an
+  extension's filler, a reminder's plain line) are said in that language too, and clock times are no
+  longer read out in English words.
+- Swedish and German work for what acts at once: "sluta" or "hör auf" ends a conversation or stops the
+  music, "tänd lamporna" is a home request, "vad är nytt?" asks for the briefing, and "hej Winston" in
+  a room with a box is left to the box.
+- Reminders, "later" and follow-ups understand Swedish and German times ("om tio minuter", "på fredag
+  halv sex", "morgen um halb sieben"), and a day in something he remembers ("på lördag") becomes a date.
+- Pocket TTS and Qwen3-TTS speak the reply language when they can, Pocket in English, French, German,
+  Italian, Portuguese and Spanish, and the Voice page and setup say when your voice does not speak it.
+  The voice previews play in the reply language.
+- Cloning a voice works in his reply language: he says the consent line in it, and you say it back.
+- In a Swedish or German home, ordinary words in device names are no longer hint words, so they cannot
+  change what you said, and names with ø, æ or ß are matched rightly.
+- News fetches Krisinformation's crisis alerts in Swedish when he answers in Swedish, and Ask Claude
+  answers in his reply language.
+- A room box's firmware is built on ESPHome 2026.11.1, which brings the current Sendspin, the protocol
+  Music Assistant plays to speakers in sync with.
+
 ## 0.1.22 (2026-11-27)
 
 - The brain's Model is easier to choose from: each model draws a small memory bar of how it would fit,
