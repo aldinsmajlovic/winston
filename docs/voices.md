@@ -20,7 +20,7 @@ RTX 3090 beside the 27B brain, on Winston's own lines in three voices.
 | Breeze TTS 2 (`services/tts-breeze2`) | GPU | about 5.4 GB | a clip and its words | 24 kHz | 0.18 s | 3.5% | The most natural in blind pairs; beside the 27B brain only with Parakeet hearing; non-commercial weights |
 | Chatterbox-Turbo, streamed (`services/tts-chatterbox`) | GPU | 4.2 GB | a clip | 24 kHz | 0.45 s | 3.4% | English only |
 | Gepard 1.1 (`services/tts-gepard`) | GPU | 2.2 GB | a clip alone | 22.05 kHz | 0.49 s | 14.4% | Drops and garbles more words than the others |
-| Pocket TTS (`services/tts-pocket`) | CPU | none | 26 built-in voices, or a clip with Kyutai's gated weights | 24 kHz | 0.71 s | 2.1% | No GPU at all; measured in its built-in voice george |
+| Pocket TTS (`services/tts-pocket`) | CPU | none | 26 built-in voices, a clip with Kyutai's gated weights, or a voice exported from one | 24 kHz | 0.71 s | 2.1% | No GPU at all; measured in its built-in voice george |
 | VoxCPM2 (`services/tts-voxcpm2`) | GPU | 6.9 GB | a clip and its words | 48 kHz | 0.87 s | 3.6% | Nearly fills a 24 GB card beside the 27B brain |
 | Qwen3-TTS 1.7B (`services/tts-qwen3`) | GPU | 6.5 GB | a clip and its words | 24 kHz | 0.93 s | 3.6% | Slower than real time beside the 27B brain |
 | Hosted | a provider | none | the provider's voices | per model | not measured | not measured | [Hosted voice](#hosted-voice) |
@@ -192,7 +192,7 @@ nothing is saved.
 For a local server, the voice dropdown on the Voice page lists, in order:
 
 1. "Server default" with the clip the server started with (for instance "Server default:
-   p254_023"), that clip marked "server default" below it.
+   minter_card2_aged"), that clip marked "server default" below it.
 2. Your clips under `data/voices/` by file name, grouped by their folder ("Your clips" for the top
    level).
 3. Your voices: the cloned ones, by the friend's name.
@@ -203,14 +203,33 @@ and its built-in voices.
 
 ## Reference voices
 
-`assets/voices/vctk/*.wav` (copied into `data/voices/vctk` by `winston init`) are sentence 23 from the
+`assets/voices/` is copied into `data/voices/` by `winston init`, and any file missing there is
+copied again at each `winston up`.
+
+| Clip | What it is | Default for |
+| --- | --- | --- |
+| `librivox/minter_card2_aged` | About 19 s of a LibriVox reading of Arnold Bennett's *The Card* (public domain), cut from the 128 kbps MP3 and aged | Breeze TTS 2 and Pocket TTS |
+| `vctk/p254_023` | A VCTK speaker, below | Chatterbox, Qwen3-TTS, VoxCPM2, Gepard |
+
+**Pocket without the gated weights.** Pocket clones from a `.wav` only with Kyutai's gated weights,
+which a fresh install does not have. A `.safetensors` beside the clip, made with
+`pocket-tts export-voice`, loads without them: Pocket tries the clip first and falls back to it. An
+export fits only the model it was made from, so the bundled one is from the English model; with
+another reply language and no gated weights, Pocket speaks in george instead. To make
+one for your own clip, on a computer with the terms accepted:
+
+```sh
+services/tts-pocket/.venv/bin/pocket-tts export-voice --language english data/voices/me.wav data/voices/me.safetensors
+```
+
+`assets/voices/vctk/*.wav` are sentence 23 from the
 CSTR VCTK Corpus (University of Edinburgh), via Kyutai's `kyutai/tts-voices` mirror, licensed
 **CC BY 4.0**. Attribution: Yamagishi, J., Veaux, C., MacDonald, K. (2019), "CSTR VCTK Corpus:
 English Multi-speaker Corpus for CSTR Voice Cloning Toolkit (version 0.92)",
 https://doi.org/10.7488/ds/2645.
 
 The speakers are British male candidates: p226 (Surrey), p232 (Southern England), p243 (London),
-p254 (Surrey, the **default**), p258 (Southern England) and p273 (Suffolk). Every one is clear in
+p254 (Surrey, the default for the other GPU voices), p258 (Southern England) and p273 (Suffolk). Every one is clear in
 quiet; with noise behind them they part, and p232 and p254 stay among the clearest
 ([by reference voice](voice-benchmarks.md#clarity-in-noise-by-reference-voice-8-october)).
 

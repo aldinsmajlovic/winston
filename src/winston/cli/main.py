@@ -112,7 +112,9 @@ def up(host: str = typer.Option(None), port: int = typer.Option(None),
     from winston.api.app import create_app
     from winston.api import setup_link
     from winston.api.secrets import loopback
+    from winston.setup import bundle_voices
     cfg = load()
+    bundle_voices(data_dir(), print=lambda *a: None)
     # Until setup is done the wizard is served to another device with the setup link (docs/setup.md), so a
     # winstond that would listen on this computer alone listens on the network. Not when --host says where.
     opened = host is None and setup_link.active() and loopback(cfg.control.host)

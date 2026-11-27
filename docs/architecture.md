@@ -272,7 +272,7 @@ src/winston/        config/ core/ engines/ plugins/ channels/ providers/ api/ cl
 sdk/                winston-sdk: the extension SDK, its own package (a uv workspace member)
 services/           engines with their own environments (tts-chatterbox pins torch 2.6)
 web/                the UI (Vite, React, shadcn/ui); built assets are served by winstond
-assets/             bundled voice samples (CC BY 4.0)
+assets/             bundled voices (VCTK, CC BY 4.0; LibriVox, public domain)
 examples/           config.yaml, persona.md, env.example; `winston init` copies them
 tests/              acceptance checks against real hardware, run by `winston check`
 docs/               a page per subject, plus plan and decisions; images/ holds screenshots

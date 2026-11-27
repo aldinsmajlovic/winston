@@ -42,6 +42,7 @@ class PocketEngine:
         torch.set_num_threads(threads)
         t0 = time.perf_counter()
         self.tts = TTSModel.load_model(language=language)
+        self.language = language
         self.tts.eval()
         self.sample_rate = self.tts.sample_rate
         self.builtin_voices = tuple(sorted(tts_model._ORIGINS_OF_PREDEFINED_VOICES))
@@ -52,6 +53,14 @@ class PocketEngine:
         try:
             return self.tts.get_state_for_audio_prompt(str(source))
         except ValueError as e:               # the cloning weights are gated behind Kyutai's terms
+            # a voice exported beside the clip (pocket-tts export-voice) loads without them, but fits only the
+            # model it was made from: English for the bundled one. In another language george speaks instead.
+            if isinstance(source, Path) and (exported := source.with_suffix(".safetensors")).is_file():
+                if self.language == "english":
+                    return self.tts.get_state_for_audio_prompt(str(exported))
+                log.warning("%s was exported from the English model; george speaks %s instead", exported.name,
+                            self.language)
+                return self.tts.get_state_for_audio_prompt("george")
             raise HTTPException(400, str(e)) from e
 
     def stream_for(self, req: ss.SpeechRequest, on: bool) -> bool:

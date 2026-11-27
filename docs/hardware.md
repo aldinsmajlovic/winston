@@ -376,7 +376,8 @@ the quickest and cheapest; Model lists every model the key can use.
 ### Chatterbox-Turbo
 
 - NVIDIA only. Its own venv, `services/tts-chatterbox`, since it pins torch 2.6.
-- Clones any clip under `data/voices`. Six VCTK voices (CC BY 4.0) come with it.
+- Clones any clip under `data/voices`. Six VCTK voices (CC BY 4.0) and Winston's own LibriVox voice
+  come with it ([voices](voices.md#reference-voices)).
 - Winston's server streams it, so the first sound comes in about half a second, however long the
   sentence. The joins between chunks can sound a little choppy; Stream speech and Chunk length on
   the Voice page change that ([voices](voices.md#trying-a-voice-before-saving)).
@@ -385,10 +386,11 @@ the quickest and cheapest; Model lists every model the key can use.
 
 - Kyutai's 100M model: MIT code, CC BY 4.0 weights. Its own venv, `services/tts-pocket`, with a
   CPU-only torch.
-- Streams as it speaks. Its 26 built-in voices work as they are.
+- Streams as it speaks. Its 26 built-in voices work as they are, and so does Winston's own voice,
+  the preset's default, from a voice exported beside its clip ([voices](voices.md#reference-voices)).
 - Uses four CPU threads; change `--threads` in How it runs.
 
-To clone from a clip (the same clips Chatterbox uses):
+To clone from any other clip (the same clips Chatterbox uses):
 
 1. Accept the terms at https://huggingface.co/kyutai/pocket-tts.
 2. Run `uvx hf auth login` once.

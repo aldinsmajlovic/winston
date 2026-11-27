@@ -18,7 +18,7 @@ import yaml  # noqa: E402
 
 from winston import setup  # noqa: E402
 from winston.config import repo_root  # noqa: E402
-from winston.config.presets import apply_profile  # noqa: E402
+from winston.config.presets import TTS, apply_profile  # noqa: E402
 from winston.config.schema import WinstonConfig  # noqa: E402
 
 FIX = Path(__file__).parent / "fixtures/setup"
@@ -133,6 +133,10 @@ cfg = yaml.safe_load((made / "config.yaml").read_text())
 check("the data directory has the profile's config, the persona and the voices",
       (made, cfg["engines"]["llm"]["driver"], (made / "persona.md").is_file(), (made / "voices/vctk").is_dir()),
       (scratch / "setup", "external", True, True))
+home = {p["id"]: p["settings"]["tts"]["voice"] for p in TTS if p["id"] in ("breeze2", "pocket")}
+check("the Breeze and Pocket presets' voice is bundled, with Pocket's export for installs without its gated weights",
+      [(made / "voices" / v).with_suffix(s).is_file() for v in home.values() for s in (".wav", ".safetensors")],
+      [True] * 4)
 text = setup.unit(made)
 check("the service runs this venv's winston up on that data directory, and starts at boot",
       [line in text.splitlines() for line in (

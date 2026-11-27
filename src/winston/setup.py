@@ -443,11 +443,19 @@ def make_data_dir(profile: str, force: bool = False, print=print, llm: dict | No
         if not (d / "memory" / tmpl.name).exists():
             shutil.copy(tmpl, d / "memory" / tmpl.name)
             print(f"create {d / 'memory' / tmpl.name}")
-    bundled = repo_root() / "assets/voices/vctk"
-    if bundled.is_dir() and not (d / "voices/vctk").exists():
-        shutil.copytree(bundled, d / "voices/vctk")
-        print(f"create {d / 'voices/vctk'} (CC BY 4.0 VCTK samples)")
+    bundle_voices(d, print)
     return d
+
+
+def bundle_voices(d: Path, print=print) -> None:
+    """The voices that come with Winston (assets/voices): each file copied into the data directory's voices
+    unless it is there. On every `winston up` too, so an install from before a bundled voice can pick it."""
+    src = repo_root() / "assets/voices"
+    for f in sorted(src.rglob("*")):
+        if f.is_file() and not (dst := d / "voices" / f.relative_to(src)).exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, dst)
+            print(f"create {dst}")
 
 
 def release_app() -> Path | None:
