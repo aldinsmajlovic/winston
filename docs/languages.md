@@ -40,7 +40,7 @@ holds: he is told never to store passwords, codes or keys.
 Some lines are said by code, not worded by him: the short lines while he sees to a home request
 ("One moment."), the one when a conversation grew too long, "Winston online." in the browser, the
 box's lines after a double press, corrections when a device did not respond, an extension's filler
-while it works, Assist's error lines, and a nudge's plain line when his own wording does not come in
+while it works, Assist's error lines, the steps of cloning a voice, and a nudge's plain line when his own wording does not come in
 time, which is also what your phone and Discord get, with the phone's buttons.
 
 In another reply language each is translated by his brain's model the first time it is needed, with
@@ -52,9 +52,31 @@ line is said in English, and the translation still lands for next time. How good
 follows his brain: a 4B model makes mistakes a larger one does not. Change a translation you do
 not like in `lines.json`, or delete the file to have them all made again, and restart Winston.
 
+## Words that steer him
+
+Some words are matched on what was heard before the model reads it, because they must act at once or
+decide how he answers:
+
+- ending a conversation on a room box ("stop", "that's all", "never mind") and stopping the music;
+- the words around a shortcut's name, so "filmkväll i vardagsrummet, tack" still runs it;
+- the words that make a request a home request, so he thinks first ("tänd lamporna");
+- asking for the briefing ("what's new?").
+
+These are written by hand, not translated, so a word that would end a conversation by mistake is
+never made up: "nej" and "tack" on their own stay answers, as "no" and "thank you" do. English,
+Swedish and German are understood together, whatever the reply language, since a household may speak
+its own language to him and have him answer in English. Another language is a line added to each
+list (`rooms.py`, `brain.py`, `guard.py`, `nudges.py`).
+
+## Cloning a voice
+
+In another reply language he says the consent line in it ("Jag är Maria, och jag godkänner att
+Winston kopierar min röst."), and the person agrees by saying it back: at least 60% of its words heard,
+and no "not" that the line does not have (inte, nicht, pas and the like). In English it is the word
+"agree" without a "don't", as before.
+
 ## Still in English
 
-Cloning a voice, its consent line included, is English. Words that steer him without the model, such
-as "stop" and "never mind" on a room box, a shortcut's name said with other words, and times given
-to reminders ("in ten minutes"), are understood in English only. The work on each is the Languages
-track in [the plan](plan.md).
+Times given to reminders and follow-ups ("in ten minutes", "imorgon kl 7") are understood in English
+only, as are words that steer him in languages other than those above, and the browser's "okay
+Winston" or "hey Winston" in a room. The work on each is the Languages track in [the plan](plan.md).

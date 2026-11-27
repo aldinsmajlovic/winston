@@ -214,8 +214,8 @@ Extensions play streams on the box's media player, the one replies do not use
 
 | You | What happens |
 | --- | --- |
-| "Stop", "that's all", "never mind", "be quiet", "not you" or "nothing", in the listening window | The conversation ends with no reply, and the box waits for the wake word. "No" and "thank you" on their own are answers and get one |
-| "Stop", "stop it", "stop that", "quiet", "be quiet" or "shut up", with music playing | The music stops at once too, and the extension pauses at its source (`@ext.on_speakers_stop`), so "resume" carries on. "That's all", "never mind" and "not you" leave it playing |
+| "Stop", "that's all", "never mind", "be quiet", "not you" or "nothing", in the listening window, or the same in Swedish or German ("sluta", "det var allt", "hör auf", [languages](languages.md#words-that-steer-him)) | The conversation ends with no reply, and the box waits for the wake word. "No" and "thank you" on their own are answers and get one |
+| "Stop", "stop it", "stop that", "quiet", "be quiet" or "shut up" ("sluta", "tyst", "hör auf", "Ruhe"), with music playing | The music stops at once too, and the extension pauses at its source (`@ext.on_speakers_stop`), so "resume" carries on. "That's all", "never mind" and "not you" leave it playing |
 | "Stop", or a press of the button, while he talks | He stops, and the box does not listen again (the stock firmware's stop word) |
 | The wake word while he talks | He stops, and what you say after the name is the next request: "Okay Winston, what time is it?" Winston's firmware |
 | Hold the button | Hold to talk. Winston's firmware |

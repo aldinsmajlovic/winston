@@ -225,7 +225,9 @@ your own. Winston then:
 
 1. Asks Maria to say "I'm Maria, and I agree that Winston can copy my voice.", with his name from
    `assistant.name`. Speech to text checks the words; without "agree" (or with "don't agree")
-   nothing is recorded.
+   nothing is recorded. In another reply language he says the line in that language
+   ([languages](languages.md#cloning-a-voice)), and it counts when most of its words are heard back
+   with no "not" added.
 2. Asks her to talk about anything for about fifteen seconds, and stops at 15 s of speech, or at a
    2.5 s pause after 10 s.
 3. Checks that the voice that agreed is the voice she talked in ([below](#the-consent-record)). When

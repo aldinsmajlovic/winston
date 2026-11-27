@@ -29,7 +29,8 @@ from pipecat.services.llm_service import FunctionCallParams
 from pipecat.services.openai.tts import OpenAITTSService
 
 from winston.config.schema import WinstonConfig
-from winston.core import speaker, voices
+from winston.core import lines, speaker, voices
+from winston.core.rooms import plain_words
 
 RATE = 16000
 VAD_FRAME = 512                  # Silero's window at 16 kHz, 32 ms
@@ -38,6 +39,10 @@ WANT_SPEECH_SECS = 15.0          # speech to collect for the clip
 MIN_SPEECH_SECS = 6.0            # below this the clone sounds like no one
 _AGREE = re.compile(r"\bagree\b")
 _REFUSE = re.compile(r"\b(?:don'?t|do not|not|never|disagree|no)\b[^.]*\bagree|\bdisagree\b")
+# In another language: the consent line heard back, most of its words, with none of these added to it.
+HEARD_SHARE = 0.6
+_NOT = {"not", "never", "no", "inte", "ej", "aldrig", "nej", "ikke", "aldri", "nei", "nicht", "nie", "niemals", "kein",
+        "keine", "nein", "niet", "nooit", "geen", "nee", "ne", "pas", "jamais", "non", "nunca", "jamás", "mai"}
 
 
 class MicTap(FrameProcessor):
@@ -131,9 +136,15 @@ class Capture:
             self.tap.stop_recording()
 
 
-def agreed(text: str) -> bool:
-    t = text.lower()
-    return bool(_AGREE.search(t)) and not _REFUSE.search(t)
+def agreed(text: str, line: str | None = None) -> bool:
+    """Whether what was heard agrees. In English: "agree" without a "don't". In another language (`line`, the
+    consent line as he said it): most of the line's words heard, and no "not" the line does not have."""
+    if line is None:
+        t = text.lower()
+        return bool(_AGREE.search(t)) and not _REFUSE.search(t)
+    heard, asked = set(plain_words(text).split()), plain_words(line).split()
+    share = sum(w in heard for w in asked) / max(len(asked), 1)
+    return share >= HEARD_SHARE and not (heard - set(asked)) & _NOT
 
 
 def own_voice(cfg: WinstonConfig) -> str:
@@ -208,12 +219,14 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
     capture = Capture(tap, vad)
     me = cfg.assistant.name
 
-    async def say(params: FunctionCallParams, text: str, wait: bool = True):
+    async def say(params: FunctionCallParams, text: str, wait: bool = True) -> str:
         # kept out of the context: "now talk to me for fifteen seconds" read back later as his own words
         # made him wait for the user to talk ("talk about something" got "Sure." and nothing more)
+        text = await lines.say(cfg, text)       # in his reply language (core/lines.py)
         await params.llm.push_frame(TTSSpeakFrame(text, append_to_context=False))
         if wait:
             await tap.said()
+        return text
 
     async def clone_voice(params: FunctionCallParams):
         name = " ".join(str(params.arguments.get("name", "")).split()).strip()
@@ -223,8 +236,10 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
         speaker.warm()                  # loads while they talk
         tap.muted = True
         try:
-            await say(params, ("Alright. So I know you agree, say: " if own else
-                               f"Alright. {name}, if you agree, please say: ") + CONSENT_LINE.format(name=name, assistant=me))
+            # Two lines, so the consent line is translated on its own and heard against what he said.
+            consent_line = CONSENT_LINE.format(name=name, assistant=me)
+            await say(params, "Alright. So I know you agree, say:" if own else f"Alright. {name}, if you agree, please say:")
+            said_line = await say(params, consent_line)
             got = await capture.run(max_secs=12, start_timeout=8, end_silence_secs=1.0)
             if got is None:
                 await say(params, "I didn't hear anything, so I'll leave it.")
@@ -233,7 +248,7 @@ def make_voice_tools(cfg: WinstonConfig, tap: MicTap, transcribe: Callable[[np.n
             consent, consent_voiced = got
             heard = (await transcribe(consent, [name])).strip()
             logger.info(f"clone: consent from {name!r} heard as {heard!r}")
-            if not agreed(heard):
+            if not agreed(heard, None if said_line == consent_line else said_line):
                 await say(params, "That didn't sound like a yes, so I won't record anything.")
                 return await params.result_callback({"error": f"no consent (heard {heard!r}), nothing recorded"},
                                                     properties=FunctionCallResultProperties(run_llm=False))

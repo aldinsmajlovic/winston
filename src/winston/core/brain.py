@@ -245,7 +245,9 @@ def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
 
 
 # A request to change something ("turn it off", "dim it a bit more") names no device every time.
-_HOME_VERBS = re.compile(r"\b(?:turn(?!\s+(?:up|down)\b)|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler)\b")
+_HOME_VERBS = re.compile(r"\b(?:turn(?!\s+(?:up|down)\b)|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler"
+                         r"|tänd|släck|dimma|dämpa|ljusare|mörkare|varmare|slå (?:på|av)|stäng av|sätt på"    # Swedish
+                         r"|schalte?|dimme?|heller|dunkler|wärmer|einschalten|ausschalten|anmachen|ausmachen)\b")   # German
 # Said by code while he thinks about a home request, so the wait is not silence. One after the other.
 HOME_LINES = ("One moment.", "Let me see to that.", "Certainly, one moment.", "Let me look at that.")
 # Said when a conversation has outgrown the model's context and starts afresh from the newest request.
@@ -300,10 +302,14 @@ def own_answers(cfg: WinstonConfig) -> list[Own]:
 
 # Around a shortcut's name: "Okay Winston, please movie night in here, sir" is still only its name.
 _SHORTCUT_LEAD = {"okay", "ok", "hey", "hi", "yeah", "please", "can", "could", "would", "you", "just", "now",
-                  "uh", "um", "oh", "so"}
-_SHORTCUT_TAIL = {"please", "sir", "now", "thanks"}
-# A place or who it is for after the name: "movie night in the living room", "party time for us".
-_SHORTCUT_PLACE = re.compile(r"(?: (?:in|for) (?:here|there|me|us|the(?: \w+){1,2}))+$")
+                  "uh", "um", "oh", "so",
+                  "okej", "hej", "ja", "snälla", "kan", "kunde", "skulle", "du", "bara", "nu", "eh", "öh", "åh", "så",
+                  "bitte", "kannst", "könntest", "würdest", "mal", "jetzt", "äh", "ähm", "also"}
+_SHORTCUT_TAIL = {"please", "sir", "now", "thanks", "tack", "snälla", "nu", "bitte", "danke", "jetzt", "mal"}
+# A place or who it is for after the name: "movie night in the living room", "party time for us"; in Swedish
+# and German one word after it ("filmkväll i vardagsrummet", "filmabend im wohnzimmer").
+_SHORTCUT_PLACE = re.compile(r"(?: (?:in|for) (?:here|there|me|us|the(?: \w+){1,2})"
+                             r"| (?:i|för) \w+| (?:im|für|in der|in den|in die) \w+)+$")
 
 
 def only_name(said: str, assistant: str) -> str:

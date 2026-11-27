@@ -427,13 +427,25 @@ _DISMISSALS = {plain_words(p) for p in (
     "stop", "stop it", "stop that", "stop talking", "stop listening", "that's all", "that is all", "that's it",
     "that will be all", "that'll be all", "never mind", "nevermind", "cancel", "forget it", "be quiet", "quiet",
     "shut up", "go to sleep", "nothing", "not you", "not now", "goodbye", "bye", "i wasn't talking to you",
-    "wasn't talking to you", "not talking to you")}
-_LEAD = {"okay", "ok", "yeah", "yes", "no", "oh", "alright", "please", "hey", "just", "now"}
-_TAIL = ("thank you", "thanks", "please", "sir", "now")
+    "wasn't talking to you", "not talking to you",
+    # Swedish and German too, whatever the reply language: a household speaks its own to him (docs/languages.md).
+    "sluta", "sluta prata", "sluta lyssna", "stopp", "tyst", "var tyst", "håll tyst", "håll käften", "det var allt",
+    "det är allt", "det räcker", "glöm det", "strunt samma", "skit samma", "avbryt", "ingenting", "inget", "inte du",
+    "inte nu", "hej då", "hejdå", "adjö", "jag pratade inte med dig", "pratade inte med dig",
+    "hör auf", "aufhören", "halt", "ruhe", "sei still", "sei ruhig", "still", "halt die klappe", "das war's", "das wars",
+    "das ist alles", "das war alles", "schon gut", "vergiss es", "egal", "abbrechen", "nichts", "nicht du",
+    "nicht jetzt", "tschüss", "auf wiedersehen", "ich habe nicht mit dir geredet", "nicht mit dir")}
+_LEAD = {"okay", "ok", "yeah", "yes", "no", "oh", "alright", "please", "hey", "just", "now",
+         "okej", "ja", "nej", "nä", "jo", "åh", "snälla", "bara", "nu", "nein", "bitte", "jetzt", "na", "also"}
+_TAIL = ("thank you", "thanks", "please", "sir", "now", "tack så mycket", "tack", "snälla", "nu",
+         "danke schön", "danke", "bitte", "jetzt")
 
 
 # The dismissals that, while the speakers play, stop what plays: "that's all" or "not you" leave the music on.
-_STOPS = {plain_words(p) for p in ("stop", "stop it", "stop that", "be quiet", "quiet", "shut up")}
+_STOPS = {plain_words(p) for p in ("stop", "stop it", "stop that", "be quiet", "quiet", "shut up",
+                                   "sluta", "stopp", "tyst", "var tyst", "håll tyst", "håll käften",
+                                   "hör auf", "aufhören", "halt", "ruhe", "sei still", "sei ruhig", "still",
+                                   "halt die klappe")}
 
 
 def dismissal(text: str, name: str = "") -> bool:

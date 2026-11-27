@@ -33,7 +33,10 @@ def result_ok(result) -> bool:
 
 
 # Always a target, whatever Home Assistant exposes.
-GENERIC_TARGETS = ("light", "lights", "lamp", "lamps", "brightness")
+GENERIC_TARGETS = ("light", "lights", "lamp", "lamps", "brightness",
+                   "lampa", "lampan", "lampor", "lamporna", "ljus", "ljuset", "ljusen", "belysning", "belysningen",
+                   "ljusstyrka", "ljusstyrkan",                                                          # Swedish
+                   "licht", "lichter", "lampe", "lampen", "helligkeit", "beleuchtung")                   # German
 
 
 def targets(cfg: WinstonConfig | None = None) -> re.Pattern:

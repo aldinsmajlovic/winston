@@ -93,7 +93,7 @@ A kind's options are given to `@ext.nudge` or `ext.kind`. You change When (`deli
 | `when_home` | When you get home | At once if you are home, otherwise when you get home (your person in Home Assistant, on Speaking up) |
 | `when_leaving` | As you leave | As you leave |
 | `next_talk` | Next time you talk to him | The next time you talk to him; he mentions it after answering |
-| `briefing` | In the morning briefing | The first conversation after Morning briefing from, or "what's new?" |
+| `briefing` | In the morning briefing | The first conversation after Morning briefing from, or "what's new?" ("vad är nytt?", "was gibt's Neues?") |
 | `silent` | Only show it on Talk | Never: only its page, the Talk page and the Home Assistant event |
 
 The When choice ends with Off, which keeps him quiet about that kind (`enabled: false`). A kind that

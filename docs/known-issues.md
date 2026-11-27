@@ -23,7 +23,7 @@ are in [plan.md](plan.md); smaller rough edges in the web UI are in its UI track
 
 | Issue | Do this instead | Where it stands |
 | --- | --- | --- |
-| **"Stop", "never mind" and reminder times are understood in English only**, and cloning a voice is English ([languages](languages.md#still-in-english)). | Say those in English. | The plan's Languages track. |
+| **Reminder times are understood in English only**, and "stop", "never mind" and the like in English, Swedish and German only ([languages](languages.md#still-in-english)). | Say those in English. | The plan's Languages track. |
 
 ## Reporting one
 

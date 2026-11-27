@@ -14,8 +14,13 @@ from harness import expect, finish
 data = Path(tempfile.mkdtemp(prefix="winston-language-"))
 os.environ["WINSTON_DATA"] = str(data)      # before winston reads it: the kept lines go to a scratch folder
 
+from winston.channels.clone import agreed  # noqa: E402
 from winston.config.schema import WinstonConfig  # noqa: E402
 from winston.core import lines  # noqa: E402
+from winston.core.brain import home_request, name_forms, only_name  # noqa: E402
+from winston.core.common import key  # noqa: E402
+from winston.core.rooms import dismissal, stops_playing  # noqa: E402
+from winston.extension_host.nudges import WHATS_NEW  # noqa: E402
 from winston.core.memory import check  # noqa: E402
 from winston.core.spoken import SpokenText  # noqa: E402
 from winston.extension_host.services import Services  # noqa: E402
@@ -77,5 +82,37 @@ async def said_lines():
 
 
 asyncio.run(said_lines())
+
+# Words matched on what was heard, before the model: Swedish and German alongside English.
+for heard in ("Sluta.", "Nej, det var allt, tack.", "Okej Winston, tyst nu.", "Hör auf.", "Schon gut, danke.",
+              "Nein, das war's."):
+    expect(f"dismissal: {heard}", dismissal(heard, "Winston"))
+for heard in ("Nej.", "Tack.", "Ja.", "Danke.", "Tänd lampan."):
+    expect(f"an answer, not a dismissal: {heard}", not dismissal(heard, "Winston"))
+expect("Swedish quiet stops the music", stops_playing("Var tyst.", "Winston") and stops_playing("Ruhe!", "Winston"))
+expect("Swedish that's all leaves it", dismissal("Det var allt.", "Winston") and not stops_playing("Det var allt.", "Winston"))
+
+home = home_request(english)
+for said in ("tänd lamporna", "släck i köket", "mach das licht an", "schalte die lampe aus", "turn off the lights"):
+    expect(f"a home request: {said}", home.search(key(said)) is not None)
+expect("a question is not", home.search(key("vad är klockan")) is None and home.search(key("wie spät ist es")) is None)
+
+for said, name in (("Okej Winston, filmkväll i vardagsrummet tack.", "filmkväll"),
+                   ("Kan du filmkväll snälla", "filmkväll"), ("Bitte Filmabend im Wohnzimmer.", "filmabend"),
+                   ("Okay Winston, please movie night in the living room, sir", "movie night")):
+    expect(f"only the shortcut's name: {said}", name in name_forms(only_name(said, "Winston")),
+           name_forms(only_name(said, "Winston")))
+
+for said in ("Vad är nytt?", "Något nytt?", "Was gibt's Neues?", "What's new?"):
+    expect(f"asks for the briefing: {said}", WHATS_NEW.search(said) is not None)
+
+# Clone consent: English by its word; another language by the line he said, heard back without a "not".
+line = "Jag är Erik, och jag godkänner att Winston kopierar min röst."
+expect("English agrees by its word", agreed("I'm Erik and I agree that Winston can copy my voice.")
+       and not agreed("I don't agree."))
+expect("the Swedish line read back agrees", agreed("Jag är Erik och jag godkänner att Winston kopierar min röst", line))
+expect("with inte it does not", not agreed("Jag är Erik och jag godkänner inte att Winston kopierar min röst", line))
+expect("a no does not", not agreed("Nej tack.", line))
+expect("a line half heard does not", not agreed("Jag är Erik.", line))
 
 finish()

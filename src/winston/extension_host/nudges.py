@@ -35,7 +35,9 @@ from winston.extension_host.sources import read_json, write_json
 KEEP_SECS = 7 * 86400           # ended nudges stay listed this long (`ctx.nudges()`)
 EVERY = 5.0
 CHECK_SECS = 8                  # the check's own 5 s, and the trip there and back
-WHATS_NEW = re.compile(r"\b(what'?s new|anything new|what did i miss|briefing|brief me)\b", re.IGNORECASE)
+WHATS_NEW = re.compile(r"\b(what'?s new|anything new|what did i miss|briefing|brief me"
+                       r"|vad är nytt|(?:något|nåt) nytt|vad har jag missat|vad har hänt"                    # Swedish
+                       r"|was gibt'?s neues|was ist neu|was habe? ich verpasst)\b", re.IGNORECASE)    # German
 HOME = re.compile(r"\bhome\b", re.IGNORECASE)
 DAY = re.compile(r"\b(day after tomorrow|today|tonight|tomorrow|(?:this |next )?(?:monday|tuesday|wednesday|"
                  r"thursday|friday|saturday|sunday))\b", re.IGNORECASE)
