@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.22 (unreleased)
+## 0.1.22 (2026-11-27)
 
 - The brain's Model is easier to choose from: each model draws a small memory bar of how it would fit,
   Fits and Sees images narrow the list, and Use this model takes your pick, so a stray Enter no longer
