@@ -16,7 +16,7 @@ from loguru import logger
 
 from winston.config import data_dir, memory
 from winston.config.schema import EngineConfig, WinstonConfig
-from winston.engines import install
+from winston.engines import brain_health, install
 from winston.engines.drivers import (DockerDriver, Driver, ExternalDriver, SubprocessDriver, discord_channel_cmd,
                                      satellite_channel_cmd, voice_channel_cmd)
 
@@ -207,6 +207,8 @@ class Supervisor:
         on the old one loads it again on its next request, until it restarts."""
         if (cfg.llm.model, cfg.llm.context) != (self.cfg.llm.model, self.cfg.llm.context):
             memory.answered()                   # a brain that may fit: up again, it waits for a restart as any change
+        if cfg.llm != self.cfg.llm:
+            brain_health.clear()                # another key, model or address: judged on its next call
         before = await asyncio.to_thread(_ollama_brain, self.cfg)
         self.cfg = cfg
         await self.refresh()                # decide on live state, not the last poll
@@ -282,6 +284,8 @@ class Supervisor:
             keep = m.detail if m.pending or m.stale else ""
             if m.name == "llm" and (why := memory.stopped_for_memory()):    # up again, and stopped again on use
                 self._set(m, "error", why)
+            elif m.name == "llm" and (why := brain_health.failure()) and await self.healthy(m):    # answered, refused
+                self._set(m, "error", why)
             elif await self.healthy(m):
                 self._set(m, "healthy", keep)
             elif await m.driver.running():
@@ -301,6 +305,7 @@ class Supervisor:
         m = self.items[name]
         if name == "llm":
             memory.answered()                   # a restart, likely with a smaller context: judged afresh
+            brain_health.clear()
         # Winston's Ollama is up whether or not he started it, but its 16K copy may still be missing: made below,
         # through Ollama's API, wherever it runs.
         ollama = name == "llm" and m.cfg.driver == "external" and llm_engine(m.cfg.model_dump()) == "ollama"

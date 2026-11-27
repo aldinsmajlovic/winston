@@ -160,7 +160,10 @@ class ExternalDriver:
     async def stop(self) -> None: ...
     async def running(self) -> bool: return True
     def log_path(self) -> Path | None: return None
-    def tail(self, n: int) -> list[str]: return []
+    def tail(self, n: int) -> list[str]:
+        """No process, so no log; a brain's is what its calls did (brain_health)."""
+        from winston.engines import brain_health
+        return brain_health.log_tail(n) if self.name == "llm" else []
 
 
 def voice_channel_cmd(host: str, port: int) -> list[str]:
