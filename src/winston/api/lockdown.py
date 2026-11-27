@@ -36,7 +36,7 @@ class Hold(BaseModel):
 
 
 class Held(BaseModel):
-    waiting: bool = False
+    waiting: bool | None = None
     note: str | None = None
     error: str | None = None
 
@@ -55,7 +55,7 @@ def set_lockdown(app: FastAPI, on: bool, by: str) -> None:
             await sup.stop("voice")
             await sup.start("voice")
         asyncio.create_task(restart())
-    app.state.feed.publish(LiveEvent(channel="system", type="lockdown", text="on" if on else "off", name=by))
+    app.state.feed.publish(LiveEvent(channel="system", type="lockdown", on=on, since=(lockdown.state() or {}).get("since"), by=by))
 
 
 def router(app: FastAPI) -> APIRouter:
@@ -80,7 +80,7 @@ def router(app: FastAPI) -> APIRouter:
         host.add_pending(Pending("lockdown", "off", {}, "Lockdown: turn off", body.channel, run=run))
         return LockdownAnswer(on=lockdown.on(), waiting=True, note=lockdown.WAITING)
 
-    @r.post("/api/lockdown/hold", response_model=Held,
+    @r.post("/api/lockdown/hold", response_model=Held, response_model_exclude_none=True,
             summary="Queue a call for the owner's confirmation instead of running it")
     async def hold(body: Hold):
         name, args = body.name, body.args
@@ -90,8 +90,8 @@ def router(app: FastAPI) -> APIRouter:
             async def run():
                 return await host.call_tool(ext, tool, args, confirmed=True)
         else:
-            ha = HomeAssistant(app.state.cfg)
             try:
+                ha = HomeAssistant(app.state.cfg)
                 row = next((x for x in await ha.tools() if name in x.names), None)
             except Exception:                                           # noqa: BLE001
                 row = None

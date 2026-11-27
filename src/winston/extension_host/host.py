@@ -28,7 +28,7 @@ from winston_sdk.context import local_zone
 from winston.api.secrets import value as secret_value
 from winston.config import resolve
 from winston.config.schema import ExtensionConfig, WinstonConfig
-from winston.core.common import failure_text, failure_words
+from winston.core.common import failure_text, failure_words, log_event
 from winston.extension_host import accounts, texts
 from winston.extension_host.process import ExtensionProcess
 from winston.extension_host.sources import Source, describe, discover
@@ -620,15 +620,23 @@ class Host:
         if not approve:
             p.state, p.outcome = "declined", "Declined; nothing happened."
         else:
-            if p.run is not None:
-                r = await p.run()
-            elif p.nudge is not None:
-                r = await self._confirmed_action(p)
-            else:
-                r = await self.call_tool(p.ext_id, p.tool, p.args, channel=None, confirmed=True)
+            p.state = "running"             # a second approval meanwhile finds it taken
+            try:
+                if p.run is not None:
+                    r = await p.run()
+                elif p.nudge is not None:
+                    r = await self._confirmed_action(p)
+                else:
+                    r = await self.call_tool(p.ext_id, p.tool, p.args, channel=None, confirmed=True)
+            except Exception as e:                                      # noqa: BLE001
+                logger.warning(f"confirmed {p.label}: {e}")
+                r = {"ok": False, "error": f"It failed: {e}"}
             p.state = "ok" if r["ok"] else "error"
             result = r.get("result") if r["ok"] else r.get("error")
             p.outcome = result if isinstance(result, str) else json.dumps(result, default=str)[:300]
+            log_event(resolve(self.cfg.logging.tool_calls), f"confirmed:{p.channel}", event="confirmed", tool=p.tool,
+                      label=p.label, args=p.args, state=p.state, result=(p.outcome or "")[:2000])
+            logger.info(f"confirmed {p.label}: {p.state}")
         self._feed_confirm(p)
         return p
 

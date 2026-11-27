@@ -56,7 +56,7 @@ class LiveEvent(BaseModel):
     tool line.
     level: room, loudness (0 to 1): how loud his voice is as it plays, every 50 ms while he speaks. Streamed, never
     kept in the history.
-    lockdown: text ("on" or "off"), name (who changed it)."""
+    lockdown: on, since (when it went on), by (who changed it)."""
     id: str = ""
     ts: float = 0
     channel: str
@@ -74,6 +74,9 @@ class LiveEvent(BaseModel):
     room: str | None = None
     held_by: str | None = None
     links: list[dict[str, str]] | None = None
+    on: bool | None = None                          # lockdown
+    since: float | None = None
+    by: str | None = None
     loudness: float | None = None                   # not `level`: a nudge's own events carry that
 
 

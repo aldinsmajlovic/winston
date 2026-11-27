@@ -4,6 +4,7 @@
     uv run python tests/lockdown_cases.py
 """
 import asyncio
+import json
 import time
 from types import SimpleNamespace
 
@@ -85,7 +86,7 @@ async def winstond():
             await until(notified, 10)
             cs, sent = await confirmations(), await notified()
             expect("a Home Assistant call waits, with a Lockdown notification, and has not run",
-                   r == {"waiting": True, "note": L.WAITING, "error": None} and len(cs) == 1
+                   r == {"waiting": True, "note": L.WAITING} and len(cs) == 1
                    and cs[0]["label"].startswith("Lockdown: ") and sent[0]["message"].startswith("Lockdown: ")
                    and sent[0]["message"].endswith("Asked on a room box.")
                    and not any(w["type"] == "mcp/intent__HassTurnOn" for w in fake.writes), (r, cs, sent))
@@ -106,8 +107,40 @@ async def winstond():
             rs = [(await api.post("/api/lockdown/hold", json={"name": n, "args": {}, "channel": "voice"})).json()
                   for n in ("remember", "get_diary")]
             expect("a name that is no tool of his is refused, and nothing is queued",
-                   all(x == {"waiting": False, "note": None, "error": L.UNAVAILABLE} for x in rs)
+                   all(x == {"error": L.UNAVAILABLE} for x in rs)
                    and len(await confirmations()) == before, rs)
+
+            from winston.providers.home_assistant import HomeAssistant
+            real_init, real_call = HomeAssistant.__init__, HomeAssistant.call_tool
+
+            def no_ha(self, cfg):
+                raise RuntimeError("Home Assistant is not set up")
+            HomeAssistant.__init__ = no_ha
+            before = len(await confirmations())
+            r = (await api.post("/api/lockdown/hold", json={"name": "intent__HassTurnOn", "args": {}, "channel": "voice"})).json()
+            HomeAssistant.__init__ = real_init
+            expect("Home Assistant not configured: unavailable, nothing queued",
+                   r == {"error": L.UNAVAILABLE} and len(await confirmations()) == before, r)
+
+            async def down(self, name, args):
+                await asyncio.sleep(0.3)
+                raise ConnectionError("down")
+            HomeAssistant.call_tool = down
+            await api.post("/api/lockdown/hold", json=hold)
+            cs = await confirmations(True)
+            first = asyncio.create_task(api.post(f"/api/confirmations/{cs[0]['id']}", json={"approve": True}))
+            await asyncio.sleep(0.1)
+            second = (await api.post(f"/api/confirmations/{cs[0]['id']}", json={"approve": True})).json()
+            c = (await first).json()
+            HomeAssistant.call_tool = real_call
+            expect("Home Assistant down at approval: an error outcome, and a second tap does not run it twice",
+                   c["state"] == "error" and "down" in c["outcome"] and second["state"] == "running", (c, second))
+            log = [json.loads(x) for x in (DATA / "logs" / "tool_calls.jsonl").read_text().splitlines()]
+            expect("approved calls are in the tool-call log, with their channel",
+                   any(e.get("event") == "confirmed" and e["channel"] == "confirmed:satellite"
+                       and e["state"] == "ok" for e in log) and any(e.get("state") == "error" for e in log), log[-3:])
+            ev = [e for e in app.state.feed._history if e.type == "lockdown"]
+            expect("the feed was told, with on, since and by", ev and ev[-1].on is True and ev[-1].since and ev[-1].by, ev[-1:])
 
             r = (await api.post("/api/lockdown", json={"on": False, "channel": "voice"})).json()
             cs = await confirmations(True)
