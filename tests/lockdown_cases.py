@@ -28,6 +28,17 @@ expect("guarded places", [L.guarded(p, False) for p in ("voice", "satellite", "a
        == [True, True, True, False, False, False] and L.guarded("discord", True))
 w = L.windows(0, time.time() + 1)
 expect("one closed window from the log", len(w) == 1 and w[0][0] < w[0][1], w)
+with open(DATA / "logs" / "lockdown.jsonl", "a") as f:
+    f.write("{}\n[1]\n")
+expect("a line that parses but is not an entry is skipped", L.windows(0, time.time() + 1) == w)
+from winston.core.diary import _guests_out  # noqa: E402
+_in, _out = (w[0][0] + w[0][1]) / 2, w[0][1] + 10
+kept = _guests_out([
+    {"ts": _in, "channel": "satellite"}, {"ts": _in, "channel": "discord"},
+    {"ts": _in, "channel": "discord", "room": "r"}, {"ts": _out, "channel": "satellite"}])
+expect("the diary leaves out guarded turns in a window", [(t["channel"], t["ts"]) for t in kept]
+       == [("discord", _in), ("satellite", _out)], kept)
+expect("no turns, no windows", _guests_out([]) == [])
 L.turn_on("voice")
 expect("an open window ends at end", L.windows(0, 5e9)[-1][1] == 5e9)
 L.turn_off("cli")

@@ -21,7 +21,7 @@ from loguru import logger
 
 from winston.config import resolve
 from winston.config.schema import WinstonConfig
-from winston.core import persona
+from winston.core import lockdown, persona
 from winston.core.turns import TurnStore, _read_lines
 
 
@@ -36,6 +36,15 @@ def _turns_for(cfg: WinstonConfig, day: str) -> list[dict]:
     if not folder.is_dir():
         return []
     return sorted(_read_lines(folder), key=lambda t: t.get("ts", 0))
+
+
+def _guests_out(turns: list[dict]) -> list[dict]:
+    """Without what guarded conversations said while lockdown was on."""
+    if not turns:
+        return turns
+    wins = lockdown.windows(min(t.get("ts", 0) for t in turns), time.time())
+    return [t for t in turns if not (lockdown.guarded(t.get("channel", ""), bool(t.get("room")))
+                                     and any(a <= t.get("ts", 0) <= b for a, b in wins))]
 
 
 def _format_turns(turns: list[dict], name: str) -> str:
@@ -137,6 +146,7 @@ class Diary:
         """Write the diary for one day. Returns the entry, or None if there were no turns."""
         turns = _turns_for(self.cfg, day)
         answered = [t for t in turns if t.get("outcome") in ("answered", "silent", "dismissed")]
+        answered = _guests_out(answered)
         if not answered:
             logger.info(f"diary: no turns on {day}, skipping")
             return None

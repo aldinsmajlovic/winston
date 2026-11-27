@@ -77,12 +77,13 @@ def windows(start: float, end: float) -> list[tuple[float, float]]:
     for line in lines:
         try:
             e = json.loads(line)
-        except ValueError:
+            is_on, ts = bool(e["on"]), float(e["ts"])
+        except (ValueError, TypeError, KeyError):
             continue
-        if e["on"] and opened is None:
-            opened = e["ts"]
-        elif not e["on"] and opened is not None:
-            out.append((opened, e["ts"]))
+        if is_on and opened is None:
+            opened = ts
+        elif not is_on and opened is not None:
+            out.append((opened, ts))
             opened = None
     if opened is not None:
         out.append((opened, max(end, opened)))
