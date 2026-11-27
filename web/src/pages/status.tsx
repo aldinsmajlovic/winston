@@ -18,11 +18,10 @@ import { UpdateCard } from '@/components/update-card'
 import { DataTable, type Column } from '@/components/templates/list-page'
 import { SettingsPage } from '@/components/templates/settings-page'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useGraphicsMemory } from '@/hooks/use-graphics-memory'
 import { useDrivers } from '@/hooks/use-drivers'
@@ -214,8 +213,9 @@ function GraphicsCard({ gpu, page, config, presets, running }: { gpu: NonNullabl
 
 const lockdownKey = $api.queryOptions('get', '/api/lockdown').queryKey
 
-/** Lockdown: a switch that acts at once, unlike the page's settings. Off from here is at once, since while it is on
- * only his computer opens the page. The live feed says when a box or the command line changed it. */
+/** Lockdown: Turn on and Turn off, commands that act at once (on only tightens, so it asks nothing). Off from here
+ * needs no phone, since while it is on only his computer opens the page. The live feed says when a box or the
+ * command line changed it. */
 function LockdownCard() {
   const client = useQueryClient()
   const region = useRegion()
@@ -234,20 +234,17 @@ function LockdownCard() {
     <Card>
       <CardHeader>
         <CardTitle>Lockdown</CardTitle>
+        <CardDescription>
+          {on
+            ? `On${since ? ` since ${region.when(since)}` : ''}. Actions wait for your phone, he keeps what he knows about you to himself, and only his computer opens these pages.`
+            : 'For when guests are over: actions wait for your phone, he keeps what he knows about you to himself, and only his computer opens these pages.'}
+        </CardDescription>
+        <CardAction>
+          <Button variant="outline" size="sm" disabled={!state.data || change.isPending} onClick={() => change.mutate({ body: { on: !on } })}>
+            {on ? 'Turn off' : 'Turn on'}
+          </Button>
+        </CardAction>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-start gap-2 py-1">
-          <Switch id="lockdown" checked={on} disabled={!state.data || change.isPending} onCheckedChange={(v) => change.mutate({ body: { on: v } })} />
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lockdown">Lock down</Label>
-            <p className="text-sm text-muted-foreground">
-              {on
-                ? `On${since ? ` since ${region.when(since)}` : ''}. Actions wait for your phone, he keeps what he knows about you to himself, and only this computer opens these pages.`
-                : 'For when guests are over: actions wait for your phone, he keeps what he knows about you to himself, and only his computer opens these pages.'}
-            </p>
-          </div>
-        </div>
-      </CardContent>
     </Card>
   )
 }

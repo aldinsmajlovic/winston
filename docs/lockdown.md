@@ -1,12 +1,12 @@
 # Lockdown
 
-A switch for evenings when people you do not trust are over. While it is on, nothing said near a room
+A mode for evenings when people you do not trust are over. While it is on, nothing said near a room
 box changes anything until you confirm it on your phone, and he keeps what he knows about you to
 himself. He needs no idea of who is speaking: while it is on, nobody speaking is trusted.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/status-lockdown-dark.png">
-  <img src="images/status-lockdown-light.png" alt="The Lockdown card on Status, switched on: on since 11:15, actions wait for your phone, he keeps what he knows about you to himself, and only this computer opens these pages" width="720">
+  <img src="images/status-lockdown-light.png" alt="The Lockdown card on Status while it is on: on since 11:42, actions wait for your phone, he keeps what he knows about you to himself, and only his computer opens these pages, with a Turn off button" width="720">
 </picture>
 
 ## What it does
@@ -69,7 +69,7 @@ Anyone can turn it on; only you can turn it off.
 | From | On | Off |
 | --- | --- | --- |
 | By voice ("lock down", "lockdown off") | At once | Asks your phone: "Lockdown: turn off? Asked on a room box." Until you confirm, it stays on |
-| The Lockdown card on Status | At once | At once |
+| Turn on and Turn off, on the Lockdown card on Status | At once | At once |
 | `winston lockdown on`, `winston lockdown off` | At once | At once |
 
 ```sh
