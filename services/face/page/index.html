@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Winston Face</title>
+<style>
+/* VOICE everyday, a demo of a presence on a wall tablet
+   IDEA Winston's logo colour as a faceted low-poly mask, a few large planes like a folded paper head
+   PICTURE the head, full screen, talking
+   COLOUR warm paper or deep teal-black ground, the logo's teal as ink
+   TYPE system sans, it is a tool
+   LAYOUT head centred in the whole screen, facet choice top right, the line to say docked at the bottom */
+:root{color-scheme:light dark;--bg:light-dark(#f3f1ec,#0d1416);--line:light-dark(#186175,#84cbdc);--ink:light-dark(#1c2426,#dcecef);--field:light-dark(#fff,#121c1f);--edge:light-dark(#cfd6d4,#2b4148);--btn-ink:light-dark(#fff,#0d1416)}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,sans-serif;overflow:hidden}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#status{position:fixed;top:calc(16px + env(safe-area-inset-top,0px));left:max(5vw,16px,env(safe-area-inset-left,0px));font-size:14px;opacity:.7}
+.top{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));right:max(5vw,16px,env(safe-area-inset-right,0px));display:grid;gap:8px;justify-items:end}
+.facets{display:flex;align-items:center;gap:8px;font-size:14px}
+.seg{display:flex;border:1px solid var(--edge);border-radius:999px;overflow:hidden}
+.seg button{background:transparent;color:var(--ink);border:0;padding:6px 12px;font:inherit;cursor:pointer;min-height:36px}
+.seg button[aria-pressed=true]{background:var(--line);color:var(--btn-ink)}
+.dock{position:fixed;left:0;right:0;bottom:0;padding:12px max(5vw,16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(5vw,16px,env(safe-area-inset-left,0px));display:grid;gap:10px;justify-items:center}
+.row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px 16px}
+.state{display:flex;align-items:center;gap:8px;font-size:14px}
+.lines{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:760px}
+.sounds{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.lines button,.sounds button{background:transparent;color:var(--line);border:1px solid var(--edge);border-radius:999px;padding:6px 12px;font:inherit;font-size:14px;cursor:pointer}
+.lines button:hover,.lines button[aria-pressed=true],.sounds button:hover{border-color:var(--line)}
+.note{font-size:13px;opacity:.6;text-align:center}
+</style>
+
+<div id="status">Loading face...</div>
+<div class="top">
+  <div class="facets"><span>Facets</span>
+    <div class="seg" id="seg">
+      <button type="button" data-level="fewer" aria-pressed="false">Fewer</button>
+      <button type="button" data-level="medium" aria-pressed="true">Medium</button>
+      <button type="button" data-level="more" aria-pressed="false">More</button>
+    </div>
+  </div>
+  <div class="facets"><span>Eyes</span>
+    <div class="seg" id="eyes">
+      <button type="button" data-eyes="plain" aria-pressed="false">Plain</button>
+      <button type="button" data-eyes="iris" aria-pressed="true">Iris</button>
+    </div>
+  </div>
+</div>
+<div class="dock">
+  <div class="row">
+  <div class="state"><span>He is</span>
+    <div class="seg" id="state">
+      <button type="button" data-state="idle" aria-pressed="true">Idle</button>
+      <button type="button" data-state="listening" aria-pressed="false">Listening</button>
+      <button type="button" data-state="thinking" aria-pressed="false">Thinking</button>
+    </div>
+  </div>
+  <div class="sounds" id="sounds">
+    <button type="button" data-gesture="laugh">Laugh</button>
+    <button type="button" data-gesture="sigh">Sigh</button>
+    <button type="button" data-gesture="cough">Cough</button>
+    <button type="button" data-gesture="throat">Clear throat</button>
+  </div>
+  </div>
+  <div class="lines" id="lines">
+    <button type="button" data-clip="line-1">Good evening, sir. Shall I put the kettle on?</button>
+    <button type="button" data-clip="line-2">The front door is locked and the lights are off.</button>
+    <button type="button" data-clip="line-3">You have two reminders: the bins, and call your mother.</button>
+    <button type="button" data-clip="line-4">I am afraid the garage door has been open for an hour, sir.</button>
+  </div>
+  <div class="note">Winston's own voice, recorded ahead. Each line's mood is read from its words.</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+{
+const CREASE = 12;  // degrees: neighbouring triangles flatter than this merge into one facet
+const EYE_SIZE = 1.45;  // the eye fills, against the scanned openings, which read small at this scale
+const IRIS = .5;  // the iris's radius, against the eye's height
+const LID = .1;  // with irises, the upper lids rest a touch lowered
+const RAISE = .22;  // the iris sits this much (of the eye's height) above centre: tucked under the upper lid, a little white below
+const irises = [];
+let irisOn = true;
+document.getElementById('eyes').addEventListener('click', e => {
+  const to = e.target.closest('button')?.dataset.eyes;
+  if (!to) return;
+  irisOn = to === 'iris'; theme();
+  for (const b of document.querySelectorAll('#eyes button')) b.setAttribute('aria-pressed', b.dataset.eyes === to);
+});
+const status = document.getElementById('status');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0, 1, 2);  // fades the far side of the head, seen through the eyes and mouth
+const camera = new THREE.PerspectiveCamera(30, innerWidth / innerHeight, 0.1, 100);
+let size = null;
+const fit = () => {
+  camera.aspect = innerWidth / innerHeight;
+  renderer.setSize(innerWidth, innerHeight);
+  if (size) {
+    // The head fills the space between the controls and the dock: the controls at the top count only when
+    // the head reaches under them (a narrow screen).
+    const bar = document.querySelector('.top').getBoundingClientRect(), bottom = document.querySelector('.dock').getBoundingClientRect().top;
+    const tan = Math.tan(camera.fov * Math.PI / 360);
+    const place = top => {
+      const free = Math.max(bottom - top, innerHeight * .3);
+      const z = innerHeight / (2 * tan) * Math.max(size.y / (free * .86), size.x / (innerWidth * .9)), perPx = 2 * z * tan / innerHeight;
+      camera.position.set(0, ((top + bottom) / 2 - innerHeight / 2) * perPx, z);
+      return size.x / 2 / perPx;  // half the head's width on screen
+    };
+    if (bar.left < innerWidth / 2 + place(0) + 8) place(bar.bottom);
+    scene.fog.near = camera.position.z - size.z * 0.1;
+    scene.fog.far = camera.position.z + size.z * 0.55;
+  }
+  camera.updateProjectionMatrix();
+};
+addEventListener('resize', fit);
+
+// Hidden lines: a solid pass in the ground colour hides edges behind the face.
+const solid = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+const ink = new THREE.LineBasicMaterial();
+// Eyes and mouth: solid shapes drawn over the wires, with the mouth's outline, so it reads as a mouth
+// even closed. The openings sit behind the lids and lips, which would otherwise hide them.
+const glow = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, fog: false, depthTest: false, depthWrite: false });
+const glowLine = new THREE.LineBasicMaterial({ fog: false, depthTest: false, depthWrite: false });
+// Irises: the line colour, drawn only where an eye was just drawn (the stencil), so a blink or a squint
+// covers them as a lid would. With them, the white of the eye is a faint tint of the line colour.
+const eyeGlow = Object.assign(glow.clone(), { stencilWrite: true, stencilRef: 1, stencilZPass: THREE.ReplaceStencilOp });
+const irisMat = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, fog: false, depthTest: false, depthWrite: false,
+  stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc });
+const theme = () => {
+  const bg = getComputedStyle(document.body).backgroundColor;
+  solid.color.set(bg); scene.fog.color.set(bg); renderer.setClearColor(bg);
+  ink.color.set(getComputedStyle(document.querySelector('.lines button')).color);  // --line, resolved for this theme
+  glow.color.copy(ink.color); glowLine.color.copy(ink.color); irisMat.color.copy(ink.color);
+  if (irisOn) eyeGlow.color.set(bg).lerp(ink.color, .25); else eyeGlow.color.copy(ink.color);
+};
+theme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', theme);
+new MutationObserver(theme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// The edges where the surface bends, plus open borders (eyes, mouth, neck). They share the mesh's
+// positions and morph targets, so they move with the mouth.
+function creases(geo, jawIndex) {
+  const pos = geo.attributes.position, idx = geo.index.array, cos = Math.cos(CREASE * Math.PI / 180);
+  const v = [0, 1, 2].map(() => new THREE.Vector3()), normals = [], edges = new Map();
+  for (let t = 0; t < idx.length; t += 3) {
+    v.forEach((p, k) => p.fromBufferAttribute(pos, idx[t + k]));
+    normals.push(new THREE.Vector3().subVectors(v[2], v[1]).cross(new THREE.Vector3().subVectors(v[0], v[1])).normalize());
+    for (const [i, j] of [[idx[t], idx[t + 1]], [idx[t + 1], idx[t + 2]], [idx[t + 2], idx[t]]]) {
+      const key = Math.min(i, j) + ',' + Math.max(i, j);
+      const e = edges.get(key);
+      if (e) e.tris.push(t / 3); else edges.set(key, { i, j, tris: [t / 3] });
+    }
+  }
+  const next = new Map();
+  for (const e of edges.values()) if (e.tris.length === 1) next.set(e.i, e.j);
+  // The openings are loops of one-sided edges: the eyes, the lip line (the flat slit across the centre
+  // line), the back of the mouth (the taller one) and the back of the head (the widest).
+  const loops = [], seen = new Set();
+  for (const s of next.keys()) {
+    const l = [];
+    for (let v = s; v !== undefined && !seen.has(v); v = next.get(v)) { seen.add(v); l.push(v); }
+    if (l.length > 2) loops.push(l);
+  }
+  const xs = l => l.map(v => pos.getX(v)), all = xs([...Array(pos.count).keys()]), mid = (Math.min(...all) + Math.max(...all)) / 2;
+  const height = l => Math.max(...l.map(v => pos.getZ(v))) - Math.min(...l.map(v => pos.getZ(v)));
+  const span = l => Math.max(...xs(l)) - Math.min(...xs(l));
+  const rest = loops.sort((a, b) => span(b) - span(a)).slice(1);  // the widest is the back of the head
+  const across = rest.filter(l => Math.min(...xs(l)) < mid && Math.max(...xs(l)) > mid);
+  const lips = across.reduce((a, b) => height(a) < height(b) ? a : b);
+  const throat = across.find(l => l !== lips) || [];
+  const eyes = rest.filter(l => !across.includes(l)).sort((a, b) => span(b) - span(a)).slice(0, 2);
+  // Fills, triangulated as seen from the front (local x across, z down), with the jaw open: closed, the
+  // lips are a flat line and give triangles that would not cover the opening.
+  const jaw = geo.morphAttributes.position[jawIndex];
+  const fan = l => THREE.ShapeUtils.triangulateShape(l.map(v => new THREE.Vector2(
+    pos.getX(v) + jaw.getX(v), pos.getZ(v) + jaw.getZ(v))), []).flatMap(t => t.map(k => l[k]));
+  // The eyes' own outlines are left out: their fills are drawn larger than the opening.
+  const seam = new Set(lips);
+  // Inside the mouth: what can be reached from the back of the mouth without crossing the lip line.
+  // Its wires would show through the open mouth. (If it leaks onto the face, nothing is dropped.)
+  const near = new Map();
+  for (const e of edges.values()) { (near.get(e.i) || near.set(e.i, []).get(e.i)).push(e.j); (near.get(e.j) || near.set(e.j, []).get(e.j)).push(e.i); }
+  let inside = new Set(throat);
+  for (const todo = [...throat]; todo.length;) for (const w of near.get(todo.pop()) || []) if (!seam.has(w) && !inside.has(w)) { inside.add(w); todo.push(w); }
+  if (inside.size > pos.count / 4) inside = new Set();
+  const eyeRim = new Set(eyes.flat()), out = [];
+  for (const e of edges.values()) {
+    if (e.tris.length === 1 && eyeRim.has(e.i) && eyeRim.has(e.j)) continue;
+    if ((inside.has(e.i) || seam.has(e.i)) && (inside.has(e.j) || seam.has(e.j))) continue;  // inside the lips: the mouth draws these
+    if (e.tris.length !== 2 || normals[e.tris[0]].dot(normals[e.tris[1]]) < cos) out.push(e.i, e.j);
+  }
+  const centre = l => l.reduce((c, v) => c.add(new THREE.Vector3().fromBufferAttribute(pos, v)), new THREE.Vector3()).divideScalar(l.length);
+  const share = index => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', pos);
+    g.morphAttributes = geo.morphAttributes; g.morphTargetsRelative = geo.morphTargetsRelative;
+    g.setIndex(index);
+    return g;
+  };
+  return { lines: share(out), lips, eyes: eyes.map(l => ({ fill: share(fan(l)), centre: centre(l), size: [span(l), height(l)] })) };
+}
+
+// The face follows the voice. wav2arkit_cpu (Apache-2.0, huggingface.co/myned-ai/wav2arkit_cpu, from
+// LAM Audio2Expression) turned each clip into the 52 ARKit face shapes at 30 frames a second, ahead of
+// time; the page plays those curves in step with the audio.
+const REST = { jawOpen: .05, mouthLowerDown_L: .1, mouthLowerDown_R: .1 };  // the floor: lips just apart, a resting mouth line
+// What he is doing, as Winston reports it per room: an expression and a head pose (down, turn, tilt, in
+// radians), eased in over about half a second. sway: how much the head drifts. Where he looks is the
+// loop's (thinking: up and aside; the head follows). Speaking is the voice's own: the curves below.
+const STATES = {
+  idle: { face: {}, head: [0, 0, 0], sway: 1 },
+  listening: { face: { browInnerUp: .35, browOuterUp_L: .3, browOuterUp_R: .3, eyeWide_L: .35, eyeWide_R: .35 }, head: [.025, 0, .045], sway: .4 },
+  thinking: { face: { browDown_L: .45, browOuterUp_R: .3, eyeSquint_L: .3, eyeSquint_R: .1, eyeLookUp_L: .4, eyeLookUp_R: .4,
+    eyeLookOut_L: .35, eyeLookIn_R: .35, mouthPress_L: .25, mouthPress_R: .25 }, head: [0, 0, -.02], sway: .5 },
+  speaking: { face: {}, head: [0, 0, 0], sway: .7 },
+};
+// While he speaks, the voice's own emphasis moves the upper face, which the mouth model leaves still:
+// pitch rising above its usual lifts the brows, stressed syllables dip the head (both baked with the clip).
+const BROW = { browInnerUp: .45, browOuterUp_L: .35, browOuterUp_R: .35 }, NOD = .045;
+const both = (n, v) => ({ [n + '_L']: v, [n + '_R']: v });
+// The mood of a reply, held faintly under the mouth while he says it. Read from its words here.
+// ponytail: a word list, enough for a demo; live, the reply could name its own mood.
+const MOODS = {
+  warm: { face: { ...both('mouthSmile', .3), ...both('cheekSquint', .15), ...both('eyeSquint', .12) }, head: [0, 0, .02] },
+  concerned: { face: { browInnerUp: .35, ...both('browDown', .12), ...both('mouthFrown', .15) }, head: [.03, 0, -.015] },
+  dry: { face: { browOuterUp_R: .35, mouthSmile_L: .2, ...both('eyeSquint', .1) }, head: [0, 0, -.02] },
+};
+const NEUTRAL = { face: {}, head: [0, 0, 0] };
+const moodOf = text => [
+  ['concerned', /\b(afraid|sorry|unfortunately|failed|couldn't|can't)\b/i],
+  ['warm', /\b(good (morning|afternoon|evening)|shall i|glad|lovely|welcome)\b/i],
+  ['dry', /\b(again|reminders?|mother)\b/i],
+].find(([, words]) => words.test(text))?.[0];
+// The sounds his reply can hold ([laugh], [sigh], [cough], [clears throat]): poses at times in seconds,
+// eased into each other, on top of everything else. down and tilt move the head (radians). When the voice
+// itself makes the sound, its curves add the real mouth.
+const joy = { ...both('mouthSmile', .5), ...both('cheekSquint', .4), ...both('eyeSquint', .3), browInnerUp: .1, down: -.03, tilt: .02 };
+const pinch = { ...both('eyeSquint', .3), ...both('browDown', .2), ...both('mouthPress', .3), down: -.02 };
+const hack = { ...both('eyeSquint', .45), ...both('browDown', .3), jawOpen: .16, down: .05 };
+const ahem = { ...both('mouthPress', .35), ...both('browDown', .1), down: .03, tilt: -.02 };
+const GESTURES = {
+  // a smile that reaches the eyes, and four soft "ha"s in the jaw and head, each smaller
+  laugh: [[0, {}], [.15, joy], ...[0, 1, 2, 3].flatMap(i => [
+    [.26 + i * .22, { ...joy, jawOpen: .12 * (1 - i / 5), down: joy.down + .015 * (1 - i / 5) }], [.37 + i * .22, joy]]), [1.6, {}]],
+  // a breath in (head up, brows lift), then out: the lids lower, the jaw falls a little, the head drops
+  sigh: [[0, {}], [.7, { browInnerUp: .2, ...both('eyeWide', .15), jawOpen: .05, down: -.03 }],
+    [1.6, { browInnerUp: .12, ...both('eyeBlink', .3), jawOpen: .1, mouthFunnel: .12, down: .05 }], [2.6, {}]],
+  // a pinch, then two coughs: the jaw opens and the head jerks forward
+  cough: [[0, {}], [.12, pinch], [.22, hack], [.36, pinch], [.46, { ...hack, jawOpen: .12, down: .04 }],
+    [.7, { ...both('eyeSquint', .2), ...both('browDown', .1) }], [1.1, {}]],
+  // lips pressed, head down, two small "hm"s
+  throat: [[0, {}], [.2, ahem], [.32, { ...ahem, jawOpen: .04, down: .05 }], [.44, ahem], [.56, { ...ahem, jawOpen: .04, down: .05 }], [.9, {}]],
+  // His own: the breath before speaking (lips part, head lifts a touch), and a listener's nods, one or two.
+  inhale: [[0, {}], [.32, { jawOpen: .06, browInnerUp: .05, down: -.012 }], [.5, {}]],
+  nod: [[0, {}], [.32, { down: .028 }], [.75, {}]],
+  nod2: [[0, {}], [.3, { down: .03 }], [.55, { down: .006 }], [.8, { down: .018 }], [1.15, {}]],
+};
+const keys = new Set([...Object.keys(REST), ...Object.keys(BROW),
+  ...[...Object.values(STATES), ...Object.values(MOODS)].flatMap(s => Object.keys(s.face)),
+  ...Object.values(GESTURES).flat().flatMap(([, pose]) => Object.keys(pose)).filter(k => k !== 'down' && k !== 'tilt')]);
+// browDownLeft -> browDown_L, as this face names its pairs; jawLeft and mouthLeft are single shapes
+const arkit = n => /^(jaw|mouth)(Left|Right)$/.test(n) ? n : n.replace(/Left$/, '_L').replace(/Right$/, '_R');
+
+const ctx = new AudioContext(), clips = {};
+let source = null, track = null;  // the playing clip's curves, and when its audio started
+let state = 'idle', blinkSoon = false, gestureSoon = null;
+document.getElementById('sounds').addEventListener('click', e => { gestureSoon = e.target.closest('button')?.dataset.gesture ?? null; });
+const setState = to => {
+  if (to === state) return;
+  state = to; blinkSoon = true;  // a blink as his attention shifts
+  for (const b of document.querySelectorAll('#state button')) b.setAttribute('aria-pressed', b.dataset.state === to);
+};
+const hush = () => {
+  const src = source; source = track = null; src?.stop();
+  for (const b of document.querySelectorAll('#lines button')) b.setAttribute('aria-pressed', false);
+};
+document.getElementById('state').addEventListener('click', e => {
+  const to = e.target.closest('button')?.dataset.state;
+  if (to) { hush(); setState(to); }
+});
+async function say(button) {
+  ctx.resume();  // audio may only start from a click
+  const name = button.dataset.clip;
+  clips[name] ??= Promise.all([
+    fetch(name + '.wav').then(r => r.arrayBuffer()).then(b => ctx.decodeAudioData(b)),
+    fetch(name + '.json').then(r => r.json()).then(c => ({ ...c, shapes: Object.fromEntries(Object.entries(c.shapes).map(([n, v]) => [arkit(n), v])) })),
+  ]);
+  const [buffer, curves] = await clips[name];
+  for (const k in curves.shapes) keys.add(k);
+  hush();
+  // A breath in first, as anyone takes before speaking; the voice starts as it ends.
+  const src = source = new AudioBufferSourceNode(ctx, { buffer }), start = ctx.currentTime + 0.4;
+  gestureSoon = 'inhale';
+  src.connect(ctx.destination);
+  track = { ...curves, start, mood: moodOf(button.textContent) };
+  status.textContent = track.mood ? 'Mood: ' + track.mood : '';
+  button.setAttribute('aria-pressed', true); setState('speaking');
+  src.onended = () => { if (source === src) { hush(); setState('idle'); status.textContent = ''; } };
+  src.start(start);
+}
+document.getElementById('lines').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) say(b).catch(err => { console.error(err); status.textContent = 'The voice did not load.'; });
+});
+
+const pivot = new THREE.Group(); scene.add(pivot);
+const loader = new THREE.GLTFLoader(), heads = {};
+let face = null, mouth = null;
+
+// The mouth, rebuilt every frame from where the lips are: an upper and a lower line from corner to
+// corner, the lower never above the upper. Driving the lip outline itself by the morph targets lets
+// it cross over itself ("m" presses the lips past each other, "oo" pulls the corners in).
+class Mouth {
+  constructor(head, loop) {
+    this.head = head; this.loop = loop;
+    const n = loop.length, pos = new THREE.BufferAttribute(new Float32Array(n * 2 * 3), 3), fill = [], rim = [];
+    for (let i = 0; i + 1 < n; i++) {  // point i of the upper line is 2i, of the lower 2i+1
+      fill.push(2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 2, 2 * i + 1, 2 * i + 3);
+      rim.push(2 * i, 2 * i + 2, 2 * i + 1, 2 * i + 3);
+    }
+    const geo = index => { const g = new THREE.BufferGeometry(); g.setAttribute('position', pos); g.setIndex(index); return g; };
+    this.pos = pos;
+    this.fill = new THREE.Mesh(geo(fill), glow); this.rim = new THREE.LineSegments(geo(rim), glowLine);
+    for (const o of [this.fill, this.rim]) o.frustumCulled = false;
+    this.fill.renderOrder = 3; this.rim.renderOrder = 4;
+  }
+  update() {
+    const geo = this.head.geometry, base = geo.attributes.position, d = geo.morphAttributes.position, inf = this.head.morphTargetInfluences;
+    const jaw = this.head.morphTargetDictionary.jawOpen, held = [], now = [];
+    for (const v of this.loop) {  // the morph targets, applied on the CPU to these few points
+      const q = [base.getX(v), base.getY(v), base.getZ(v)], h = q.slice();  // h: all but the jaw's pull
+      inf.forEach((w, k) => {
+        if (!w) return;
+        const m = [w * d[k].getX(v), w * d[k].getY(v), w * d[k].getZ(v)];
+        for (let c = 0; c < 3; c++) { q[c] += m[c]; if (k !== jaw) h[c] += m[c]; }
+      });
+      held.push(h); now.push(q);
+    }
+    const n = now.length;
+    let a = 0, b = 0;
+    now.forEach((q, i) => { if (q[0] < now[a][0]) a = i; if (q[0] > now[b][0]) b = i; });
+    const walk = step => { const c = []; for (let i = a; ; i = (i + step + n) % n) { c.push(i); if (i === b) return c; } };
+    let upper = walk(1), lower = walk(-1);
+    const meanZ = c => c.reduce((s, i) => s + held[i][2], 0) / c.length;
+    if (meanZ(upper) > meanZ(lower)) [upper, lower] = [lower, upper];  // local z grows downward
+    // The jaw opens only the lower lip. The face's own jaw also drags the corners and the upper lip down,
+    // which reads as the top lip moving: those take every shape but the jaw (a smile, a raised lip).
+    const still = i => i === a || i === b || upper.includes(i);
+    const line = c => c.map(i => [now[i][0], ...(still(i) ? held[i] : now[i]).slice(1)]).sort((m, k) => m[0] - k[0]);
+    const up = line(upper), lo = line(lower);
+    const at = (c, x) => {  // [y, z] of a line at x
+      for (let i = 1; i < c.length; i++) if (x <= c[i][0]) {
+        const t = (x - c[i - 1][0]) / (c[i][0] - c[i - 1][0] || 1);
+        return [c[i - 1][1] + t * (c[i][1] - c[i - 1][1]), c[i - 1][2] + t * (c[i][2] - c[i - 1][2])];
+      }
+      return c[c.length - 1].slice(1);
+    };
+    const xs = [...new Set(now.map(q => q[0]))].sort((m, n) => m - n);
+    xs.forEach((x, i) => {
+      const u = at(up, x), l = at(lo, x);
+      this.pos.setXYZ(2 * i, x, u[0], u[1]);
+      this.pos.setXYZ(2 * i + 1, x, l[0], Math.max(l[1], u[1]));
+    });
+    this.pos.needsUpdate = true;
+    this.fill.geometry.setDrawRange(0, (xs.length - 1) * 6); this.rim.geometry.setDrawRange(0, (xs.length - 1) * 4);
+  }
+}
+const bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0)).buffer;
+const parse = b64 => new Promise((ok, no) => loader.parse(bytes(b64), '', ok, no));
+
+async function show(level, levels) {
+  if (!heads[level]) {
+    const root = (await parse(levels[level])).scene.children[0];
+    let head;
+    root.traverse(o => { if (o.morphTargetDictionary) head = o; });
+    // The file's default weights are a captured expression (a pout, lips pressed, a squint, eyes looking
+    // down); start from the neutral face and set only what he does.
+    head.morphTargetInfluences.fill(0);
+    const parts = creases(head.geometry, head.morphTargetDictionary.jawOpen);
+    // Frame what is drawn: the mesh's own box also holds the hidden inside of the mouth.
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3(), v = new THREE.Vector3();
+    for (const i of parts.lines.index.array) box.expandByPoint(v.fromBufferAttribute(head.geometry.attributes.position, i).applyMatrix4(head.matrixWorld));
+    root.position.sub(box.getCenter(v));
+    const shared = o => { o.morphTargetInfluences = head.morphTargetInfluences; return o; };
+    const lines = shared(new THREE.LineSegments(parts.lines, ink)), mouth = new Mouth(head, parts.lips);
+    lines.renderOrder = 2;
+    head.material = solid;
+    head.add(lines, mouth.fill, mouth.rim);
+    for (const eye of parts.eyes) {  // scaled about the eye's own centre, so a blink still closes it
+      const fill = shared(new THREE.Mesh(eye.fill, eyeGlow)), g = new THREE.Group();
+      fill.renderOrder = 3; fill.position.copy(eye.centre).negate();  // over the lid lines: a clean eye
+      // An octagon, as faceted as the head; it faces the front (local x across, z down).
+      const iris = new THREE.Mesh(new THREE.CircleGeometry(eye.size[1] * IRIS, 8), irisMat);
+      iris.rotation.x = Math.PI / 2; iris.renderOrder = 4; iris.reach = [eye.size[0] * .2, eye.size[1] * .15]; iris.rest = -eye.size[1] * RAISE;
+      irises.push(iris);
+      g.position.copy(eye.centre); g.scale.setScalar(EYE_SIZE); g.add(fill, iris);
+      head.add(g);
+    }
+    if (!size) { size = box.getSize(new THREE.Vector3()); camera.near = size.y / 100; camera.far = size.y * 20; fit(); }
+    heads[level] = { root, head, mouth };
+  }
+  pivot.clear(); pivot.add(heads[level].root); face = heads[level].head; mouth = heads[level].mouth;
+  for (const b of document.querySelectorAll('#seg button')) b.setAttribute('aria-pressed', b.dataset.level === level);
+}
+
+fetch('face.json').then(r => r.json()).then(async levels => {
+  await show('medium', levels);
+  status.textContent = '';
+  document.getElementById('seg').addEventListener('click', e => e.target.dataset.level && show(e.target.dataset.level, levels));
+
+  const set = (n, v) => {
+    const inf = face.morphTargetInfluences, idx = face.morphTargetDictionary;
+    if (n in idx) inf[idx[n]] = v; else if (n + '_L' in idx) { inf[idx[n + '_L']] = v; inf[idx[n + '_R']] = v; }
+  };
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Critically damped springs: ease in and out, never overshoot, the same at any frame rate.
+  const springs = W => {
+    const cur = {}, vel = {};
+    const step = (k, target, dt) => {
+      const d = (cur[k] || 0) - target, tmp = ((vel[k] || 0) + W * d) * dt, e = Math.exp(-W * dt);
+      vel[k] = ((vel[k] || 0) - W * tmp) * e; cur[k] = target + (d + tmp) * e;
+      return cur[k];
+    };
+    return Object.assign(step, { cur, W });
+  };
+  const lip = springs(40);  // stiff: the curves are smooth already, and a softer spring flattens quick syllables
+  const mood = springs(6);  // an expression comes on over about half a second
+  const neck = springs(4.5);  // the head, heavier: slower than the face
+  const saccade = springs(55);  // the eyes: a jump takes about 80 ms
+  const smooth = x => x * x * (3 - 2 * x);
+  // A gesture's pose l seconds in: between the poses either side, eased; nothing before or after it.
+  const pose = (frames, l) => {
+    const i = frames.findIndex(([at]) => at > l);
+    if (i < 1) return {};
+    const [t0, a] = frames[i - 1], [t1, b] = frames[i], s = smooth((l - t0) / (t1 - t0)), out = {};
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) out[k] = (a[k] ?? 0) + ((b[k] ?? 0) - (a[k] ?? 0)) * s;
+    return out;
+  };
+  // Smooth random drift, about -1 to 1, each channel its own: random points joined by a Catmull-Rom curve
+  // (no corners, no stops), two speeds on top of each other, so it never repeats the way a sine does.
+  const rand = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return (x - Math.floor(x)) * 2 - 1; };
+  const curve = (ch, x) => {
+    const i = Math.floor(x), f = x - i, p = k => rand(i + k + ch * 1013), a = p(-1), b = p(0), c = p(1), d = p(2);
+    return b + .5 * f * (c - a + f * (2 * a - 5 * b + 4 * c - d + f * (3 * (b - c) + d - a)));
+  };
+  const drift = (ch, t, hz) => (curve(ch, t * hz) + .4 * curve(ch + 500, t * hz * 2.7)) / 1.4;
+  const rnd = () => Math.random() * 2 - 1;
+  const FOLLOW = .3;  // of a look, how much the head turns; the eyes do the rest
+  const EYE_RANGE = .5;  // radians of look at the iris's full reach
+  const BLINK_GAP = { idle: [1.2, 2.8], listening: [2, 3.5], thinking: [1, 2.5], speaking: [1.4, 2.6] };  // s: the least, then a random extra (average)
+  let blinkAt = 1.5, depth = 1, again = false, aim = [0, 0], aimAt = 0, seen = null, nodAt = 0, breath = 0, quiet = 0, paused = false;
+  let gesture = [], gestureAt = 0;
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime, live = still ? 0 : 1;
+    if (gestureSoon) { gesture = GESTURES[gestureSoon]; gestureAt = t; gestureSoon = null; }
+    // The frame being heard now: the audio clock less the speakers' delay, plus the spring's own lag
+    // (2/W for a critically damped spring), so the mouth lands on time.
+    const at = track ? (ctx.currentTime - (ctx.outputLatency || 0) - track.start + 2 / lip.W) * track.fps : -1;
+    const play = c => { if (!(at >= 0 && c)) return 0; const i = Math.min(Math.floor(at), c.length - 1); return c[i] + ((c[i + 1] ?? c[i]) - c[i]) * Math.min(at - i, 1); };
+    const now = STATES[state], brow = play(track?.emphasis?.brow), nod = play(track?.emphasis?.nod);
+    const feel = (state === 'speaking' && MOODS[track?.mood]) || NEUTRAL;
+    const jaw = play(track?.shapes.jawOpen), talk = neck('talk', Math.min(1, jaw * 4), dt);  // how much he is talking, smoothed
+    if (state !== seen) {  // a new state: look anew; starting to speak, he often looks away first
+      seen = state; aimAt = 0; nodAt = t + 1 + Math.random() * 2; paused = true;  // a pause counts once he has spoken
+      if (state === 'speaking' && Math.random() < .6) { aim = [Math.sign(rnd()) * (.15 + Math.random() * .12), rnd() * .1]; aimAt = t + .5 + Math.random() * .5; }
+    }
+    // Listening, he nods now and then, once or twice.
+    if (live && state === 'listening' && t > nodAt && t - gestureAt > (gesture.at(-1)?.[0] ?? 0)) {
+      gesture = Math.random() < .5 ? GESTURES.nod : GESTURES.nod2; gestureAt = t; nodAt = t + 3 + Math.random() * 4;
+    }
+    const gp = pose(gesture, t - gestureAt);
+    // Never quite still: brows and mouth corners drift a little, each side its own way, livelier as he talks.
+    const wobble = {
+      browInnerUp: .03 * (1 + drift(10, t, .2)) + talk * .06 * (1 + drift(15, t, .9)),
+      browOuterUp_L: .025 * (1 + drift(13, t, .17)), browOuterUp_R: .025 * (1 + drift(14, t, .17)),
+      mouthSmile_L: .02 * (1 + drift(11, t, .15)), mouthSmile_R: .02 * (1 + drift(12, t, .15)),
+    };
+    for (const k of keys) {
+      const v = Math.max(play(track?.shapes[k]), REST[k] ?? 0) + mood(k, (now.face[k] ?? 0) + (feel.face[k] ?? 0), dt)
+        + brow * (BROW[k] ?? 0) + (gp[k] ?? 0) + live * (wobble[k] ?? 0);
+      set(k, lip(k, Math.min(v, 1), dt));
+    }
+
+    // Where he looks, in radians right and up (0: at you). He holds a look a moment, then moves on:
+    // idle, about the room; listening, about your face (an eye, the other, your mouth); speaking, mostly
+    // at you, now and then off to the side; thinking, up and aside. Big shifts often come with a blink.
+    if (live && t > aimAt) {
+      const away = state === 'speaking' && Math.random() < .25;
+      const next = state === 'thinking' ? [.38 + rnd() * .06, .26 + rnd() * .05]
+        : state === 'idle' ? (Math.random() < .3 ? [0, 0] : [rnd() * .3, rnd() * .12])
+        : away ? [Math.sign(rnd()) * (.15 + Math.random() * .1), rnd() * .08]
+        : [rnd() * .04, -Math.random() * .04];
+      if (Math.hypot(next[0] - aim[0], next[1] - aim[1]) > .2 && Math.random() < .4) blinkSoon = true;
+      aim = next;
+      aimAt = t + ({ thinking: .7 + Math.random() * 1.5, idle: 1 + Math.random() * 3, listening: .4 + Math.random() * 1.2 }[state]
+        ?? (away ? .4 + Math.random() * .4 : .6 + Math.random() * 1.6));
+    }
+    if (!live) aim = state === 'thinking' ? [.38, .26] : [0, 0];
+    const eye = [saccade('x', aim[0], dt), saccade('y', aim[1], dt)];  // the eyes jump; the head follows, slower
+
+    // The head: its pose for the state and mood, turned part way toward the look, drifting slowly, and
+    // livelier while he talks; a breath every 3.5 to 5 s (between phrases while speaking).
+    const pose3 = now.head.map((v, i) => v + feel.head[i]);
+    const down = neck('down', pose3[0] - aim[1] * FOLLOW, dt), turn = neck('turn', pose3[1] + aim[0] * FOLLOW, dt), tilt = neck('tilt', pose3[2], dt);
+    const sway = neck('sway', now.sway, dt) * live, lively = talk * live;
+    breath += dt * Math.PI * 2 / (4.2 + .8 * drift(7, t, .07));
+    const br = Math.sin(breath) * live * (1 - .7 * talk);
+    pivot.rotation.y = turn + sway * .05 * drift(1, t, .13) + lively * .04 * drift(4, t, .55);
+    pivot.rotation.x = down + sway * .025 * drift(2, t, .11) + lively * .025 * drift(5, t, .6) + br * .004
+      + live * ((lip.cur.jawOpen || 0) * .02 + nod * NOD) + (gp.down ?? 0);
+    pivot.rotation.z = tilt + sway * .02 * drift(3, t, .09) + lively * .02 * drift(6, t, .5) + (gp.tilt ?? 0);
+    pivot.position.y = br * size.y * .002;
+    // The eyes hold their target while the head moves: the look less where the head points.
+    const ex = Math.max(-1, Math.min(1, (eye[0] - pivot.rotation.y) / EYE_RANGE));
+    const ey = Math.max(-1, Math.min(1, (eye[1] + pivot.rotation.x) / EYE_RANGE));
+    for (const p of irises) { p.visible = irisOn; p.position.set(ex * p.reach[0], 0, p.rest - ey * p.reach[1]); }
+
+    // Blinks: a quick close and a slower open, about a quarter second, at random gaps (shorter as he
+    // talks, longer as he listens), now and then twice or not all the way; also at pauses in his speech,
+    // with big shifts of gaze and as his attention moves.
+    quiet = jaw < .06 ? quiet + dt : 0;
+    if (state === 'speaking' && quiet > .18 && !paused) { paused = true; if (Math.random() < .35) blinkSoon = true; }
+    if (!quiet) paused = false;
+    let b = t - blinkAt;
+    if (blinkSoon && b < 0) { blinkAt = t; b = 0; }
+    blinkSoon = false;
+    if (b > .27) {
+      const [least, extra] = BLINK_GAP[state];
+      blinkAt = again ? t + .08 : t + least - Math.log(1 - Math.random()) * extra;
+      again = !again && Math.random() < .12; depth = Math.random() < .2 ? .7 : 1;
+      b = t - blinkAt;
+    }
+    const shut = b < 0 ? 0 : depth * (b < .075 ? smooth(b / .075) : b < .1 ? 1 : 1 - smooth((b - .1) / .17));
+    // The lids ride with the eyes: lower looking down, higher looking up. A sigh lowers them too.
+    set('eyeBlink', Math.max(shut, gp.eyeBlink_L ?? 0, irisOn ? Math.max(0, LID - ey * .15) : 0));
+    mouth.update();
+    renderer.render(scene, camera);
+  });
+}).catch(e => { console.error(e); status.textContent = 'The face did not load.'; });
+}
+</script>

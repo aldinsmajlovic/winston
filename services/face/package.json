@@ -1,0 +1,12 @@
+{
+  "name": "winston-face",
+  "private": true,
+  "type": "module",
+  "description": "Bakes the face page's low-poly heads (head.mjs)",
+  "dependencies": {
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@gltf-transform/functions": "^4.5.1",
+    "meshoptimizer": "^0.22.0"
+  }
+}

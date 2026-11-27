@@ -38,7 +38,7 @@ links to it.
 | `docs/ui-guide.md` | How the web UI looks and reads: its rules, words and templates |
 | `docs/identity.md` | His name, his personality and his logo |
 | `docs/hardware.md` | Profiles, GPUs, and what each pick needs |
-| `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md`, `docs/lockdown.md` | Their one subject |
+| `docs/voices.md`, `docs/voice-pe.md`, `docs/rooms.md`, `docs/lockdown.md`, `docs/face.md` | Their one subject |
 | `docs/voice-benchmarks.md` | A dated record of the voice and hearing benchmarks |
 | `docs/understanding.md` | How he hears, decides he is spoken to, and knows what a name means |
 | `docs/tools.md` | Winston's own tools, their keys and limits, memory |
