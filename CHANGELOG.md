@@ -3,6 +3,19 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.24 (unreleased)
+
+- Check on the Brain page asks his brain one tiny question with your key and model, and says whether it
+  works and how fast it answered, or why not: the key refused, credit run out, a model the provider does
+  not have.
+- A hosted brain that refuses no longer reads Running: a refused key, credit run out or a missing model
+  shows on Brain and Status with the reason, from the first conversation or warm-up that meets it, until
+  one works again. Its Log lists each check, failure and recovery, and voice and the room boxes still
+  start while it refuses.
+- The Breeze and Pocket voice presets start in Winston's own voice, which now comes with Winston, so
+  older installs can pick it too.
+- History says nothing is recorded yet when recordings are on and none have been kept.
+
 ## 0.1.23 (2026-11-27)
 
 - Lockdown, for evenings when people you do not trust are over: say "lock down", or turn it on from
