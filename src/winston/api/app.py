@@ -27,6 +27,7 @@ from starlette.routing import Route as StarletteRoute
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model, field_validator
 
 from winston import __version__, setup as releases
+from winston.api.lockdown import router as lockdown_router
 from winston.api import room_box as usb_box, secrets, setup_link, updates
 from winston.providers import ha_signin, improv
 from winston.api.options import PROVIDERS as OPTION_NAMES, HomeAssistantCheck, Options, check_home_assistant, options
@@ -788,7 +789,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
         where = {"web": "on the Talk page", "voice": "on the Talk page", "satellite": "on a room box",
                  "discord": "on Discord", "text": "in a terminal",
                  "assist": "through Home Assistant"}.get(p.channel, "here")
-        spawn(to_phone(f"{p.label}? Asked for {where}.", f"confirm-{p.id}",
+        spawn(to_phone(f"{p.label}? Asked {where}.", f"confirm-{p.id}",
                        [{"action": f"WINSTON_CONFIRM_{p.id}", "title": "Confirm"},
                         {"action": f"WINSTON_DECLINE_{p.id}", "title": "Decline"}]))
     extensions.on_pending = confirm_on_phone
@@ -854,6 +855,7 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
     app.state.extensions = extensions
     app.state.opened_for_setup = False     # `winston up` listened on the network only for setup mode
     app.include_router(extensions_router(extensions, extension_services))
+    app.include_router(lockdown_router(app))
     # The tools you offer, for Claude Code and other MCP clients, at exactly /mcp (a mount would want /mcp/).
     app.router.routes.append(StarletteRoute("/mcp", endpoint=mcp_app))
     schema = WinstonConfig.model_json_schema()

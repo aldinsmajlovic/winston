@@ -55,12 +55,13 @@ class LiveEvent(BaseModel):
     saved"): the next line starts a new typed conversation (channels/web.py). One you start is its start_over
     tool line.
     level: room, loudness (0 to 1): how loud his voice is as it plays, every 50 ms while he speaks. Streamed, never
-    kept in the history."""
+    kept in the history.
+    lockdown: text ("on" or "off"), name (who changed it)."""
     id: str = ""
     ts: float = 0
     channel: str
     type: Literal["state", "user", "reply", "reply_end", "tool", "announcement", "error", "mic", "confirm", "nudge",
-                  "turn", "conversation", "level"]
+                  "turn", "conversation", "level", "lockdown"]
     state: State | None = None
     text: str | None = None
     reply: str | None = None

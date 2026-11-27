@@ -99,10 +99,11 @@ class Pending:
     """A restricted call waiting for you to confirm it outside the voice."""
 
     def __init__(self, ext_id: str, tool: str, args: dict[str, Any], label: str, channel: str,
-                 nudge: str | None = None):
+                 nudge: str | None = None, run: Callable[[], Awaitable[dict[str, Any]]] | None = None):
         self.id = pysecrets.token_hex(6)
         self.ext_id, self.tool, self.args, self.label, self.channel = ext_id, tool, args, label, channel
         self.nudge = nudge                              # an action on this nudge rather than a tool
+        self.run = run                                  # or its own way to run, once confirmed (lockdown)
         self.created = time.time()
         self.state = "waiting"
         self.outcome: str | None = None
@@ -522,7 +523,8 @@ class Host:
                             "parameters": self._resolve_parameters(ext_id, t["input_schema"]),
                             "tier": (choice.tier if choice and choice.tier else t["tier"]),
                             "outside": t["outside"], "filler": t.get("filler"), "filler_after": t.get("filler_after", 1),
-                            "timeout": t.get("timeout", 10), "shortcut_only": t.get("shortcut_only", False)})
+                            "timeout": t.get("timeout", 10), "shortcut_only": t.get("shortcut_only", False),
+                            "private": bool((manifest.get("permissions") or {}).get("memory"))})
         return out
 
     def offered_tools(self) -> list[dict[str, Any]]:
@@ -551,7 +553,7 @@ class Host:
             return {"ok": False, "error": f"{name} has no tool {tool}."}
         if channel is not None and not confirmed and self.tier(ext_id, tool) == "restricted":
             p = Pending(ext_id, tool, args, f"{name}: {spec['description'].rstrip('.')}", channel)
-            self._add_pending(p)
+            self.add_pending(p)
             return {"ok": False, "waiting": True,
                     "error": f"{p.label} needs your confirmation first, on the Talk page, within five minutes. "
                              "Nothing has happened yet."}
@@ -587,7 +589,7 @@ class Host:
             result = whole[:RESULT_MAX] + f" [cut: {len(whole) - RESULT_MAX} more characters]"
         return {"ok": True, "result": result}
 
-    def _add_pending(self, p: Pending) -> None:
+    def add_pending(self, p: Pending) -> None:
         self.pending[p.id] = p
         self._feed_confirm(p)
         if self.on_pending is not None:
@@ -618,7 +620,9 @@ class Host:
         if not approve:
             p.state, p.outcome = "declined", "Declined; nothing happened."
         else:
-            if p.nudge is not None:
+            if p.run is not None:
+                r = await p.run()
+            elif p.nudge is not None:
                 r = await self._confirmed_action(p)
             else:
                 r = await self.call_tool(p.ext_id, p.tool, p.args, channel=None, confirmed=True)
@@ -632,7 +636,7 @@ class Host:
         """A restricted nudge action asked for in a conversation: it waits for you, as a restricted tool does."""
         name = self.described.get(rec["ext"], {}).get("manifest", {}).get("name", rec["ext"])
         p = Pending(rec["ext"], act["name"], {}, f"{name}: {act['title']}", channel, nudge=rec["id"])
-        self._add_pending(p)
+        self.add_pending(p)
         return {"waiting": True, "note": f"{p.label} needs your confirmation first, on the Talk page, within five "
                                          "minutes. Nothing has happened yet."}
 
