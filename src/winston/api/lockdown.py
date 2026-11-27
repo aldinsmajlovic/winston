@@ -8,8 +8,16 @@ from pydantic import BaseModel
 
 from winston.core import lockdown
 from winston.core.live import LiveEvent
-from winston.extension_host.host import Pending
+from winston.extension_host.host import Pending, in_words
 from winston.providers.home_assistant import HomeAssistant
+
+
+def label(what: str, args: dict) -> str:
+    """The phone's question, "Lockdown: Turn on: Kitchen light": what will run and what it was given, cut to
+    fit a notification (the arguments are a guest's words)."""
+    given = ", ".join(map(str, args.values()))
+    text = f"Lockdown: {what}: {given}" if given else f"Lockdown: {what}"
+    return text if len(text) <= 150 else text[:149] + "…"
 
 
 class LockdownState(BaseModel):
@@ -85,7 +93,7 @@ def router(app: FastAPI) -> APIRouter:
     async def hold(body: Hold):
         name, args = body.name, body.args
         if (t := host.find_tool(name)) is not None:
-            label, ext, tool = f"Lockdown: {t['title']}: {t['tool_title']}", t["extension"], t["tool"]
+            what, ext, tool = f"{t['title']}: {t['tool_title']}", t["extension"], t["tool"]
 
             async def run():
                 return await host.call_tool(ext, tool, args, confirmed=True)
@@ -97,11 +105,12 @@ def router(app: FastAPI) -> APIRouter:
                 row = None
             if row is None:
                 return Held(error=lockdown.UNAVAILABLE)
-            label, ext, tool = f"Lockdown: {row.label}: {', '.join(map(str, args.values()))}", "home_assistant", name
+            # Its own name, not its row's label: HassTurnOn and HassTurnOff share "Turn things on and off".
+            what, ext, tool = in_words(name.split("__")[-1].removeprefix("Hass")), "home_assistant", name
 
             async def run():
                 text = await ha.call_tool(name, args)
                 return {"ok": False, "error": text} if text.startswith("Error") else {"ok": True, "result": text}
-        host.add_pending(Pending(ext, tool, args, label, body.channel, run=run))
+        host.add_pending(Pending(ext, tool, args, label(what, args), body.channel, run=run))
         return Held(waiting=True, note=lockdown.WAITING)
     return r

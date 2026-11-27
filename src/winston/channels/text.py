@@ -122,7 +122,8 @@ class TextSession:
         self.brain.verifier.channel = self.channel          # its log says web or discord, not text
         for schema, handler in self._tools:
             self.brain.add_tool(schema, handler)
-        agg = LLMContextAggregatorPair(self.brain.new_context())
+        self.context = self.brain.new_context()
+        agg = LLMContextAggregatorPair(self.context)
         self._tracker = TurnTracker(); self.printer = Printer(self._tracker, self.echo)
         before, after = ([self.room.before], [self.room.after]) if self.room else ([], [])
         self._worker = PipelineWorker(Pipeline([agg.user(), Clock(self.area, cfg), *([Mentions(cfg)] if self.mentions else []), *before, self.brain.llm, ReplyFilter(),
@@ -184,7 +185,10 @@ class TextSession:
 
     async def noted(self, house_note: str, said: str):
         """Something he said on his own (an announcement, a nudge) joins the conversation: the house's
-        note, then his words."""
+        note, then his words. Not a guarded one while locked down (core/lockdown): what he said before
+        it came on, or to the household, is not the guests' to hear about."""
+        if self.brain.locked:
+            return
         async with self._lock:
             self.last_used = time.monotonic()
             await self._worker.queue_frames([LLMMessagesAppendFrame(messages=[

@@ -158,8 +158,9 @@ guarded for everyone in it.
   settings save and restart channels. Every process reads it, so the voice subprocess needs no new
   connection to know.
 - **Turning it on starts every guarded conversation afresh**: nothing said before carries into the
-  guests' evening. **Turning it off** starts them afresh too (memory comes back), and what was said
-  carries over, as when extensions change (`docs/extensions.md`).
+  guests' evening. **Turning it off** starts them afresh too (memory comes back), and every room's
+  conversation with them: what the guests said does not carry into conversations that have memory
+  again. (Amended at the final review; the first draft carried what was said over.)
 - **His reply while waiting** reuses the restricted wording: "needs your confirmation first, on your
   phone, within five minutes. Nothing has happened yet." He does not name you or say why.
 - **The notification says it is lockdown**: "Lockdown: Turn on the Kitchen light? Asked on a room

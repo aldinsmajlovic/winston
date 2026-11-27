@@ -154,8 +154,9 @@ def status():
     for x in s.get("extensions", []):
         icon = {"running": "●", "starting": "◐", "restarting": "◑", "failed": "✕"}.get(x["state"], "○")
         print(f"  {icon} {x['id']:<8} {x['state']:<10} extension  {x['detail']}")
-    if (lock := _ok(_call("GET", "/api/lockdown")))["on"]:
-        print(f"  ▲ {_lockdown_line(lock)}")
+    lock = _call("GET", "/api/lockdown")         # a winstond from before lockdown has none: nothing to say
+    if lock.status_code == 200 and lock.json()["on"]:
+        print(f"  ▲ {_lockdown_line(lock.json())}")
 
 
 def _lockdown_line(s: dict) -> str:

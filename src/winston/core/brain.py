@@ -483,8 +483,7 @@ class WinstonLLM(OpenAILLMService):
                     self._failed[key] = str((result.get("error") or result) if isinstance(result, dict) else result)[:300]
                 await done(result, *args, **kwargs)
             params.result_callback = noted
-            if self.guarded and name not in lockdown.PASS and (
-                    not guard.only_looks(name) or name in guard.PRIVATE) and lockdown.on():
+            if self._held(name):
                 await noted(await self._hold(name, params.arguments))      # never run from here
                 return
             if guard.tool_tier(name) == guard.READ:
@@ -498,6 +497,12 @@ class WinstonLLM(OpenAILLMService):
                 raise
         no_repeat._no_repeat = True
         return no_repeat
+
+    def _held(self, name: str) -> bool:
+        """Locked down, whether a guarded conversation's call of name waits for the owner's phone: an action, or a
+        read that may reach his private things; not lockdown.PASS."""
+        return self.guarded and name not in lockdown.PASS and (
+            not guard.only_looks(name) or name in guard.PRIVATE) and lockdown.on()
 
     async def _hold(self, name: str, args) -> dict:
         """Locked down, a guarded conversation's action (or private read) is winstond's to hold for the owner's
@@ -537,13 +542,14 @@ class WinstonLLM(OpenAILLMService):
         if said and not acted(messages) and (short := next(
                 (o for o in self._own if o.tool and o.names & name_forms(only_name(said, self._assistant))), None)):
             self._think, self._line_for = False, said
-            if short.line:
+            if short.line and not self._held(short.tool):     # held, it has not happened: no "Movie night it is."
                 await self.push_frame(TTSSpeakFrame(short.line, append_to_context=False))
             logger.info(f"shortcut: {said!r} runs {short.tool}")
             return _calling(short.tool, short.args)
         if self._think and said != self._line_for:
             self._line_for = said
-            line = own.line if own else None
+            # Not its own line ("Movie night it is.") when what it names will wait for the phone (core/lockdown).
+            line = own.line if own and not (self.guarded and lockdown.on()) else None
             if line is None:
                 self._lines += 1
                 line = HOME_LINES[(self._lines - 1) % len(HOME_LINES)]
@@ -666,15 +672,16 @@ class Brain:
             self._scope_by_name()
             logger.info(f"Home Assistant MCP: {len(self.tools.standard_tools)} tools in "
                         f"{(time.perf_counter() - t0) * 1000:.0f} ms")
+        extension_names = await extension_tools.register(self, self.channel)
+        # His own after Home Assistant's and the extensions', so each replaces an outside tool of its name (add_tool).
         for local in (*make_memory_tools(self.cfg), make_send_message_tool(self.cfg), make_start_over_tool(),
                       make_diary_tool(self.cfg), make_lockdown_tool(self.cfg, self.place)):
             if local:
-                schema, handler = local
-                self.llm.register_function(schema.name, handler)
-                self.tools.standard_tools.append(schema)
+                self.add_tool(*local)
         if self.channel != "voice":                 # the voice channel adds the real one
             self.add_tool(*make_clone_hint_tool())
-        extension_names = await extension_tools.register(self, self.channel)
+        # Offered with the extension tools last, as they change and his own do not (a stable sort).
+        self.tools.standard_tools.sort(key=lambda t: t.name in extension_names)
         if isinstance(self.llm, WinstonLLM):     # with the shortcut-only tools the model is not offered
             self.llm.bind([t.name for t in self.tools.standard_tools] + extension_names)
         logger.info(f"tools: {[t.name for t in self.tools.standard_tools]}")
@@ -710,7 +717,13 @@ class Brain:
         return handler
 
     def add_tool(self, schema, handler):
-        """A channel's own tool, registered before the first new_context()."""
+        """A tool, registered before the first new_context(). It replaces one already there of its name, which
+        came from outside (his own come last: start, then the channel's): two tools of one name make Claude's
+        API refuse every request, and a Home Assistant script named lockdown would pass the lockdown gate."""
+        if any(t.name == schema.name for t in self.tools.standard_tools):
+            logger.warning(f"tool {schema.name}: a Home Assistant script or extension tool of the same name is not "
+                           f"offered; rename it")
+            self.tools.standard_tools[:] = [t for t in self.tools.standard_tools if t.name != schema.name]
         self.llm.register_function(schema.name, handler)
         self.tools.standard_tools.append(schema)
 

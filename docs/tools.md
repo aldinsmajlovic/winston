@@ -36,6 +36,8 @@ on ([extensions](extensions.md); web search, Ask Claude and watched sensors are
   voice.
 - **A conversation that outgrows the model's context** starts afresh from your newest request, with a
   line saying so, instead of falling silent.
+- **His tools' names are his.** A Home Assistant script or an extension's tool named like one of his
+  own (`lockdown`, `remember`, `start_over`) is not offered, and the log names it: rename it.
 - **Every call is logged** to `data/logs/tool_calls.jsonl`.
 
 ## Without Home Assistant

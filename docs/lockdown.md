@@ -27,7 +27,8 @@ In a guarded conversation (below), while it is on:
   may read his memory waits for your phone like an action.
 - **His own tools that change your data or reach people are refused**: `remember`, `forget`,
   `send_message`, `clone_voice`, `use_voice`, `follow_up` and `get_diary` answer "Not available right
-  now. Nothing has happened." `start_over`, `mark_mistake` and `lockdown` run.
+  now. Nothing has happened." `start_over`, `mark_mistake` and `lockdown` run. A Home Assistant script
+  or extension tool named like one of his own is not offered, and the log names it: rename it.
 - **He volunteers nothing.** A message he would say on the speakers goes to your phone instead, and
   what he would mention in the next conversation waits until lockdown is off.
 - **Only his computer opens these pages.** Any other device, a wall panel included, gets "Winston is
@@ -60,7 +61,8 @@ in it.
 
 Turning lockdown on or off starts every room's conversation afresh and restarts the Talk page
 microphone, so nothing said before carries into the guests' evening, and his memory is back the
-moment it is off.
+moment it is off. While it is on, a guarded conversation gets none of what he said on his own, an
+announcement or a nudge from before included.
 
 ## Turning it on and off
 
@@ -68,7 +70,7 @@ Anyone can turn it on; only you can turn it off.
 
 | From | On | Off |
 | --- | --- | --- |
-| By voice ("lock down", "lockdown off") | At once | Asks your phone: "Lockdown: turn off? Asked on a room box." Until you confirm, it stays on |
+| By asking him ("lock down", "lockdown off"): at a box, on the Talk page, on Discord or in `winston talk` | At once | Asks your phone: "Lockdown: turn off? Asked on a room box." Until you confirm, it stays on |
 | Turn on and Turn off, on the Lockdown card on Status | At once | At once |
 | `winston lockdown on`, `winston lockdown off` | At once | At once |
 
@@ -83,11 +85,15 @@ uv run winston lockdown off
 ## The phone notification
 
 Each held action reaches the phone picked as Your phone on [Speaking up](speaking-up.md), through the
-Home Assistant companion app, with Confirm and Decline: "Lockdown: Turn things on and off: Kitchen
-light? Asked on a room box." The word Lockdown tells you why your phone buzzed for a lamp.
+Home Assistant companion app, with Confirm and Decline: "Lockdown: Turn on: Kitchen light? Asked on
+a room box." It names what will run and what it was given, cut to 150 characters; an extension's
+action goes by the extension and the action ("Lockdown: Desk: Open: example.com?" for a computer
+named Desk). The word Lockdown tells you why your phone buzzed for a lamp.
 
 With no phone picked, or Home Assistant out of reach, nothing arrives. Turn it off at his computer
-(`winston lockdown off`, or the card on Status) and confirm what waits on the Talk page there.
+(`winston lockdown off`, or the card on Status) and confirm what waits on the Talk page there. If even
+the CLI is locked out (for example `control.host` set to a name that resolves to 127.0.1.1), delete
+`data/lockdown.json` on the machine.
 
 ## What it does not protect
 

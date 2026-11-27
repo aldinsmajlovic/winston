@@ -44,6 +44,66 @@ expect("an open window ends at end", L.windows(0, 5e9)[-1][1] == 5e9)
 L.turn_off("cli")
 
 
+async def shortcut_lines() -> list:
+    """What a guarded box says and calls, locked down and not, for a shortcut and for a request naming a script
+    with its own line (the model's answer stubbed out)."""
+    from pipecat.processors.aggregators.llm_context import LLMContext
+    from winston.config.schema import WinstonConfig
+    from winston.core.brain import build_llm
+    c = WinstonConfig.model_validate({"llm": {"model": "x"}, "providers": {"home_assistant": {
+        "url": "http://ha.invalid:8123",
+        "expose": {"script.party": {"aliases": ["party time"], "say_first": "Party it is.", "shortcut": True},
+                   "script.movie_night": {"aliases": ["movie night"], "say_first": "Movie night it is."}}}}})
+    llm, said, out = build_llm(c, "satellite"), [], []
+    llm.guarded = True
+
+    async def keep(frame, direction=None):
+        said.append(getattr(frame, "text", None))
+
+    async def nothing(self, context):
+        async def none():
+            return
+            yield
+        return none()
+    llm.push_frame = keep
+    llm.bind(["script__party", "script__movie_night"])
+    parent = type(llm).__mro__[1]
+    real, parent.get_chat_completions = parent.get_chat_completions, nothing
+    try:
+        for lock in (True, False):
+            (L.turn_on if lock else L.turn_off)("cli")
+            for asked in ("party time", "movie night"):
+                said.clear()
+                stream = await llm.get_chat_completions(LLMContext([{"role": "user", "content": f"[21:00] {asked}"}]))
+                out.append(([x.choices[0].delta.tool_calls[0].function.name async for x in stream], said[:]))
+    finally:
+        parent.get_chat_completions = real
+    return out
+
+
+import contextlib  # noqa: E402
+import io  # noqa: E402
+
+import httpx  # noqa: E402
+from winston.cli import main as cli  # noqa: E402
+
+
+def winstond_without_lockdown(method, path, **kw):
+    return httpx.Response(200, json={"engines": []}) if path == "/api/status" else \
+        httpx.Response(404, json={"detail": "Not Found"})
+
+
+cli._call, out = winstond_without_lockdown, io.StringIO()
+try:
+    with contextlib.redirect_stdout(out):
+        cli.status()
+    exited = None
+except Exception as e:                                                  # noqa: BLE001  (typer.Exit)
+    exited = e
+expect("winston status against a winstond from before lockdown says nothing about it",
+       exited is None and "Not Found" not in out.getvalue(), (exited, out.getvalue()))
+
+
 def req(client, host, listening="127.0.0.1"):
     return SimpleNamespace(client=SimpleNamespace(host=client), headers={"host": host},
                            scope={"server": (listening, 8700)})
@@ -108,15 +168,29 @@ async def winstond():
                    and cs[0]["label"].startswith("Lockdown: ") and sent[0]["message"].startswith("Lockdown: ")
                    and sent[0]["message"].endswith("Asked on a room box.")
                    and not any(w["type"] == "mcp/intent__HassTurnOn" for w in fake.writes), (r, cs, sent))
+            expect("its label says what will run, and on what", "Turn on: Taklampa" in cs[0]["label"], cs[0]["label"])
             c = (await api.post(f"/api/confirmations/{cs[0]['id']}", json={"approve": True})).json()
             expect("approved, it runs", c["state"] == "ok" and any(
                 w["type"] == "mcp/intent__HassTurnOn" for w in fake.writes), c)
 
+            async def held_label(name, args):
+                """The label of a call held and declined at once."""
+                await api.post("/api/lockdown/hold", json={"name": name, "args": args, "channel": "voice"})
+                c = (await confirmations(True))[0]
+                await api.post(f"/api/confirmations/{c['id']}", json={"approve": False})
+                return c["label"]
+            off = await held_label("intent__HassTurnOff", {"name": "Taklampa"})
+            expect("turning off reads differently from turning on", "Turn off: Taklampa" in off, off)
+            long = await held_label("friend_note", {"text": "x" * 1000})
+            expect("a long argument is cut, the label kept short", long.startswith("Lockdown: Friend: ")
+                   and "xxx" in long and len(long) <= 150, long)
+
             note = {"name": "friend_note", "channel": "voice", "args": {"text": "The hold test passed."}}
             r = (await api.post("/api/lockdown/hold", json=note)).json()
             cs = await confirmations(True)
-            expect("an extension's act tool waits", r["waiting"] and len(cs) == 1
-                   and cs[0]["label"].startswith("Lockdown: Friend: "), (r, cs))
+            expect("an extension's act tool waits, its label with what it was given", r["waiting"] and len(cs) == 1
+                   and cs[0]["label"].startswith("Lockdown: Friend: ")
+                   and cs[0]["label"].endswith("The hold test passed."), (r, cs))
             c = (await api.post(f"/api/confirmations/{cs[0]['id']}", json={"approve": True})).json()
             expect("and runs once approved, its result the outcome",
                    c["state"] == "ok" and "Remembered" in c["outcome"], c)
@@ -258,6 +332,11 @@ async def winstond():
             def acted(since):
                 return [w for w in fake.writes[since:] if w["type"].startswith("mcp/")]
 
+            lines = await shortcut_lines()
+            expect("locked down, a box's shortcut is called without its own line, and a script named says One moment; "
+                   "not locked, each says its own", lines == [(["script__party"], []), ([], ["One moment."]),
+                                                              (["script__party"], ["Party it is."]),
+                                                              ([], ["Movie night it is."])], lines)
             turn_on = {"name": "Taklampa"}
             await api.post("/api/lockdown", json={"on": True})
             box = await brain("satellite")
@@ -288,6 +367,14 @@ async def winstond():
             r = await call(dm, "HassTurnOn", turn_on)
             expect("locked down, a Discord DM outside a room has memory and acts at once",
                    fact in dm.llm._settings.system_instruction and acted(writes), (r, acted(writes)))
+            in_room = Brain(app.state.cfg.model_copy(deep=True), channel="text", place="discord", in_room=True)
+            await in_room.start()
+            before, writes = len(await confirmations()), len(fake.writes)
+            r = await call(in_room, "HassTurnOn", turn_on)
+            expect("locked down, Discord after /room is guarded: its action is held and it has no memory",
+                   r == {"waiting": True, "note": L.WAITING} and len(await confirmations()) == before + 1
+                   and not acted(writes) and fact not in in_room.llm._settings.system_instruction, r)
+            await in_room.close()
 
             await api.post("/api/lockdown", json={"on": False})
             late = await brain("satellite")
@@ -312,6 +399,49 @@ async def winstond():
             await api.post("/api/lockdown", json={"on": False})
             r = await call(box, "lockdown", {"on": True})
             expect("lockdown on from a box is at once", r == {"locked_down": True} and L.on(), r)
+            await api.post("/api/lockdown", json={"on": False})
+            r = await call(box, "lockdown", {"on": 1})
+            expect("on given as 1 is on", r == {"locked_down": True} and L.on(), r)
+            try:
+                r = await call(box, "lockdown", ["on"])
+            except Exception as e:                                      # noqa: BLE001
+                r = e
+            expect("arguments that are not an object read as off, which waits", r == {"waiting": True, "note": L.WAITING}
+                   and L.on(), r)
+
+            # A Home Assistant script named as one of his own tools is not offered; his own is.
+            import fake_ha
+            fake_ha.TOOLS_ALWAYS += [("lockdown", "A script."), ("start_over", "A script.")]
+            clash = await brain("satellite")
+            del fake_ha.TOOLS_ALWAYS[-2:]
+            names = [t.name for t in clash.tools.standard_tools]
+            writes = len(fake.writes)
+            r = await call(clash, "lockdown", {"on": True})
+            expect("an outside tool with his own tool's name is left out; his own is offered once, and runs",
+                   names.count("lockdown") == names.count("start_over") == 1
+                   and schema(clash, "lockdown").description != "A script."
+                   and r == {"locked_down": True} and not acted(writes), (names, r, acted(writes)))
+            await clash.close()
+
+            # A nudge from before lockdown does not reach a guarded conversation started after it.
+            from winston.channels.web import WebChat
+            assist = WebChat(app.state.cfg, app.state.feed, app.state.rooms, channel="assist")
+            web = WebChat(app.state.cfg, app.state.feed, app.state.rooms)
+            await api.post("/api/lockdown", json={"on": False})
+            said = "Time to stretch."
+            for chat in (assist, web):
+                await chat.noted("[house note] a nudge", said)
+            await api.post("/api/lockdown", json={"on": True})
+            guest, own = await assist.current(conversation="c1"), await web.current()
+
+            def has_note(s):
+                return any(m.get("content") == said for m in s.context.get_messages())
+            await until(lambda: asyncio.sleep(0, result=has_note(own)), 5)
+            await asyncio.sleep(0.3)
+            expect("locked down, a new Assist conversation has no nudge from before; the Talk page at his computer has it",
+                   not has_note(guest) and has_note(own), (guest.context.get_messages(), own.context.get_messages()))
+            for s in (guest, own):
+                await s.close()
             await api.post("/api/lockdown", json={"on": False})
             for b in (box, dm, late):
                 await b.close()

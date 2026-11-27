@@ -10,7 +10,8 @@ from winston.core import lockdown
 
 def make_lockdown_tool(cfg: WinstonConfig, place: str):
     async def lockdown_tool(params: FunctionCallParams):
-        on = str(params.arguments.get("on")).lower() == "true"
+        args = params.arguments if isinstance(params.arguments, dict) else {}
+        on = args.get("on") in (True, 1, "true", "True", "1")   # anything else is off, which waits for the phone
         try:
             async with httpx.AsyncClient(timeout=10) as c:
                 r = await c.post(f"{cfg.control.url}/api/lockdown", json={"on": on, "channel": place})
