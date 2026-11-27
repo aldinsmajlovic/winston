@@ -27,6 +27,7 @@ from winston_sdk.context import local_zone
 from winston_sdk.when import parse_when
 
 from winston.config import data_dir, resolve
+from winston.core import lines
 from winston.core.announce import in_quiet_hours
 from winston.extension_host import texts
 from winston.extension_host.sources import read_json, write_json
@@ -34,7 +35,9 @@ from winston.extension_host.sources import read_json, write_json
 KEEP_SECS = 7 * 86400           # ended nudges stay listed this long (`ctx.nudges()`)
 EVERY = 5.0
 CHECK_SECS = 8                  # the check's own 5 s, and the trip there and back
-WHATS_NEW = re.compile(r"\b(what'?s new|anything new|what did i miss|briefing|brief me)\b", re.IGNORECASE)
+WHATS_NEW = re.compile(r"\b(what'?s new|anything new|what did i miss|briefing|brief me"
+                       r"|vad är nytt|(?:något|nåt) nytt|vad har jag missat|vad har hänt"                    # Swedish
+                       r"|was gibt'?s neues|was ist neu|was habe? ich verpasst)\b", re.IGNORECASE)    # German
 HOME = re.compile(r"\bhome\b", re.IGNORECASE)
 DAY = re.compile(r"\b(day after tomorrow|today|tonight|tomorrow|(?:this |next )?(?:monday|tuesday|wednesday|"
                  r"thursday|friday|saturday|sunday))\b", re.IGNORECASE)
@@ -454,6 +457,7 @@ class Nudges:
             if what not in ("speakers", "phone"):
                 return self._hold(rec, why) if what == "hold" else False
             where = what
+        rec["say"] = await lines.say(self.host.cfg, rec["say"])       # said when his own wording does not come
         via = await self.deliver(self.payload(rec, spec), where)
         if via is None:
             return self._hold(rec, "nothing can deliver it (no speaker connected, no phone or Discord)")

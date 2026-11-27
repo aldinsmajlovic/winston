@@ -42,7 +42,7 @@ from winston.channels.web import WebChat
 from winston.core.announce import Announcement, Delivery, Hub, nudge_note
 from winston.core.common import failure_words, key
 from winston.core.brain import Brain, api_key
-from winston.core import lockdown, memory, persona, speaker, turns, voices
+from winston.core import lines, lockdown, memory, persona, speaker, turns, voices
 from winston.core.live import Feed, LiveEvent, know_extension_tools, tool_icon, tool_label
 from winston.core.rooms import BoxState, MicHold, Rooms, RoomState, SyncRequest, SyncResult
 from winston.engines import install
@@ -750,8 +750,8 @@ def create_app(cfg: WinstonConfig | None = None, autostart: bool = True) -> Fast
             buttons = [{"action": "URI", "title": link["title"][:30], "uri": link["url"]} for link in links[:3]]
         else:
             later = "When I'm home" if extensions.cfg.speak_up.home else "In two hours"
-            buttons = [{"action": f"WINSTON_LATER_{ev['id']}", "title": later},
-                       {"action": f"WINSTON_DISMISS_{ev['id']}", "title": "Done"}]
+            buttons = [{"action": f"WINSTON_LATER_{ev['id']}", "title": await lines.say(extensions.cfg, later)},
+                       {"action": f"WINSTON_DISMISS_{ev['id']}", "title": await lines.say(extensions.cfg, "Done")}]
         if await to_phone(ev["say"], ev["id"], buttons, url=links[0]["url"] if links else None):
             return "phone"
         text = "\n".join([ev["say"], *(f"{link['title']}: {link['url']}" for link in links)])

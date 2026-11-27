@@ -68,7 +68,7 @@ Each entry on the list has these in its edit dialog on the Home Assistant page:
 | --- | --- | --- | --- |
 | Say first | `say_first` | Scripts and scenes | Said the moment a spoken request names it, in place of "One moment." ("Movie night it is.") |
 | Stay quiet when it works | `quiet_after` | Scripts and scenes | Once it has worked he says nothing more and the box does not listen on, so music is not talked over. A failure is still reported. Holds only when its name is all that was said: a request that also asks for music runs the scene and stops there |
-| Run it as soon as you say its name | `shortcut` | Scripts | Saying only one of its names ("Okay Winston, movie night") runs it without the model, the same every time, twice in a row too. Fillers before it ("uh, can you") and a place or "for me" after it ("movie night in the living room") still count as only the name |
+| Run it as soon as you say its name | `shortcut` | Scripts | Saying only one of its names ("Okay Winston, movie night") runs it without the model, the same every time, twice in a row too. Fillers before it ("uh, can you") and a place or "for me" after it ("movie night in the living room") still count as only the name, in Swedish and German too ("filmkväll i vardagsrummet, tack") |
 
 ### A shortcut to any tool
 

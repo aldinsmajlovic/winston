@@ -40,6 +40,7 @@ from pipecat.services.openai.llm import OpenAILLMService
 from winston.config import resolve
 from winston.core import pipecat_fixes  # noqa: F401  (patches Pipecat on import)
 from winston.config.schema import WinstonConfig
+from winston.core import lines
 from winston.core import persona as persona_file
 from winston.core import directory, guard, lockdown, region
 from winston.core.anthropic_chat import AnthropicChat
@@ -247,7 +248,9 @@ def thinking_body(cfg: WinstonConfig, channel: str) -> dict:
 
 
 # A request to change something ("turn it off", "dim it a bit more") names no device every time.
-_HOME_VERBS = re.compile(r"\b(?:turn(?!\s+(?:up|down)\b)|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler)\b")
+_HOME_VERBS = re.compile(r"\b(?:turn(?!\s+(?:up|down)\b)|switch|dim|dimmer|brighten|brighter|boot|warmer|cooler"
+                         r"|tänd|släck|dimma|dämpa|ljusare|mörkare|varmare|slå (?:på|av)|stäng av|sätt på"    # Swedish
+                         r"|schalte?|dimme?|heller|dunkler|wärmer|einschalten|ausschalten|anmachen|ausmachen)\b")   # German
 # Said by code while he thinks about a home request, so the wait is not silence. One after the other.
 HOME_LINES = ("One moment.", "Let me see to that.", "Certainly, one moment.", "Let me look at that.")
 # Said when a conversation has outgrown the model's context and starts afresh from the newest request.
@@ -302,10 +305,14 @@ def own_answers(cfg: WinstonConfig) -> list[Own]:
 
 # Around a shortcut's name: "Okay Winston, please movie night in here, sir" is still only its name.
 _SHORTCUT_LEAD = {"okay", "ok", "hey", "hi", "yeah", "please", "can", "could", "would", "you", "just", "now",
-                  "uh", "um", "oh", "so"}
-_SHORTCUT_TAIL = {"please", "sir", "now", "thanks"}
-# A place or who it is for after the name: "movie night in the living room", "party time for us".
-_SHORTCUT_PLACE = re.compile(r"(?: (?:in|for) (?:here|there|me|us|the(?: \w+){1,2}))+$")
+                  "uh", "um", "oh", "so",
+                  "okej", "hej", "ja", "snälla", "kan", "kunde", "skulle", "du", "bara", "nu", "eh", "öh", "åh", "så",
+                  "bitte", "kannst", "könntest", "würdest", "mal", "jetzt", "äh", "ähm", "also"}
+_SHORTCUT_TAIL = {"please", "sir", "now", "thanks", "tack", "snälla", "nu", "bitte", "danke", "jetzt", "mal"}
+# A place or who it is for after the name: "movie night in the living room", "party time for us"; in Swedish
+# and German one word after it ("filmkväll i vardagsrummet", "filmabend im wohnzimmer").
+_SHORTCUT_PLACE = re.compile(r"(?: (?:in|for) (?:here|there|me|us|the(?: \w+){1,2})"
+                             r"| (?:i|för) \w+| (?:im|für|in der|in den|in die) \w+)+$")
 
 
 def only_name(said: str, assistant: str) -> str:
@@ -421,11 +428,13 @@ class WinstonLLM(OpenAILLMService):
     after the box's conversation passed 16,384 tokens got silence until it was reset by hand."""
 
     def __init__(self, *args, home: re.Pattern | None = None, control: str = "none", effort: str = "",
-                 own: list[Own] | None = None, assistant: str = "", anthropic_api: bool = False, **kwargs):
+                 own: list[Own] | None = None, assistant: str = "", anthropic_api: bool = False,
+                 cfg: WinstonConfig | None = None, **kwargs):
         self._anthropic = anthropic_api         # read by create_client, which the parent's __init__ calls
         super().__init__(*args, **kwargs)
         self._home, self._control, self._effort = home, control, effort.strip()
         self._own, self._assistant = own or [], assistant
+        self._cfg = cfg                         # for lines said in his reply language
         self.ended = False          # the turn ended quietly on purpose (quiet_after); the channel resets it
         self._think = False
         self._line_for: str | None = None       # the user message a line was already said for
@@ -553,6 +562,7 @@ class WinstonLLM(OpenAILLMService):
             if line is None:
                 self._lines += 1
                 line = HOME_LINES[(self._lines - 1) % len(HOME_LINES)]
+                line = await lines.say(self._cfg, line, wait=0) if self._cfg else line   # kept at start (prerender)
             await self.push_frame(TTSSpeakFrame(line, append_to_context=False))
         self._think = self._think or tweak
         try:
@@ -562,7 +572,8 @@ class WinstonLLM(OpenAILLMService):
             if not ("exceed" in str(e) or "too long" in str(e)) or not await start_over(context):
                 raise
             logger.warning(f"the conversation outgrew the model's context; a new one from the newest request ({e})")
-            await self.push_frame(TTSSpeakFrame(AFRESH_LINE, append_to_context=False))
+            afresh = await lines.say(self._cfg, AFRESH_LINE, wait=0) if self._cfg else AFRESH_LINE
+            await self.push_frame(TTSSpeakFrame(afresh, append_to_context=False))
             return await super().get_chat_completions(context)
         finally:
             self._think = self._no_tools = False
@@ -603,7 +614,7 @@ def build_llm(cfg: WinstonConfig, channel: str = "voice", house: str = "", slot:
         and c.thinking.control != "effort" else None
     return WinstonLLM(
         home=home, control=c.thinking.control, effort=c.thinking.home_effort, anthropic_api=c.provider == "anthropic",
-        own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name,
+        own=own_answers(cfg) if channel in HEARD else None, assistant=cfg.assistant.name, cfg=cfg,
         api_key=api_key(c.api_key_env), base_url=c.base_url,
         settings=OpenAILLMService.Settings(
             model=served_model(cfg),

@@ -10,7 +10,7 @@ import re
 from pipecat.utils.text.base_text_filter import BaseTextFilter
 
 from winston.config.schema import WinstonConfig
-from winston.core import region
+from winston.core import lines, region
 
 _ONES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
          "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
@@ -61,8 +61,7 @@ class SpokenText(BaseTextFilter):
         # The words are English, so in another reply language the time stays as written for the voice to read
         # ("Klockan är 17:30" was "Klockan är seventeen thirty"). ponytail: no words per language until a
         # voice is heard misreading one.
-        english = cfg.assistant.language.strip().lower().startswith("en")
-        self._clock = region.resolve(cfg)["time_format"] if english else None
+        self._clock = region.resolve(cfg)["time_format"] if lines.english(cfg) else None
 
     async def filter(self, text: str) -> str:
         # The LLM sometimes streams a lone "." before a tool call. Nothing to say: Pipecat's gate after the
