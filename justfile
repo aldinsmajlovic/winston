@@ -48,4 +48,4 @@ release VERSION:
     git push -q origin main
     git tag -a "v$v" -m "Winston $v"
     git push -q origin "v$v"
-    echo "Tagged v$v. CI builds the release in about 8 minutes (gh run watch); Winston installs then see it on Status."
+    echo "Tagged v$v. CI builds the release in about a minute, 7 when the firmware changed (gh run watch); Winston installs then see it on Status."

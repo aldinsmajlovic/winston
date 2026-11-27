@@ -32,14 +32,15 @@ jobs:
         run: pnpm build
         working-directory: web
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
-      - name: Voice PE firmware, with the ESPHome services/voice-pe pins, or the last release's if unchanged
+      - name: Voice PE firmware, with the ESPHome services/voice-pe pins, or the last release's if its inputs are unchanged
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           fw=services/voice-pe/.esphome/build/home-assistant-voice/build/firmware.factory.bin
           mkdir -p "$(dirname "$fw")"
           prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null) || prev=
-          if [ -n "$prev" ] && git diff --quiet "$prev" HEAD -- services/voice-pe .github/workflows/release.yml &&
+          if [ -n "$prev" ] && git diff --quiet "$prev" HEAD -- services/voice-pe/voice-pe-winston.yaml services/voice-pe/components \
+              assets/wake .github/workflows/release.yml &&
             gh release download "$prev" --repo "$GITHUB_REPOSITORY" --pattern '*.factory.bin' --output "$fw" --clobber; then
             echo "Firmware unchanged since $prev, reusing its build"
           else

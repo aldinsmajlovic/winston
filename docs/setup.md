@@ -497,9 +497,10 @@ A tag `v*` makes CI (`.github/workflows/release.yml`) build the release:
 | `CHANGELOG.md` | What each release brings, for Status and `winston update` |
 | `SHA256SUMS` | The checksums the script, `winston update` and the wizard check against |
 
-So installing needs neither Node nor a 30 minute firmware compile. A release whose `services/voice-pe`
-and `release.yml` are unchanged since the tag before it reuses that release's firmware instead of
-compiling it again, which saves about 8 minutes.
+So installing needs neither Node nor a 30 minute firmware compile. A release whose firmware inputs
+(`voice-pe-winston.yaml`, `services/voice-pe/components`, `assets/wake` and `release.yml`, which pins ESPHome)
+are unchanged since the tag before it reuses that release's firmware instead of compiling it again: about a
+minute in all instead of seven. Scripts beside the firmware, such as `wake.py`, do not count.
 
 Each file has GitHub's build attestation:
 
