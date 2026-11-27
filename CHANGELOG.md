@@ -3,6 +3,17 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
+## 0.1.25 (unreleased)
+
+- Speaking and Hearing on the Voice page ask two things: Runs on picks the processor, the graphics
+  card or a hosted service, and Model lists the models that run that way, the recommended one first.
+  Your current voice and hearing keep their choice.
+- Adding a room box asks for one Room, picked from Home Assistant's areas or typed; the Home Assistant
+  area is asked only for a room that is not one of them.
+- On the Brain and Voice pages the memory card scrolls away with the page, and a slim bar with its
+  verdict stays at the top.
+- The setup wizard no longer shows "This page hit a problem" on its first step in current Chrome.
+
 ## 0.1.24 (2026-11-27)
 
 - Check on the Brain page asks his brain one tiny question with your key and model, and says whether it
