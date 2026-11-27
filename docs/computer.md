@@ -234,7 +234,8 @@ Alma) is not yet.
   with HTTPS.
 - **Addresses** are http and https only, opened by the default browser. A web page or a log line can
   try to talk him into opening a link; to confirm each `open` with a button, set its Permission to
-  Asks you first.
+  Asks you first. With guests over, [lockdown](lockdown.md) makes every `open` asked near a room box
+  wait for your phone.
 - **Files** are resolved to their real path (through symlinks) and refused outside the allowed
   folders. Nothing that runs as a program is opened, even from inside them.
 - **Every call** is in Winston's tool log. The server keeps its own, `calls.log` in

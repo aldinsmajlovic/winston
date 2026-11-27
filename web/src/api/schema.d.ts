@@ -293,6 +293,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/lockdown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether lockdown is on, since when and who did it */
+        get: operations["get_state_api_lockdown_get"];
+        put?: never;
+        /** Turn lockdown on at once; off at once, or from a conversation (channel) once confirmed on the phone */
+        post: operations["change_api_lockdown_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lockdown/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue a call for the owner's confirmation instead of running it */
+        post: operations["hold_api_lockdown_hold_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -1846,6 +1881,12 @@ export interface components {
              * @default false
              */
             shortcut_only?: boolean;
+            /**
+             * Private
+             * @description Its extension may read memory: while locked down a guarded conversation asks your phone for it, as for an action
+             * @default false
+             */
+            private?: boolean;
         };
         /** Channels */
         Channels: {
@@ -2963,6 +3004,29 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** Held */
+        Held: {
+            /** Waiting */
+            waiting?: boolean | null;
+            /** Note */
+            note?: string | null;
+            /** Error */
+            error?: string | null;
+        };
+        /** Hold */
+        Hold: {
+            /** Name */
+            name: string;
+            /**
+             * Args
+             * @default {}
+             */
+            args?: {
+                [key: string]: unknown;
+            };
+            /** Channel */
+            channel: string;
+        };
         /** HomeAssistantCheck */
         HomeAssistantCheck: {
             /** Ok */
@@ -3246,6 +3310,7 @@ export interface components {
          *     tool line.
          *     level: room, loudness (0 to 1): how loud his voice is as it plays, every 50 ms while he speaks. Streamed, never
          *     kept in the history.
+         *     lockdown: on, since (when it went on), by (who changed it).
          */
         LiveEvent: {
             /**
@@ -3264,7 +3329,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge" | "turn" | "conversation" | "level";
+            type: "state" | "user" | "reply" | "reply_end" | "tool" | "announcement" | "error" | "mic" | "confirm" | "nudge" | "turn" | "conversation" | "level" | "lockdown";
             /** State */
             state?: ("idle" | "listening" | "thinking" | "speaking") | null;
             /** Text */
@@ -3291,8 +3356,42 @@ export interface components {
             links?: {
                 [key: string]: string;
             }[] | null;
+            /** On */
+            on?: boolean | null;
+            /** Since */
+            since?: number | null;
+            /** By */
+            by?: string | null;
             /** Loudness */
             loudness?: number | null;
+        };
+        /** LockdownAnswer */
+        LockdownAnswer: {
+            /** On */
+            on: boolean;
+            /**
+             * Waiting
+             * @default false
+             */
+            waiting?: boolean;
+            /** Note */
+            note?: string | null;
+        };
+        /** LockdownChange */
+        LockdownChange: {
+            /** On */
+            on: boolean;
+            /** Channel */
+            channel?: string | null;
+        };
+        /** LockdownState */
+        LockdownState: {
+            /** On */
+            on: boolean;
+            /** Since */
+            since?: number | null;
+            /** By */
+            by?: string | null;
         };
         /** LogLines */
         LogLines: {
@@ -5509,6 +5608,92 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_state_api_lockdown_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LockdownState"];
+                };
+            };
+        };
+    };
+    change_api_lockdown_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LockdownChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LockdownAnswer"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hold_api_lockdown_hold_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Hold"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Held"];
                 };
             };
             /** @description Validation Error */

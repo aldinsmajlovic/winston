@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import typer
@@ -153,6 +154,28 @@ def status():
     for x in s.get("extensions", []):
         icon = {"running": "●", "starting": "◐", "restarting": "◑", "failed": "✕"}.get(x["state"], "○")
         print(f"  {icon} {x['id']:<8} {x['state']:<10} extension  {x['detail']}")
+    if (lock := _ok(_call("GET", "/api/lockdown")))["on"]:
+        print(f"  ▲ {_lockdown_line(lock)}")
+
+
+def _lockdown_line(s: dict) -> str:
+    """'lockdown on since 20:14 (by cli)' or 'lockdown off'. An unreadable state file has no since."""
+    if not s["on"]:
+        return "lockdown off"
+    at = f" since {time.strftime('%H:%M', time.localtime(s['since']))}" if s.get("since") else ""
+    return f"lockdown on{at} (by {s['by']})"
+
+
+@app.command()
+def lockdown(to: str = typer.Argument(None, help="on or off; none prints whether it is on.")):
+    """Lockdown for guests: actions asked in a room wait for your phone. Off here is at once."""
+    if to is not None:
+        if to not in ("on", "off"):
+            print("on or off")
+            raise typer.Exit(2)
+        # On names the CLI as who did it; off without a channel is at once, as asked at the machine.
+        _ok(_call("POST", "/api/lockdown", json={"on": True, "channel": "cli"} if to == "on" else {"on": False}))
+    print(_lockdown_line(_ok(_call("GET", "/api/lockdown"))))
 
 
 @app.command()

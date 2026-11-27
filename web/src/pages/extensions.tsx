@@ -69,12 +69,6 @@ type Region = ReturnType<typeof useRegion>
 type Nudge = NonNullable<ExtensionView['nudges']>[number]
 type Props = { e: ExtensionView; page: SettingsState }
 
-/** "14:02" today, "Mon 19 Oct 08:00" on another day. */
-function when(region: Region, t: number | Date): string {
-  const d = typeof t === 'number' ? new Date(t * 1000) : t
-  return d.toDateString() === new Date().toDateString() ? region.time(d) : `${region.day(d)} ${region.time(d)}`
-}
-
 const isOn = (config: Config, id: string) => getIn(config, [...EXTENSIONS, id, 'enabled']) === true
 /** The address an MCP server was added by, or nothing for one started by a command. */
 const mcpUrl = (page: SettingsState, id: string) => getIn(page.value, [...EXTENSIONS, id, 'mcp', 'url']) as string | null | undefined
@@ -172,7 +166,7 @@ export function kindItems(e: ExtensionView, config: Config, region: Region): Kin
       declaredDeliver: k.declared_deliver,
       declaredWhere: k.declared_where,
       enabled: choice?.enabled !== false,
-      mutedText: muted == null ? undefined : muted === 0 ? 'Muted' : `Muted until ${when(region, muted)}`,
+      mutedText: muted == null ? undefined : muted === 0 ? 'Muted' : `Muted until ${region.when(muted)}`,
     }
   })
 }
@@ -354,13 +348,13 @@ function About({ e, page }: Props) {
           <StatusLine tone="error">{e.detail ? `Stopped: ${e.detail}` : 'Stopped'}</StatusLine>
         ) : e.enabled && lastExit ? (
           <StatusLine tone={e.started_at ? 'muted' : 'warning'}>
-            {`${e.started_at ? `Running again since ${when(region, e.started_at)}. ` : ''}Stopped ${exits.length === 1 ? 'once' : `${exits.length} times`} lately, last at ${when(region, lastExit.at)}: ${lastExit.why}`}
+            {`${e.started_at ? `Running again since ${region.when(e.started_at)}. ` : ''}Stopped ${exits.length === 1 ? 'once' : `${exits.length} times`} lately, last at ${region.when(lastExit.at)}: ${lastExit.why}`}
           </StatusLine>
         ) : e.enabled && e.state === 'stopped' ? (
           <StatusLine tone="warning">On, but not running.</StatusLine>
         ) : null}
         {keys.length ? <StatusLine tone={on ? 'warning' : 'muted'}>{`Needs its ${keys.length === 1 ? 'key' : 'keys'}: ${joinNames(keys)}`}</StatusLine> : null}
-        {e.enabled && lastError ? <StatusLine tone="warning">{`Something it ran failed at ${when(region, lastError.at)}: ${lastError.error}`}</StatusLine> : null}
+        {e.enabled && lastError ? <StatusLine tone="warning">{`Something it ran failed at ${region.when(lastError.at)}: ${lastError.error}`}</StatusLine> : null}
         {nothingOn ? <StatusLine tone="muted">Choose which of its actions he may use. Nothing is on yet.</StatusLine> : null}
         {removable ? (
           <Button variant="outline" size="sm" className="self-start" onClick={() => void remove()}>
@@ -566,7 +560,7 @@ function HowItRuns({ e, page }: Props) {
   const slow = slows(e.prompt_chars ?? 0)
   const remote = e.origin === 'mcp' && !!mcpUrl(page, e.id)
   const lines = [
-    Number.isFinite(next) ? `Runs again at ${when(region, next)}` : null,
+    Number.isFinite(next) ? `Runs again at ${region.when(next)}` : null,
     e.prompt_chars ? `Adds ${e.prompt_chars.toLocaleString()} characters to every request, ${slow ? `which ${slow}` : 'too few to notice'}` : null,
     e.state === 'running' && e.memory_mb ? `Uses ${Math.round(e.memory_mb)} MB of its ${e.memory_limit_mb} MB limit` : null,
   ].filter((l) => l !== null)

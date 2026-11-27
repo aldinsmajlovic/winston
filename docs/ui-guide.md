@@ -674,6 +674,7 @@ The landing page shows, in order:
 - his parts by role, each a row linking to its page, with one text command and a `RowMenu`;
 - graphics memory (computer memory, without a graphics card);
 - custom engines, once there is one;
+- lockdown, whose switch acts at once: the one switch on a settings page that does not wait for Save;
 - the web address with its warning.
 
 Its commands are Restart everything (all of him, Winston included), Start all and Stop all, each only

@@ -123,7 +123,7 @@ him; the theme and the version are at its foot.
 
 | Page | What it sets | More in |
 | --- | --- | --- |
-| Status | Engines, logs and the web address | [below](#status) |
+| Status | Engines, logs, lockdown and the web address | [below](#status) |
 | Assistant | His personality, region, memory and recordings of what you say | [identity](identity.md#his-personality), [tools](tools.md), [understanding](understanding.md#1-turn-record-and-marks) |
 | Brain | What runs his brain and how he thinks | [below](#brain) |
 | Voice | Speaking and hearing | [voices](voices.md) |
@@ -165,6 +165,9 @@ From the top:
 - **Custom engines**, once there is one: servers Winston starts and keeps running, which nothing uses
   until a setting points at their address. Each row opens its page at `/status/engines/<name>`, which
   shows How it runs open.
+- **Lockdown**: one switch, Lock down, which acts at once instead of waiting for Save. While it is on,
+  the card says since when and what it does ([lockdown](lockdown.md)). Off from here is at once, since
+  only his computer opens these pages while it is on.
 - **Web address**: Who can open this page, Only his computer or Every device on your network
   (`control.host`). Open to the network, a warning says anyone on it can control him (and your home,
   once Home Assistant is set up), and a line says keys cannot be pasted on these pages then. It takes

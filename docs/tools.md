@@ -16,6 +16,7 @@ on ([extensions](extensions.md); web search, Ask Claude and watched sensors are
 | `use_voice` | Switches to a cloned voice or back to his own, optionally kept in config | The voice channel or a Voice PE box | Cloned voices only |
 | `mark_mistake` | Marks his previous turn as a mistake when you say so ("that's not what I said", "I wasn't talking to you"), with what you said or wanted if you say it ([marking a mistake](understanding.md#marking-a-mistake)) | `logging.turns.enabled`, a spoken channel | The turn before the one that asks |
 | `start_over` | Starts a new conversation when you ask ("start over", "new conversation", "forget this conversation"): in a room for its box and every screen, otherwise this one ([rooms](rooms.md#what-a-room-does)) | Nothing | The request that asked stays, so he can answer it; remembered facts stay |
+| `lockdown` | Turns [lockdown](lockdown.md) on at once, or asks your phone to turn it off | Nothing | Off by voice never takes effect on its own |
 | `follow_up` | Answers a nudge he spoke up with: later (with when and your reason), dismiss, mute its kind, why, or the extension's own action ([speaking up](speaking-up.md)) | An extension switched on that declares a kind | Times are read by code and said back as set; a restricted action waits for your confirmation |
 
 ## How his tools behave

@@ -12,6 +12,7 @@ uv run winston status          # health of every engine, GPU memory
 uv run winston restart tts     # one engine or the voice channel
 uv run winston down            # stop engines and channel; winstond keeps serving
 uv run winston talk            # text chat, same brain and tools
+uv run winston lockdown on     # guests over: actions wait for your phone (off; none prints the state)
 uv run winston ha expose       # apply the Home Assistant list (Save on the page does it too); --list shows the plan
 uv run winston check           # unit (no hardware), ui, then the m0, m1, m2 acceptance checks on real hardware
 uv run winston check unit      # the no-hardware checks, each file run even when one fails; FAILED names each
@@ -74,6 +75,7 @@ Paths are in the data folder.
 | Every step of speaking up: a nudge held, said or put off, and why | `logs/nudges.jsonl`, the nudges in `state/nudges.json` | |
 | Every announcement and where it went | `announcements.jsonl`, beside the tool log | |
 | Every tool call | `logs/tool_calls.jsonl` | `logging.tool_calls` |
+| Lockdown turned on and off, by whom | `logs/lockdown.jsonl`, the state in `lockdown.json` | [lockdown](lockdown.md) |
 | Each spoken turn's timings | `logs/latency.jsonl` | `logging.latency`; empty turns it off |
 | Each spoken turn whole: its audio and what was heard, done and said | `turns/<day>/`, kept 14 days | Keep recordings of what you say, on Assistant (`logging.turns.enabled`, off); `logging.turns.keep_days` |
 

@@ -321,6 +321,9 @@ actionable notification on your phone through the Home Assistant app. The tool a
 waiting and he says so; voice alone never runs one (plan §6 rule 4). A call you make yourself at the
 machine (`winston ext call`, the API without a conversation) runs.
 
+While [lockdown](lockdown.md) is on, every call that does not only look waits like this when it is
+asked near a room box, whatever its tier, and so does any call to an extension that may read memory.
+
 ### Permission per action
 
 You change a tool's handling per action, on its page and on Actions: On its own (read and act),

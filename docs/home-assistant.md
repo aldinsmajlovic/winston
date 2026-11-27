@@ -220,6 +220,8 @@ filter that starts at All and counts each type.
 Home Assistant's own actions, listed without a Permission choice: they follow what is shared above
 and run without asking you first. One Home Assistant action switches lamps and locks alike, so a
 permission per action could not protect a lock. To keep him away from a device, leave it off the list.
+While [lockdown](lockdown.md) is on, those asked near a room box wait for your phone, lamps and locks
+alike.
 
 A script's row shows its description (without the aliases Home Assistant adds to it), or says it has
 none, so he may not know when to use it ([writing a script he can run](#writing-a-script-he-can-run)).

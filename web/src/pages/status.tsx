@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Play, Plus, RotateCcw, Square } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
-import { $api, type Config, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView, type Presets, type Status } from '@/api/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { $api, type Config, type EngineConfig, type EngineState, type EngineStatus, type ExtensionView, type LiveEvent, type Presets, type Status } from '@/api/client'
 import { useConfig } from '@/api/config'
 import { updateNeedsYou, useUpdate } from '@/api/update'
 import { engineLabel, isRunning, notWorking, partName, restartCost, STATE_WORDS, useEngineActions, useStatus } from '@/api/status'
@@ -21,10 +22,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useGraphicsMemory } from '@/hooks/use-graphics-memory'
 import { useDrivers } from '@/hooks/use-drivers'
 import { useHomeAssistantState } from '@/hooks/use-home-assistant'
+import { useRegion } from '@/hooks/use-region'
 import { useSettings, type SettingsState } from '@/hooks/use-settings'
 import { capitalize, joinNames, since } from '@/lib/format'
 import { memoryUse } from '@/lib/graphics-memory'
@@ -209,8 +212,48 @@ function GraphicsCard({ gpu, page, config, presets, running }: { gpu: NonNullabl
   )
 }
 
+const lockdownKey = $api.queryOptions('get', '/api/lockdown').queryKey
+
+/** Lockdown: a switch that acts at once, unlike the page's settings. Off from here is at once, since while it is on
+ * only his computer opens the page. The live feed says when a box or the command line changed it. */
+function LockdownCard() {
+  const client = useQueryClient()
+  const region = useRegion()
+  const state = $api.useQuery('get', '/api/lockdown')
+  const change = $api.useMutation('post', '/api/lockdown', { onSettled: () => client.invalidateQueries({ queryKey: lockdownKey }) })
+  useEffect(() => {
+    const source = new EventSource('/api/live')
+    source.onmessage = (event) => {
+      if ((JSON.parse(event.data) as LiveEvent).type === 'lockdown') void client.invalidateQueries({ queryKey: lockdownKey })
+    }
+    return () => source.close()
+  }, [client])
+  const on = state.data?.on ?? false
+  const since = state.data?.since
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Lockdown</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-start gap-2 py-1">
+          <Switch id="lockdown" checked={on} disabled={!state.data || change.isPending} onCheckedChange={(v) => change.mutate({ body: { on: v } })} />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="lockdown">Lock down</Label>
+            <p className="text-sm text-muted-foreground">
+              {on
+                ? `On${since ? ` since ${region.when(since)}` : ''}. Actions wait for your phone, he keeps what he knows about you to himself, and only this computer opens these pages.`
+                : 'For when guests are over: actions wait for your phone, he keeps what he knows about you to himself, and only his computer opens these pages.'}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 /** The Settings landing: what needs you, what to set up next, his parts by role with their state and
- * commands, the graphics card, the custom engines once there is one, and who can open this page. */
+ * commands, the graphics card, the custom engines once there is one, lockdown, and who can open this page. */
 export default function StatusPage() {
   const s = useSettings()
   const status = useStatus()
@@ -575,6 +618,7 @@ export default function StatusPage() {
         </Card>
       ) : null}
       {updateFirst ? null : updateCard}
+      <LockdownCard />
       <SectionForm page={page} path={CONTROL} title="Web address">
         <div className="flex flex-col items-start gap-2">
           {!LOCAL.includes(host) ? (

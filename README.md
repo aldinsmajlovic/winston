@@ -44,7 +44,8 @@ set up a Voice PE plugged in over USB. To read the script first, or to install f
   room, and the browser, with a full-screen wall display for a tablet on the wall. Start a
   conversation at the box and finish it on the screen beside it.
 - **Remembers** what you tell him, in plain Markdown you can read and edit, and writes a diary of each
-  day you can ask him about.
+  day you can ask him about. With guests over, lockdown keeps both private and asks your phone before
+  he acts.
 - **Speaks up.** Announcements from Home Assistant, a word before what is on your calendar, and
   reminders reach the room you are in or your phone; in quiet hours only what you asked for.
 - **Extensible.** Add a tool in one Python file or connect any MCP server. Your calendar, news,
@@ -74,7 +75,8 @@ Setup, with or without Home Assistant adopting the box: [Voice PE](docs/voice-pe
 - **Using it:** [setup](docs/setup.md), [running](docs/running.md), [Home Assistant](docs/home-assistant.md),
   [Home Assistant integration](docs/ha-integration.md), [Assist](docs/assist.md),
   [tools](docs/tools.md), [voices](docs/voices.md), [announcements](docs/announcements.md),
-  [Discord](docs/discord.md), [computers](docs/computer.md), [known issues](docs/known-issues.md)
+  [Discord](docs/discord.md), [computers](docs/computer.md), [lockdown](docs/lockdown.md),
+  [known issues](docs/known-issues.md)
 - **Rooms:** [Voice PE satellite](docs/voice-pe.md), [rooms](docs/rooms.md)
 - **Extending it:** [extensions](docs/extensions.md), [built-in extensions](docs/built-in-extensions.md)
 - **How it works:** [architecture](docs/architecture.md), [hardware](docs/hardware.md),
