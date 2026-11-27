@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.25 (unreleased)
+## 0.1.25 (2026-11-27)
 
 - Speaking and Hearing on the Voice page ask two things: Runs on picks the processor, the graphics
   card or a hosted service, and Model lists the models that run that way, the recommended one first.
