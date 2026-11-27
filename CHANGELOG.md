@@ -3,7 +3,7 @@
 What each release brings, newest first. Winston shows the entries newer than yours on Status before
 you update, and `winston update` prints them after.
 
-## 0.1.23 (unreleased)
+## 0.1.23 (2026-11-27)
 
 - Lockdown, for evenings when people you do not trust are over: say "lock down", or turn it on from
   Status or with `winston lockdown on`. While it is on, an action asked for near a room box waits for
